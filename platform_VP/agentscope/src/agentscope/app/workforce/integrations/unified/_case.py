@@ -764,6 +764,38 @@ class CaseRuntime:
         if self._delete_guard not in guards:
             guards.append(self._delete_guard)
 
+    async def share_progress(self, workflow_id: str, text: str) -> None:
+        """A staff progress line, verified (signed event), for the ticket's room.
+
+        Only when the route leader opened a room: members then read the job's
+        state in Shared Context like any other fact.
+        """
+
+        if self._app is None:
+            return
+        binding = await self.store.session_of_workflow(workflow_id)
+        if binding is None:
+            return
+        state = self._app.state
+        user_id, agent_id = binding["manager_account_id"], binding["agent_id"]
+        record = await state.storage.get_session(user_id, agent_id, binding["session_id"])
+        team_id = getattr(record, "team_id", None)
+        if not team_id:
+            return
+        from ...._shared_context import SharedContextService
+        from ....storage._model._team_context import ContextDelta
+
+        line = "Tiến độ từ hệ thống đối tác: " + text
+        await SharedContextService(state.shared_context_storage, state.message_bus).append_event(
+            user_id=user_id,
+            team_id=team_id,
+            kind="external_event",
+            content=line,
+            source_agent_id=agent_id,
+            source_session_id=binding["session_id"],
+            delta=ContextDelta(add_confirmed_facts=(line,)),
+        )
+
     async def _delete_guard(self, user_id: str, agent_id: str) -> str | None:
         used = await self.store.routes_using(user_id, agent_id)
         if not used:

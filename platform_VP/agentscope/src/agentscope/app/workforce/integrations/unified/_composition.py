@@ -444,7 +444,8 @@ def build_unified_runtime(
     )
     store = CaseStore(uows)
     approvals = CaseApprovals(uows)
-    runner.attach_case(CaseRuntime(store), approvals)
+    case_runtime = CaseRuntime(store)
+    runner.attach_case(case_runtime, approvals)
     workflow_service = WorkflowService(
         workflows,
         LeaderWorkflowBootstrap(UnifiedBootstrapResolver(ids), clock=clock, ids=ids),
@@ -487,6 +488,7 @@ def build_unified_runtime(
         writer,
         ids,
         requests=requests,
+        share=case_runtime.share_progress,
     )
     customer = partner_customer_dependency()
     router = create_router(

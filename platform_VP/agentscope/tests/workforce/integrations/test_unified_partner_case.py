@@ -67,6 +67,7 @@ from agentscope.app.workforce.integrations.unified._tables import (
     routes,
 )
 from agentscope.app.workforce.orchestration import get_metadata
+from agentscope.app.workforce.orchestration._tables import workflow_checkpoints
 from agentscope.mcp import HttpMCPConfig, MCPClient
 from agentscope.message import TextBlock, ToolResultState
 from agentscope.tool import MCPTool, ToolChunk
@@ -177,6 +178,7 @@ class _Storage:
 
     def __init__(self):
         self.sessions = {}
+        self.messages = []  # every session's messages; enough for token counting
         self.mcp = SimpleNamespace(
             id="mcp-1",
             enabled=True,
@@ -219,6 +221,9 @@ class _Storage:
 
     async def get_session(self, user_id, agent_id, session_id):
         return self.sessions.get(session_id)
+
+    async def list_messages(self, user_id, session_id, limit=200):
+        return list(self.messages), None
 
     async def upsert_session(self, user_id, agent_id, config, state=None, session_id=None, **_):
         session = self.sessions.get(session_id) or _Session(
@@ -484,6 +489,78 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         async with self.uows() as uow:
             operation = (await uow.execute(select(operations).where(operations.c.client_reference == reference))).mappings().one()
         self.assertEqual(("arrived", 40, "WO-1"), (operation["status"], operation["rank"], operation["external_job_id"]))
+
+    async def test_a_turn_adds_its_tokens_to_the_workflow_budget(self):
+        from agentscope.message import Usage
+
+        async def first_turn(tools):
+            self.storage.messages.append(SimpleNamespace(id="m-1", usage=Usage(input_tokens=1200, output_tokens=80)))
+            await call(tools, "CaseSay", text="Yêu cầu đã được tiếp nhận.", expects="none")
+
+        self.storage.messages.append(SimpleNamespace(id="m-old", usage=Usage(input_tokens=999, output_tokens=9)))
+        self.leader.scripts = [first_turn]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("succeeded", await self._run())
+        async with self.uows() as uow:
+            payload = (await uow.execute(
+                select(workflow_checkpoints.c.payload)
+                .where(workflow_checkpoints.c.workflow_id == started["workflow_id"])
+                .order_by(workflow_checkpoints.c.state_revision.desc()),
+            )).scalars().first()
+        budget = payload["used_budget"]
+        self.assertEqual((1200, 80), (budget["input_tokens"], budget["output_tokens"]))
+
+    async def test_a_result_with_a_room_teaches_its_agents(self):
+        scheduled = []
+
+        async def summary(tools):
+            for session in self.storage.sessions.values():
+                session.team_id = "team-9"  # the leader opened a room earlier
+            await call(tools, "CaseSay", text="Nhân viên đã báo xong, anh/chị xác nhận giúp tôi.", expects="confirmation")
+
+        self.leader.schedule_learning = lambda user_id, session, team_id: scheduled.append(team_id)
+        self.leader.scripts = [summary]
+        async with self._client() as client:
+            await client.post("/workforce/v1/partner/requests", json=self._start())
+            self.assertEqual("succeeded", await self._run())
+        self.assertEqual(["team-9"], scheduled)
+
+    async def test_staff_progress_reaches_the_room_of_the_ticket(self):
+        async def first_turn(tools):
+            await call(tools, "vh_work_order_dispatch", ticket_id="T-77", description="Sửa rò nước")
+            await call(tools, "CaseSay", text="Yêu cầu đã được gửi cho nhân viên.", expects="none")
+
+        self.leader.scripts = [first_turn]
+        shared = []
+
+        class Shared:
+            def __init__(self, *_args):
+                pass
+
+            async def append_event(self, **event):
+                shared.append(event)
+
+        async def in_room(*_args):
+            return SimpleNamespace(team_id="team-1")
+
+        async with self._client() as client:
+            await client.post("/workforce/v1/partner/requests", json=self._start())
+            self.assertEqual("succeeded", await self._run())
+            reference = next(args for name, args in self.mcp_calls if name == "vh_work_order_dispatch")["client_reference"]
+            raw, headers = signed({
+                "schema_version": "1", "external_event_id": "ev-room", "external_job_id": "WO-1",
+                "client_reference": reference, "event_type": "job.accepted", "provider_version": 2,
+                "occurred_at": "2026-10-20T02:00:00.000000Z", "data": {"staff_name": "Bình", "eta": "09:30 20/10/2026"},
+            })
+            with patch("agentscope.app._shared_context.SharedContextService", Shared), \
+                    patch.object(self.storage, "get_session", in_room):
+                accepted = await client.post("/workforce/v1/provider/job-events", content=raw, headers=headers)
+        self.assertEqual("applied", accepted.json()["ingestion_status"])
+        [event] = shared
+        self.assertEqual(("team-1", "external_event"), (event["team_id"], event["kind"]))
+        self.assertIn("job.accepted", event["content"])
+        self.assertIn("Bình", event["content"])
 
     async def test_dispatch_progress_events_result_and_close_like_the_vinhomes_bridge(self):
         async def first_turn(tools):

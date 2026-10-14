@@ -168,6 +168,47 @@ class ChatLeaderTurnRunner:
             sum(item.output_tokens for item in usage),
         )
 
+    async def _message_ids(self, user_id: str, session_id: str) -> set[str]:
+        lister = getattr(self._state().storage, "list_messages", None)
+        if lister is None:
+            return set()
+        messages, _ = await lister(user_id, session_id, limit=500)
+        return {message.id for message in messages}
+
+    async def _turn_tokens(self, user_id: str, session_id: str, before: set[str]) -> tuple[int, int]:
+        """(input, output) tokens of the leader's messages written this turn."""
+
+        lister = getattr(self._state().storage, "list_messages", None)
+        if lister is None:
+            return 0, 0
+        messages, _ = await lister(user_id, session_id, limit=500)
+        usages = [m.usage for m in messages if m.id not in before and getattr(m, "usage", None)]
+        return sum(u.input_tokens for u in usages), sum(u.output_tokens for u in usages)
+
+    async def _member_tokens(self, user_id: str, session_id: str, leader_agent_id: str) -> tuple[int, int]:
+        """(input, output) tokens the room's members used so far (leader excluded)."""
+
+        state = self._state()
+        session = await state.storage.get_session(user_id, "", session_id)
+        if session is None or session.team_id is None or state.shared_context_storage is None:
+            return 0, 0
+        record = await state.shared_context_storage.get_team_shared_context(user_id, session.team_id)
+        if record is None:
+            return 0, 0
+        members = [usage for agent, usage in record.state.metrics.provider_usage.items() if agent != leader_agent_id]
+        return sum(u.input_tokens for u in members), sum(u.output_tokens for u in members)
+
+    async def _learn_from_room(self, user_id: str, agent_id: str, session_id: str) -> None:
+        """The ticket's result is out: its room (if any) teaches its agents."""
+
+        state = self._state()
+        schedule = getattr(state.chat_service, "schedule_learning", None)
+        if schedule is None:
+            return
+        session = await state.storage.get_session(user_id, agent_id, session_id)
+        if session is not None and session.team_id is not None:
+            schedule(user_id, session, session.team_id)
+
     async def _messages_after(self, user_id: str, session_id: str, message_id: str) -> list[Any]:
         storage = self._state().storage
         messages, _ = await storage.list_messages(user_id, session_id, limit=200)
@@ -360,6 +401,9 @@ class ChatLeaderTurnRunner:
         cause = trigger.get("cause") or {}
         approval_ids = list(context.checkpoint.pending_approval_ids)
         ran = False
+        # What this turn costs: the leader's new messages plus the room's members.
+        before_ids = await self._message_ids(user_id, session.id)
+        members_before = await self._member_tokens(user_id, session.id, agent_id)
         if cause.get("kind") == "approval" and self._approvals is not None:
             approval = await self._approvals.get(cause["approval_id"])
             pending = await pending_chat_actions(storage, user_id, agent_id, session.id)
@@ -399,6 +443,10 @@ class ChatLeaderTurnRunner:
         # The turn is over: a later wake-up (a member's late report) has no
         # turn to speak through; the next trigger reads what it said.
         await store.set_trigger(session.id, None)
+        leader_in, leader_out = await self._turn_tokens(user_id, session.id, before_ids)
+        members_after = await self._member_tokens(user_id, session.id, agent_id)
+        spent_in = leader_in + max(0, members_after[0] - members_before[0])
+        spent_out = leader_out + max(0, members_after[1] - members_before[1])
 
         says =await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
         rejected = await store.entries(workflow.workflow_id, kind="rejected", trigger_id=trigger_id)
@@ -446,23 +494,32 @@ class ChatLeaderTurnRunner:
         else:
             next_state = WorkflowState.AWAITING_USER
 
+        if next_state == WorkflowState.AWAITING_CONFIRMATION:
+            await self._learn_from_room(user_id, agent_id, session.id)
+
         budget = context.checkpoint.used_budget
         checkpoint = context.checkpoint.model_copy(
             update={
                 "state_revision": workflow.revision + 1,
                 "pending_approval_ids": tuple(approval_ids),
                 "used_budget": budget.model_copy(
-                    update={"model_turns": budget.model_turns + (1 if ran else 0)},
+                    update={
+                        "model_turns": budget.model_turns + (1 if ran else 0),
+                        "input_tokens": budget.input_tokens + spent_in,
+                        "output_tokens": budget.output_tokens + spent_out,
+                    },
                 ),
             },
         )
         logger.info(
-            "Partner case %s turn %s: state=%s says=%d rejected=%d",
+            "Partner case %s turn %s: state=%s says=%d rejected=%d tokens=%d/%d",
             workflow.workflow_id,
             trigger_id,
             next_state,
             len(says),
             len(rejected),
+            spent_in,
+            spent_out,
         )
         return TurnDecision(
             candidate=RuntimeTurnResult(

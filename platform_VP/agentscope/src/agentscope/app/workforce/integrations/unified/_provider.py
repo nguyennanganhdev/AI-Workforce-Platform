@@ -28,6 +28,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 from sqlalchemy import insert, select, update
 
+from ....._logging import logger
 from ...contracts import (
     ActorContext,
     ActorKind,
@@ -96,8 +97,11 @@ class UnifiedProviderEvents:
         events: Any,
         ids: Callable[[], str] = lambda: uuid4().hex,
         requests: Any = None,
+        share: Callable[[str, str], Any] | None = None,
     ) -> None:
         self._uows = uows
+        # Puts a staff progress line into the room of the ticket, if any.
+        self._share = share
         self._auth = auth
         self._store = store
         self._requests = requests
@@ -222,25 +226,31 @@ class UnifiedProviderEvents:
                 ),
             )
             await uow.execute(insert(receipts).values(**receipt))
-            await self._effects(uow, operation, envelope, entry, receipt["receipt_id"])
+            shared = await self._effects(uow, operation, envelope, entry, receipt["receipt_id"])
             await uow.commit()
+        if shared and self._share is not None:
+            try:
+                await self._share(operation["workflow_id"], shared)
+            except Exception:  # noqa: BLE001 - the event is applied; the room copy is best effort
+                logger.exception("Could not share provider progress with the room of %s", operation["workflow_id"])
         return self._accepted(receipt)
 
-    async def _effects(self, uow, operation, envelope, entry, receipt_id) -> None:
+    async def _effects(self, uow, operation, envelope, entry, receipt_id) -> str | None:
+        """Apply an accepted event; returns the progress line for the room."""
         session = (
             await uow.execute(
                 select(case_sessions).where(case_sessions.c.workflow_id == operation["workflow_id"]),
             )
         ).mappings().first()
         if session is None:
-            return
+            return None
         scope = Scope.model_validate(session["scope"])
         aggregate = parse_aggregate(
             await self._workflows.repository.load(scope, operation["workflow_id"], uow),
         )
         workflow = aggregate.workflow
         if workflow.state.value == "closed":
-            return
+            return None
         public = {
             key: value
             for key, value in envelope.data.items()
@@ -310,6 +320,7 @@ class UnifiedProviderEvents:
                 },
                 uow,
             )
+        return described
 
     async def receipt(self, receipt_id: str, headers: dict) -> dict:
         """Contract 10.2: the provider key alone reads its receipts."""
