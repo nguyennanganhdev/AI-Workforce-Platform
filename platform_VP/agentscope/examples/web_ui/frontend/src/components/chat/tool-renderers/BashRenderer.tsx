@@ -1,4 +1,5 @@
-import { getResultText, parseInput, toolLabelClass } from './_shared';
+import { toolLabelClass } from './_shared';
+import { getResultText, parseInput } from './_shared-utils';
 import type { ToolRenderer } from './types';
 
 function getCommand(input: string): string {

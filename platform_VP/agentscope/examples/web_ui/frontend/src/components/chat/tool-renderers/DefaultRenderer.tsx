@@ -2,7 +2,8 @@ import type { ToolCallBlock } from '@agentscope-ai/agentscope/message';
 import mime from 'mime';
 import type { ReactNode } from 'react';
 
-import { getResultText, toolArgClass, toolLabelClass } from './_shared';
+import { toolArgClass, toolLabelClass } from './_shared';
+import { getResultText } from './_shared-utils';
 import type { TFunction, ToolCallWithResult } from './types';
 
 export function defaultGetDisplayName(call: ToolCallBlock): string {

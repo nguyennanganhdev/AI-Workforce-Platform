@@ -3,13 +3,15 @@ import { DiffPreview } from './DiffPreview';
 import type { ToolRenderer } from './types';
 import {
 	countDiffStats,
-	DiffStats,
-	FramedFileBody,
 	getResultDiff,
-	toolArgClass,
-	toolLabelClass,
 	tryGetFileName,
 	tryGetFilePath,
+} from '@/components/chat/tool-renderers/_shared-utils';
+import {
+	DiffStats,
+	FramedFileBody,
+	toolArgClass,
+	toolLabelClass,
 } from '@/components/chat/tool-renderers/_shared.tsx';
 
 export const WriteRenderer: ToolRenderer = {

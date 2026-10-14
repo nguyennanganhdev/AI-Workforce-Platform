@@ -180,6 +180,15 @@ export interface AgentMemory {
 	updated_at: string;
 }
 
+export interface PartnerRoute {
+	route_id: string;
+	partner_client_id: string;
+	external_management_ref: string;
+	status: 'pending_confirmation' | 'active' | 'revoked';
+	revision: number;
+	created_at: string;
+}
+
 const base = '/workforce/console/studio';
 const agentPath = (id: string) => `${base}/agents/${encodeURIComponent(id)}`;
 
@@ -207,6 +216,13 @@ export const studioApi = {
 	templates: () => client.get<AgentTemplate[]>(`${base}/templates`),
 	tools: () => client.get<CatalogTool[]>(`${base}/tools`),
 	memories: (id: string) => client.get<AgentMemory[]>(`${agentPath(id)}/memories`),
+	partnerRoutes: () =>
+		client.get<PartnerRoute[]>('/workforce/v1/manager/partner-routes', undefined, { silent: true }),
+	grantPartnerRoute: (partnerClientId: string, externalManagementRef: string) =>
+		client.post<PartnerRoute>('/workforce/v1/manager/partner-routes', {
+			partner_client_id: partnerClientId,
+			external_management_ref: externalManagementRef,
+		}),
 	retireMemory: (id: string, memoryId: string) =>
 		client.post<AgentMemory>(`${agentPath(id)}/memories/${encodeURIComponent(memoryId)}/retire`),
 };

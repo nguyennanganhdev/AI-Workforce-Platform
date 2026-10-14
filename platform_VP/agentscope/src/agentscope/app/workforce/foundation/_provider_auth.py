@@ -3,14 +3,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import inspect
 import re
-from typing import Any
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -25,7 +24,6 @@ from ..contracts import (
 from ._database import SqlAlchemyUnitOfWork
 from ._identity import _sql_uow
 from ._tables import provider_credentials, provider_integrations
-
 
 _SIGNATURE = re.compile(r"^v1=([0-9a-f]{64})$")
 

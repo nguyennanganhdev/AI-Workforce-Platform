@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import importlib.util
+import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -15,10 +15,24 @@ from fastapi import APIRouter
 from sqlalchemy import create_engine, inspect
 
 from agentscope.app.message_bus import InMemoryMessageBus
-from agentscope.app.workforce.contracts import Scope
-from agentscope.app.workforce.contracts import ActorContext, RequestResult
+from agentscope.app.workforce.contracts import ActorContext, RequestResult, Scope
 from agentscope.app.workforce.execution import (
     get_metadata as execution_metadata,
+)
+from agentscope.app.workforce.foundation import (
+    DurableJob,
+    InMemoryMetricSink,
+    JobOwnerKind,
+)
+from agentscope.app.workforce.integrations.async_runtime import (
+    PHASE_C_JOB_TYPES,
+    ApprovalContinuationCommandAdapter,
+    OperationReconcileJobHandler,
+    PhaseCRuntimeDependencies,
+    WorkforceBootstrap,
+    WorkforceRuntimeAssembly,
+    build_phase_c_runtime,
+    compose_phase_c_runtime,
 )
 from agentscope.app.workforce.lifecycle.async_evaluation import (
     get_metadata as evaluation_metadata,
@@ -31,21 +45,6 @@ from agentscope.app.workforce.orchestration import (
 )
 from agentscope.app.workforce.registry.event_protocols._tables import (
     metadata as registry_metadata,
-)
-from agentscope.app.workforce.foundation import (
-    DurableJob,
-    InMemoryMetricSink,
-    JobOwnerKind,
-)
-from agentscope.app.workforce.integrations.async_runtime import (
-    ApprovalContinuationCommandAdapter,
-    OperationReconcileJobHandler,
-    PHASE_C_JOB_TYPES,
-    PhaseCRuntimeDependencies,
-    WorkforceBootstrap,
-    WorkforceRuntimeAssembly,
-    build_phase_c_runtime,
-    compose_phase_c_runtime,
 )
 
 

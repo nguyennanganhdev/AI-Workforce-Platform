@@ -106,10 +106,14 @@ def main() -> int:
         rows = [
             "# Phase A negative test matrix",
             "",
-            "Each row runs independently against the named real model. "
-            "Expected: validation rejects the input.",
-            "JSON Schema checks structure separately; "
-            "cross-field invariants require Pydantic validation.",
+            (
+                "Each row runs independently against the named real model. "
+                "Expected: validation rejects the input."
+            ),
+            (
+                "JSON Schema checks structure separately; "
+                "cross-field invariants require Pydantic validation."
+            ),
             "",
             "| ID | Model | Mutation | Expected |",
             "|---|---|---|---|",

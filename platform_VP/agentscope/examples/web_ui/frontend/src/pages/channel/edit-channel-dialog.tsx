@@ -15,13 +15,13 @@ import {
 } from '@/components/ui/dialog';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
+import { ChannelForm } from '@/pages/channel/channel-form';
 import {
-	ChannelForm,
 	channelFormFromRecord,
 	defaultChannelForm,
 	isChannelFormValid,
 	toUpdateRequest,
-} from '@/pages/channel/channel-form';
+} from '@/pages/channel/channel-form-utils';
 
 interface Props {
 	channel: ChannelRecord | null;

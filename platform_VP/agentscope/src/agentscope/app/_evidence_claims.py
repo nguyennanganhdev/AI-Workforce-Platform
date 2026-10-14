@@ -311,12 +311,47 @@ def _derived_amount_anchors(anchors: set[str]) -> set[str]:
         for derived in first_level
         for original in originals
     }
+    # Unit price x evidenced quantity: "1.200.000 per night" for "2 nights"
+    # (and rooms x nights) gives 2.400.000, then plus one other evidenced
+    # amount (a car) gives the trip total. Quantities are small evidenced
+    # integers only, so a model cannot multiply arbitrary numbers into
+    # support for an invented figure.
+    counts = sorted(
+        {
+            int(value)
+            for value in _evidenced_numbers(anchors)
+            if 1 < value <= 31 and value == value.to_integral_value()
+        },
+    )[:8]
+    factors = set(counts)
+    factors.update(a * b for a, b in combinations(counts, 2) if a * b <= 200)
+    factors.update(count * count for count in counts if count * count <= 200)
+    products = {
+        amount * factor
+        for amount in originals
+        for factor in sorted(factors)[:30]
+    }
+    with_one_more = {
+        product + original for product in products for original in originals
+    }
     derived = {
         _number_key(value)
-        for value in (*first_level, *second_level)
+        for value in (*first_level, *second_level, *products, *with_one_more)
         if value != 0
     }
     return derived
+
+
+def _evidenced_numbers(anchors: set[str]) -> set[Decimal]:
+    numbers: set[Decimal] = set()
+    for anchor in anchors:
+        if not anchor.startswith("number:"):
+            continue
+        try:
+            numbers.add(Decimal(anchor.removeprefix("number:")))
+        except InvalidOperation:
+            continue
+    return numbers
 
 
 def _date_parts(anchor: str) -> tuple[int | None, int, int] | None:

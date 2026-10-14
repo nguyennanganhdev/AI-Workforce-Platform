@@ -101,6 +101,11 @@ class MessageBusKeys:  # pylint: disable=too-many-public-methods
         return cls._TEAM_SHARED_CONTEXT_LOCK.format(team_id=team_id)
 
     @classmethod
+    def team_context_changed(cls, team_id: str) -> str:
+        """Broadcast channel signalled after a team's context or a handoff changes."""
+        return f"agentscope:team:{team_id}:context_changed"
+
+    @classmethod
     def team_history_bootstrap_lock(cls, team_id: str) -> str:
         """Lock the whole one-time customer-history projection."""
 

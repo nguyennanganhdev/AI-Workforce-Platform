@@ -46,8 +46,12 @@ services:
       WORKFORCE_PROMPT_CACHE_KEY: ${WORKFORCE_PROMPT_CACHE_KEY:-false}
       WORKFORCE_LEADER_WAIT_SECONDS: ${WORKFORCE_LEADER_WAIT_SECONDS:-240}
       WORKFORCE_LEARNING: ${WORKFORCE_LEARNING:-true}
+      KNOWLEDGE_VECTOR_URL: ${KNOWLEDGE_VECTOR_URL:-}
+      KNOWLEDGE_VECTOR_API_KEY: ${KNOWLEDGE_VECTOR_API_KEY:-}
+      KNOWLEDGE_VECTOR_PATH: ${KNOWLEDGE_VECTOR_PATH:-}
+      WORKFORCE_PARTNER_API: ${WORKFORCE_PARTNER_API:-false}
     ports:
-      - "${AGENTSCOPE_PORT:-8000}:8000"
+      - "${BIND_HOST:-127.0.0.1}:${AGENTSCOPE_PORT:-8000}:8000"
     volumes:
       - agentscope_workspaces:/app/examples/agent_service/workspaces
     depends_on:
@@ -73,12 +77,37 @@ services:
       retries: 10
       start_period: 30s
 
+  web:
+    build:
+      context: ./examples/web_ui
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
+    image: agentscope-web-local:latest
+    restart: unless-stopped
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${WEB_PORT:-5173}:80"
+    depends_on:
+      - app
+
+  # DEMO-only MCP server (fake hotels/cars/building data) for the test guide.
+  # Start with `--profile demo`; add it in the MCP page as
+  # http://demo-mcp:8765/mcp.
+  demo-mcp:
+    image: agentscope-local:latest
+    profiles: ["demo"]
+    restart: unless-stopped
+    working_dir: /app
+    command: ["python", "scripts/workforce/demo_mcp_server.py", "--host", "0.0.0.0", "--port", "8765"]
+    depends_on:
+      - app
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -95,7 +124,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-agentscope}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentscope}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -109,34 +138,33 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # minio/minio is no longer pullable from Docker Hub; the Chainguard build
+    # ships the same server plus `mc`. Override with MINIO_IMAGE if needed.
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${BIND_HOST:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${BIND_HOST:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
       test:
         [
-          "CMD",
-          "curl",
-          "--fail",
-          "--silent",
-          "http://localhost:9000/minio/health/live",
+          "CMD-SHELL",
+          "mc --config-dir /tmp/mc-health alias set self http://127.0.0.1:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" >/dev/null && mc --config-dir /tmp/mc-health ready self",
         ]
       interval: 5s
       timeout: 3s
       retries: 10
 
   minio-init:
-    # The pinned MinIO server image also ships /usr/bin/mc. Reusing it keeps
-    # local bucket provisioning independent of the retired minio/mc registry.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # The MinIO server image also ships `mc`. Reusing it keeps local bucket
+    # provisioning independent of the retired minio/mc registry.
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
     restart: "no"
     depends_on:
       minio:
@@ -148,8 +176,8 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
-        mc mb --ignore-existing "local/$${S3_BUCKET}"
+        mc --config-dir /tmp/mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc --config-dir /tmp/mc mb --ignore-existing "local/$${S3_BUCKET}"
 
 volumes:
   agentscope_workspaces:

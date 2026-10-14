@@ -16,7 +16,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { appendChatEvent } from '../utils/appendChatEvent';
 import { sessionApi, takeFreshlyCreated } from '@/api';
 import { chatApi } from '@/api';
-import { useAudioManager } from '@/context/AudioContext';
+import { useAudioManager } from '@/context/audio-context';
 
 /**
  * One pending subagent HITL request, projected from a team *member*

@@ -1098,6 +1098,27 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertIn('"summary"', packet)
         self.assertIn("progress-11", packet)
 
+    async def test_summary_can_be_written_by_a_cheaper_model(self) -> None:
+        for index in range(12):
+            await self.service.append_event(
+                user_id="u",
+                team_id="ticket-1",
+                kind="progress",
+                content=f"progress-{index} " + ("detail " * 20),
+                event_id=f"event-{index}",
+            )
+        cheap = _MeasuredModel()
+
+        await self.service.prepare_packet(
+            model=self.model,  # type: ignore[arg-type]
+            user_id="u",
+            team_id="ticket-1",
+            summary_model=cheap,  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(0, self.model.summary_calls)
+        self.assertEqual(1, cheap.summary_calls)
+
     async def test_summary_failure_preserves_sources_and_reports_metric(self) -> None:
         failing = _MeasuredModel(fail_summary=True)
         for index in range(8):

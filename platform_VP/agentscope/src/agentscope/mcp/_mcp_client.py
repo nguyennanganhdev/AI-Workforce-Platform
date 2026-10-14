@@ -119,6 +119,10 @@ class MCPClient(BaseModel):
     """The tools disabled in this MCP, which will be filtered out in the
     `list_tools` function."""
 
+    confirm_tools: list[str] | None = None
+    """Tools that always need explicit user confirmation before they run,
+    regardless of their name or annotations (set from an agent's spec)."""
+
     execution_timeout: float | None = None
     """The execution timeout in seconds for calling the tools from this MCP."""
 
@@ -530,6 +534,7 @@ class MCPClient(BaseModel):
                 tool=target_tool,
                 client_gen=self._get_client_gen,
                 timeout=self.execution_timeout,
+                force_confirmation=target_tool.name in (self.confirm_tools or ()),
             )
         else:
             # Stateful: pass session
@@ -539,6 +544,7 @@ class MCPClient(BaseModel):
                 tool=target_tool,
                 session=self._session,
                 timeout=self.execution_timeout,
+                force_confirmation=target_tool.name in (self.confirm_tools or ()),
             )
 
     def _validate_connection(self) -> None:

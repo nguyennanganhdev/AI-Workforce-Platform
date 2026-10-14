@@ -16,7 +16,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from '@/components/ui/empty.tsx';
-import { useUploadContext } from '@/context/UploadContext';
+import { useUploadContext } from '@/context/upload-context';
 import { isInFlight } from '@/context/uploadTypes';
 import type { UploadPhase, UploadTask } from '@/context/uploadTypes';
 import { useDocumentStatusPolling } from '@/hooks/useDocumentStatusPolling';

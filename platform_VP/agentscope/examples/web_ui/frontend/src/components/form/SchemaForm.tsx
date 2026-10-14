@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import type { JSONSchema, JSONSchemaProperty } from '@/api';
+import { DEFAULT_SKIP_FIELDS } from '@/components/form/schema-form-utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
 	Field,
@@ -18,8 +19,6 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-
-const DEFAULT_SKIP_FIELDS = new Set(['id', 'type']);
 
 export type SchemaFormValue = string | number | boolean | null | undefined;
 
@@ -63,21 +62,6 @@ function inferStep(type: string): number | string | undefined {
 	if (type === 'integer') return 1;
 	if (type === 'number') return 'any';
 	return undefined;
-}
-
-/** Extract initial values from a JSON Schema's `default` fields. */
-export function defaultValuesFromSchema(
-	schema: JSONSchema,
-	skipFields: ReadonlySet<string> = DEFAULT_SKIP_FIELDS,
-): Record<string, SchemaFormValue> {
-	const out: Record<string, SchemaFormValue> = {};
-	for (const [key, prop] of Object.entries(schema.properties ?? {})) {
-		if (skipFields.has(key) || prop.const !== undefined) continue;
-		if (prop.default !== undefined) {
-			out[key] = prop.default as SchemaFormValue;
-		}
-	}
-	return out;
 }
 
 export function SchemaForm({

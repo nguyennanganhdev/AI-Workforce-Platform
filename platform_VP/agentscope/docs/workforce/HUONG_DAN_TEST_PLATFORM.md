@@ -1,6 +1,6 @@
-# Hướng dẫn test platform sau P0–P3
+# Hướng dẫn test platform sau P0–P3 và 11 vấn đề còn lại
 
-Cập nhật 14/10/2026 · Nhánh `feat/wf-p0-p3` (PR vào `develop2`) · Người đọc: PM/tester
+Cập nhật 14/10/2026 · Nhánh `feat/wf-remaining` (xếp chồng trên `feat/wf-p0-p3`, PR vào `develop2`) · Người đọc: PM/tester
 
 Tài liệu này để **người** chạy thử platform với model thật. Mọi test tự động
 (unit/integration, build frontend) đã chạy và pass; phần dưới đây là những gì
@@ -17,7 +17,7 @@ chụp hoặc `session_id` để tra metric.
 
 ```bash
 git fetch origin
-git checkout feat/wf-p0-p3        # hoặc develop2 sau khi PR được merge
+git checkout feat/wf-remaining     # hoặc develop2 sau khi hai PR được merge
 cd platform_VP/agentscope
 ```
 
@@ -32,17 +32,29 @@ Giữ các biến đang dùng (AUTH_*, PARTNER_*, OPENAI_*...). Thêm:
 | `WORKFORCE_PROMPT_CACHE_KEY` | `false` lúc đầu | Bật `true` ở bước 7 để thử; nếu gateway báo lỗi "unknown parameter" thì để `false` |
 | `WORKFORCE_LEADER_WAIT_SECONDS` | `240` | Thời gian tối đa một lượt Leader chờ các agent (kể cả việc phụ thuộc) |
 | `WORKFORCE_LEARNING` | `true` | Học sau ticket (bộ nhớ + tự cải tiến luật). `false` để tắt |
+| `KNOWLEDGE_VECTOR_URL` | để trống | URL Qdrant server nếu có (kèm `KNOWLEDGE_VECTOR_API_KEY`). Trống = Qdrant lưu trên đĩa trong volume `workspaces` |
+| `KNOWLEDGE_VECTOR_PATH` | để trống | Thư mục lưu chỉ mục khi không dùng server; `:memory:` = kiểu cũ, mất khi khởi động lại |
+| `WORKFORCE_PARTNER_API` | `false` | `true` để mở API đối tác `/workforce/v1` chạy bằng Leader console (mục 7.1). Cần `AUTH_ENABLED=true` và `AGENTSCOPE_SQL_URL` |
 
 ### 1.3 Chạy platform
 
 **Cách A — Docker (khuyến nghị):**
 
 ```bash
-docker compose up -d --build
+docker compose --profile demo up -d --build           # app + web + MCP demo + Postgres/Redis/MinIO
+python scripts/workforce/bootstrap_demo.py --env-file .env
 ```
 
-Container `app` tự chạy `alembic upgrade head` — database lên tới
-`0016_agent_memories` (bảng bộ nhớ agent mới).
+- Project Docker: `awp-develop2` (đặt trong `.env`), không đụng các stack khác.
+- Web: `http://localhost:5173` · API: `http://localhost:8000`.
+- Container `app` tự chạy `alembic upgrade head`.
+- `bootstrap_demo.py` **không gọi model**. Script tạo sẵn tài khoản quản lý
+  khu vực, credential OpenAI (lấy key trong `.env`), MCP demo
+  (`http://demo-mcp:8765/mcp`), key đối tác và tuyến `tower-a`. Mật khẩu và
+  key nằm trong `.artifacts/demo-access/ACCESS.md` (không commit). Chạy lại
+  script thì bước nào đã có sẽ được bỏ qua.
+- Đổi cổng API thì sửa `WEB_API_BASE_URL` và build lại `web`.
+- Dừng: `docker compose --profile demo down` (thêm `-v` nếu muốn xoá dữ liệu).
 
 **Cách B — chạy tay:**
 
@@ -61,6 +73,30 @@ Trang **Credential** → thêm credential OpenAI-compatible (API key + base URL
 gateway). Kiểm tra model `WORKFORCE_MODEL_NAME` và `WORKFORCE_LEADER_MODEL_NAME`
 đều có trong danh sách model của credential.
 
+**Đã gắn (14/10):** key OpenAI lấy từ
+`vinhome_Recident/agents/reception/.env` (endpoint OpenAI chính thức), ghi vào
+`platform_VP/agentscope/.env` (file gitignored). Key liệt kê được 133 model
+(chỉ gọi `/models`, không tốn token). Phân loại model:
+
+| Vai | Model | Lý do |
+|---|---|---|
+| Model nền: agent chuyên môn, tóm tắt context, ReMe | `gpt-5.4-mini` | Rẻ, gọi tool tốt |
+| Model cao: Leader lập kế hoạch/phản biện, copilot Studio, người chấm kiểm thử, agent đặt mức "mạnh", người chấm eval | `gpt-5.5` | Model mạnh nhất có model card trong fork |
+| Không dùng | `gpt-5.6-luna/sol/terra` | Chưa rõ thứ hạng; Luna từ chối gọi tool qua Chat Completions nếu không tắt reasoning (đã gặp ở Reception) |
+| Không dùng | `gpt-5.5-pro`, `gpt-5.4-pro` | Rất đắt, không cần cho demo |
+
+Với Docker, `bootstrap_demo.py` tự thêm credential OpenAI cho tài khoản quản
+lý. Nếu tự tạo tài khoản khác thì vào trang **Credential**, thêm credential
+OpenAI với cùng key.
+
+Muốn tự kiểm tra key (không in key ra màn hình):
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
+```
+
+**Đạt khi:** in `200`.
+
 ### 1.5 Server MCP demo (dữ liệu giả, có nhãn DEMO)
 
 Mở terminal riêng, để chạy suốt buổi test:
@@ -72,7 +108,9 @@ python scripts/workforce/demo_mcp_server.py --host 0.0.0.0 --port 8765
 
 Trang **MCP** → thêm MCP qua URL:
 
-- Docker: `http://host.docker.internal:8765/mcp`
+- Docker với `--profile demo`: đã có service `demo-mcp`, `bootstrap_demo.py`
+  tự thêm `http://demo-mcp:8765/mcp` (không cần mở terminal riêng)
+- Docker, chạy MCP trên máy: `http://host.docker.internal:8765/mcp`
 - Chạy tay: `http://127.0.0.1:8765/mcp`
 
 **Đạt khi:** MCP hiện đủ 10 tool: `search_hotels`, `get_hotel_detail`,
@@ -258,9 +296,11 @@ Trang **Knowledge** → tạo kho, tải một tài liệu (ví dụ nội quy t
 → tab **Kiến thức** → gắn kho, ghi "dùng cho" → kiểm thử → phát hành. Hỏi một
 câu có trong tài liệu qua Leader.
 
-**Đạt khi:** câu trả lời dùng nội dung tài liệu. Lưu ý: app mẫu dùng vector
-store **trong bộ nhớ** (`QdrantStore(":memory:")`) — khởi động lại backend là
-mất chỉ mục, phải tải lại tài liệu (đã ghi vào danh sách vấn đề còn lại).
+**Đạt khi:** câu trả lời dùng nội dung tài liệu.
+
+**Chỉ mục còn sau khi khởi động lại (vấn đề 2):** `docker compose restart app`
+(hoặc tắt/bật backend chạy tay), hỏi lại câu trên. **Đạt khi:** vẫn trả lời
+đúng mà không phải tải lại tài liệu.
 
 ---
 
@@ -277,7 +317,121 @@ prompt Leader + tool phối hợp **3.616 → ~1.190 token**, worker **2.826 →
 
 ---
 
-## 7. Xử lý sự cố
+## 7. Mười một vấn đề còn lại (vòng 3)
+
+Số trong ngoặc là số thứ tự trong danh sách vấn đề còn lại của báo cáo P0–P3.
+
+### 7.1 API đối tác chạy bằng Leader console (vấn đề 1 và 3)
+
+Ticket của đối tác giờ do **chính Leader console** của quản lý khu vực trả lời,
+với các agent đã phát hành trong Quản lý agent. Đặt `WORKFORCE_PARTNER_API=true`,
+khởi động lại backend. `SECRET` = `PARTNER_API_PROVISIONING_SECRET` trong `.env`,
+`BASE` = `http://127.0.0.1:8000`.
+
+1. **Quản lý khu vực:** đăng ký tài khoản quản lý (chọn domain/khu). Việc đăng
+   ký tạo membership *chờ xác minh*. Ghi lại `user_id` (devtools → `/auth/me`)
+   và `domain_id` (`GET /directory/domains`).
+2. **Admin xác minh quản lý:**
+   ```bash
+   curl -X POST $BASE/workforce/v1/admin/memberships/verify \
+     -H "X-Provisioning-Secret: $SECRET" -H "Content-Type: application/json" \
+     -d '{"manager_account_id":"<user_id>"}'
+   ```
+   **Đạt khi:** trả `"status":"verified"`; secret sai → 403.
+3. **Admin cấp key đối tác:**
+   ```bash
+   curl -X POST $BASE/integrations/api-keys \
+     -H "X-Provisioning-Secret: $SECRET" -H "Content-Type: application/json" \
+     -d '{"domain_id":"<domain_id>","name":"Đối tác thử"}'
+   ```
+   Ghi `client_id` và `api_key` (`KEY`, chỉ hiện một lần).
+4. **Quản lý cấp tuyến:** đăng nhập tài khoản quản lý → Quản lý agent →
+   **Kết nối đối tác** → nhập `client_id` và mã toà (vd `tower-a`) → Cấp.
+   **Đạt khi:** tuyến hiện *chờ đối tác xác nhận*, có mã tuyến và `v1`.
+5. **Đối tác xác nhận:**
+   ```bash
+   curl -X POST $BASE/workforce/v1/partner/routes/<route_id>/confirm \
+     -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"expected_revision":1}'
+   ```
+   **Đạt khi:** trả `"status":"active"`; trong dialog tuyến chuyển *đang hoạt động*.
+6. **Đối tác gửi ticket:** dùng script ở 7.8 (trỏ `--base-url` về máy local),
+   hoặc gửi tay `POST /workforce/v1/partner/requests` với header `X-API-Key`
+   (hoặc `Authorization: ApiKey <key>`); người dùng cuối là `external_user_id`
+   trong body (POST) hoặc query (GET), đúng như hợp đồng đối tác.
+
+**Đạt khi:** request về `completed`; câu trả lời đến từ Leader của quản lý
+(cùng luật/giọng như trên console); nếu Leader hỏi lại thì `workflow_state` =
+`awaiting_user`, gửi `workflow_reply` thì tiếp tục **cùng một** session; tới
+`awaiting_confirmation` thì `close` được. Đọc kết quả với `external_user_id`
+khác người gửi → 403/404.
+
+Giới hạn: chưa có API duyệt của đối tác, sự kiện provider job và theo dõi thao
+tác ngoài (`waiting_external_event`); tool có tác động đi qua xác nhận trong chat.
+
+### 7.2 Ticket giữ phiên bản agent khi được mời (vấn đề 3)
+
+1. Agent *Kỹ thuật toà nhà* đang **v1**. Mở ticket 3.5, đợi Leader mời agent.
+2. Trong lúc ticket còn mở: thêm luật "Luôn kết thúc bằng câu: Chúc anh/chị một
+   ngày tốt lành." → kiểm thử → phát hành **v2**.
+3. Nhắn tiếp trong ticket cũ; rồi mở ticket mới hỏi lại.
+
+**Đạt khi:** ticket cũ vẫn trả lời theo v1 (không có câu mới); ticket mới theo v2.
+
+### 7.3 Xác nhận tool theo spec (vấn đề 4)
+
+Agent *Kỹ thuật toà nhà* → tab Công cụ → bật **"Cần khách xác nhận trước khi
+chạy"** cho `get_service_fee` (tool chỉ đọc) → kiểm thử → phát hành. Hỏi phí sửa
+ống nước qua Leader.
+
+**Đạt khi:** chat hỏi xác nhận trước khi gọi `get_service_fee`; tắt lại thì
+không hỏi. `book_hotel`/`create_work_order` (MCP khai báo `readOnlyHint=false`)
+luôn hỏi xác nhận.
+
+### 7.4 Leader đợi theo tín hiệu (vấn đề 5)
+
+Chạy 3.1 và 3.6. **Đạt khi:** Leader trả lời ngay sau khi agent cuối cùng báo
+cáo xong, kết quả như mục 3 (không có "Nhóm chưa hoàn tất…").
+
+### 7.5 Số tính ra không bị chặn (vấn đề 6)
+
+Chạy 3.4 (4 người, 2 phòng × 2 đêm). **Đạt khi:** câu trả lời có 3.000.000 và
+3.380.000; metrics của agent tính chi phí có `evidence_rejections` = 0.
+
+### 7.6 Tóm tắt Shared Context dùng model rẻ (vấn đề 7)
+
+Đặt `WORKFORCE_LEADER_MODEL_NAME` khác `WORKFORCE_MODEL_NAME`. Chạy một ticket
+dài (3.1, rồi 3.4, rồi hỏi thêm 3–4 câu). **Đạt khi:** không lỗi; nếu gateway có
+log theo model, các lượt tóm tắt context gọi model mặc định (mini), không gọi
+model mạnh.
+
+### 7.7 Các vấn đề nhỏ (8, 9, 10)
+
+- **(8)** Agent chưa có phiên bản: bật phát hành ở trang agent cũ → lỗi 409
+  "Agent chưa có phiên bản đã kiểm thử. Hãy phát hành ở trang Quản lý agent."
+  Agent đã có phiên bản thì tắt/bật lại được.
+- **(9)** Builder chat cũ tạo agent mới → agent có sẵn **3 kịch bản kiểm thử**.
+  Agent cũ thiếu kịch bản: tab Kiểm thử có nút **Nhờ copilot viết kịch bản**.
+- **(10)** devtools → Network: mỗi trang chỉ tải file JS của nó khi bấm vào;
+  lần mở đầu nhẹ hơn.
+
+### 7.8 Sandbox đối tác (vấn đề 11)
+
+Chưa có sandbox thật nên chưa thể đánh dấu đạt. Đã chuẩn bị script và
+checklist: `docs/workforce/SANDBOX_DOI_TAC_CHECKLIST.md`. Có thể chạy thử với
+platform local sau khi làm 7.1:
+
+```bash
+python scripts/workforce/partner_sandbox_check.py --base-url http://127.0.0.1:8000 \
+  --api-key "$KEY" --management-ref tower-a --external-user-id resident-sandbox-1
+```
+
+**Đạt khi:** `.artifacts/partner-sandbox/<thời gian>/EVIDENCE.md` có các bước ✅;
+dòng cuối ghi "pending human review". Kết quả local **không** dùng làm bằng
+chứng sandbox.
+
+---
+
+## 8. Xử lý sự cố
 
 | Hiện tượng | Kiểm tra |
 |---|---|
@@ -287,3 +441,6 @@ prompt Leader + tool phối hợp **3.616 → ~1.190 token**, worker **2.826 →
 | Leader trả "Nhóm chưa hoàn tất…" | Xem metrics: nhánh nào `stopped` và `reason`; có thể tăng `WORKFORCE_LEADER_WAIT_SECONDS` |
 | Không thấy ký ức sau ticket | Ticket phải có mọi việc `verified`/`accepted` (xem `assignments` trong metrics); `WORKFORCE_LEARNING=true`; agent bật "Ghi nhớ kinh nghiệm" |
 | `calls_with_usage = 0` | Gateway không trả usage (stream thiếu `include_usage`) |
+| Backend không khởi động, báo `WORKFORCE_PARTNER_API=true requires…` | Cần `AUTH_ENABLED=true` và `AGENTSCOPE_SQL_URL` |
+| Ticket đối tác bị 403/404 | Membership đã `verified`? Tuyến đã `active`? `external_management_ref` trùng mã toà của tuyến? |
+| Request đối tác đứng ở `accepted`/`running` | Xem log backend: key model sai, hoặc quản lý chưa có agent nào đã phát hành |
