@@ -684,6 +684,7 @@ class SharedContextService:
         reply_owner_agent_id: str | None = None,
         reference_event_ids: tuple[str, ...] = (),
         delta: ContextDelta | None = None,
+        recipient_session_ids: tuple[str, ...] = (),
     ) -> SharedContextEvent:
         """Idempotently append one shareable event under a team lock."""
 
@@ -820,6 +821,7 @@ class SharedContextService:
                 hop_count=hop_count,
                 reference_event_ids=reference_event_ids,
                 payload_hash=payload_hash,
+                recipient_session_ids=recipient_session_ids,
             )
             record.state.events.append(event)
 

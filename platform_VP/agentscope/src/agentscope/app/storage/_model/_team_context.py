@@ -64,6 +64,8 @@ class SharedContextEvent(BaseModel):
     hop_count: int = Field(default=1, ge=1, le=12)
     reference_event_ids: tuple[str, ...] = Field(default=(), max_length=50)
     payload_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    # Who a TeamSay was addressed to (sessions); empty: the reply owner/all.
+    recipient_session_ids: tuple[str, ...] = Field(default=(), max_length=50)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

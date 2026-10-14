@@ -990,6 +990,7 @@ class TeamSay(_TeamToolBase):
                     based_on_revision=based_on_revision,
                     reference_event_ids=reference_event_ids,
                     delta=context_delta,
+                    recipient_session_ids=tuple(sid for sid, _aid in recipients),
                 )
                 if shared_event.stale:
                     if kind == "requires_user_input":

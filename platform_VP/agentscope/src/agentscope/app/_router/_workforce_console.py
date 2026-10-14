@@ -1910,11 +1910,15 @@ async def session_room(
                                           text=_room_tool_line(event.content)))
         elif event.kind in {"result", "answer", "question", "progress", "error", "conflict",
                             "requires_user_input", "user_input_proposal"}:
+            to = [
+                leader if sid == team.session_id else by_session.get(sid, "")
+                for sid in event.recipient_session_ids
+            ]
             timeline.append(RoomEntry(
                 at=at,
                 kind=event.kind,
                 sender=sender,
-                to=leader if sender != leader else "",
+                to=", ".join(name for name in to if name) or (leader if sender != leader else ""),
                 text=event.content[:_ROOM_TEXT],
             ))
     timeline.sort(key=lambda entry: entry.at)

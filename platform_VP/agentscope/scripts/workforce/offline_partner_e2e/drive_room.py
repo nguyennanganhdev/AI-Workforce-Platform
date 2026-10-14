@@ -138,6 +138,9 @@ with httpx.Client(base_url=BASE, timeout=180) as http:
         and ("assign", "Workforce Leader", f"E2EDieuPhoi{RUN}") in kinds
         and ("result", f"E2EKyThuat{RUN}", "Workforce Leader") in kinds
         and ("result", f"E2EDieuPhoi{RUN}", "Workforce Leader") in kinds
+        # The members argue it out between themselves, not only with the Leader.
+        and ("question", f"E2EDieuPhoi{RUN}", f"E2EKyThuat{RUN}") in kinds
+        and ("answer", f"E2EKyThuat{RUN}", f"E2EDieuPhoi{RUN}") in kinds
         and replies == texts  # the message sent, not the Leader's internal text
         and len(room.get("participants", [])) == 3
     )
