@@ -87,8 +87,15 @@ class BuilderTool(BaseModel):
     description: str = ""
 
 
+class GeneratedTest(BaseModel):
+    """One pre-publish test scenario written together with the agent."""
+
+    scenario: str = Field(min_length=1, max_length=2000)
+    expected: str = Field(min_length=1, max_length=2000)
+
+
 class GeneratedAgent(BaseModel):
-    """The only three business artifacts Builder is allowed to author."""
+    """The only business artifacts Builder is allowed to author."""
 
     name: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=1, max_length=4000)
@@ -96,6 +103,7 @@ class GeneratedAgent(BaseModel):
     selected_tool_ids: list[str] = Field(default_factory=list)
     skill_name: str = Field(min_length=1, max_length=100)
     skill_markdown: str = Field(min_length=20, max_length=50000)
+    tests: list[GeneratedTest] = Field(default_factory=list, max_length=5)
 
 
 class BuilderGeneration(BaseModel):
@@ -176,6 +184,7 @@ class PlannedAgentView(BaseModel):
 
 
 class ProposedAgentView(BaseModel):
+    tests: list[dict] = Field(default_factory=list)
     name: str
     objective: str
     system_prompt: str
@@ -569,7 +578,10 @@ The conversation contains an outline approved by the area manager. Generate
 exactly those reusable independent business agents; do not merge their
 capabilities into one agent. A team request is only a batch creation shortcut;
 do not pre-bind a permanent team or a ticket. You may author ONLY: name, objective,
-system_prompt, selected_tool_ids and one reusable SKILL.md. Select only exact
+system_prompt, selected_tool_ids, one reusable SKILL.md and 3 tests per agent
+(scenario = what a customer says; expected = the behaviour to check, covering a
+normal request, an out-of-scope request and a case that needs consent or
+escalation). Tests run with the real model before the agent can change later. Select only exact
 tool IDs in the supplied catalog. A tool ID may appear in only one generated
 agent. Give each operational tool to the narrowest specialist that owns that
 capability; a planning/coordinator agent must call that specialist through
@@ -624,6 +636,25 @@ LANGUAGE AND VOICE:
         raise
     except Exception as exc:  # noqa: BLE001 - provider errors become HTTP 502
         _raise_builder_model_error(exc, config)
+
+
+def _seed_spec(record: AgentRecord, tests: list[dict]) -> None:
+    """Give a Builder-made agent its Agent Spec (v1) with its tests, so later
+    edits and self-improvement are tested before they are published."""
+
+    from .._agent_spec import AgentSpec
+    from .._service._agent_studio import ensure_spec
+
+    ensure_spec(record)
+    if not tests:
+        return
+    record.data.spec["tests"] = [
+        {"scenario": test["scenario"], "expected": test["expected"]}
+        for test in tests
+    ]
+    record.data.spec = AgentSpec.model_validate(record.data.spec).model_dump(mode="json")
+    for version in record.data.versions:
+        version["spec"] = record.data.spec
 
 
 def _normalise_skill(agent: GeneratedAgent) -> str:
@@ -1365,6 +1396,7 @@ async def prepare_builder(
                 selected_tools=selected,
                 skill_name=_slug(agent.skill_name),
                 skill_markdown=_normalise_skill(agent),
+                tests=[test.model_dump() for test in agent.tests],
                 evaluation={
                     "passed": passed,
                     "score": round(sum(checks.values()) / len(checks), 2),
@@ -1502,6 +1534,7 @@ async def publish_builder(
                 evaluation=item.evaluation,
             ),
         )
+        _seed_spec(record, item.tests)
         await storage.upsert_agent(user_id, record)
         session = await _primary_session(
             storage,
@@ -1612,6 +1645,21 @@ async def change_agent_lifecycle(
     record = await storage.get_agent(user_id, agent_id)
     if record is None or record.data.system_role != "business":
         raise HTTPException(status_code=404, detail="Business agent not found")
+    # Imported here: the studio service imports this module's fixed configs.
+    from .._service._agent_studio import ensure_spec
+
+    ensure_spec(record)
+    if body.state == "published" and not record.data.published_version:
+        # Only re-activation of an already published, versioned agent is a
+        # toggle. A first publication must go through Agent Studio, where it
+        # is tested and recorded as a version.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Agent chưa có phiên bản đã kiểm thử. Hãy phát hành ở trang "
+                "Quản lý agent."
+            ),
+        )
     record.data.lifecycle_state = body.state
     record.data.invite_config = InviteConfig(
         invitable=body.state == "published",

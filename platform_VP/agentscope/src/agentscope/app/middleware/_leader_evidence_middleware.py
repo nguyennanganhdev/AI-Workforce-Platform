@@ -60,6 +60,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         )
         self._max_nudges = max_nudges
         self._max_rounds = max_rounds
+        self._safety_poll_seconds = 5.0
 
     @staticmethod
     def _expected_reports(agent: Agent) -> int:
@@ -146,15 +147,56 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         )
 
     async def _wait_until_ready(self, expected: int, deadline: float) -> bool:
+        """Wait for the team, waking on context-change signals.
+
+        Each teammate report, Leader decision or handoff delivery publishes a
+        signal; the state is re-checked when one arrives, with a slow safety
+        poll in case a signal is missed (e.g. a Redis reconnect).
+        """
+
+        watch = getattr(self._shared_context, "watch", None)
+        session = await self._storage.get_session(
+            self._user_id, self._agent_id, self._session_id
+        )
+        if watch is None or session is None or session.team_id is None:
+            return await self._poll_until_ready(expected, deadline, interval=0.5)
+        async with watch(session.team_id) as changes:
+            return await self._poll_until_ready(
+                expected,
+                deadline,
+                interval=self._safety_poll_seconds,
+                changes=changes,
+            )
+
+    async def _poll_until_ready(
+        self,
+        expected: int,
+        deadline: float,
+        *,
+        interval: float,
+        changes: asyncio.Queue | None = None,
+    ) -> bool:
+        loop = asyncio.get_running_loop()
         await self._shared_context_release()
         while True:
             if await self._ready(expected):
                 return True
             if await self._pending_consent():
                 return True
-            if asyncio.get_running_loop().time() >= deadline:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
                 return False
-            await asyncio.sleep(0.5)
+            timeout = min(interval, remaining)
+            if changes is None:
+                await asyncio.sleep(timeout)
+            else:
+                try:
+                    await asyncio.wait_for(changes.get(), timeout=timeout)
+                    # Coalesce a burst of signals into one re-check.
+                    while not changes.empty():
+                        changes.get_nowait()
+                except TimeoutError:
+                    pass
             await self._shared_context_release()
 
     async def _shared_context_release(self) -> None:

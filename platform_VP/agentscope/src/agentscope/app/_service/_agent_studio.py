@@ -122,6 +122,24 @@ def last_test_for(record: AgentRecord, spec: AgentSpec) -> dict | None:
     return None
 
 
+def pinned_view(record: AgentRecord, version: int) -> AgentRecord:
+    """The agent as it was published in ``version`` (for a running ticket).
+
+    Returns the record unchanged when that version is unknown (e.g. trimmed
+    from history), so a ticket never fails because of pinning.
+    """
+
+    stored = next((v for v in record.data.versions if v.get("version") == version), None)
+    if stored is None or version == record.data.published_version:
+        return record
+    view = record.model_copy(deep=True)
+    view.data.system_prompt = stored.get("system_prompt") or view.data.system_prompt
+    if stored.get("spec"):
+        view.data.spec = stored["spec"]
+        view.data.tool_bindings = tool_bindings(AgentSpec.model_validate(stored["spec"]))
+    return view
+
+
 def runtime_prompt(spec: AgentSpec) -> str:
     return governed_system_prompt("business", render_prompt(spec))
 
@@ -202,15 +220,19 @@ async def apply_bindings(
     for default_mcp in workspace.default_mcps:
         await workspace.remove_mcp(default_mcp.name, agent_id=record.id, session_id=primary.id)
     selected: dict[str, list[str]] = {}
+    confirm: dict[str, list[str]] = {}
     for tool in spec.tools:
         if tool.mcp_id and tool.tool_name:
             selected.setdefault(tool.mcp_id, []).append(tool.tool_name)
+            if tool.requires_consent:
+                confirm.setdefault(tool.mcp_id, []).append(tool.tool_name)
     for mcp_id, names in selected.items():
         mcp_record = await storage.get_mcp(user_id, mcp_id)
         if mcp_record is None or not mcp_record.enabled:
             raise SpecPatchError(f"MCP {mcp_id} không còn khả dụng")
         client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
         client.enable_tools = list(dict.fromkeys(names))
+        client.confirm_tools = confirm.get(mcp_id) or None
         await workspace.add_mcp(client, agent_id=record.id, session_id=primary.id)
     knowledge_ids = [item.kb_id for item in spec.knowledge]
     config = primary.config

@@ -338,6 +338,25 @@ export function AgentDetailPage() {
 
 						<TabsContent value="tests" className="space-y-4">
 							<Section title="Kịch bản kiểm thử" hint="Cần ít nhất 3 kịch bản và 80% đạt trên đúng bản nháp này mới phát hành được.">
+								{spec.tests.length < 3 && (
+									<div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 p-3 text-xs">
+										<span>
+											Agent hiện có {spec.tests.length} kịch bản. Chưa đủ 3 kịch bản thì chưa phát hành được, và các luật agent tự học chỉ nằm ở bản nháp.
+										</span>
+										<Button
+											size="xs"
+											variant="outline"
+											disabled={busy !== null}
+											onClick={() =>
+												sendCopilot(
+													'Viết thêm kịch bản kiểm thử cho đủ ít nhất 3: một yêu cầu bình thường, một yêu cầu ngoài phạm vi, một trường hợp cần khách xác nhận hoặc chuyển người.',
+												)
+											}
+										>
+											<Sparkles /> Nhờ copilot viết kịch bản
+										</Button>
+									</div>
+								)}
 								<TestsEditor tests={spec.tests} onChange={(tests) => update('tests', tests)} />
 							</Section>
 							{report && (

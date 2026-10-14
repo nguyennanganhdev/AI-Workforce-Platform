@@ -137,6 +137,10 @@ jobs:
           tests/workforce_model_routing_test.py
           tests/workforce_task_ledger_test.py
           tests/workforce_agent_memory_test.py
+          tests/workforce_consent_test.py
+          tests/workforce_knowledge_store_test.py
+          tests/workforce_leader_wait_test.py
+          tests/mcp_runtime_headers_test.py
           tests/service_team_tools_test.py
           -q -rs --junitxml=.artifacts/phase-d/collaboration.xml
       - name: Build D7 release-candidate report

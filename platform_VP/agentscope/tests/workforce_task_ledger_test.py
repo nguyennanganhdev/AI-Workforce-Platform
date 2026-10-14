@@ -315,3 +315,17 @@ def test_number_ends_a_proper_name_anchor() -> None:
 
     evidence = ['{"name": "DEMO Song Han", "price_vnd": 1200000}']
     assert unsupported_claim_anchors("DEMO Song Han 1200000 VND per night", evidence) == ()
+
+
+def test_unit_price_times_evidenced_quantity_is_supported() -> None:
+    from agentscope.app._evidence_claims import unsupported_claim_anchors
+
+    evidence = [
+        "Mình đi Đà Nẵng 2 người, ở 2 đêm",
+        '{"name": "DEMO Song Han", "price_per_night_vnd": 1200000}',
+        '{"car": "4 chỗ", "price_vnd": 250000}',
+    ]
+    assert unsupported_claim_anchors("Khách sạn 2 đêm: 2.400.000 VND", evidence) == ()
+    assert unsupported_claim_anchors("Tổng cả xe: 2.650.000 VND", evidence) == ()
+    # A figure that is not price x evidenced quantity (+ one amount) is still rejected.
+    assert unsupported_claim_anchors("Tổng: 3.100.000 VND", evidence) == ("number:3100000",)
