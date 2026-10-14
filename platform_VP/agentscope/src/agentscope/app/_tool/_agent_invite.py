@@ -641,6 +641,12 @@ class AgentInvite(_TeamToolBase):
                 # session — the invited agent's main-session state
                 # stays with its own session.
             )
+            if invited.data.published_version:
+                # Pin the Agent Studio version for this ticket: a version
+                # published while the ticket runs applies to new tickets only.
+                worker_state.middle_context["agent_version"] = (
+                    invited.data.published_version
+                )
 
             invited_display = _display_name(
                 invited.data.name,

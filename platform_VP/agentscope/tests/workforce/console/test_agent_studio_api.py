@@ -292,3 +292,25 @@ def test_legacy_toggle_only_reactivates_a_versioned_agent(env) -> None:
     reactivated = client.post(toggle, json={"state": "published"})
     assert reactivated.status_code == 200
     assert reactivated.json()["lifecycle_state"] == "published"
+
+
+def test_running_ticket_keeps_the_version_it_was_invited_with(env) -> None:
+    from agentscope.app._service._agent_studio import pinned_view
+
+    client, storage, model, _manager = env
+    agent_id = client.post(f"{BASE}/agents", json={"template_id": "resident_technical"}).json()["agent_id"]
+    client.post(f"{BASE}/agents/{agent_id}/tests/run")
+    client.post(f"{BASE}/agents/{agent_id}/publish", json={})
+    model.copilot_operations = [
+        {"op": "add", "field": "rules", "value": {"text": "Luật mới của phiên bản 2", "level": "must"}},
+    ]
+    client.post(f"{BASE}/agents/{agent_id}/copilot", json={"message": "thêm luật"})
+    client.post(f"{BASE}/agents/{agent_id}/tests/run")
+    client.post(f"{BASE}/agents/{agent_id}/publish", json={})
+
+    record = storage.agents[agent_id]
+    assert record.data.published_version == 2
+    assert "Luật mới của phiên bản 2" in record.data.system_prompt
+    assert "Luật mới của phiên bản 2" not in pinned_view(record, 1).data.system_prompt
+    assert pinned_view(record, 2) is record
+    assert pinned_view(record, 99) is record

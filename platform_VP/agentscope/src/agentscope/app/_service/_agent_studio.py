@@ -122,6 +122,24 @@ def last_test_for(record: AgentRecord, spec: AgentSpec) -> dict | None:
     return None
 
 
+def pinned_view(record: AgentRecord, version: int) -> AgentRecord:
+    """The agent as it was published in ``version`` (for a running ticket).
+
+    Returns the record unchanged when that version is unknown (e.g. trimmed
+    from history), so a ticket never fails because of pinning.
+    """
+
+    stored = next((v for v in record.data.versions if v.get("version") == version), None)
+    if stored is None or version == record.data.published_version:
+        return record
+    view = record.model_copy(deep=True)
+    view.data.system_prompt = stored.get("system_prompt") or view.data.system_prompt
+    if stored.get("spec"):
+        view.data.spec = stored["spec"]
+        view.data.tool_bindings = tool_bindings(AgentSpec.model_validate(stored["spec"]))
+    return view
+
+
 def runtime_prompt(spec: AgentSpec) -> str:
     return governed_system_prompt("business", render_prompt(spec))
 

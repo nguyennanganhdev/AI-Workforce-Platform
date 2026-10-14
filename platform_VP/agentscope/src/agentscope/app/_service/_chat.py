@@ -1017,6 +1017,15 @@ class ChatService:
                             f"Session {session_id!r} not found for agent {agent_id!r}."
                         ),
                     )
+                pinned_version = session_record.state.middle_context.get("agent_version")
+                if pinned_version and agent_record.data.system_role == "business":
+                    from ._agent_studio import pinned_view
+
+                    agent_record = pinned_view(agent_record, int(pinned_version))
+                    runtime_system_prompt = governed_system_prompt(
+                        agent_record.data.system_role,
+                        agent_record.data.system_prompt,
+                    )
                 if isinstance(
                     input_msg, UserConfirmResultEvent,
                 ) and not confirmation_still_pending(
