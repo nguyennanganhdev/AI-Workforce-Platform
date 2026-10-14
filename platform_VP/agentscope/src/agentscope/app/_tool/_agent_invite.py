@@ -686,11 +686,14 @@ class AgentInvite(_TeamToolBase):
                 mcp_specs: list[MCPClient] = []
                 if invited.data.tool_bindings:
                     selected: dict[str, list[str]] = {}
+                    confirm: dict[str, list[str]] = {}
                     for binding in invited.data.tool_bindings:
                         mcp_id = str(binding.get("mcp_id") or "")
                         tool_name = str(binding.get("tool_name") or "")
                         if mcp_id and tool_name:
                             selected.setdefault(mcp_id, []).append(tool_name)
+                            if binding.get("requires_consent"):
+                                confirm.setdefault(mcp_id, []).append(tool_name)
                     for mcp_id, enabled_tools in selected.items():
                         record = await self._storage.get_mcp(
                             self._user_id,
@@ -704,6 +707,7 @@ class AgentInvite(_TeamToolBase):
                             record.client.model_dump(mode="json"),
                         )
                         spec.enable_tools = list(dict.fromkeys(enabled_tools))
+                        spec.confirm_tools = confirm.get(mcp_id) or None
                         mcp_specs.append(spec)
                 else:
                     # Compatibility for manually-authored invitable agents

@@ -92,9 +92,19 @@ def mcp_tool_permission(
     tool_name: str,
     annotations: Any,
     input_schema: dict[str, Any] | None = None,
+    *,
+    force_confirmation: bool = False,
 ) -> PermissionDecision:
-    """Auto-run ordinary MCP tools and require HITL for risky operations."""
-    if mcp_tool_requires_confirmation(tool_name, annotations, input_schema):
+    """Auto-run ordinary MCP tools and require HITL for risky operations.
+
+    ``force_confirmation`` is set when the agent's owner marked the tool as
+    "requires customer consent" (Agent Spec), whatever its name says.
+    """
+    if force_confirmation or mcp_tool_requires_confirmation(
+        tool_name,
+        annotations,
+        input_schema,
+    ):
         return PermissionDecision(
             behavior=PermissionBehavior.ASK,
             message=(
@@ -130,6 +140,12 @@ def mcp_tool_requires_confirmation(
     destructive = bool(
         annotations and getattr(annotations, "destructiveHint", False),
     )
+    # A server that explicitly declares readOnlyHint=False says the tool
+    # writes. Unannotated tools keep the name/schema heuristics below.
+    declared_write = (
+        annotations is not None
+        and getattr(annotations, "readOnlyHint", None) is False
+    )
     sensitive_action = bool(
         action_tokens & _SENSITIVE_ACTION_IDENTIFIERS,
     ) or any(
@@ -138,4 +154,4 @@ def mcp_tool_requires_confirmation(
     pii = bool(pii_tokens & _PII_IDENTIFIERS) or any(
         phrase in pii_identifiers for phrase in _PII_PHRASES
     )
-    return destructive or sensitive_action or pii
+    return destructive or declared_write or sensitive_action or pii
