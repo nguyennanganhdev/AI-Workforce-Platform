@@ -7,9 +7,11 @@ it never deletes source data or makes a business decision.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -280,6 +282,51 @@ class SharedContextService:
             raise SharedContextConcurrencyError(
                 "shared context changed concurrently; reload and retry",
             )
+        await self._signal_change(record.team_id, record.state.revision)
+
+    async def _signal_change(self, team_id: str, revision: int = 0) -> None:
+        """Wake whoever waits on this team (best effort, never raises)."""
+
+        try:
+            await self._bus.publish(
+                MessageBusKeys.team_context_changed(team_id),
+                {"revision": revision},
+            )
+        except Exception:  # noqa: BLE001 - a missed signal only delays a poll
+            logger.debug("Could not publish team context change", exc_info=True)
+
+    @asynccontextmanager
+    async def watch(self, team_id: str):
+        """Yield an ``asyncio.Queue`` that receives one item per change.
+
+        The subscription is live before the body runs, so a caller that
+        checks state inside the block cannot miss a change made between its
+        check and its wait.
+        """
+
+        changes: asyncio.Queue = asyncio.Queue()
+        ready = asyncio.Event()
+
+        async def pump() -> None:
+            async for item in self._bus.subscribe(
+                MessageBusKeys.team_context_changed(team_id),
+                on_ready=ready.set,
+            ):
+                changes.put_nowait(item)
+
+        task = asyncio.create_task(pump())
+        try:
+            await asyncio.wait_for(ready.wait(), timeout=5)
+        except TimeoutError:
+            logger.debug("Team context subscription not ready; falling back to polling")
+        try:
+            yield changes
+        finally:
+            task.cancel()
+            try:
+                await task
+            except BaseException:  # noqa: BLE001 - cancellation/cleanup
+                pass
 
     async def _load_or_create(
         self,
@@ -934,6 +981,7 @@ class SharedContextService:
                 raise SharedContextConcurrencyError(
                     "shared context changed concurrently; reload and retry",
                 )
+            await self._signal_change(team_id, record.state.revision)
             return event
 
     async def validate_handoff_link(
@@ -2104,6 +2152,7 @@ class SharedContextService:
         elif status == "consumed":
             record.consumed_at = now
         await self._storage.upsert_team_handoff(record.user_id, record)
+        await self._signal_change(record.team_id)
         return record
 
     async def acknowledge_handoff(
