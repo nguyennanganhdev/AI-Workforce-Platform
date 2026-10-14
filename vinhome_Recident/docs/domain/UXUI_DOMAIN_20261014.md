@@ -16,7 +16,7 @@ Audit trước sửa: landing dùng xanh đậm/Manrope; auth còn nhãn nhà./I
 - Xóa hội thoại có xác nhận, chuyển vào mục Đã xóa và khôi phục được; không xóa channel, ticket, tin nhắn hay bằng chứng. Archive chỉ áp dụng membership của chủ hội thoại, thao tác lặp an toàn. Ticket vẫn theo dõi được và có thể mở lại hội thoại liên quan.
 - Poll nhanh chỉ tải phần tin nhắn mới và trạng thái lượt xử lý; overview được tái sử dụng tối đa 5 giây, tránh poll chồng nhau. Chat có card thay đổi trạng thái vẫn đọc lại để không giữ báo giá/booking cũ. Các lần đọc context/catalog/policy độc lập được chạy đồng thời; cập nhật hoạt động có timeout riêng để không làm mất phản hồi.
 - Migration 0019_resident_experience thêm archived_at vào membership và resident_progress vào delegation; không thay dữ liệu ticket. API được kiểm tra bằng role không superuser/không bypass RLS.
-- CI bổ sung contract UX; test DOM của từng ứng dụng chạy theo file riêng. Chưa dùng kết quả GitHub Actions mới làm bằng chứng.
+- CI bổ sung contract UX; test DOM của từng ứng dụng chạy theo file riêng. GitHub Actions trên source triển khai3e7deed2 đã đạt cả3 job business-api/reception-cskh/frontend: [run38504852619](https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/38504852619).
 
 ## Kiểm chứng trước deploy
 
@@ -33,7 +33,17 @@ Kiểm tra trình duyệt chat dùng API fixture, kiểm tra backend dùng Postg
 
 ## Docker/VPS
 
-Phần source đã hoàn tất kiểm tra; kết quả release và kiểm chứng public được cập nhật sau khi triển khai.
+Đã triển khai source `3e7deed2b4d6c05b27a1e5641f08810a63dce924` lên VPS103.238.235.156. Website: https://vinhome-platform.duckdns.org/.
+
+- Bốn image API, Reception, resident và operations dùng tag `uxui-20261014-3e7deed2`; scheduler/platform-sync dùng API image mới. Bốn dịch vụ chính healthy. Đã áp migration0019; nguồn API/Reception và migration trong container khớp hash source commit.
+- Hai HTML entrypoint cùng toàn bộ61 asset JS/CSS của hai bản build đã so byte qua HTTPS public: khớp. Đây là kiểm tra bản đang phục vụ từ Docker, không chỉ build local.
+- Login cư dân, API thông báo, trạng thái lượt chat trống, xóa/khôi phục hội thoại trống do kiểm thử tạo: đạt. Chat test được đưa vào mục Đã xóa khi kết thúc; ticket của tài khoản test không thay đổi. Không gửi tin nhắn gọi Agent.
+- Trình duyệt thật qua HTTPS kiểm tra landing/login/register và chat test ở390px: logo tải được, không tràn ngang, không lỗi JavaScript. Cổng vận hành đăng nhập bằng account test được kiểm tra ở320/375/768/1440px: không tràn ngang, không lỗi JavaScript. Screenshot có tên/email chỉ nằm trong folder audit ignored.
+- Backup domain và PostgreSQL custom dump đã lưu trước release. Manifest image/hash/env trước release và rollback nằm ở `/opt/vinhomes/releases/uxui-20261014-3e7deed2/`, quyền private.
+- Gateway, PostgreSQL, MinIO và backup không bị recreate; cấu hình provider/credential/bridge/HTTPS giữ nguyên. Các tag trong deployment.env local đã đồng bộ, secret vẫn ignored.
+- Trước/sau release: users721,accounts16,memberships721,unit_residents690,tickets939,work_orders677,files33,knowledge_documents164,knowledge_chunks648. Login/test chat tạo session/channel theo nghiệp vụ; không tuyên bố mọi byte DB bất biến.
+- PostgreSQL test riêng đã gỡ sau khi xác minh volume tách biệt production. Các thay đổi platform và việc xóa Caddyfile riêng của chủ dự án được giữ ngoài commit.
+
 
 ## Cần bổ sung sau
 
