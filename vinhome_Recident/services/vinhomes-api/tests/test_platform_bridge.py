@@ -750,7 +750,11 @@ def test_confirming_completion_closes_the_ticket_and_the_workflow_at_its_current
         asked = lambda: next(x for x in c.get("/resident/chats").json()["items"] if x["id"] == channel)["confirm_close"]  # noqa: E731
         assert asked() is False
         approval, version = resolved_with_a_completion_request(database, ticket)
-        assert asked() is True
+        assert asked() is False
+        assert not any(str(a['id']) == approval for a in c.get('/resident/approvals').json()['items'])
+        premature = c.post(f'/resident/approvals/{approval}/decision', headers=key(), json={
+            'version': version, 'approved': True, 'note': 'Premature confirmation'})
+        assert premature.status_code == 409
         fake.move(flow, "awaiting_confirmation", "operation_completed")
         fake.say(flow, "Việc đã xong, bạn xác nhận giúp nhé.")
         sync(database, fake)
@@ -839,6 +843,8 @@ def test_refusing_completion_reopens_the_ticket_and_tells_the_coordinator_why(da
     with resident(database) as c:
         channel, ticket, flow = started(database, c, fake)
         approval, version = resolved_with_a_completion_request(database, ticket)
+        fake.move(flow, "awaiting_confirmation", "operation_completed")
+        sync(database, fake)
         refused = c.post(f"/resident/approvals/{approval}/decision", headers=key(), json={
             "version": version, "approved": False, "note": "Đèn vẫn nhấp nháy sau khi thay"})
         assert refused.status_code == 200, refused.text
@@ -1003,11 +1009,13 @@ def test_a_ticket_people_end_in_their_own_screens_closes_its_workflow_and_frees_
         assert FAILED_TEXT not in [m["text"] for m in chat(database, channel)]
 
 
-def test_a_close_the_platform_keeps_refusing_for_tracked_work_ends_as_stop_tracking(database, on):
+def test_completion_never_forces_platform_to_stop_tracking_unfinished_work(database, on):
     fake = FakePlatform()
     with resident(database) as c:
         channel, ticket, flow = started(database, c, fake)
         approval, version = resolved_with_a_completion_request(database, ticket)
+        fake.move(flow, "awaiting_confirmation", "operation_completed")
+        sync(database, fake)
         flow["tracking"] = True  # the platform never learnt that the job ended (its event was lost)
         confirmed = c.post(f"/resident/approvals/{approval}/decision", headers=key(), json={"version": version, "approved": True, "note": "Đã xong, cảm ơn"})
         assert confirmed.status_code == 200, confirmed.text
@@ -1019,8 +1027,12 @@ def test_a_close_the_platform_keeps_refusing_for_tracked_work_ends_as_stop_track
         assert [x["reason"] for x in fake.posts("/close")] == ["resident_confirmed"] * CLOSE_TRIES and link(database, ticket)["status"] == "open"
         sync(database, fake)
         sent = fake.posts("/close")
-        assert len(sent) == CLOSE_TRIES + 1 and (sent[-1]["reason"], sent[-1]["stop_tracking_only"]) == ("resident_requested_stop_tracking", True)
+        assert len(sent) == CLOSE_TRIES + 1 and sent[-1]["reason"] == "resident_confirmed" and not sent[-1].get("stop_tracking_only")
         assert sent[-1]["external_request_id"] == sent[0]["external_request_id"]
+        assert (link(database, ticket)["status"], commands(database, ticket)[-1]["status"]) == ("open", "pending")
+        flow["tracking"] = False
+        retry_now(database)
+        sync(database, fake)
         assert (flow["state"], link(database, ticket)["status"], commands(database, ticket)[-1]["status"]) == ("closed", "closed", "done")
 
 
@@ -1061,7 +1073,7 @@ def test_each_domain_event_becomes_the_progress_event_of_the_table():
         "labor_cost": 150000, "warranty_months": 6, "total": 816000}}
     kind, data = mapped("work_order.repair_proposed", {"workOrderId": WORK}, quote=quote)
     # The quote's id stays in the domain: the resident answers on the card, the coordinator has nothing to record.
-    assert kind == "job.quote_ready" and set(data) == {"items", "total", "warranty_months"} and data["warranty_months"] == 6
+    assert kind == "job.quote_ready" and set(data) == {"items", "total", "warranty_months", "approval_id"} and data["warranty_months"] == 6
     # Labour is a line of its own and the total is the sum of the amounts, in whole dong.
     assert data["items"] == [{"label": "Vòi lavabo (1 cái)", "amount": 650000}, {"label": "Băng tan (2 cuộn)", "amount": 16000},
                              {"label": "Tiền công", "amount": 150000}]
@@ -1143,6 +1155,12 @@ def test_staff_progress_is_queued_signed_sent_in_order_and_resent_with_the_same_
         rows = sql(database, "select * from platform_outbox where ticket_id=$1 order by provider_version", UUID(ticket))
         assert [r["event_type"] for r in rows] == ["job.offered", "job.accepted", "job.en_route", "job.arrived", "job.quote_ready"]
         assert {r["status"] for r in rows} == {"pending"} and rows[0]["attempts"] == 1 and fake.received == {}
+        assert not [m for m in chat(database, channel) if 'platform' in m]
+        assert not any(a["ticket_id"] == ticket for a in c.get("/resident/approvals").json()["items"])
+        approval_id = sql(database, "select id from work_approvals where work_order_id=$1 and kind='customer_repair'", UUID(order['id']))[0]['id']
+        version_before = sql(database, 'select version from tickets where id=$1', UUID(ticket))[0]['version']
+        assert c.post(f'/resident/approvals/{approval_id}/decision', headers=key(), json={
+            'version': version_before, 'approved': True, 'note': 'Premature quote'}).status_code == 409
         events = {str(e["id"]): e for e in sql(database, "select id,seq,occurred_at from ticket_events where ticket_id=$1", UUID(ticket))}
         for r in rows:  # spec section 3: the event id, its number and its time are the ticket event's
             assert (events[str(r["event_id"])]["seq"], events[str(r["event_id"])]["occurred_at"]) == (r["provider_version"], r["occurred_at"])
@@ -1191,7 +1209,7 @@ def test_staff_progress_is_queued_signed_sent_in_order_and_resent_with_the_same_
         assert [b["event_type"] for b in got] == kinds and [b["provider_version"] for b in got] == sorted(b["provider_version"] for b in got)
         assert all(b["client_reference"] == reference and b["external_job_id"] == order["id"] for b in got)
         assert got[1]["data"]["staff_name"] == staff["name"] and got[1]["data"]["eta"] and got[2]["data"] == {"staff_name": staff["name"]}
-        assert got[4]["data"] == {"warranty_months": 3, "total": 200000, "items": [
+        assert got[4]["data"] == {"approval_id": str(approval), "warranty_months": 3, "total": 200000, "items": [
             {"label": "Bóng LED (2 cái)", "amount": 150000}, {"label": "Tiền công", "amount": 50000}]}
         assert got[5]["data"] == {}
         # Still one card: passes of the worker do not write it again.

@@ -571,7 +571,8 @@ def _quote(context: dict) -> dict:
              for line in detail.get("lines") or []]
     if detail.get("labor_cost"):
         items.append({"label": "Tiền công", "amount": detail["labor_cost"]})
-    return {"items": items, "total": sum(item["amount"] for item in items), "warranty_months": detail.get("warranty_months", 0)}
+    return {"items": items, "total": sum(item["amount"] for item in items), "warranty_months": detail.get("warranty_months", 0),
+            **({"approval_id": str(context["quote"]["id"])} if context["quote"].get("id") else {})}
 
 
 def _staff(context: dict) -> dict:

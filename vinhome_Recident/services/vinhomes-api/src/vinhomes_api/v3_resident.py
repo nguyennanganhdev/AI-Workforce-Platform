@@ -125,7 +125,8 @@ async def list_chats(scope: ResidentScope, limit: int = Query(50, ge=1, le=100),
                t.id as ticket_id, t.code as ticket_code, t.status as ticket_status,
                -- A handed-over request whose result waits for the resident's answer: the chat shows the card to
                -- confirm it (never without a link). Not tied to the coordinator's turn, which may say nothing.
-               exists(select 1 from platform_links l where l.ticket_id=t.id and l.tenant_id=c.tenant_id and l.status='open')
+               exists(select 1 from platform_links l where l.ticket_id=t.id and l.tenant_id=c.tenant_id
+                 and l.status='open' and l.state='awaiting_confirmation')
                  and exists(select 1 from work_approvals a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
                    where w.ticket_id=t.id and a.tenant_id=c.tenant_id and a.kind='customer_completion' and a.status='pending'
                      and (a.expires_at is null or a.expires_at>now())) as confirm_close,
@@ -488,9 +489,10 @@ async def get_my_ticket(ticket_id: UUID, scope: ResidentScope) -> dict[str, obje
                              'work_assignment.responded', 'ticket.resolution_published', 'work_approval.decided')
         order by seq desc limit 100
     """), {"ticket_id": ticket_id})
-    photos = await db.execute(text("""
+    from .platform_publication import RESULT_PHOTO_VISIBLE
+    photos = await db.execute(text(f"""
         select f.id,f.original_name as name from files f join ticket_files tf on tf.file_id=f.id and tf.tenant_id=f.tenant_id
-        where tf.ticket_id=:id and f.uploaded_by=:actor and f.status='ready' order by tf.created_at
+        where tf.ticket_id=:id and (f.uploaded_by=:actor or {RESULT_PHOTO_VISIBLE}) and f.status='ready' order by tf.created_at
     """), {"id": ticket_id, "actor": actor_id})
     return {"ticket": dict(ticket), "events": _rows(timeline), "photos": [dict(r) for r in photos.mappings()]}
 
@@ -528,6 +530,8 @@ async def decide_resident_approval(approval_id: UUID, body: ResidentApprovalDeci
         if previous.get("requestHash") != digest:
             raise HTTPException(409, "Idempotency-Key already used with different content")
         return previous["receipt"]
+    from .platform_publication import require_approval_ready
+    await require_approval_ready(db, approval_id)
     if ticket["version"] != body.version:
         raise HTTPException(409, "Ticket version changed; reload before deciding")
     if not body.approved and len(body.note.strip()) < 8:
@@ -613,7 +617,9 @@ async def my_approvals(scope: ResidentScope,
           and a.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
         order by a.created_at desc limit :limit
     """), {"actor_id": actor_id, "limit": limit})
-    return {"items": _rows(result)}
+    from .platform_publication import approval_ready
+    items = _rows(result)
+    return {"items": [item for item in items if item["status"] != "pending" or await approval_ready(db, item["id"])]}
 
 
 @router.get("/my/notifications", summary="List my in-app notifications")

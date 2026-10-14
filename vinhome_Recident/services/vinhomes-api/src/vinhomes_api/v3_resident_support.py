@@ -173,12 +173,14 @@ async def upload_photo(channel_id: str, request: Request, scope: Scope,
 
 @router.get("/resident/photos/{file_id}")
 async def photo_content(file_id: UUID, scope: Scope):
-    result = await scope[0].execute(text("""
+    from .platform_publication import RESULT_PHOTO_VISIBLE
+    result = await scope[0].execute(text(f"""
         select o.object_key,o.mime_type,f.original_name from files f
         join file_objects o on o.id=f.accepted_object_id and o.tenant_id=f.tenant_id
-        where f.id=:id and f.status='ready' and o.status='ready' and f.uploaded_by=:actor
+        where f.id=:id and f.status='ready' and o.status='ready' and ((f.uploaded_by=:actor
           and (exists(select 1 from channels c where c.id=f.channel_id and c.created_by=:actor)
-            or exists(select 1 from tickets t where t.id=f.ticket_id and t.requester_user_id=:actor))
+            or exists(select 1 from tickets t where t.id=f.ticket_id and t.requester_user_id=:actor)))
+          or {RESULT_PHOTO_VISIBLE})
     """), {"id": file_id, "actor": scope[1]})
     file = result.mappings().first()
     if file is None:

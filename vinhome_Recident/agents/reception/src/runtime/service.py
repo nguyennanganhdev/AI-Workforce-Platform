@@ -278,6 +278,7 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
             backend.tokens[body.channel_id] = body.delegation.token
             if settings.agent == "loop":
                 telemetry = {}
+                succeeded = True
                 try:
                     try:
                         reply, asked = await asyncio.wait_for(agent_turn(
@@ -286,6 +287,7 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                     except Exception:  # noqa: BLE001 - the resident still gets an answer
                         # Why it failed is the only trace of it: the reply itself says nothing.
                         log.exception("Reception turn failed")
+                        succeeded = False
                         reply, asked = FAILED_REPLY, None
                     await backend.call(
                         "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
@@ -294,7 +296,8 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                          **({"clarification": asked} if asked else {})})
                 finally:
                     backend.tokens.pop(body.channel_id, None)
-                return {"status": "completed", "reply": reply, "usage": measured()}
+                return {"status": "completed" if succeeded else "failed", "reply": reply,
+                        "error_code": None if succeeded else "RECEPTION_TURN_FAILED", "usage": measured()}
             tools = request.app.state.tools
             tools.handoffs.pop(body.channel_id, None)
             try:

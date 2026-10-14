@@ -32,5 +32,8 @@ async def publish_completion(scope, ticket_id):
         insert into notification_deliveries(tenant_id,user_id,ticket_event_id,channel,dedupe_key,payload,status,available_at)
         select tenant_id,requester_user_id,:event_id,'in_app',:key,
           jsonb_build_object('type','ticket.resolution_published','ticketId',id),'pending',now()
-        from tickets where id=:id on conflict (tenant_id,user_id,channel,dedupe_key) do nothing
+        from tickets where id=:id
+          and not exists(select 1 from platform_links l where l.ticket_id=tickets.id
+            and l.tenant_id=tickets.tenant_id and l.status in ('pending','open'))
+        on conflict (tenant_id,user_id,channel,dedupe_key) do nothing
     """), {"event_id": event_id, "key": str(event_id), "id": ticket_id})

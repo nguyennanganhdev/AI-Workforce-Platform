@@ -7,8 +7,8 @@ Four steps, each safe to run twice and by two workers at once:
      queue the close of a linked ticket that people ended in their own screens;
   2. read each open conversation's events and write them into the resident's chat and the link; a link is closed
      here, when the log of its closed workflow was read to the end;
-  3. turn new ticket events of linked tickets into progress events, and a new repair quote into its chat card;
-  4. send those, signed, and follow their receipts.
+  3. turn new ticket events of linked tickets into progress events;
+  4. send those, signed, follow their receipts and render quote controls after Platform applies the event.
 It uses the API's restricted database role and scopes every transaction to one tenant, as jobs.py does.
 """
 
@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from .platform import (ACTIVE, PROGRESS, RETRY_CODES, SILENT_TEXT, STOP_TRACKING, TENANT, TIMEZONE, Bridge, Platform,
                        PlatformError, apply_event, apply_result, apply_snapshot, event_body, fail_link, post_chat,
-                       provider_events, quote_card, result_text, retryable)
+                       provider_events, quote_card, retryable)
 
 log = logging.getLogger("vinhomes_api.platform_sync")
 EVERY_SECONDS = 1.0
@@ -35,8 +35,7 @@ READS_PER_SECOND = 6
 # A command waits for the coordinator's turn (up to the route's wait_seconds) on its own connection:
 # no more than this many at once, so reading events never waits for one.
 MAX_SENDING = 8
-# A close the platform keeps refusing because it still tracks work (an event of that work was lost or refused)
-# is sent as "stop tracking" after this many tries, about half a minute: the chat must not stay held for good.
+# Alert after repeated refusals; a completion never silently becomes "stop tracking".
 CLOSE_TRIES = 5
 # Receipts the platform has not finished with.
 WAITING = "('accepted','processing','quarantined')"
@@ -130,7 +129,7 @@ async def _send(engine: AsyncEngine, client: Platform, tenant: str, ticket: str)
                     # The platform itself said no, so nothing was applied: the next try may carry the newer revision.
                     body = {key: value for key, value in body.items() if key != "sent_revision"}
                 if code == "WORKFLOW_NOT_READY_TO_CLOSE" and command["attempts"] + 1 >= CLOSE_TRIES:
-                    body = {**body, **STOP_TRACKING}
+                    log.warning("Platform still tracks work for ticket %s; completion close remains pending", ticket)
                 await db.execute(text(f"""
                     update platform_commands set attempts=attempts+1,last_error=:error,next_attempt_at={_backoff(30)},
                       body=cast(:body as jsonb) where id=:id
@@ -315,15 +314,7 @@ async def queue_progress(engine: AsyncEngine) -> None:
             """), {"types": list(PROGRESS)})).mappings().all()
             for event in events:
                 context = await _context(db, event)
-                if event["event_type"] == "work_order.repair_proposed" and context["quote"]:
-                    # The resident answers a quote on its card, with their own tap: the domain shows it, once,
-                    # whoever dispatched the work. The platform is only told (below) that there is one.
-                    await post_chat(db, event, f"quote:{context['quote']['id']}", quote_card(context["quote"]))
                 item = provider_events(dict(event), context)
-                if item is not None and item["event_type"] == "job.result_published":
-                    # The resident gets the result in the chat whatever the coordinator then says: who sent it,
-                    # their note, how many photos. The card to confirm it follows from the request itself.
-                    await post_chat(db, event, f"result:{event['id']}", {"text": result_text(item["data"])})
                 if item is not None:
                     await db.execute(text(f"""
                         insert into platform_outbox(event_id,tenant_id,ticket_id,client_reference,external_job_id,event_type,
@@ -405,6 +396,22 @@ async def send_progress(engine: AsyncEngine, client: Platform) -> None:
                     update platform_outbox set receipt=receipt||cast(:receipt as jsonb),attempts=attempts+1,next_attempt_at={_backoff(60)},
                       status=case when cast(:state as text)='rejected' then 'rejected' else status end where event_id=:id
                 """), {"id": row["event_id"], "receipt": json.dumps(receipt), "state": receipt.get("ingestion_status")})
+        async with _scoped(engine, tenant) as db:
+            # Acknowledged by Platform, not merely accepted onto its queue. The
+            # domain renders the resident's decision control; Platform owns progress.
+            quotes = (await db.execute(text(f"""
+                select e.*,l.channel_id from platform_outbox o
+                join ticket_events e on e.id=o.event_id and e.tenant_id=o.tenant_id
+                join platform_links l on l.ticket_id=o.ticket_id and l.tenant_id=o.tenant_id
+                where o.tenant_id={TENANT} and o.event_type='job.quote_ready'
+                  and o.receipt->>'ingestion_status'='applied' and l.status='open'
+                  and not exists(select 1 from messages m where m.channel_id=l.channel_id
+                    and m.tenant_id=l.tenant_id and m.body->'platform'->>'approval_id'=o.data->>'approval_id')
+            """))).mappings().all()
+            for event in quotes:
+                context = await _context(db, event)
+                if context["quote"]:
+                    await post_chat(db, event, f"quote:{context['quote']['id']}", quote_card(context["quote"]))
 
 
 # ---- the loop ------------------------------------------------------------------------------------------------------

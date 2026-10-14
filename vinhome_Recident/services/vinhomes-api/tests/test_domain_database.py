@@ -346,6 +346,18 @@ def test_runs_record_usage_and_a_stale_run_is_closed(database, monkeypatch):
         row = sql(database, "select status,input_tokens,output_tokens from delegations where id=$1", UUID(run))[0]
         assert row == {"status": "finished", "input_tokens": 1200, "output_tokens": 80}
 
+        # A delivered fallback consumes tokens but is not a successful business turn.
+        failed_message = c.post(f"/resident/chats/{channel}/messages", json={"text": "Fallback metric", "client_message_id": str(uuid4())}).json()
+        failed_run = delegate(c, channel, failed_message["id"])["context"]["runId"]
+
+        async def finish_failed():
+            async with _resident_transaction(c.app, "local-v3-resident") as db:
+                await finish_run(db, failed_run, False, {"input_tokens": 12}, "RECEPTION_TURN_FAILED")
+
+        c.portal.call(finish_failed)
+        failed = sql(database, "select status,error_code,input_tokens from delegations where id=$1", UUID(failed_run))[0]
+        assert failed == {"status": "failed", "error_code": "RECEPTION_TURN_FAILED", "input_tokens": 12}
+
         # A delegation left open by a crash is closed when the conversation's next turn opens.
         second = c.post(f"/resident/chats/{channel}/messages", json={"text": "Lượt hai", "client_message_id": str(uuid4())}).json()
         stale = delegate(c, channel, second["id"])

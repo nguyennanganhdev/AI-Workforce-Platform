@@ -56,6 +56,8 @@ def world(database, tmp_path_factory):
 @pytest.fixture(autouse=True)
 def words_only(monkeypatch):
     monkeypatch.delenv("VINHOMES_API_EMBEDDING_API_KEY", raising=False)
+    from vinhomes_api import v3_files, v3_resident_support
+    monkeypatch.setattr(v3_resident_support, "FILE_ROOT", v3_files.FILE_ROOT)
 
 
 @pytest.fixture(autouse=True)
@@ -422,6 +424,10 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     assert "Nhân viên gửi kết quả nghiệm thu" in [m["what"] for m in final["milestones"]]
 
     # Section 7: every step went out under the dispatch's reference, in order, each with a higher version.
+    file_ids = [str(r["file_id"]) for r in sql(database, "select file_id from evidence_items where work_order_id=$1", UUID(job))]
+    with person(database, AN) as c:
+        assert c.get(f"/resident/tickets/{ticket}").json()["photos"] == []
+        assert all(c.get(f"/resident/photos/{fid}").status_code == 404 for fid in file_ids)
     sync(database, fake)
     sync(database, fake)
     sent = outbox(database, ticket)
@@ -433,15 +439,24 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     got = [r["body"] for r in fake.received.values()]
     assert [b["event_type"] for b in got] == [r["event_type"] for r in sent] and all(b["client_reference"] == dispatch for b in got)
     assert sent[1]["data"]["staff_name"] == "Kỹ thuật viên Hoa" and re.fullmatch(WHEN, sent[1]["data"]["eta"])
-    assert sent[4]["data"] == {k:quote[k] for k in ("items","total","warranty_months")} and sent[5]["data"] == {}
+    assert sent[4]["data"] == {k:quote[k] for k in ("items","total","warranty_months","approval_id")} and sent[5]["data"] == {}
     assert sent[8]["data"] == {"summary": f"Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: {result_note}",
                                "photo_count": 2, "reported_by": "Kỹ thuật viên Hoa"}
-    # The resident has the result in the chat from the bridge itself, once, whatever the coordinator goes on to say.
-    assert [m["text"] for m in chat(database, channel) if "platform" not in m][-1:] == [
-        f"Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: {result_note}\n"
-        "Người gửi: Kỹ thuật viên Hoa. Số ảnh kết quả: 2.\nBạn xem rồi bấm Xác nhận hoàn thành hoặc Chưa đạt ngay trong hộp chat này."]
     with person(database, AN) as c:
-        assert next(x for x in c.get("/resident/chats").json()["items"] if x["id"] == channel)["confirm_close"] is True
+        assert len(c.get(f"/resident/tickets/{ticket}").json()["photos"]) == 3
+        assert all(c.get(f"/resident/photos/{fid}").status_code == 200 for fid in file_ids)
+    with person(database, CHAU) as other:
+        assert all(other.get(f"/resident/photos/{fid}").status_code == 404 for fid in file_ids)
+    # Domain records the report but does not speak for Platform or publish confirmation early.
+    assert not any(m['text'].startswith('Nhân viên đã làm xong và gửi kết quả nghiệm thu.') for m in chat(database, channel))
+    with person(database, AN) as c:
+        assert next(x for x in c.get('/resident/chats').json()['items'] if x['id'] == channel)['confirm_close'] is False
+    flow = next(f for f in fake.flows.values() if f['ticket'] == ticket)
+    fake.say(flow, 'Platform đã nhận kết quả. Vui lòng kiểm tra và xác nhận.')
+    fake.move(flow, 'awaiting_confirmation', 'operation_completed')
+    sync(database, fake)
+    with person(database, AN) as c:
+        assert next(x for x in c.get('/resident/chats').json()['items'] if x['id'] == channel)['confirm_close'] is True
     # Every value a message template prints is one non-empty line.
     for row in sent:
         assert all(isinstance(v, (int, list)) or (v.strip() and "\n" not in v) for v in row["data"].values()), row["data"]
@@ -486,6 +501,7 @@ def finished(database, fake):
         proposed = worker.post(f"/work-orders/{job}/repair-proposal", json={
             "version": order["version"], "note": "Thay bóng LED mới", "labor_cost": 50000, "warranty_months": 3, "lines": []})
         assert proposed.status_code == 201, proposed.text
+    sync(database, fake)
     assert decide(database, ticket, proposed.json()["id"], True, "Tôi đồng ý").status_code == 200
     with person(database, HOA) as worker:
         moved = advance(worker, worker.get(f"/work-orders/{job}").json()["workOrder"], "in_progress")
@@ -516,6 +532,9 @@ def test_the_acceptance_on_site_is_once_per_job_and_never_over_an_inspection(dat
     with person(database, HOA) as worker:
         assert worker.post(f"/work-orders/{job}/onsite-acceptance", json=said).status_code == 201
     [request] = sql(database, "select id from work_approvals where work_order_id=$1 and kind='customer_completion' and status='pending'", UUID(job))
+    flow = next(f for f in fake.flows.values() if f["ticket"] == ticket)
+    fake.move(flow, "awaiting_confirmation", "operation_completed")
+    sync(database, fake)
     refused = decide(database, ticket, request["id"], False, "Đèn vẫn nhấp nháy sau khi thay")
     assert refused.status_code == 200, refused.text
     with person(database, HOA) as worker:
@@ -552,7 +571,7 @@ def test_a_quote_the_resident_refuses_on_the_card_is_reported_as_refused(databas
     sync(database, fake)
     assert [(r["event_type"], r["data"]) for r in outbox(database, ticket)][-2:] == [
         ("job.quote_ready", {"items": [{"label": "Dây điện (1.5 m)", "amount": 30000}, {"label": "Tiền công", "amount": 300000}],
-                             "total": 330000, "warranty_months": 0}), ("job.quote_rejected", {})]
+                             "total": 330000, "warranty_months": 0, "approval_id": proposed.json()["id"]}), ("job.quote_rejected", {})]
     put_down(database, job)
 
 

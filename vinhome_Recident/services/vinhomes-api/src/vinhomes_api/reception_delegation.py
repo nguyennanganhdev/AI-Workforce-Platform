@@ -122,14 +122,15 @@ async def start_run(db, actor_id: str, channel_id: str, message_id: str, policy_
             "context": {k: claims[k] for k in ("tenantId", "runId", "bindingId", "principalId")}}
 
 
-async def finish_run(db, run_id: str, succeeded: bool, usage: dict | None = None) -> None:
+async def finish_run(db, run_id: str, succeeded: bool, usage: dict | None = None, error_code: str | None = None) -> None:
     """Ending the turn revokes its token. `usage` is what the runtime reports the turn cost."""
     usage = usage or {}
     await db.execute(text(f"""
-        update delegations set status=:status,finished_at=now(),input_tokens=:input,output_tokens=:output
+        update delegations set status=:status,finished_at=now(),input_tokens=:input,output_tokens=:output,error_code=:error
         where tenant_id={TENANT} and id=cast(:id as uuid) and status='active'
     """), {"id": run_id, "status": "finished" if succeeded else "failed",
-           "input": int(usage.get("input_tokens") or 0), "output": int(usage.get("output_tokens") or 0)})
+           "input": int(usage.get("input_tokens") or 0), "output": int(usage.get("output_tokens") or 0),
+           "error": None if succeeded else (error_code or "RECEPTION_TURN_FAILED")})
 
 
 async def delegated_scope(request: Request):
