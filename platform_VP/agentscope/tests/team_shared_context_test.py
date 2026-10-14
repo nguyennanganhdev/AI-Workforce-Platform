@@ -182,6 +182,40 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             branch.measured_tokens,
         )
 
+    async def test_recalled_memory_goes_after_history_and_before_the_packet(self):
+        self.service.config = SharedContextConfig()
+        task_id = await self.service.active_task_id("u", "ticket-1")
+        await self.service.append_event(
+            user_id="u", team_id="ticket-1", kind="customer_message", content="Fix the leak",
+        )
+        agent = SimpleNamespace(state=AgentState(session_id="worker-session"), name="Worker")
+        seen = []
+
+        async def next_handler(**kwargs):
+            seen.append(kwargs["messages"])
+
+            async def response():
+                yield ChatResponse(
+                    content=[TextBlock(text="ok")],
+                    is_last=True,
+                    usage=ChatUsage(input_tokens=1, output_tokens=1, time=0),
+                )
+
+            return response()
+
+        middleware = SharedContextIsolationMiddleware("task", self.service, "u", "ticket-1", task_id=task_id)
+        middleware.recall = "<agent-memory>- [lesson] Shut the water valve first</agent-memory>"
+        history = [SystemMsg(name="system", content="Role"), UserMsg(name="customer", content="Fix the leak")]
+        stream = await middleware.on_model_call(
+            agent, {"messages": history, "tools": [], "current_model": self.model}, next_handler,
+        )
+        [_chunk async for _chunk in stream]
+        [messages] = seen
+        # The system prompt stays the cacheable prefix; the recall never enters it.
+        self.assertEqual("Role", messages[0].get_text_content())
+        self.assertEqual("Fix the leak", messages[1].get_text_content())
+        self.assertEqual(["memory_recall", "shared_context"], [m.name for m in messages[-2:]])
+
     async def test_slow_model_is_cancelled_at_active_budget(self):
         self.service.config = SharedContextConfig(collaboration_max_active_seconds=0.01)
         state = AgentState(session_id="worker-session")

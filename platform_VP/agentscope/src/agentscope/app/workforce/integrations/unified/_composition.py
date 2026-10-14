@@ -537,6 +537,7 @@ def build_unified_runtime(
         clock=clock,
         assets=asset_service,
     )
+    ingress.closed_hooks.append(runner.workflow_closed)
     writer = PublicEventWriter(event_service, clock, ids)
     approvals.attach_events(writer)
     provider = UnifiedProviderEvents(

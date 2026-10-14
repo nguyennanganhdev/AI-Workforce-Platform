@@ -14,6 +14,8 @@ from ..storage import ContextMode, StorageBase
 
 SHARED_CONTEXT_MSG_NAME = "shared_context"
 """Name of the trailing message that carries the ticket's shared packet."""
+MEMORY_RECALL_MSG_NAME = "memory_recall"
+"""Name of the message, just before the packet, with this turn's recalled memory."""
 
 
 class SharedContextIsolationMiddleware(MiddlewareBase):
@@ -45,6 +47,8 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         self._user_id = user_id
         self._team_id = team_id
         self._packet_attachment = packet_attachment
+        # This turn's recalled long-term memory, sent after the history.
+        self.recall = ""
         self._task_id = task_id
         self._membership_storage = membership_storage or service.storage
         self._event_revision: int | None = None
@@ -166,6 +170,10 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             filtered = [messages[0], *self._current_turn_context(agent)]
         else:
             filtered = messages
+        if self.recall:
+            # Fixed for the turn, so it goes before the packet (which changes
+            # within a turn) and after the cached history.
+            filtered = [*filtered, UserMsg(name=MEMORY_RECALL_MSG_NAME, content=self.recall)]
         if self._packet_attachment:
             # The packet changes whenever a teammate reports. Keeping it as
             # the LAST message leaves the system prompt, tool schemas and the

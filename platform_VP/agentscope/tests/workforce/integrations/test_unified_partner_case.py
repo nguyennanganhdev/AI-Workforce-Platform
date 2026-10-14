@@ -534,19 +534,33 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         budget = payload["used_budget"]
         self.assertEqual((1200, 80), (budget["input_tokens"], budget["output_tokens"]))
 
-    async def test_a_result_with_a_room_teaches_its_agents(self):
+    async def test_the_room_teaches_its_agents_only_when_the_user_confirms(self):
         scheduled = []
 
         async def summary(tools):
             for session in self.storage.sessions.values():
                 session.team_id = "team-9"  # the leader opened a room earlier
-            await call(tools, "CaseSay", text="Nhân viên đã báo xong, anh/chị xác nhận giúp tôi.", expects="confirmation")
+            await call(tools, "CaseSay", text="Nhân viên đã báo xong, bạn xác nhận giúp tôi.", expects="confirmation")
 
         self.leader.schedule_learning = lambda user_id, session, team_id: scheduled.append(team_id)
-        self.leader.scripts = [summary]
+        self.leader.scripts = [summary, summary]
         async with self._client() as client:
-            await client.post("/workforce/v1/partner/requests", json=self._start())
-            self.assertEqual("succeeded", await self._run())
+            for request_id, ticket, reason in (("vh-cmd-1", "T-77", "resident_cancelled"), ("vh-cmd-2", "T-78", "resident_confirmed")):
+                start = self._start(request_id=request_id)
+                start.update(external_ticket_id=ticket, external_conversation_id=f"chat-9:{ticket}")
+                started = (await client.post("/workforce/v1/partner/requests", json=start)).json()
+                self.assertEqual("succeeded", await self._run())
+                # Asking for confirmation teaches nothing yet.
+                self.assertEqual([], scheduled)
+                items = await self._history(client, started["conversation_id"])
+                revision = [i["payload"]["revision"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
+                closed = await client.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close", json={
+                    "schema_version": "1", "external_request_id": f"close-{ticket}", "external_user_id": "resident-1",
+                    "external_ticket_id": ticket, "external_conversation_id": f"chat-9:{ticket}",
+                    "expected_revision": revision, "reason": reason,
+                })
+                self.assertEqual("closed", closed.json()["workflow_state"], closed.text)
+        # Cancelled: nothing learned; confirmed: the room teaches its agents.
         self.assertEqual(["team-9"], scheduled)
 
     async def test_the_end_users_photos_reach_the_leader_once(self):
@@ -999,7 +1013,7 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         ] + [invite]
         await middleware.on_model_call(None, {"tools": offered}, next_handler)
         kept = {tool["function"]["name"]: tool for tool in seen["tools"]}
-        self.assertEqual({"TeamCreate", "TeamSay", "TeamDelete", "CaseSay", "AgentInvite"}, set(kept))
+        self.assertEqual({"TeamCreate", "TeamSay", "CaseSay", "AgentInvite"}, set(kept))
         limited = kept["AgentInvite"]["function"]
         self.assertEqual(names[:2], limited["parameters"]["properties"]["target"]["enum"])
         self.assertEqual(
@@ -1079,8 +1093,29 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             seen.update(kwargs)
 
         offered = [{"type": "function", "function": {"name": n}} for n in ("TeamSay", "CaseSay", "vh_ticket_get", "Bash")]
-        await member.on_model_call(None, {"tools": offered}, next_handler)
+        agent = SimpleNamespace(state=SimpleNamespace(reply_id="r-now"))
+        await member.on_model_call(agent, {"tools": offered, "messages": []}, next_handler)
         self.assertEqual(["TeamSay", "vh_ticket_get"], [t["function"]["name"] for t in seen["tools"]])
+
+
+class ClearOldResultsTest(unittest.TestCase):
+    def test_earlier_long_results_shrink_to_their_label_in_one_batch(self):
+        from agentscope.app.workforce.integrations.unified._case import clear_old_results
+        from agentscope.message import AssistantMsg, ToolResultBlock
+
+        def reply(reply_id, label, size):
+            return AssistantMsg(id=reply_id, name="DieuPhoi", content=[ToolResultBlock(
+                id=f"c-{reply_id}", name="vh_ticket_get", output=[TextBlock(text=f"{label}: " + "x" * size)],
+            )])
+
+        old, current = reply("r-old", "E1", 7000), reply("r-now", "E2", 7000)
+        cleared = clear_old_results([old, current], "r-now")
+        [stub] = cleared[0].content[0].output
+        self.assertTrue(stub.text.startswith("E1: (kết quả của lượt trước"))
+        self.assertIs(current, cleared[1])  # this reply keeps its results
+        # Too little to free: nothing changes, so the cached prefix holds.
+        small = reply("r-old", "E1", 1000)
+        self.assertIs(small, clear_old_results([small, current], "r-now")[0])
 
 
 class TicketTitleTest(unittest.TestCase):

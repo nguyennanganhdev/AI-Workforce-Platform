@@ -270,6 +270,23 @@ class ChatLeaderTurnRunner:
         if session is not None and session.team_id is not None:
             schedule(user_id, session, session.team_id)
 
+    async def workflow_closed(self, scope: Any, workflow_id: str, reason: str) -> None:
+        """A partner closed a ticket: its room teaches its agents only when the
+        end user confirmed the result (route config ``success_close_reasons``),
+        not when the Leader merely asked for confirmation."""
+
+        if self._case is None:
+            return
+        binding = await self._case.store.session_of_workflow(workflow_id)
+        if binding is None:
+            return
+        route = await self._case.store.route(binding["route_id"]) or {}
+        success = (route.get("config") or {}).get("success_close_reasons") or ["resident_confirmed"]
+        if reason not in success:
+            logger.info("Partner case %s closed (%s): nothing learned", workflow_id, reason)
+            return
+        await self._learn_from_room(binding["manager_account_id"], binding["agent_id"], binding["session_id"])
+
     async def _messages_after(self, user_id: str, session_id: str, message_id: str) -> list[Any]:
         storage = self._state().storage
         messages, _ = await storage.list_messages(user_id, session_id, limit=200)
@@ -558,9 +575,6 @@ class ChatLeaderTurnRunner:
             next_state = workflow.state
         else:
             next_state = WorkflowState.AWAITING_USER
-
-        if next_state == WorkflowState.AWAITING_CONFIRMATION:
-            await self._learn_from_room(user_id, agent_id, session.id)
 
         budget = context.checkpoint.used_budget
         checkpoint = context.checkpoint.model_copy(

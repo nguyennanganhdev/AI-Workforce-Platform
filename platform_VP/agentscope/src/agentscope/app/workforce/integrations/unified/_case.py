@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ....._logging import logger
 from .....event import ReplyEndEvent, ReplyFinishedReason
-from .....message import TextBlock, ToolResultState
+from .....message import TextBlock, ToolResultBlock, ToolResultState
 from .....middleware import MiddlewareBase
 from .....permission import PermissionBehavior, PermissionDecision
 from .....tool import MCPTool, ParamsBase, ToolBase, ToolChunk
@@ -39,7 +39,9 @@ from ...orchestration._tables import partner_requests, workflow_inputs
 from ._tables import case_entries, case_sessions, operations, routes
 
 EXPECTS = ("none", "reply", "confirmation")
-TEAM_TOOLS = ("TeamCreate", "AgentInvite", "TeamSay", "TeamDelete")
+# The ticket's room lasts as long as the ticket: no TeamDelete (its schema
+# would ride along in every Leader call).
+TEAM_TOOLS = ("TeamCreate", "AgentInvite", "TeamSay")
 # Rounds of member reports the leader may wait for within one turn.
 MAX_TEAM_ROUNDS = 4
 MAX_TEXT = 4000
@@ -731,6 +733,43 @@ class PartnerCaseMiddleware(MiddlewareBase):
         return "partner_case"
 
 
+# A partner tool result from an earlier reply, longer than this, is cleared
+# from a member's input once clearing frees CLEAR_AT_LEAST_CHARS: the full
+# text stays in the case log under its label. In batches, so the cached
+# prefix is not invalidated on every call.
+STALE_RESULT_CHARS = 400
+CLEAR_AT_LEAST_CHARS = 6000
+_LABEL_HEAD = re.compile(r"^E\d+:")
+
+
+def clear_old_results(messages: list, reply_id: str | None) -> list:
+    """``messages`` with earlier replies' long partner results reduced to
+    their evidence label (unchanged when that frees too little)."""
+
+    cleared, saved = [], 0
+    for message in messages:
+        content = getattr(message, "content", None)
+        if getattr(message, "role", None) != "assistant" or message.id == reply_id or not isinstance(content, list):
+            cleared.append(message)
+            continue
+        blocks, changed = [], False
+        for block in content:
+            if isinstance(block, ToolResultBlock):
+                output = block.output if isinstance(block.output, str) else "".join(
+                    item.text for item in block.output if isinstance(item, TextBlock)
+                )
+                head = _LABEL_HEAD.match(output)
+                if head and len(output) > STALE_RESULT_CHARS:
+                    stub = f"{head.group(0)} (kết quả của lượt trước, đã dùng; gọi lại công cụ nếu cần dữ liệu mới)"
+                    blocks.append(block.model_copy(update={"output": [TextBlock(text=stub)]}))
+                    saved += len(output) - len(stub)
+                    changed = True
+                    continue
+            blocks.append(block)
+        cleared.append(message.model_copy(update={"content": blocks}) if changed else message)
+    return cleared if saved >= CLEAR_AT_LEAST_CHARS else messages
+
+
 class PartnerMemberMiddleware(MiddlewareBase):
     """A member of a partner ticket's room: its share of the route's tools,
     under the ticket's grant; it reports to the leader, never to the user."""
@@ -746,7 +785,8 @@ class PartnerMemberMiddleware(MiddlewareBase):
     async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
         allowed = {"TeamSay", *(tool.name for tool in self._tools)}
         tools = [schema for schema in input_kwargs.get("tools") or [] if _schema_name(schema) in allowed]
-        return await next_handler(tools=tools)
+        messages = clear_old_results(list(input_kwargs.get("messages") or []), agent.state.reply_id)
+        return await next_handler(tools=tools, messages=messages)
 
     async def on_system_prompt(self, agent: Any, current_prompt: str) -> str:
         from ...._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY
