@@ -134,3 +134,29 @@ def test_templates_are_valid_and_testable() -> None:
         spec = AgentSpec.model_validate(item["spec"])
         assert len(spec.tests) >= 3
         assert spec.rules
+
+
+def test_builder_made_agent_gets_a_spec_with_its_tests() -> None:
+    from agentscope.agent import ContextConfig, ReActConfig
+    from agentscope.app._router._workforce_console import _seed_spec
+    from agentscope.app.storage import AgentData, AgentRecord
+
+    record = AgentRecord(
+        user_id="u",
+        data=AgentData(
+            name="Hotel",
+            system_prompt=governed_system_prompt("business", "Find hotels."),
+            context_config=ContextConfig(),
+            react_config=ReActConfig(),
+            lifecycle_state="published",
+            build_description="Find hotels",
+        ),
+    )
+    _seed_spec(
+        record,
+        [{"scenario": f"case {i}", "expected": "uses search"} for i in range(3)],
+    )
+
+    assert len(record.data.spec["tests"]) == 3
+    assert record.data.published_version == 1
+    assert record.data.versions[0]["spec"]["tests"][0]["scenario"] == "case 0"
