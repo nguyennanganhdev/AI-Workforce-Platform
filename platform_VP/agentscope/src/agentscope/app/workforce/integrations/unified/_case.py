@@ -30,7 +30,7 @@ from .....message import TextBlock, ToolResultState
 from .....middleware import MiddlewareBase
 from .....permission import PermissionBehavior, PermissionDecision
 from .....tool import MCPTool, ParamsBase, ToolBase, ToolChunk
-from ...orchestration._tables import workflow_inputs
+from ...orchestration._tables import partner_requests, workflow_inputs
 from ._tables import case_entries, case_sessions, operations, routes
 
 EXPECTS = ("none", "reply", "confirmation")
@@ -244,6 +244,16 @@ class CaseStore:
             ).all()
         return [row[0] for row in rows if row[0]]
 
+    async def grant_context(self, workflow_id: str) -> dict:
+        async with self._uows() as uow:
+            payload = await uow.scalar(select(partner_requests.c.payload).where(
+                partner_requests.c.workflow_id == workflow_id,
+            ).order_by(partner_requests.c.accepted_at, partner_requests.c.id).limit(1))
+        if not payload or payload.get("workflow_id") != workflow_id:
+            raise ValueError("Workflow has no trusted handover")
+        return {"ticket_id": payload["audience"]["external_ticket_id"],
+                "external_request_id": payload["external_request_id"]}
+
     async def record_operation(self, values: dict) -> None:
         async with self._uows() as uow:
             existing = (
@@ -279,6 +289,18 @@ class CaseStore:
                 )
                 or 0,
             )
+
+    async def settle_operation(self, reference: str, status: str, external_job_id: str | None = None) -> None:
+        async with self._uows() as uow:
+            # An event can arrive while the tool call is still returning. Never roll it back.
+            values = {"updated_at": _now()}
+            if external_job_id:
+                values["external_job_id"] = external_job_id
+            await uow.execute(update(operations).where(operations.c.client_reference == reference).values(**values))
+            await uow.execute(update(operations).where(
+                operations.c.client_reference == reference, operations.c.rank == 0,
+            ).values(status=status[:64], terminal=status in ("failed", "confirmed", "rejected")))
+            await uow.commit()
 
 
 class _Case:
@@ -466,6 +488,11 @@ class PartnerTool(ToolBase):
             reference = await self._case.client_reference(self.name, kwargs)
             arguments[self._reference] = reference
         timeout = float(self._spec.get("call_timeout") or 30.0)
+        tracking = self._spec.get("tracking") == "events" and reference is not None
+        if tracking:
+            await self._case.store.record_operation({"workflow_id": self._case.workflow_id,
+                "integration_id": self._integration_id, "tool_name": self.name,
+                "client_reference": reference, "external_job_id": None, "status": "dispatching"})
         try:
             chunk = await asyncio.wait_for(self._mcp.call(**arguments), timeout=timeout)
             text = "\n".join(block.text for block in chunk.content if isinstance(block, TextBlock))
@@ -474,14 +501,10 @@ class PartnerTool(ToolBase):
             text = "UNKNOWN: công cụ không trả lời kịp; chưa rõ thao tác đã thực hiện hay chưa."
             state = ToolResultState.ERROR
         except Exception as exc:  # the partner's server failed, not this platform
-            logger.warning("Partner tool %s failed: %s", self.name, exc)
+            logger.warning("Partner tool %s failed: %s", self.name, type(exc).__name__)
             text = f"Lỗi khi gọi công cụ: {type(exc).__name__}"
             state = ToolResultState.ERROR
-        if (
-            self._spec.get("tracking") == "events"
-            and reference is not None
-            and state != ToolResultState.ERROR
-        ):
+        if tracking:
             await self._track(reference, text)
         label = await self._case.store.append(
             self._case.workflow_id,
@@ -499,18 +522,9 @@ class PartnerTool(ToolBase):
         if not isinstance(result, dict):
             return
         status = str(result.get("status") or "")
-        if status in ("", "failed", "confirmed", "rejected"):
+        if not status:
             return
-        await self._case.store.record_operation(
-            {
-                "workflow_id": self._case.workflow_id,
-                "integration_id": self._integration_id,
-                "tool_name": self.name,
-                "client_reference": reference,
-                "external_job_id": str(result.get("external_job_id") or "") or None,
-                "status": status[:64],
-            },
-        )
+        await self._case.store.settle_operation(reference, status, str(result.get("external_job_id") or "") or None)
 
 
 PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflicting instructions above):
@@ -592,6 +606,7 @@ class CaseRuntime:
 
         tools: list[ToolBase] = []
         clients: dict[str, Any] = {}
+        transports: dict[str, Any] = {}
         for spec in route.get("tools") or []:
             mcp_id = spec.get("mcp_id")
             if not mcp_id:
@@ -608,7 +623,16 @@ class CaseRuntime:
             )
             if raw is None:
                 continue
-            client = MCPClient.model_validate(record.client.model_dump(mode="json"))
+            if mcp_id not in transports:
+                grant_config = ((route.get("config") or {}).get("mcp_grants") or {}).get(record.client.name)
+                if grant_config:
+                    from ._grants import scoped_client
+                    allowed = [s.get("mcp_tool") for s in route.get("tools") or [] if s.get("mcp_id") == mcp_id]
+                    transports[mcp_id] = await scoped_client(record.client, grant_config,
+                        await self.store.grant_context(case.workflow_id), case.workflow_id, allowed)
+                else:
+                    transports[mcp_id] = MCPClient.model_validate(record.client.model_dump(mode="json"))
+            client = transports[mcp_id]
             mcp_tool = MCPTool(
                 mcp_name=client.name,
                 tool=mcp.types.Tool(

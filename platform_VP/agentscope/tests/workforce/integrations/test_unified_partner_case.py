@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import insert, select, text
+from sqlalchemy import insert, select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from agentscope.app.business import PartnerPrincipal
@@ -372,6 +372,16 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
         async def fake_mcp_call(tool, **kwargs):
             self.mcp_calls.append((tool._tool.name, kwargs))
             if tool._tool.name == "vh_work_order_dispatch":
+                async with self.uows() as uow:
+                    intent = (await uow.execute(select(operations).where(
+                        operations.c.client_reference == kwargs["client_reference"],
+                    ))).mappings().one()
+                    self.assertEqual("dispatching", intent["status"])
+                    if getattr(self, "early_progress", False):
+                        await uow.execute(update(operations).where(
+                            operations.c.operation_id == intent["operation_id"],
+                        ).values(status="arrived", rank=40, external_job_id="WO-1"))
+                        await uow.commit()
                 body = {"status": "pending", "external_job_id": "WO-1", "offered_to": "An"}
             else:
                 body = {"ticket_status": "open", "appointment": "09:30 20/10/2026", "quote": {"total": 450000}}
@@ -436,6 +446,20 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
 
 
 class UnifiedPartnerCaseTest(_CaseHarness):
+    async def test_early_progress_is_not_orphaned_or_rolled_back_by_dispatch_response(self):
+        self.early_progress = True
+        async def dispatch(tools):
+            await call(tools, "vh_work_order_dispatch", ticket_id="T-77", description="Test early progress")
+            await call(tools, "CaseSay", text="Yêu cầu đang được xử lý.", expects="none")
+        self.leader.scripts = [dispatch]
+        async with self._client() as client:
+            self.assertEqual(202, (await client.post("/workforce/v1/partner/requests", json=self._start())).status_code)
+            self.assertEqual("succeeded", await self._run())
+        reference = next(args["client_reference"] for name, args in self.mcp_calls if name == "vh_work_order_dispatch")
+        async with self.uows() as uow:
+            operation = (await uow.execute(select(operations).where(operations.c.client_reference == reference))).mappings().one()
+        self.assertEqual(("arrived", 40, "WO-1"), (operation["status"], operation["rank"], operation["external_job_id"]))
+
     async def test_dispatch_progress_events_result_and_close_like_the_vinhomes_bridge(self):
         async def first_turn(tools):
             self.assertNotIn("client_reference", tools["vh_work_order_dispatch"].input_schema["properties"])
@@ -496,6 +520,8 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                     await uow.execute(select(operations).where(operations.c.client_reference == reference))
                 ).mappings().one()
             self.assertEqual("WO-1", operation["external_job_id"])
+            context = await self.runner._case.store.grant_context(first["workflow_id"])
+            self.assertEqual({"ticket_id": "T-77", "external_request_id": "vh-cmd-1"}, context)
 
             def event(event_id, event_type, data, version):
                 return {
