@@ -9,10 +9,11 @@ updates, idempotently:
   provider key and HMAC signing key (keys are returned once, only when new or
   when ``new_keys`` asks for fresh ones; old keys are then revoked);
 * the partner's MCP in the area manager's library (tools discovered);
-* the route leader as an Agent Studio agent (a new version only when the
-  declaration changed; open tickets keep the version they started with), and
-  one invitable agent per ``role: "member"`` profile, which the leader may
-  invite into the ticket's room (with a subset of the route's tools);
+* the partner's coordinator (the declaration's leader profile, with all the
+  route's tools) as an Agent Studio agent (a new version only when the
+  declaration changed), and one agent per ``role: "member"`` profile (with a
+  subset of the route's tools); the platform Leader invites them into each
+  ticket's room;
 * the provider event schema of the integration;
 * one route per management ref, pending until the partner confirms it.
 """
@@ -167,7 +168,13 @@ class PartnerOnboarding:
                 kept = tuple(k.split(".")[0].removeprefix("dp_") for k in (keys["customer_key"], provider.api_key))
                 await business.revoke_client_keys(client_id=client_id, keep=kept)
 
-        agent_id, version = await self._agent(body, leader, tools, mcp_record, storage, workspace_manager)
+        # The declared leader profile is the partner's coordinator: the
+        # platform Leader invites it into every ticket's room.
+        agent_id, version = await self._agent(
+            body, leader, tools, mcp_record, storage, workspace_manager, invitable=True,
+        )
+        coordinator = {"agent_id": agent_id, "name": str(leader["name"])[:100],
+                       "tools": [t["name"] for t in tools], "coordinator": True}
         members = []
         for profile in (p for p in profiles if p.get("role") == "member"):
             member_tools = self._tools(declaration, mcp_record, profile.get("tools_allow") or [])
@@ -190,7 +197,9 @@ class PartnerOnboarding:
         out_routes = []
         for ref in dict.fromkeys(item.strip() for item in body.management_refs if item.strip()):
             route = await self._route(scope, client_id, ref, operations)
-            await self._route_settings(route, scope, client_id, agent_id, integration_id, route_decl, tools, members)
+            await self._route_settings(
+                route, scope, client_id, agent_id, integration_id, route_decl, tools, [coordinator, *members],
+            )
             out_routes.append(
                 {
                     "management_ref": ref,
@@ -413,9 +422,7 @@ class PartnerOnboarding:
         if current != spec.model_dump(mode="json"):
             set_draft(record, spec, author="manager", note="Onboarding đối tác")
             materialize(record, spec, author="manager", note="Onboarding đối tác", evaluation=None)
-        # A route leader answers its own partner tickets; the console Leader
-        # must not borrow it (its tools need the partner case runtime). A
-        # member is invited by the route leader into a ticket's room.
+        # Every partner agent works in a ticket's room, invited by the Leader.
         if invitable:
             record.data.invite_config.invite_description = spec.description or spec.name
         record.data.invite_config.invitable = invitable
@@ -480,10 +487,13 @@ class PartnerOnboarding:
             "manager_account_id": scope.manager_account_id,
             "leader_agent_id": agent_id,
             "integration_id": integration_id,
-            # member_agents: who the leader may invite, with their tools (platform-owned key).
+            # member_agents: who the Leader may invite, with their tools (platform-owned key).
             "config": {
                 **(route_decl.get("config") or {}),
-                "member_agents": {m["agent_id"]: {"name": m["name"], "tools": m["tools"]} for m in members},
+                "member_agents": {
+                    m["agent_id"]: {"name": m["name"], "tools": m["tools"], **({"coordinator": True} if m.get("coordinator") else {})}
+                    for m in members
+                },
             },
             "tools": tools,
             "updated_at": now,

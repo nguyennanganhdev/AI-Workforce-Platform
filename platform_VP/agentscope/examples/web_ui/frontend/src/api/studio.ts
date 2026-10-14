@@ -109,6 +109,9 @@ export interface TestReport {
 	total: number;
 	passed: number;
 	pass_rate: number;
+	/** Scenarios the model could not play (no credit, bad key…): not a verdict on the agent. */
+	errors?: number;
+	model_error?: string | null;
 	publishable: boolean;
 	results: TestResult[];
 }
@@ -132,7 +135,14 @@ export interface AgentSummary {
 	rule_count: number;
 	learned_rule_count: number;
 	test_count: number;
-	last_test: { pass_rate: number; passed: number; total: number; ran_at: string; publishable: boolean } | null;
+	last_test: {
+		pass_rate: number;
+		passed: number;
+		total: number;
+		ran_at: string;
+		publishable: boolean;
+		errors?: number;
+	} | null;
 }
 
 export interface AgentDetail {
@@ -193,6 +203,20 @@ export interface AgentMemory {
 	updated_at: string;
 }
 
+export interface AgentActivity {
+	agent_id: string;
+	name: string;
+	role: 'leader' | 'business';
+	model_tier: string;
+	tickets: number;
+	/** A reply may take several model calls; its tokens cover them all. */
+	replies: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	output_tokens: number;
+	last_at: string | null;
+}
+
 export interface PartnerRoute {
 	route_id: string;
 	partner_client_id: string;
@@ -207,6 +231,7 @@ const agentPath = (id: string) => `${base}/agents/${encodeURIComponent(id)}`;
 
 export const studioApi = {
 	listAgents: () => client.get<AgentSummary[]>(`${base}/agents`),
+	activity: () => client.get<AgentActivity[]>(`${base}/activity`),
 	getAgent: (id: string) => client.get<AgentDetail>(agentPath(id)),
 	create: (body: { template_id?: string; clone_from?: string; spec?: AgentSpec }) =>
 		client.post<AgentDetail>(`${base}/agents`, body),

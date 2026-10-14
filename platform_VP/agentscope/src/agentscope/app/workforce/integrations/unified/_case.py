@@ -1,18 +1,16 @@
 """The partner case runtime of unified mode.
 
-A route onboarded from a partner declaration has its own leader: an Agent
-Studio agent that talks to the partner's end user only through ``CaseSay`` /
-``CaseFinalize``, calls the route's tools under their declared names (the
-platform fills the hidden ``client_reference``), and cites the evidence
-labels ``E<n>`` that every tool result and provider event carries.
+A partner ticket is a ticket of the platform's Leader (the console
+Leader of the route's manager). The Leader talks to the partner's end user
+only through ``CaseSay`` / ``CaseFinalize`` and holds no partner tool: it
+opens the ticket's room (``TeamCreate`` / ``AgentInvite``) with the partner's
+coordinator agent (the declaration's leader profile) and, when needed, its
+specialists, and waits for their reports within its turn. Members call their
+share of the route's tools under their declared names and the ticket's grant
+(the platform fills the hidden ``client_reference``); every result and
+provider event carries an evidence label ``E<n>`` that the Leader cites.
 Everything here is per session and only attached to sessions of partner
 workflows (see :class:`CaseRuntime.middlewares`).
-
-When the route declares member agents, the leader may open the ticket's room
-(``TeamCreate`` / ``AgentInvite``) and wait for their reports within its turn.
-Members call their share of the route's tools under the ticket's grant, so
-their results are evidence the leader can cite; only the leader speaks to the
-end user.
 """
 
 from __future__ import annotations
@@ -575,16 +573,16 @@ PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflictin
 """
 
 
-PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ (chỉ lập khi cần):
-- Phiếu cần đánh giá chuyên môn hoặc ý kiến thứ hai: TeamCreate rồi AgentInvite đúng agent chuyên môn, giao việc rõ (cần kiểm tra gì, trả về gì). Phiếu đơn giản thì tự làm, không lập phòng.
-- Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. của kết quả công cụ họ gọi. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
-- Khi đã giao việc cho thành viên, chờ họ báo rồi mới giao việc cho nhân viên và gửi tin cho người dùng: dùng đánh giá của họ để mô tả việc.
-- Phòng giữ suốt phiếu: lượt sau dùng TeamSay với thành viên đã có, không lập phòng mới.
+PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ PHIẾU (bắt buộc):
+- Bạn không có công cụ của đối tác. Tra cứu phiếu, kiến thức, nhân viên, giao việc, hủy hay ghi chú đều do thành viên phòng làm.
+- Lượt đầu của phiếu: TeamCreate rồi MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ: cần làm gì, trả về gì. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on.
+- Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. và câu đề xuất gửi người dùng. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
+- Phòng giữ suốt phiếu: lượt sau giao việc bằng TeamSay cho thành viên đã có, không lập phòng mới. Người dùng chỉ chào hay cảm ơn, không cần dữ liệu mới: trả lời ngay bằng CaseSay.
 """
 
 PARTNER_MEMBER_POLICY = """PARTNER CASE MEMBER POLICY (server-owned; overrides conflicting instructions above):
-- Bạn là thành viên phòng xử lý một phiếu của đối tác, do trợ lý điều phối (leader) lập. Bạn không nói với người dùng; chỉ leader gửi tin cho họ.
-- Mỗi kết quả công cụ bắt đầu bằng mã E.. (ví dụ "E7: ..."). Báo lại leader bằng TeamSay: kết luận ngắn và các mã E.. chứa dữ liệu bạn dùng.
+- Bạn là thành viên phòng xử lý một phiếu của đối tác, do Leader của platform lập. Bạn không nói với người dùng; chỉ Leader gửi tin cho họ.
+- Mỗi kết quả công cụ bắt đầu bằng mã E.. (ví dụ "E7: ..."). Làm phần việc được giao bằng công cụ của bạn, rồi báo lại Leader bằng MỘT TeamSay: kết luận ngắn, các mã E.. chứa dữ liệu bạn dùng, và câu đề xuất gửi người dùng (theo cách xưng hô của đối tác).
 - Không đoán. Thiếu dữ liệu thì nói rõ thiếu gì.
 - Không tự điền client_reference: platform điền.
 """
@@ -652,9 +650,8 @@ class PartnerCaseMiddleware(MiddlewareBase):
         return [CaseSay(self._case), CaseFinalize(self._case), *self._tools]
 
     async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
-        """The route leader sees its case tools, the declared tools and, when
-        the route declares members, the team tools limited to those members.
-        """
+        """The Leader sees its case tools and the team tools limited to the
+        route's members (``tools``: partner tools, empty for the Leader)."""
 
         allowed = {"CaseSay", "CaseFinalize", *(tool.name for tool in self._tools)}
         if self._members:
@@ -712,8 +709,15 @@ class PartnerCaseMiddleware(MiddlewareBase):
             "- Không viết: " + ", ".join(f'"{p}"' for p in rule.get("phrases") or []) + f" ({rule.get('reason', '')})"
             for rule in rules
         )
-        team = ("\n" + PARTNER_TEAM_POLICY) if self._members else ""
-        return prompt + "\n\n" + PARTNER_CASE_POLICY + team + (("\n" + banned) if banned else "")
+        team = ""
+        if self._members:
+            coordinators = [name for name, entry in self._members.items() if entry.get("coordinator")]
+            team = "\n" + PARTNER_TEAM_POLICY.format(
+                coordinators=", ".join(coordinators) or "agent điều phối của đối tác",
+            )
+        brief = str((self._case.route.get("config") or {}).get("leader_brief") or "").strip()
+        brief = ("\nHƯỚNG DẪN CỦA ĐỐI TÁC:\n" + brief) if brief else ""
+        return prompt + "\n\n" + PARTNER_CASE_POLICY + team + brief + (("\n" + banned) if banned else "")
 
     async def get_middleware_key(self) -> str:
         return "partner_case"
@@ -828,7 +832,8 @@ class CaseRuntime:
         case = _Case(self.store, session, route)
         members = _members(route)
         waiter = self._waiter(user_id, agent_id, session_id) if members else None
-        return [PartnerCaseMiddleware(case, await self._tools(user_id, case, route), members, waiter)]
+        # The Leader holds no partner tool: the room's members do the work.
+        return [PartnerCaseMiddleware(case, [], members, waiter)]
 
     def _waiter(self, user_id: str, agent_id: str, session_id: str) -> Any:
         from ...._shared_context import SharedContextService

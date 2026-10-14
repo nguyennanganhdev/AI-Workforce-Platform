@@ -165,7 +165,7 @@ def _summary(record: AgentRecord) -> AgentSummaryView:
         last_test=(record.data.draft_meta or {}).get("last_test")
         and {
             k: record.data.draft_meta["last_test"].get(k)
-            for k in ("pass_rate", "passed", "total", "ran_at", "publishable")
+            for k in ("pass_rate", "passed", "total", "ran_at", "publishable", "errors", "model_error")
         },
     )
 
@@ -181,6 +181,11 @@ def _publish_blocker(record: AgentRecord, spec: AgentSpec) -> str:
     report = last_test_for(record, spec)
     if report is None:
         return "Hãy chạy kiểm thử cho bản nháp hiện tại trước khi phát hành."
+    if report.get("errors"):
+        return (
+            f"Chưa kiểm thử được {report['errors']}/{report.get('total')} kịch bản: "
+            f"{report.get('model_error')} Chạy lại kiểm thử sau khi sửa."
+        )
     if not report.get("publishable"):
         return (
             f"Kiểm thử đạt {report.get('passed')}/{report.get('total')}; "
@@ -310,6 +315,61 @@ async def list_agents(
             await storage.upsert_agent(user_id, record)
         views.append(_summary(record))
     return views
+
+
+class AgentActivityView(BaseModel):
+    """What one agent spent: replies and tokens over its sessions."""
+
+    agent_id: str
+    name: str
+    role: str
+    model_tier: str
+    tickets: int = 0
+    replies: int = 0
+    """A reply may take several model calls; its usage covers them all."""
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    last_at: str | None = None
+
+
+# Messages read per session; a ticket longer than this counts its latest part.
+_ACTIVITY_MESSAGES = 2000
+
+
+@workforce_studio_router.get("/activity", response_model=list[AgentActivityView])
+async def agent_activity(
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> list[AgentActivityView]:
+    """Per agent (the Leader and every business agent): tickets it worked
+    on, replies and tokens, from each reply's provider usage."""
+
+    views = []
+    for record in await storage.list_agents(user_id):
+        role = record.data.system_role
+        if record.source != "user" or role not in ("leader", "business"):
+            continue
+        spec = record.data.spec or {}
+        view = AgentActivityView(
+            agent_id=record.id,
+            name=record.data.name,
+            role=role,
+            model_tier="strong" if role == "leader" else str(spec.get("model_tier") or "standard"),
+        )
+        for session in await storage.list_sessions(user_id, record.id):
+            messages, _ = await storage.list_messages(user_id, session.id, limit=_ACTIVITY_MESSAGES)
+            used = [m for m in messages if m.role == "assistant" and m.usage is not None]
+            if not used:
+                continue
+            view.tickets += 1
+            view.replies += len(used)
+            view.input_tokens += sum(m.usage.input_tokens for m in used)
+            view.cached_input_tokens += sum(m.usage.cache_input_tokens for m in used)
+            view.output_tokens += sum(m.usage.output_tokens for m in used)
+            view.last_at = max(view.last_at or "", *(m.created_at for m in used))
+        views.append(view)
+    return sorted(views, key=lambda item: item.input_tokens + item.output_tokens, reverse=True)
 
 
 @workforce_studio_router.post(

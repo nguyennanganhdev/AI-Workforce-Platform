@@ -46,6 +46,10 @@ _GENERIC_MESSAGE: dict[ErrorType, str] = {
         "model or endpoint."
     ),
     ErrorType.RATE_LIMIT: "Rate limit or quota exceeded — try again later.",
+    ErrorType.QUOTA: (
+        "The model provider account has no credit left — top up the API "
+        "key or switch the credential."
+    ),
     ErrorType.INVALID_REQUEST: (
         "The request to the model was rejected as invalid."
     ),
@@ -118,6 +122,15 @@ def _is_network_error(e: BaseException) -> bool:
     return False
 
 
+def _is_out_of_quota(e: BaseException) -> bool:
+    """OpenAI-style ``insufficient_quota``: a 429 that waiting never fixes."""
+    return any(
+        getattr(exc, "code", None) == "insufficient_quota"
+        or "insufficient_quota" in str(exc)
+        for exc in _causes(e)
+    )
+
+
 def _classify_type(e: Exception) -> ErrorType:
     """Map an exception to an :class:`ErrorType` without importing any
     provider SDK."""
@@ -125,6 +138,8 @@ def _classify_type(e: Exception) -> ErrorType:
         return ErrorType.COLLABORATION_LIMIT
     if any(type(exc).__name__ == "SharedContextBudgetError" for exc in _causes(e)):
         return ErrorType.CONTEXT_BUDGET
+    if _is_out_of_quota(e):
+        return ErrorType.QUOTA
     status = _extract_status(e)
     if status is not None:
         if status in _STATUS_MAP:

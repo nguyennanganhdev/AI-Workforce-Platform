@@ -4,11 +4,13 @@ No real model is called. With the Docker stack up (WORKFORCE_PARTNER_API=true):
 
     python fake_openai_room.py 18080 > model.log &
     python fake_partner_mcp.py 18765 > mcp.log &
-    python drive_room.py
+    E2E_MCP_LOG=mcp.log python drive_room.py
 
-The declaration has a member profile: the leader opens the room, invites the
-member, waits for its report (the member reads the ticket under the case), then
-dispatches and answers once, citing the member's evidence.
+The ticket is a ticket of the manager's console Leader. The Leader opens the
+room with the partner's coordinator (the declaration's leader profile) and its
+specialist: the specialist reads the ticket, the coordinator dispatches after
+its report, both under the ticket's case. The Leader answers once, citing their
+evidence. Then signed provider events (template + wake) and the close.
 """
 
 import hashlib
@@ -36,11 +38,11 @@ DECLARATION = {
     "declaration": "e2e-v1",
     "client": {"name": f"E2E Partner {RUN}", "domain": "vinhomes"},
     "profiles": [{
-        "key": "lead", "name": f"E2ELeader{RUN}", "role": "leader", "mission": "điều phối thử",
-        "instructions": "Tra phiếu, giao việc rồi báo người dùng bằng CaseSay.", "tools_allow": ["vh_*"],
+        "key": "lead", "name": f"E2EDieuPhoi{RUN}", "role": "leader", "mission": "điều phối thử",
+        "instructions": "Tra phiếu, giao việc rồi báo Leader.", "tools_allow": ["vh_*"],
     }, {
         "key": "kt", "name": f"E2EKyThuat{RUN}", "role": "member", "mission": "đánh giá kỹ thuật",
-        "instructions": "Đọc phiếu rồi báo leader.", "tools_allow": ["vh_ticket_get"],
+        "instructions": "Đọc phiếu rồi báo Leader.", "tools_allow": ["vh_ticket_get"],
     }],
     "route": {"leader_profile": "lead", "config": {"rules": {"safe_reply": "Chưa xác minh được.", "phrase_rules": []}}},
     "mcp_server": {"name": f"e2epartner{RUN}", "timeout": 8.0},
@@ -111,6 +113,54 @@ with httpx.Client(base_url=BASE, timeout=180) as http:
     print("messages", [m["text"] for m in (result.get("result") or {}).get("messages") or []])
 
     texts = [m["text"] for m in (result.get("result") or {}).get("messages") or []]
-    ok = result["request_status"] == "completed" and len(texts) == 1 and "chuyên viên kỹ thuật" in texts[0]
+    answered = result["request_status"] == "completed" and len(texts) == 1 and "chuyên viên kỹ thuật" in texts[0]
+    print("ROOM ANSWER", "PASS" if answered else "FAIL")
+
+    step("the Leader page lists the ticket with its room")
+    leader = check(http.get("/workforce/console/leader/bootstrap", headers=auth), 200)
+    sessions = check(http.get("/sessions/", headers=auth, params={"agent_id": leader["agent_id"]}), 200)["sessions"]
+    ticket = next((v for v in sessions if v["session"]["config"]["name"] == f"Phiếu đối tác T-{RUN}"), None)
+    team = json.dumps((ticket or {}).get("team") or {}, ensure_ascii=False)
+    on_page = ticket is not None and f"E2EDieuPhoi{RUN}" in team and f"E2EKyThuat{RUN}" in team
+    print("LEADER PAGE", "PASS" if on_page else "FAIL")
+
+    step("provider events (signed)")
+    history = lambda: check(http.get(f"/workforce/v1/partner/conversations/{started['conversation_id']}/event-history",
+                                     headers=customer, params={"external_user_id": "resident-e2e", "limit": 200}), 200)["items"]
+
+    def send(event_id, event_type, data):
+        body = {"schema_version": "1", "external_event_id": event_id, "event_type": event_type,
+                "client_reference": client_reference, "occurred_at": "2026-10-14T08:00:00Z", "data": data}
+        raw = json.dumps(body, ensure_ascii=False).encode()
+        stamp = str(int(time.time()))
+        sig = "v1=" + hmac.new(keys["signing_secret"].encode(), stamp.encode() + b"." + raw, hashlib.sha256).hexdigest()
+        return check(http.post("/workforce/v1/provider/job-events", content=raw, headers={
+            "Authorization": "ApiKey " + keys["provider_key"], "Content-Type": "application/json",
+            "X-Partner-Timestamp": stamp, "X-Partner-Key-Id": keys["signing_key_id"], "X-Partner-Signature": sig}), 202)
+
+    client_reference = sys.argv[1] if len(sys.argv) > 1 else None
+    if client_reference is None:
+        mcp_log = Path(os.getenv("E2E_MCP_LOG", "mcp.log")).read_text(encoding="utf-8")
+        client_reference = re.findall(r'"client_reference": "([^"]+)"', mcp_log)[-1]
+    print("accepted ->", send(f"ev-{RUN}-1", "job.accepted", {"staff_name": "Bình"})["ingestion_status"])
+    print("published ->", send(f"ev-{RUN}-2", "job.result_published", {})["ingestion_status"])
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        items = history()
+        states = [i["payload"]["state"] for i in items if i["event_type"] == "workflow.status_changed"]
+        if states and states[-1] == "awaiting_confirmation":
+            break
+        time.sleep(2)
+    for item in history():
+        payload = item["payload"]
+        print(item["sequence"], item["event_type"], payload.get("text") or payload.get("state") or payload.get("status") or "")
+    revision = [i["payload"]["revision"] for i in history() if i["event_type"] == "workflow.status_changed"][-1]
+
+    step("close after confirmation")
+    closed = check(http.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close", headers=customer, json={
+        "schema_version": "1", "external_request_id": f"close-{RUN}", **ids,
+        "expected_revision": revision, "reason": "resident_confirmed"}), 200)
+    print("closed:", closed["workflow_state"])
+    ok = answered and on_page and closed["workflow_state"] == "closed"
     print("ROOM", "PASS" if ok else "FAIL")
     raise SystemExit(0 if ok else 1)

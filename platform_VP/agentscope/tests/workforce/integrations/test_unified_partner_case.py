@@ -1,8 +1,9 @@
 """Partner case runtime of unified mode, driven the way the Vinhomes bridge does.
 
 Real Workforce SQL repositories, durable jobs, routers, HMAC provider auth and
-the case middleware/tools; the leader's model is a script that calls the
-same tools a model would, and the partner MCP server is a fake.
+the case middleware/tools; the model is a script that calls the same tools
+the room would (the Leader's case tools and the coordinator's partner tools,
+under the same ticket), and the partner MCP server is a fake.
 """
 
 from __future__ import annotations
@@ -142,6 +143,7 @@ TOOLS = [
         "description_override": "Create the work and offer it to staff.",
     },
 ]
+COORDINATOR = {"name": "DieuPhoiVinhomes", "tools": [t["name"] for t in TOOLS], "coordinator": True}
 HANDOVER = "ticket_id: T-77\nhandover_version: v1.1\nCư dân: An\nMô tả của cư dân: Rò nước bồn rửa\nCăn: S1-1205"
 
 
@@ -266,8 +268,17 @@ class _Leader:
     async def run(self, user_id, session_id, agent_id, input_msg):
         self.messages.append(input_msg)
         self.inputs.append(getattr(input_msg, "get_text_content", lambda: str(input_msg))())
-        middleware = (await self.runner.case_middlewares(user_id, agent_id, session_id))[0]
+        middlewares = await self.runner.case_middlewares(user_id, agent_id, session_id)
+        if not middlewares:
+            # A member's resumed call: its report wakes the ticket's Leader.
+            ticket = next(iter(self.runner._app.state.storage.sessions.values()))
+            middlewares = await self.runner.case_middlewares(user_id, ticket.agent_id, ticket.id)
+        middleware = middlewares[0]
         tools = {tool.name: tool for tool in await middleware.list_tools()}
+        # The coordinator's calls in the room run under the same ticket.
+        case = middleware._case
+        for tool in await self.runner._case._tools(user_id, case, case.route):
+            tools[tool.name] = tool
         self.tools = tools
         await self.scripts.pop(0)(tools)
 
@@ -337,7 +348,8 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
                 insert(routes).values(
                     route_id="route-1", tenant_id="tenant-1", partner_client_id="partner-1",
                     manager_account_id="manager-1", leader_agent_id="leader-vh", integration_id="pi-1",
-                    config={"rules": RULES, "policy": {"approval_ttl_seconds": 600}}, tools=TOOLS,
+                    config={"rules": RULES, "policy": {"approval_ttl_seconds": 600},
+                            "member_agents": {"leader-vh": COORDINATOR}}, tools=TOOLS,
                     created_at=NOW, updated_at=NOW,
                 ),
             )
@@ -399,9 +411,15 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
         async def no_pending(*_args):
             return []
 
+        async def console_leader(*_args):
+            # The manager's console Leader runs every partner ticket.
+            primary = SimpleNamespace(config=SimpleNamespace(chat_model_config=None))
+            return SimpleNamespace(id="leader-console"), primary
+
         self.patches = [
             patch.object(MCPTool, "call", fake_mcp_call),
             patch.object(runner_module, "pending_chat_actions", no_pending),
+            patch("agentscope.app._router._workforce_console._leader", console_leader),
         ]
         for item in self.patches:
             item.start()
@@ -660,6 +678,9 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                 )
             ).json()
             self.assertEqual("awaiting_user", result["workflow_state"])
+            # The ticket is a session of the console Leader: the Leader page lists it.
+            [ticket] = self.storage.sessions.values()
+            self.assertEqual(("leader-console", "Phiếu đối tác T-77"), (ticket.agent_id, ticket.config.name))
             self.assertEqual(1, len(result["result"]["messages"]))
             self.assertIn("đang chờ người nhận", result["result"]["messages"][0]["text"])
 
@@ -779,7 +800,7 @@ class UnifiedPartnerApprovalTest(_CaseHarness):
         parked = [
             PendingChatAction(
                 agent_id="leader-vh",
-                session_id="",
+                session_id="s-coordinator",
                 reply_id="reply-1",
                 tool_call=ToolCallBlock(id="call-1", name="vh_amenity_book", input='{"ticket_id": "T-77"}'),
             ),
@@ -855,11 +876,11 @@ class UnifiedPartnerApprovalTest(_CaseHarness):
         self.assertEqual("awaiting_user", state)
 
 
-def _unsaid_case(said: bool = False):
+def _unsaid_case(said: bool = False, route: dict | None = None):
     async def answer():
         return said
 
-    return SimpleNamespace(rules={}, said=answer)
+    return SimpleNamespace(rules={}, said=answer, route=route or {})
 
 
 class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
@@ -876,7 +897,7 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         await middleware.on_model_call(None, {"tools": offered}, next_handler)
         self.assertEqual([], seen["tools"])
 
-    async def test_the_route_leader_sees_only_case_and_declared_tools(self):
+    async def test_the_case_middleware_offers_only_case_and_given_tools(self):
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
 
         middleware = PartnerCaseMiddleware(
@@ -900,16 +921,23 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             [tool["function"]["name"] for tool in seen["tools"]],
         )
 
-    async def test_with_declared_members_the_leader_may_open_a_room_with_them_only(self):
+    async def test_the_leader_opens_a_room_with_the_routes_agents_only(self):
         import copy
 
         from agentscope.app._tool._agent_invite import _AgentInviteParams, _display_name
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware, _members
 
-        route = {"config": {"member_agents": {"a-kt": {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]}}}}
+        route = {"config": {
+            "member_agents": {
+                "a-dp": COORDINATOR,
+                "a-kt": {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]},
+            },
+            "leader_brief": "Gọi cư dân là bạn.",
+        }}
         members = _members(route)
-        names = [_display_name("KyThuatVinhomes", "a-kt"), _display_name("Travel", "a-x")]
-        self.assertEqual([names[0]], list(members))
+        names = [_display_name("DieuPhoiVinhomes", "a-dp"), _display_name("KyThuatVinhomes", "a-kt"),
+                 _display_name("Travel", "a-x")]
+        self.assertEqual(names[:2], list(members))
         # The toolkit's AgentInvite lists every invitable agent of the manager.
         parameters = copy.deepcopy(_AgentInviteParams.model_json_schema())
         parameters["properties"]["target"]["enum"] = list(names)
@@ -925,9 +953,8 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
                 "parameters": parameters,
             },
         }
-        middleware = PartnerCaseMiddleware(
-            _unsaid_case(), [SimpleNamespace(name="vh_ticket_get")], members,
-        )
+        # The Leader holds no partner tool.
+        middleware = PartnerCaseMiddleware(_unsaid_case(route=route), [], members)
         seen = {}
 
         async def next_handler(**kwargs):
@@ -939,17 +966,19 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         ] + [invite]
         await middleware.on_model_call(None, {"tools": offered}, next_handler)
         kept = {tool["function"]["name"]: tool for tool in seen["tools"]}
-        self.assertEqual({"TeamCreate", "TeamSay", "TeamDelete", "CaseSay", "vh_ticket_get", "AgentInvite"}, set(kept))
+        self.assertEqual({"TeamCreate", "TeamSay", "TeamDelete", "CaseSay", "AgentInvite"}, set(kept))
         limited = kept["AgentInvite"]["function"]
-        self.assertEqual([names[0]], limited["parameters"]["properties"]["target"]["enum"])
+        self.assertEqual(names[:2], limited["parameters"]["properties"]["target"]["enum"])
         self.assertEqual(
-            [names[0]],
+            names[:2],
             limited["parameters"]["$defs"]["_AdditionalAssignment"]["properties"]["target"]["enum"],
         )
         self.assertNotIn("Travel", limited["description"])
         self.assertEqual(names, invite["function"]["parameters"]["properties"]["target"]["enum"])  # not mutated
-        prompt = await middleware.on_system_prompt(None, "Bạn là điều phối.")
+        prompt = await middleware.on_system_prompt(None, "Bạn là Leader.")
         self.assertIn("PHÒNG XỬ LÝ", prompt)
+        self.assertIn(f"{names[0]} (điều phối của đối tác) luôn có mặt", prompt)
+        self.assertIn("Gọi cư dân là bạn.", prompt)
 
     async def test_a_declared_member_in_the_ticket_room_gets_its_tools_under_the_case(self):
         from agentscope.app.workforce.integrations.unified._case import CaseRuntime, PartnerMemberMiddleware
@@ -1019,6 +1048,21 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         offered = [{"type": "function", "function": {"name": n}} for n in ("TeamSay", "CaseSay", "vh_ticket_get", "Bash")]
         await member.on_model_call(None, {"tools": offered}, next_handler)
         self.assertEqual(["TeamSay", "vh_ticket_get"], [t["function"]["name"] for t in seen["tools"]])
+
+
+class PartnerFactTest(unittest.TestCase):
+    def test_a_partner_result_enters_the_room_as_a_labelled_preview(self):
+        from agentscope.app._service._chat import _PARTNER_FACT_CHARS, _partner_fact
+        from agentscope.message import ToolCallBlock, ToolResultBlock
+
+        call = ToolCallBlock(id="c1", name="vh_ticket_get", input='{"ticket_id": "T-77"}')
+        short = ToolResultBlock(id="c1", name="vh_ticket_get", output=[TextBlock(text='E4: {"ticket_status": "open"}')])
+        self.assertEqual('vh_ticket_get {"ticket_id": "T-77"}\nE4: {"ticket_status": "open"}', _partner_fact(call, short))
+        long = ToolResultBlock(id="c1", name="vh_ticket_get", output="E5: " + "x" * 5000)
+        fact = _partner_fact(call, long)
+        self.assertIn("E5: ", fact)
+        self.assertTrue(fact.endswith("bản đầy đủ theo mã E ở đầu)"))
+        self.assertLess(len(fact), _PARTNER_FACT_CHARS + 60)
 
 
 class CheckSayTest(unittest.TestCase):

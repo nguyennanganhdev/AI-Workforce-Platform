@@ -41,6 +41,22 @@ PASS_THRESHOLD = 0.8
 MIN_TESTS_TO_PUBLISH = 3
 
 
+_MODEL_ERRORS = {
+    "quota": "Tài khoản model hết credit — nạp tiền cho API key hoặc đổi credential.",
+    "authentication": "API key của model không hợp lệ — kiểm tra credential.",
+    "rate_limit": "Model đang giới hạn tốc độ — thử lại sau ít phút.",
+    "connection": "Không kết nối được tới model.",
+}
+
+
+def _model_error(exc: Exception) -> str:
+    """Why the model could not be called, for the manager (no raw text)."""
+    from ._errors import _classify_type
+
+    kind = _classify_type(exc).value
+    return _MODEL_ERRORS.get(kind, f"Không gọi được model ({kind}).")
+
+
 class _Judgement(BaseModel):
     passed: bool
     reason: str = Field(description="One or two sentences in Vietnamese.")
@@ -220,26 +236,31 @@ async def run_spec_tests(
                     run_tool=run_tool,
                     read_only=read_only,
                 )
-            except Exception as exc:  # noqa: BLE001 - a failed case is a result
+            except Exception as exc:  # noqa: BLE001 - a model failure is not a test result
                 logger.exception("Agent test %s failed to run", test.id)
+                error = _model_error(exc)
                 return {
                     "test_id": test.id,
                     "scenario": test.scenario,
                     "passed": False,
+                    "error": error,
                     "checks": [],
-                    "judge": {"passed": False, "reason": f"Không chạy được: {exc}"},
+                    "judge": {"passed": False, "reason": f"Không chạy được: {error}"},
                     "answer": "",
                     "tool_calls": [],
                 }
             checks = deterministic_checks(test, transcript)
             verdict = None
+            error = None
             if judge_model is not None:
                 try:
                     verdict = (await judge(judge_model, spec, test, transcript)).model_dump()
                 except Exception as exc:  # noqa: BLE001
-                    verdict = {"passed": False, "reason": f"Không chấm được: {exc}"}
+                    error = _model_error(exc)
+                    verdict = {"passed": False, "reason": f"Không chấm được: {error}"}
             passed = all(c["passed"] for c in checks) and (verdict is None or verdict["passed"])
             return {
+                **({"error": error} if error else {}),
                 "test_id": test.id,
                 "scenario": test.scenario,
                 "expected": test.expected,
@@ -253,13 +274,17 @@ async def run_spec_tests(
     passed = sum(item["passed"] for item in results)
     total = len(results)
     rate = round(passed / total, 3) if total else 0.0
+    # A scenario the model could not play says nothing about the agent.
+    errors = [item["error"] for item in results if item.get("error")]
     return {
         "spec_hash": spec_hash(spec),
         "ran_at": datetime.now(UTC).isoformat(),
         "total": total,
         "passed": passed,
         "pass_rate": rate,
-        "publishable": total >= MIN_TESTS_TO_PUBLISH and rate >= PASS_THRESHOLD,
+        "errors": len(errors),
+        "model_error": errors[0] if errors else None,
+        "publishable": not errors and total >= MIN_TESTS_TO_PUBLISH and rate >= PASS_THRESHOLD,
         "results": results,
     }
 

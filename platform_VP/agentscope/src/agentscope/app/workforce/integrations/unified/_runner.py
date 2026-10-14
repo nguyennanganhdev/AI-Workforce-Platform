@@ -376,49 +376,37 @@ class ChatLeaderTurnRunner:
     # ------------------------------------------------------- partner case
 
     async def _case_session(self, user_id: str, scope: Any, workflow: Any, route: dict, session_ref: str) -> Any:
-        """The route leader's own session for this workflow, version pinned."""
+        """The ticket's own session of the manager's Leader (the console
+        Leader): the ticket shows on the Leader page with its room."""
 
+        from ...._router._workforce_console import _leader
         from ....storage import SessionConfig
 
         state = self._state()
         storage = state.storage
-        agent_id = route["leader_agent_id"]
-        session = await storage.get_session(user_id, agent_id, session_ref)
+        leader, primary = await _leader(user_id, storage, state.workspace_manager)
+        session = await storage.get_session(user_id, leader.id, session_ref)
         if session is not None:
             return session
-        agent = await storage.get_agent(user_id, agent_id)
-        if agent is None:
-            raise RuntimeError(f"route leader agent {agent_id} is missing")
-        primary = await storage.list_sessions(user_id, agent_id)
-        model = primary[0].config.chat_model_config if primary else None
+        ticket = workflow.audience.external_ticket_id or workflow.workflow_id
         session = await storage.upsert_session(
             user_id=user_id,
-            agent_id=agent_id,
+            agent_id=leader.id,
             config=SessionConfig(
                 workspace_id=session_ref,
-                name=f"Partner ticket {workflow.audience.external_ticket_id or workflow.workflow_id}",
-                chat_model_config=model,
+                name=f"Phiếu đối tác {ticket}",
+                chat_model_config=primary.config.chat_model_config,
             ),
             session_id=session_ref,
         )
-        version = int(agent.data.published_version or 0)
-        if version:
-            session.state.middle_context["agent_version"] = version
-            await storage.upsert_session(
-                user_id=user_id,
-                agent_id=agent_id,
-                config=session.config,
-                state=session.state,
-                session_id=session.id,
-            )
         workspace = await state.workspace_manager.get_workspace(
-            user_id, agent_id, session.id, session.config.workspace_id,
+            user_id, leader.id, session.id, session.config.workspace_id,
         )
-        # The route's tools reach the leader through the case middleware only.
-        for client in await workspace.list_mcps(agent_id=agent_id, session_id=session.id):
-            await workspace.remove_mcp(client.name, agent_id=agent_id, session_id=session.id)
+        # The Leader orchestrates; the route's tools belong to the room's members.
+        for client in await workspace.list_mcps(agent_id=leader.id, session_id=session.id):
+            await workspace.remove_mcp(client.name, agent_id=leader.id, session_id=session.id)
         for default_mcp in workspace.default_mcps:
-            await workspace.remove_mcp(default_mcp.name, agent_id=agent_id, session_id=session.id)
+            await workspace.remove_mcp(default_mcp.name, agent_id=leader.id, session_id=session.id)
         await self._case.store.bind_session(
             {
                 "session_id": session.id,
@@ -426,12 +414,19 @@ class ChatLeaderTurnRunner:
                 "route_id": route["route_id"],
                 "manager_account_id": user_id,
                 "scope": scope.model_dump(mode="json"),
-                "agent_id": agent_id,
-                "agent_version": version,
+                "agent_id": leader.id,
+                "agent_version": 0,
                 "trigger_id": None,
             },
         )
         return session
+
+    async def _wait_for_say(self, workflow_id: str, trigger_id: str) -> None:
+        deadline = time.monotonic() + self._wait_seconds
+        while time.monotonic() < deadline:
+            if await self._case.store.entries(workflow_id, kind="say", trigger_id=trigger_id):
+                return
+            await asyncio.sleep(1.0)
 
     async def _case_turn(self, scope, trigger, context, route: dict) -> TurnDecision:
         state = self._state()
@@ -439,10 +434,10 @@ class ChatLeaderTurnRunner:
         user_id = scope.manager_account_id
         workflow = context.workflow
         store = self._case.store
-        agent_id = route["leader_agent_id"]
         session = await self._case_session(
             user_id, scope, workflow, route, context.checkpoint.session_refs[0],
         )
+        agent_id = session.agent_id
         trigger_id = trigger["trigger_id"]
         await store.set_trigger(session.id, trigger_id)
         cause = trigger.get("cause") or {}
@@ -469,7 +464,11 @@ class ChatLeaderTurnRunner:
                         ),
                     ],
                 )
-                await state.chat_service.run(user_id, session.id, agent_id, decision)
+                # A member's parked call resumes in its own session; its
+                # report then wakes the Leader, who speaks within this turn.
+                await state.chat_service.run(user_id, action.session_id, action.agent_id, decision)
+                if action.session_id != session.id:
+                    await self._wait_for_say(workflow.workflow_id, trigger_id)
                 ran = True
             approval_ids = [item for item in approval_ids if item != cause["approval_id"]]
         else:

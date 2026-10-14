@@ -391,8 +391,9 @@ class PartnerOnboardingTest(UnifiedOnboardingTest):
         self.assertEqual(["vh_ticket_get", "vh_work_order_dispatch"], body["tools"])
         self.assertEqual("pending_confirmation", body["routes"][0]["status"])
         self.assertEqual(1, body["leader_version"])
+        # The declared leader profile is the coordinator the platform Leader invites.
         leader = self.storage.agents[body["leader_agent_id"]]
-        self.assertFalse(leader.data.invite_config.invitable)
+        self.assertTrue(leader.data.invite_config.invitable)
         self.assertIn("Luôn kết thúc lượt bằng CaseSay.", leader.data.system_prompt)
         mcp = next(iter(self.storage.mcps.values()))
         self.assertEqual("Bearer " + "t" * 40, mcp.client.mcp_config.headers["Authorization"])
@@ -448,7 +449,7 @@ class PartnerOnboardingTest(UnifiedOnboardingTest):
         await self.business.authenticate_partner_api_key(renewed["customer_key"])
         await self.business.authenticate_partner_api_key(renewed["provider_key"])
 
-    async def test_member_profiles_become_agents_the_route_leader_may_invite(self):
+    async def test_partner_profiles_become_agents_the_leader_may_invite(self):
         import copy
         import json
 
@@ -464,12 +465,20 @@ class PartnerOnboardingTest(UnifiedOnboardingTest):
         agent = self.storage.agents[member["agent_id"]]
         self.assertTrue(agent.data.invite_config.invitable)
         self.assertEqual("đánh giá kỹ thuật của sự cố", agent.data.invite_config.invite_description)
-        self.assertFalse(self.storage.agents[answer.json()["leader_agent_id"]].data.invite_config.invitable)
+        coordinator = answer.json()["leader_agent_id"]
+        self.assertTrue(self.storage.agents[coordinator].data.invite_config.invitable)
         async with self.engine.connect() as connection:
             config = (await connection.execute(text("SELECT config FROM wf_unified_routes"))).scalar()
         config = json.loads(config) if isinstance(config, str) else config
         self.assertEqual(
-            {member["agent_id"]: {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]}},
+            {
+                coordinator: {
+                    "name": DECLARATION["profiles"][0]["name"],
+                    "tools": ["vh_ticket_get", "vh_work_order_dispatch"],
+                    "coordinator": True,
+                },
+                member["agent_id"]: {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]},
+            },
             config["member_agents"],
         )
         # A member works under the ticket's grant, which covers the route's tools only.

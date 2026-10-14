@@ -1,11 +1,14 @@
 """Scripted model for the room scenario (see drive_room.py). No real model.
 
-Leader (system prompt has PARTNER CASE POLICY):
-  handover            -> TeamCreate -> AgentInvite(first member, with the ticket id) -> end of reply
-  "Thành viên đã báo về" (the runtime's nudge after the member reported)
-                      -> vh_work_order_dispatch -> CaseSay citing the member's evidence label -> end
-Member (system prompt has PARTNER CASE MEMBER POLICY):
-  assignment          -> vh_ticket_get -> TeamSay(kind="result", with the E label) -> end
+Leader (the console Leader; system prompt has PARTNER CASE POLICY):
+  handover            -> TeamCreate -> AgentInvite(KyThuat: assess; DieuPhoi: dispatch, depends_on KyThuat)
+                      -> end of reply
+  "Thành viên đã báo về" (the runtime's nudge once the room reported)
+                      -> CaseSay citing every E label of the reports -> end
+  provider event      -> CaseSay(expects="confirmation") -> end
+Members (system prompt has PARTNER CASE MEMBER POLICY), told apart by their tools:
+  KyThuat  (vh_ticket_get only)          -> vh_ticket_get -> TeamSay(result with its E label)
+  DieuPhoi (has vh_work_order_dispatch)  -> vh_work_order_dispatch -> TeamSay(result, E label, proposed sentence)
 """
 
 import json
@@ -41,19 +44,16 @@ def _ticket(messages) -> str:
     return found.group(1) if found else "unknown"
 
 
-def _member_label(messages) -> str | None:
-    """The E label the member's report cites (it is in the leader's inbox)."""
-    for message in reversed(messages):
-        found = re.search(r"Bằng chứng (E\d+)", _text(message))
-        if found:
-            return found.group(1)
-    return None
+def _report_labels(messages) -> list[str]:
+    """The E labels the members' reports cite (they are in the Leader's inbox)."""
+    found = re.findall(r"Bằng chứng (E\d+)", json.dumps(messages, ensure_ascii=False))
+    return list(dict.fromkeys(found))
 
 
 def _effective(messages):
     """Drop what the runtime appends after each step (the Shared Context packet,
     system reminders) so the script reacts to the last real step; the runtime's
-    nudge after a member's report is kept."""
+    nudge after the members' reports is kept."""
     out = list(messages)
     while out and (out[-1].get("name") == "shared_context" or (
             _text(out[-1]).startswith("<system-reminder>") and "Thành viên đã báo về" not in _text(out[-1]))):
@@ -68,34 +68,40 @@ def _leader(messages, tools):
     tail = " ".join(_text(m) for m in messages[-3:])
     if last.get("role") == "tool":
         name = _last_tool(messages)
-        label = (re.match(r"\s*(E\d+):", _text(last)) or [None, None])[1]
         if name == "TeamCreate":
             invite = next(t for t in tools if t["function"]["name"] == "AgentInvite")
-            target = invite["function"]["parameters"]["properties"]["target"]["enum"][0]
+            targets = invite["function"]["parameters"]["properties"]["target"]["enum"]
+            expert = next(t for t in targets if "KyThuat" in t)
+            coordinator = next(t for t in targets if "DieuPhoi" in t)
             return ("tool", "AgentInvite", {
-                "target": target,
-                "prompt": f"ticket_id: {_ticket(messages)}\nĐánh giá sự cố ổ cắm có mùi khét, cần chuyên môn gì.",
+                "target": expert,
+                "prompt": f"ticket_id: {_ticket(messages)}\nĐánh giá sự cố, cần thợ chuyên môn gì.",
                 "done_when": "Có kết luận kèm mã E của kết quả công cụ.",
+                "additional_assignments": [{
+                    "target": coordinator,
+                    "prompt": f"ticket_id: {_ticket(messages)}\nGiao việc cho nhân viên theo đánh giá kỹ thuật, "
+                              "báo lại kèm mã E và câu đề xuất gửi người dùng.",
+                    "done_when": "Đã giao việc, có mã E của kết quả giao việc.",
+                    "depends_on": [expert],
+                }],
             })
         if name == "AgentInvite":
-            return ("text", "Đã giao cho chuyên viên, chờ báo cáo.", None)
-        if name == "vh_work_order_dispatch":
-            cites = [x for x in (_member_label(everything), label) if x]
-            return ("tool", "CaseSay", {
-                "text": "Chào anh/chị, chuyên viên kỹ thuật đã đánh giá sự cố và yêu cầu đã được gửi cho thợ điện, đang chờ người nhận.",
-                "expects": "none",
-                "cites": cites,
-            })
+            return ("text", "Đã giao việc cho phòng, chờ báo cáo.", None)
         return ("text", "Xong lượt.", None)
     if "Thành viên đã báo về" in tail:
-        return ("tool", "vh_work_order_dispatch", {"ticket_id": _ticket(messages), "description": "Kiểm tra ổ cắm bếp có mùi khét"})
+        return ("tool", "CaseSay", {
+            "text": "Chào bạn, chuyên viên kỹ thuật đã đánh giá sự cố và yêu cầu đã được gửi cho thợ, đang chờ người nhận.",
+            "expects": "none",
+            "cites": _report_labels(everything),
+        })
     if "Sự kiện" in _text(last):
-        return ("tool", "CaseSay", {"text": "Đã có cập nhật, anh/chị xác nhận giúp tôi.", "expects": "confirmation", "cites": []})
-    return ("tool", "TeamCreate", {"name": "Phòng phiếu", "description": "Đánh giá kỹ thuật trước khi giao việc"})
+        return ("tool", "CaseSay", {"text": "Đã có kết quả, bạn xác nhận hoàn thành giúp tôi.", "expects": "confirmation", "cites": []})
+    return ("tool", "TeamCreate", {"name": "Phòng phiếu", "description": "Đánh giá kỹ thuật rồi giao việc"})
 
 
-def _member(messages):
+def _member(messages, tools):
     ticket = _ticket(messages)  # the assignment arrives as a system reminder
+    names = {t["function"]["name"] for t in tools}
     messages = _effective(messages)
     last = messages[-1]
     if last.get("role") == "tool":
@@ -106,7 +112,15 @@ def _member(messages):
                 "kind": "result",
                 "content": f"Kết luận: cần thợ điện kiểm tra ổ cắm và aptomat. Bằng chứng {label}.",
             })
-        return ("text", "Đã báo leader.", None)
+        if name == "vh_work_order_dispatch":
+            return ("tool", "TeamSay", {
+                "kind": "result",
+                "content": f"Đã giao việc cho thợ, đang chờ người nhận. Bằng chứng {label}. "
+                           "Đề xuất: Yêu cầu của bạn đã được gửi cho thợ, đang chờ người nhận.",
+            })
+        return ("text", "Đã báo Leader.", None)
+    if "vh_work_order_dispatch" in names:
+        return ("tool", "vh_work_order_dispatch", {"ticket_id": ticket, "description": "Kiểm tra ổ cắm bếp có mùi khét"})
     return ("tool", "vh_ticket_get", {"ticket_id": ticket})
 
 
@@ -121,10 +135,15 @@ async def chat(request: Request):
     messages, tools = body["messages"], body.get("tools") or []
     system = " ".join(_text(m) for m in messages if m.get("role") == "system")
     role = "member" if "PARTNER CASE MEMBER POLICY" in system else "leader" if "PARTNER CASE POLICY" in system else "other"
-    kind, name, args = _member(messages) if role == "member" else _leader(messages, tools) if role == "leader" else ("text", "ok", None)
+    if role == "member":
+        kind, name, args = _member(messages, tools)
+    elif role == "leader":
+        kind, name, args = _leader(messages, tools)
+    else:
+        kind, name, args = "text", "ok", None
     tail = [[m.get("role"), m.get("name"), _text(m)[:60]] for m in messages[-3:]]
-    print(json.dumps({"role": role, "tools": [t["function"]["name"] for t in tools], "decision": [kind, name, args],
-                      "tail": tail}, ensure_ascii=False), flush=True)
+    print(json.dumps({"role": role, "model": body.get("model"), "tools": [t["function"]["name"] for t in tools],
+                      "decision": [kind, name, args], "tail": tail}, ensure_ascii=False), flush=True)
     created, cid = int(time.time()), "chatcmpl-" + uuid.uuid4().hex[:12]
     if kind == "tool":
         call = {"index": 0, "id": "call_" + uuid.uuid4().hex[:10], "type": "function",

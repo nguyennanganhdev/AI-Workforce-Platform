@@ -152,9 +152,11 @@ export function AgentDetailPage() {
 			setReport(value);
 			const refreshed = await studioApi.getAgent(agentId);
 			apply(refreshed);
-			toast[value.publishable ? 'success' : 'warning'](
-				`Kiểm thử: ${value.passed}/${value.total} kịch bản đạt.`,
-			);
+			if (value.errors) toast.error(`Chưa kiểm thử được: ${value.model_error}`);
+			else
+				toast[value.publishable ? 'success' : 'warning'](
+					`Kiểm thử: ${value.passed}/${value.total} kịch bản đạt.`,
+				);
 		}
 	};
 
