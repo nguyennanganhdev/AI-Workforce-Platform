@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { ActivityDialog } from './activity';
 import { PartnerRoutesDialog } from './partner-routes';
 import { studioApi } from '@/api';
 import type { AgentSummary, AgentTemplate } from '@/api';
@@ -198,6 +199,7 @@ export function AgentManagementPage() {
 						</p>
 					</div>
 					<div className="flex gap-2">
+						<ActivityDialog />
 						<PartnerRoutesDialog />
 						<Button onClick={() => setCreating(true)}>
 							<Plus /> Tạo agent

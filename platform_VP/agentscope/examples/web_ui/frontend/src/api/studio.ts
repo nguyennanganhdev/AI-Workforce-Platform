@@ -203,6 +203,20 @@ export interface AgentMemory {
 	updated_at: string;
 }
 
+export interface AgentActivity {
+	agent_id: string;
+	name: string;
+	role: 'leader' | 'business';
+	model_tier: string;
+	tickets: number;
+	/** A reply may take several model calls; its tokens cover them all. */
+	replies: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	output_tokens: number;
+	last_at: string | null;
+}
+
 export interface PartnerRoute {
 	route_id: string;
 	partner_client_id: string;
@@ -217,6 +231,7 @@ const agentPath = (id: string) => `${base}/agents/${encodeURIComponent(id)}`;
 
 export const studioApi = {
 	listAgents: () => client.get<AgentSummary[]>(`${base}/agents`),
+	activity: () => client.get<AgentActivity[]>(`${base}/activity`),
 	getAgent: (id: string) => client.get<AgentDetail>(agentPath(id)),
 	create: (body: { template_id?: string; clone_from?: string; spec?: AgentSpec }) =>
 		client.post<AgentDetail>(`${base}/agents`, body),
