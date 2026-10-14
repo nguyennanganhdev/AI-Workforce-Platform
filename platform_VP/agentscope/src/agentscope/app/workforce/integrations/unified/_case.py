@@ -530,7 +530,13 @@ class PartnerTool(ToolBase):
             f"{self.name}: {text}"[:EVIDENCE_TEXT],
             trigger_id=await self._case.trigger_id(),
         )
-        return ToolChunk(content=[TextBlock(text=f"E{label}: {text}")], state=state)
+        # A call to the partner's MCP under another name: in a ticket's room
+        # its result is verified evidence like any MCP result (see ChatService).
+        return ToolChunk(
+            content=[TextBlock(text=f"E{label}: {text}")],
+            state=state,
+            metadata={"external_evidence": True},
+        )
 
     async def _track(self, reference: str, text: str) -> None:
         try:
