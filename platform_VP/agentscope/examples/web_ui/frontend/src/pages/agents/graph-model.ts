@@ -105,8 +105,8 @@ export function sampleMetrics(agent: GraphAgent): AgentMetrics {
 	};
 }
 
-const AGENT_X = 680;
-const AGENT_GAP = 116;
+const AGENT_X = 560;
+const AGENT_GAP = 64;
 const SUPERVISOR_ID = 'leader';
 /** Sample count of plans waiting on the manager. */
 const PENDING_APPROVALS = 2;
@@ -132,7 +132,7 @@ export function buildGraph(
 		{
 			id: 'resident',
 			type: 'entry',
-			position: { x: 0, y: centre - 44 },
+			position: { x: 0, y: centre - 30 },
 			data: {
 				kind: 'entry',
 				delay: 0,
@@ -144,7 +144,7 @@ export function buildGraph(
 		{
 			id: 'manager',
 			type: 'entry',
-			position: { x: 0, y: centre + 56 },
+			position: { x: 0, y: centre + 34 },
 			data: {
 				kind: 'entry',
 				delay: 60,
@@ -156,7 +156,7 @@ export function buildGraph(
 		{
 			id: SUPERVISOR_ID,
 			type: 'supervisor',
-			position: { x: 290, y: centre },
+			position: { x: 230, y: centre - 4 },
 			data: {
 				kind: 'supervisor',
 				delay: 160,
@@ -168,7 +168,7 @@ export function buildGraph(
 		{
 			id: 'approval',
 			type: 'human',
-			position: { x: 316, y: centre + 210 },
+			position: { x: 260, y: centre + 120 },
 			data: {
 				kind: 'human',
 				delay: 320,

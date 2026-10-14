@@ -71,25 +71,21 @@ const EntryNode = memo(function EntryNode({ data }: NodeProps<FlowNode & { data:
 	const Icon = data.icon === 'resident' ? UsersRound : UserRound;
 	return (
 		<div
-			className={cn('ag-node-in flex w-[184px] items-center gap-3 px-3 py-2.5', CARD)}
+			className={cn('ag-node-in flex w-[148px] items-center gap-2.5 py-2 pr-3 pl-2', CARD)}
 			style={stage(data.delay)}
+			title={data.note}
 		>
 			<span
 				className={cn(
-					'flex size-9 shrink-0 items-center justify-center rounded-full',
+					'flex size-7 shrink-0 items-center justify-center rounded-full',
 					data.icon === 'manager'
 						? 'bg-[var(--cue-avatar-user,#e5484d)] text-white'
 						: 'bg-[var(--cue-bg-subtle,#f4f4f4)] text-[var(--cue-text-secondary,#6b6b6b)]',
 				)}
 			>
-				<Icon className="size-4" />
+				<Icon className="size-3.5" />
 			</span>
-			<span className="min-w-0">
-				<span className="block truncate text-[14px]/5 font-semibold">{data.title}</span>
-				<span className="block truncate text-[12px]/4 text-[var(--cue-text-secondary,#6b6b6b)]">
-					{data.note}
-				</span>
-			</span>
+			<span className="truncate text-[13px]/5 font-semibold">{data.title}</span>
 			<Handle
 				type="source"
 				position={Position.Right}
@@ -100,56 +96,49 @@ const EntryNode = memo(function EntryNode({ data }: NodeProps<FlowNode & { data:
 	);
 });
 
+/**
+ * One row: who it is and what it is doing. The description, the figures and
+ * whether the Leader can reach it are in the inspector, a click away.
+ */
 const AgentNode = memo(function AgentNode({ data }: NodeProps<FlowNode & { data: AgentData }>) {
 	const { t } = useTranslation();
 	const { agent, metrics } = data;
 	const busy = metrics.running > 0;
 	return (
-		<div className={cn('ag-node-in w-[248px] p-3', CARD)} style={stage(data.delay)}>
+		<div
+			className={cn('ag-node-in flex w-[232px] items-center gap-2.5 py-2 pr-2 pl-2', CARD)}
+			style={stage(data.delay)}
+		>
 			<Handle type="target" position={Position.Left} className={PORT} isConnectable={false} />
-			<div className="flex items-center gap-3">
-				<span className="relative shrink-0">
-					<ClayAvatar id={agent.id} label={agent.name} size={40} />
-					{/* Green and breathing: working. Grey: not yet open to the Leader. */}
-					<span
-						className={cn(
-							'absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-white',
-							busy
-								? 'ag-ping bg-[var(--cue-success,#34c759)]'
-								: agent.invitable
-									? 'bg-[#cfcfcf]'
-									: 'bg-[var(--amber-ink,#8a5a00)]',
-						)}
-					/>
-				</span>
-				<span className="min-w-0 flex-1">
-					<span className="block truncate text-[14px]/5 font-semibold">{agent.name}</span>
-					<span className="block truncate text-[12px]/4 text-[var(--cue-text-secondary,#6b6b6b)]">
-						{agent.role || t('agents.list.noDescription')}
-					</span>
-				</span>
-			</div>
-			<div className="mt-3 flex items-center justify-between gap-2 text-[12px]/4">
+			<span className="relative shrink-0">
+				<ClayAvatar id={agent.id} label={agent.name} size={32} />
+				{/* Green and breathing: working. Grey: idle. Amber: not yet open to the Leader. */}
 				<span
-					className={
-						agent.invitable
-							? 'text-[var(--cue-text-tertiary,#a8a8a8)]'
-							: 'font-medium text-[var(--amber-ink,#8a5a00)]'
-					}
-				>
-					{agent.invitable ? t('agents.graph.invitable') : t('agents.graph.notInvitable')}
+					className={cn(
+						'absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-white',
+						busy
+							? 'ag-ping bg-[var(--cue-success,#34c759)]'
+							: agent.invitable
+								? 'bg-[#cfcfcf]'
+								: 'bg-[var(--amber-ink,#8a5a00)]',
+					)}
+				/>
+			</span>
+			<span className="min-w-0 flex-1 truncate text-[13px]/5 font-semibold">{agent.name}</span>
+			{busy ? (
+				<span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-[var(--cue-blue-soft,#e8f1fd)] px-2 text-[12px] font-semibold text-[var(--cue-blue,#2f80ed)]">
+					<Activity />
+					{t('agents.graph.sessionCount', { count: metrics.running })}
 				</span>
-				{busy ? (
-					<span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-[var(--cue-blue-soft,#e8f1fd)] px-2.5 font-semibold text-[var(--cue-blue,#2f80ed)]">
-						<Activity />
-						{t('agents.graph.sessionCount', { count: metrics.running })}
-					</span>
-				) : (
-					<span className="inline-flex h-6 items-center rounded-full bg-[var(--cue-bg-subtle,#f4f4f4)] px-2.5 text-[var(--cue-text-secondary,#6b6b6b)]">
-						{t('agents.graph.idle')}
-					</span>
-				)}
-			</div>
+			) : agent.invitable ? (
+				<span className="inline-flex h-6 shrink-0 items-center rounded-full bg-[var(--cue-bg-subtle,#f4f4f4)] px-2 text-[12px] text-[var(--cue-text-secondary,#6b6b6b)]">
+					{t('agents.graph.idle')}
+				</span>
+			) : (
+				<span className="inline-flex h-6 shrink-0 items-center rounded-full bg-[var(--amber-soft,#fdf4e3)] px-2 text-[12px] font-medium text-[var(--amber-ink,#8a5a00)]">
+					{t('agents.graph.notInvitableShort')}
+				</span>
+			)}
 		</div>
 	);
 });
@@ -164,9 +153,8 @@ const SupervisorNode = memo(function SupervisorNode({
 		<div className="ag-node-in" style={stage(data.delay)}>
 			<div className="ag-leader" data-idle={busy ? undefined : ''}>
 				<div
-					className={cn(
-						'ag-card w-[260px] rounded-[20px] border border-white/10 bg-[#1a1a1a] p-3.5 text-white',
-					)}
+					className="ag-card flex w-[208px] items-center gap-3 rounded-[20px] border border-white/10 bg-[#1a1a1a] p-2.5 pr-3.5 text-white"
+					title={data.note}
 				>
 					<Handle
 						type="target"
@@ -174,33 +162,23 @@ const SupervisorNode = memo(function SupervisorNode({
 						className={PORT}
 						isConnectable={false}
 					/>
-					<div className="flex items-center gap-3">
-						<ClayAvatar id="leader" label="Leader" size={44} />
-						<span className="min-w-0 flex-1">
-							<span className="block truncate text-[15px]/5 font-semibold">
-								{data.title}
-							</span>
-							<span className="block truncate text-[12px]/4 text-white/60">
-								{data.note}
-							</span>
-						</span>
-					</div>
-					<div className="mt-3 flex items-center justify-between rounded-xl bg-white/[0.06] px-3 py-2 text-[12px]/4">
-						<span className="flex items-center gap-2 text-white/70">
+					<ClayAvatar id="leader" label="Leader" size={36} />
+					<span className="min-w-0 flex-1">
+						<span className="block truncate text-[14px]/5 font-semibold">{data.title}</span>
+						<span className="flex items-center gap-1.5 text-[12px]/4 text-white/70">
 							<span
 								className={cn(
-									'size-2 rounded-full',
+									'size-1.5 rounded-full',
 									busy
 										? 'ag-ping relative bg-[var(--cue-success,#34c759)]'
 										: 'bg-white/30',
 								)}
 							/>
-							{busy ? t('agents.graph.legendLive') : t('agents.graph.idle')}
+							{busy
+								? t('agents.graph.sessionCount', { count: data.running })
+								: t('agents.graph.idle')}
 						</span>
-						<span className="font-semibold tabular-nums">
-							{t('agents.graph.sessionCount', { count: data.running })}
-						</span>
-					</div>
+					</span>
 					<Handle
 						type="source"
 						position={Position.Right}
@@ -225,24 +203,24 @@ const HumanNode = memo(function HumanNode({ data }: NodeProps<FlowNode & { data:
 	return (
 		<div
 			className={cn(
-				'ag-node-in flex w-[208px] items-center gap-3 px-3 py-2.5',
+				'ag-node-in flex w-[148px] items-center gap-2.5 py-2 pr-3 pl-2',
 				CARD,
 				'border-[#f3e2bd] bg-[var(--amber-soft,#fdf4e3)]',
 			)}
 			style={stage(data.delay)}
+			title={data.note}
 		>
 			<Handle type="target" position={Position.Top} className={PORT} isConnectable={false} />
-			<span className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-[var(--amber-ink,#8a5a00)]">
-				<ShieldCheck className="size-4" />
+			<span className="relative flex size-7 shrink-0 items-center justify-center rounded-full bg-white text-[var(--amber-ink,#8a5a00)]">
+				<ShieldCheck className="size-3.5" />
 				{data.count > 0 && (
 					<span className="ag-ping absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-[#e8a317] text-[10px] font-bold text-white">
 						<span className="relative z-10">{data.count}</span>
 					</span>
 				)}
 			</span>
-			<span className="min-w-0 text-[var(--amber-ink,#8a5a00)]">
-				<span className="block truncate text-[14px]/5 font-semibold">{data.title}</span>
-				<span className="block truncate text-[12px]/4 opacity-80">{data.note}</span>
+			<span className="truncate text-[13px]/5 font-semibold text-[var(--amber-ink,#8a5a00)]">
+				{data.title}
 			</span>
 		</div>
 	);

@@ -222,6 +222,7 @@
 		"create": "创建智能体",
 		"view": {
 			"graph": "拓扑图",
+			"office": "办公室",
 			"list": "列表",
 			"library": "资源库"
 		},
@@ -270,6 +271,7 @@
 			"idle": "空闲",
 			"invitable": "Leader 可选用",
 			"notInvitable": "未开启邀请",
+			"notInvitableShort": "未开启邀请",
 			"invitableHelp": "当请求需要时，Leader 可以把这个智能体加入会话。",
 			"notInvitableHelp": "该智能体未开启“允许被邀请”，Leader 无法将其加入会话。请在编辑的“邀请配置”中开启。",
 			"inspectorSessions": "今日会话",
@@ -294,6 +296,38 @@
 			"credential": {
 				"title": "凭证",
 				"description": "模型与服务的访问密钥。"
+			}
+		},
+		"office": {
+			"sample": "办公室按演示脚本运行，尚未接入真实会话数据",
+			"sampleAll": "办公室中的智能体和活动均为示例数据",
+			"phase": {
+				"idle": "大家都在工位",
+				"request": "新请求",
+				"call": "Leader 召集开会",
+				"meeting": "会议中",
+				"return": "回到工位",
+				"work": "处理中",
+				"collab": "协作中",
+				"approval": "等待你审批",
+				"done": "已完成"
+			},
+			"play": "继续",
+			"pause": "暂停",
+			"speed": "速度",
+			"restart": "重新开始",
+			"log": "动态",
+			"rooms": {
+				"meeting": "会议室",
+				"approval": "你的办公室 · 审批",
+				"reception": "接待台",
+				"workspace": "办公区"
+			},
+			"status": {
+				"idle": "在工位空闲",
+				"working": "正在处理任务",
+				"off": "未开启可被邀请，不参加会议",
+				"walking": "走动中"
 			}
 		}
 	},

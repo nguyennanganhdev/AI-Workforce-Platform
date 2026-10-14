@@ -222,6 +222,7 @@
 		"create": "Create agent",
 		"view": {
 			"graph": "Graph",
+			"office": "Office",
 			"list": "List",
 			"library": "Library"
 		},
@@ -270,6 +271,7 @@
 			"idle": "idle",
 			"invitable": "Leader can pick",
 			"notInvitable": "Invites off",
+			"notInvitableShort": "Not invitable",
 			"invitableHelp": "The Leader can bring this agent into a session when a request needs it.",
 			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
 			"inspectorSessions": "Sessions today",
@@ -294,6 +296,38 @@
 			"credential": {
 				"title": "Credentials",
 				"description": "Access keys for models and services."
+			}
+		},
+		"office": {
+			"sample": "The office runs a demo script, not live session data yet",
+			"sampleAll": "The agents and activity in the office are sample data",
+			"phase": {
+				"idle": "Everyone at their desks",
+				"request": "New request",
+				"call": "Leader calls a meeting",
+				"meeting": "In a meeting",
+				"return": "Heading back to desks",
+				"work": "Working",
+				"collab": "Collaborating",
+				"approval": "Waiting for your approval",
+				"done": "Done"
+			},
+			"play": "Resume",
+			"pause": "Pause",
+			"speed": "Speed",
+			"restart": "Restart",
+			"log": "Activity",
+			"rooms": {
+				"meeting": "Meeting room",
+				"approval": "Your office · Approval",
+				"reception": "Reception",
+				"workspace": "Workspace"
+			},
+			"status": {
+				"idle": "Idle at desk",
+				"working": "Working on a task",
+				"off": "Not invitable, skips meetings",
+				"walking": "Walking"
 			}
 		}
 	},
