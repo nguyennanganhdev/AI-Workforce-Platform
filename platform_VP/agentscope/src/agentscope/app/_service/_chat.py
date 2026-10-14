@@ -1407,12 +1407,20 @@ class ChatService:
                         status_code=404,
                         detail=(f"No model configuration found for agent {agent_id}"),
                     )
+                base_model_cfg = model_cfg
                 model_cfg = _role_model_config(
                     model_cfg,
                     agent_record.data.system_role,
                     str((agent_record.data.spec or {}).get("model_tier", "standard")),
                 )
                 model = await get_model(user_id, model_cfg, self._access)
+                # History summaries are bookkeeping: when this agent runs on
+                # the strong model, write them with the session's base model.
+                summary_model = (
+                    await get_model(user_id, base_model_cfg, self._access)
+                    if model_cfg is not base_model_cfg
+                    else None
+                )
                 _apply_prompt_cache_key(model, agent_id)
 
                 # Persist customer-visible input before any agent reasons.
@@ -1515,6 +1523,7 @@ class ChatService:
                         task_id=context_task_id,
                         reference_event_ids=reference_event_ids,
                         exclude_event_ids=tuple(msg.id for msg in customer_input_msgs),
+                        summary_model=summary_model,
                     )
                     packet_revision = await self._shared_context.latest_event_revision(
                         user_id,
@@ -1551,6 +1560,7 @@ class ChatService:
                             task_id=context_task_id,
                             membership_storage=self._storage,
                             agent_id=agent_id,
+                            summary_model=summary_model,
                         ),
                     )
 

@@ -36,8 +36,10 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         task_id: str | None = None,
         membership_storage: StorageBase | None = None,
         agent_id: str | None = None,
+        summary_model: object | None = None,
     ) -> None:
         self._mode = mode
+        self._summary_model = summary_model
         self._agent_id = agent_id
         self._service = service
         self._user_id = user_id
@@ -139,6 +141,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                     team_id=self._team_id,
                     mode="task",
                     task_id=self._task_id,
+                    summary_model=self._summary_model,
                 )
                 self._packet_attachment = self._service.system_attachment(
                     packet, tokens

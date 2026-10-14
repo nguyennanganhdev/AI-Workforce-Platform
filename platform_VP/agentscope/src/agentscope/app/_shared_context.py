@@ -2437,6 +2437,7 @@ class SharedContextService:
         record: TeamSharedContextRecord,
         events: list[SharedContextEvent],
         task_id: str,
+        summary_model: ChatModelBase | None = None,
     ) -> TeamSharedContextRecord:
         prior_summary = record.state.summaries.get(task_id)
         covered = prior_summary.covered_through_revision if prior_summary else 0
@@ -2473,7 +2474,7 @@ class SharedContextService:
                 attempts,
                 model_calls,
             ) = await self._summarize(
-                model,
+                summary_model or model,
                 prior_summary,
                 old,
             )
@@ -2687,8 +2688,14 @@ class SharedContextService:
         task_id: str | None = None,
         reference_event_ids: tuple[str, ...] = (),
         exclude_event_ids: tuple[str, ...] = (),
+        summary_model: ChatModelBase | None = None,
     ) -> tuple[str, int]:
-        """Return a replaceable packet and its selected-model token count."""
+        """Return a replaceable packet and its selected-model token count.
+
+        ``summary_model`` (optional) writes the history summary, so a Leader
+        running on an expensive model can compact history with a cheap one;
+        packet budgets are still measured with ``model``.
+        """
 
         if mode == "isolated":
             return "", 0
@@ -2726,6 +2733,7 @@ class SharedContextService:
                         record,
                         events,
                         selected,
+                        summary_model=summary_model,
                     )
                 except SharedContextSummaryError as exc:
                     logger.error("%s", exc)
