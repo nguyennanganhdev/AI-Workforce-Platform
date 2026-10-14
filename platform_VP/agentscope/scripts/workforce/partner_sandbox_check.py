@@ -100,10 +100,7 @@ async def read_sse(client, conversation_id, user, last_event_id=None, seconds=8)
 async def run(args, transport: httpx.AsyncBaseTransport | None = None) -> int:
     recorder = Recorder()
     run_id = uuid.uuid4().hex[:8]
-    headers = {
-        "X-API-Key": args.api_key,
-        "X-External-User-Id": args.external_user_id,
-    }
+    headers = {"Authorization": f"ApiKey {args.api_key}"}
     async with httpx.AsyncClient(
         base_url=args.base_url.rstrip("/"),
         headers=headers,

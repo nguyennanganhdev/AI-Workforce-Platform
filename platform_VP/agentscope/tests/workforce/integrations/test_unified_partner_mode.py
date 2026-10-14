@@ -235,7 +235,7 @@ class UnifiedPartnerModeTest(unittest.IsolatedAsyncioTestCase):
         return body
 
     async def test_partner_ticket_runs_console_leader_and_follows_question_then_answer(self):
-        headers = {"X-External-User-Id": "resident-1"}
+        headers = {}
         async with self._client() as client:
             accepted = await client.post(
                 "/workforce/v1/partner/requests",
@@ -294,14 +294,20 @@ class UnifiedPartnerModeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["Vỡ ống nước dưới bồn rửa!", "Căn S1-1205"], self.chat.inputs)
         self.assertEqual(1, len(self.console.sessions))
 
-    async def test_external_user_header_must_match_the_body(self):
+    async def test_end_user_comes_from_query_or_body_as_in_the_contract(self):
         async with self._client() as client:
-            response = await client.post(
+            missing = await client.get("/workforce/v1/partner/requests/unknown")
+            accepted = await client.post(
                 "/workforce/v1/partner/requests",
                 json=self._envelope("req-x", "xin chào"),
-                headers={"X-External-User-Id": "someone-else"},
             )
-        self.assertIn(response.status_code, (401, 403))
+            other_user = await client.get(
+                f"/workforce/v1/partner/requests/{accepted.json()['request_id']}",
+                params={"external_user_id": "someone-else"},
+            )
+        self.assertEqual(422, missing.status_code)
+        self.assertEqual(202, accepted.status_code, accepted.text)
+        self.assertIn(other_user.status_code, (403, 404))
 
     async def test_sandbox_script_drives_the_whole_contract(self):
         import argparse

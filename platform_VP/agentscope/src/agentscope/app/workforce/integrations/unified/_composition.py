@@ -7,8 +7,9 @@ assembles only the production pieces that unified mode needs:
 
 * the durable partner workflow engine (requests, bindings, checkpoints,
   public events/SSE, close) — unchanged team code over the Workforce SQL DB;
-* partner authentication with the existing partner API keys plus an
-  ``X-External-User-Id`` header naming the end customer;
+* partner authentication with the existing partner API keys; the end
+  customer is the ``external_user_id`` of the query (GET) or body (POST),
+  as in the partner contract;
 * routing to exactly one verified area manager (existing SQL routing);
 * :class:`ChatLeaderTurnRunner` for every turn;
 * onboarding endpoints for the three-party route grant (admin verifies the
@@ -22,13 +23,14 @@ mounted in this mode.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 
@@ -121,14 +123,30 @@ async def _tenant_of_client(actor: ActorContext, uow: Any) -> str:
 
 
 def partner_customer_dependency() -> Any:
-    """FastAPI dependency: partner API key + ``X-External-User-Id``."""
+    """FastAPI dependency: partner API key + the asserted end user.
+
+    As the partner contract says, GET calls carry ``external_user_id`` in the
+    query and POST calls in the JSON body. The value only names the end user
+    the partner backend vouches for; access still comes from the API key and
+    the route grant.
+    """
 
     from ...._router._business import get_partner_principal
 
     async def dependency(
+        request: Request,
         principal: Any = Depends(get_partner_principal),
-        external_user_id: str = Header(alias="X-External-User-Id", min_length=1, max_length=200),
     ) -> ActorContext:
+        external_user_id = request.query_params.get("external_user_id")
+        if external_user_id is None and request.method == "POST":
+            try:
+                body = json.loads(await request.body() or b"{}")
+            except ValueError:
+                body = None
+            if isinstance(body, dict) and isinstance(body.get("external_user_id"), str):
+                external_user_id = body["external_user_id"]
+        if not external_user_id or len(external_user_id) > 200:
+            raise HTTPException(status_code=422, detail="external_user_id is required")
         return ActorContext(
             kind=ActorKind.PARTNER,
             actor_id=f"{principal.client_id}:{external_user_id}"[:200],

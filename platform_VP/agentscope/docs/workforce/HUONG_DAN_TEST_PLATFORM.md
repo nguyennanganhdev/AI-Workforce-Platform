@@ -339,13 +339,14 @@ khởi động lại backend. `SECRET` = `PARTNER_API_PROVISIONING_SECRET` trong
    **Đạt khi:** trả `"status":"active"`; trong dialog tuyến chuyển *đang hoạt động*.
 6. **Đối tác gửi ticket:** dùng script ở 7.8 (trỏ `--base-url` về máy local),
    hoặc gửi tay `POST /workforce/v1/partner/requests` với header `X-API-Key`
-   và `X-External-User-Id` (phải trùng `external_user_id` trong body).
+   (hoặc `Authorization: ApiKey <key>`); người dùng cuối là `external_user_id`
+   trong body (POST) hoặc query (GET), đúng như hợp đồng đối tác.
 
 **Đạt khi:** request về `completed`; câu trả lời đến từ Leader của quản lý
 (cùng luật/giọng như trên console); nếu Leader hỏi lại thì `workflow_state` =
 `awaiting_user`, gửi `workflow_reply` thì tiếp tục **cùng một** session; tới
-`awaiting_confirmation` thì `close` được. `X-External-User-Id` khác body →
-401/403.
+`awaiting_confirmation` thì `close` được. Đọc kết quả với `external_user_id`
+khác người gửi → 403/404.
 
 Giới hạn: chưa có API duyệt của đối tác, sự kiện provider job và theo dõi thao
 tác ngoài (`waiting_external_event`); tool có tác động đi qua xác nhận trong chat.
