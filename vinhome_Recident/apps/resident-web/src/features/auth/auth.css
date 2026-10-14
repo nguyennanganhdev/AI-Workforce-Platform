@@ -562,3 +562,43 @@
 .resident-recovery-form [role="alert"] { color: #a12424; }
 .resident-recovery-form button { font: inherit; cursor: pointer; border: 0; }
 .resident-recovery-form button:disabled { opacity: .6; cursor: wait; }
+
+/* Unified Vinhomes account experience. */
+.resident-auth, .resident-auth-status { background: var(--vh-background); color: var(--vh-ink); font-family: "Manrope Variable",system-ui,sans-serif; }
+.resident-auth-story { background: #f4eee5; padding: 36px clamp(32px,6vw,88px); }
+.resident-auth-wordmark { font-size: inherit; letter-spacing: 0; }
+.resident-auth-wordmark > .vinhomes-brand { width: auto; height: auto; background: transparent; border-radius: 0; display: inline-flex; }
+.resident-auth-story-copy { margin-top: clamp(40px,7vh,80px); }
+.resident-auth-story h2 { font-weight: 600; font-size: clamp(34px,4vw,56px); letter-spacing: -.045em; color: var(--vh-ink); }
+.resident-auth-story-copy p,.resident-auth-story-footer,.resident-auth-eyebrow { color: #655b4d; }
+.resident-auth-photo { width: 100%; height: clamp(160px,25vh,280px); object-fit: cover; border-radius: 16px; margin: 32px 0; }
+.resident-auth-panel { padding: 24px clamp(28px,5vw,64px); }
+.resident-auth-topbar { margin-bottom: 36px; }
+.resident-auth-heading h1 { font-size: clamp(26px,3vw,32px); color: var(--vh-ink); }
+.resident-auth-heading > p,.resident-auth-input-wrap label,.resident-auth-password-hint { color: var(--vh-muted); }
+.resident-auth-field-row { min-height: 78px; border: 1px solid var(--vh-border); border-radius: 12px; padding: 0 16px; background: white; gap: 12px; }
+.resident-auth-field-row:focus-within { border-color: var(--vh-accent); box-shadow: 0 0 0 3px var(--vh-accent-soft); }
+.resident-auth-input-wrap input { font-size: 16px; color: var(--vh-ink); }
+.resident-auth-input-wrap input::placeholder { color: #64727c; }
+.resident-auth-field-icon { color: var(--vh-muted); }
+.resident-auth-submit,.resident-auth-status-action { background: var(--vh-accent); color: white; border-radius: 12px; min-height: 52px; font-weight: 650; }
+.resident-auth-submit:disabled { opacity: .6; }
+.resident-auth-switch a,.resident-auth-forgot a { color: var(--vh-accent); }
+.resident-auth-eye { min-width: 44px; min-height: 44px; }
+.resident-auth-mobile-brand { display: none; }
+.resident-auth-status section { border: 1px solid var(--vh-border); border-radius: 16px; }
+.resident-auth-status-icon { color: var(--vh-accent); background: var(--vh-accent-soft); }
+@media (max-width: 870px) {
+ .resident-auth { display: block; }
+ .resident-auth-story { display: none; }
+ .resident-auth-mobile-brand { display: block; }
+ .resident-auth-panel { max-width: 560px; padding: 20px 24px calc(24px + env(safe-area-inset-bottom)); }
+ .resident-auth-topbar { margin-bottom: 32px; }
+ .resident-auth-hero { background: transparent; border-radius: 0; }
+ .resident-auth-heading h1 { font-size: 28px; }
+}
+@media (max-width: 360px) { .resident-auth-panel { padding-inline: 18px; } }
+
+.resident-auth-submit:hover:not(:disabled) { background: #893d29; color: white; }
+.resident-auth-submit:disabled { background: var(--vh-accent); color: white; }
+@media (max-width: 870px) { .resident-auth-heading,.resident-auth-body { padding-inline: 0; } }

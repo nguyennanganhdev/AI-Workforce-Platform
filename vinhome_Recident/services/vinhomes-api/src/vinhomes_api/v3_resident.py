@@ -114,7 +114,7 @@ async def create_chat(body: CreateChat, scope: ResidentScope) -> dict[str, objec
 
 @router.get("/resident/chats", summary="List my resident chats")
 async def list_chats(scope: ResidentScope, limit: int = Query(50, ge=1, le=100),
-                     offset: int = Query(0, ge=0, le=100000)) -> dict[str, object]:
+                     offset: int = Query(0, ge=0, le=100000), archived: bool = False) -> dict[str, object]:
     db, actor_id = scope
     result = await db.execute(text("""
         select c.id, c.name, c.description, c.last_message_at, c.created_at, c.last_message,
@@ -136,10 +136,11 @@ async def list_chats(scope: ResidentScope, limit: int = Query(50, ge=1, le=100),
         left join lateral (select t.id,t.code,t.status,t.title from tickets t where t.channel_id=c.id and t.tenant_id=c.tenant_id order by t.created_at desc,t.id limit 1) t on true
         where c.kind='reception' and c.deleted_at is null
           and c.created_by=:actor_id and m.user_id=:actor_id
+          and (m.archived_at is not null)=:archived
           and c.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
         order by coalesce(c.last_message_at, c.created_at) desc, c.id desc
         limit :limit offset :offset
-    """), {"actor_id": actor_id, "limit": limit, "offset": offset})
+    """), {"actor_id": actor_id, "limit": limit, "offset": offset, "archived": archived})
     items = _rows(result)
     return {"items": items, "nextOffset": offset + len(items) if len(items) == limit else None}
 
@@ -150,7 +151,7 @@ async def list_messages(channel_id: str, scope: ResidentScope,
                         limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
     await _owned_chat(scope, channel_id)
     result = await scope[0].execute(text("""
-        select id, seq, sender_kind, sender_user_id, sender_client_id, body, created_at
+        select id, seq, sender_kind, sender_user_id, sender_client_id, body, created_at, reply_to_id
         from messages where channel_id=:channel_id and seq>:after_seq
           and visibility in ('room','customer')
           and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
@@ -620,14 +621,34 @@ async def my_notifications(scope: ResidentScope, limit: int = Query(50, ge=1, le
                            offset: int = Query(0, ge=0, le=100000)) -> dict[str, object]:
     db, actor_id = scope
     result = await db.execute(text("""
-        select id, ticket_event_id, message_id, interruption_id, payload, status,
-               sent_at, read_at, created_at
-        from notification_deliveries where user_id=:actor_id and channel='in_app'
-          and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
-        order by created_at desc, id desc limit :limit offset :offset
+        select n.id,n.ticket_event_id,n.message_id,n.interruption_id,n.payload,n.status,
+               n.sent_at,n.read_at,n.created_at,m.channel_id,e.ticket_id
+        from notification_deliveries n
+        left join messages m on m.id=n.message_id and m.tenant_id=n.tenant_id
+        left join ticket_events e on e.id=n.ticket_event_id and e.tenant_id=n.tenant_id
+        where n.user_id=:actor_id and n.channel='in_app'
+          and n.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+        order by n.created_at desc,n.id desc limit :limit offset :offset
     """), {"actor_id": actor_id, "limit": limit, "offset": offset})
     items = _rows(result)
-    return {"items": items, "nextOffset": offset + len(items) if len(items) == limit else None}
+    unread = (await db.execute(text("""select count(*) from notification_deliveries
+        where user_id=:actor and channel='in_app' and read_at is null
+          and tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid"""), {"actor":actor_id})).scalar_one()
+    return {"items": items, "unreadCount":unread, "nextOffset": offset + len(items) if len(items) == limit else None}
+
+
+class ReadNotifications(BaseModel):
+    ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+@router.post("/my/notifications/read", summary="Read only the notifications displayed by this client")
+async def read_notifications(body: ReadNotifications, scope: ResidentScope):
+    result = await scope[0].execute(text("""update notification_deliveries
+        set read_at=coalesce(read_at,now()),updated_at=now()
+        where id=any(cast(:ids as uuid[])) and user_id=:actor and channel='in_app'
+          and tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid
+        returning id,read_at"""), {"ids":body.ids,"actor":scope[1]})
+    return {"items":_rows(result)}
 
 
 @router.post("/my/notifications/{notification_id}/read", summary="Mark my notification read")

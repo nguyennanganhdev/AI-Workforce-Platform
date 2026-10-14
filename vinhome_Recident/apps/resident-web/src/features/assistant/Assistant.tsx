@@ -17,6 +17,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import "./assistant-home.css";
+import { MessageDetails, ProcessingStatus, answerText } from "./ChatExperience";
 import { resident } from "../../mocks/seed";
 import { formOffered } from "../../services/chat-turn";
 import { QuestionCard } from "./QuestionCard";
@@ -77,14 +78,24 @@ export function Assistant({
 }: AssistantProps) {
   const end = useRef<HTMLDivElement>(null);
   const prevMessages = useRef(state.messages.length);
+  const follow = useRef(true);
+  const [newMessages,setNewMessages] = useState(false);
+  useEffect(() => {
+    const pane=end.current?.closest(".main-scroll");
+    if (!pane) return;
+    const remember=() => {follow.current=pane.scrollHeight-pane.scrollTop-pane.clientHeight<100;if(follow.current)setNewMessages(false);};
+    pane.addEventListener("scroll",remember,{passive:true});
+    return () => pane.removeEventListener("scroll",remember);
+  },[]);
   useEffect(() => {
     if (conversation && prevMessages.current !== state.messages.length) {
-      end.current?.scrollIntoView({
+      if (follow.current) end.current?.scrollIntoView({
         behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
           ? "instant"
           : "smooth",
         block: "end",
       });
+      else setNewMessages(true);
       prevMessages.current = state.messages.length;
     }
   }, [state.messages.length, conversation]);
@@ -149,7 +160,7 @@ export function Assistant({
               <IconMessageCircle size={21} />
             </span>
             <div>
-              <strong>Nhà — Trợ lý cư dân</strong>
+              <strong>Trợ lý cư dân Vinhomes</strong>
               <p>Mình sẵn sàng lắng nghe. Bạn cần hỗ trợ gì hôm nay?</p>
             </div>
           </div>
@@ -179,7 +190,7 @@ export function Assistant({
                     <BookingCard booking={message.booking} busy={busy} onConfirm={onBooking} />
                   ) : (
                   <div className="message-bubble">
-                    {message.text && <p>{message.text}</p>}
+                    {message.text && <p>{answerText(message)}</p>}
                     {!!message.photos?.length && (
                       <div className="photo-grid">
                         {message.photos.map((photo) => (
@@ -196,6 +207,7 @@ export function Assistant({
                     )}
                   </div>
                   )}
+                  <MessageDetails message={message} />
                   {message.requestId &&
                     (() => {
                       const request = state.requests.find(
@@ -218,13 +230,12 @@ export function Assistant({
                   <IconMessageCircle size={15} />
                 </span>
                 <div className="message-body">
-                  <div className="message-bubble message-waiting">
-                    <p>Trợ lý đang trả lời…</p>
-                  </div>
+                  <ProcessingStatus turn={state.turnState} />
                 </div>
               </div>
             )}
           </div>
+          {state.turnState?.status === "unavailable" && <p role="status" className="reception-unavailable">Trợ lý chưa hoàn tất phản hồi. Bạn có thể gửi thêm tin nhắn hoặc dùng biểu mẫu phản ánh.</p>}
         </>
       )}
       {started && question && !state.awaitingReply && (
@@ -296,6 +307,7 @@ export function Assistant({
           )}
         </div>
       )}
+      {newMessages && <button className="new-messages-button" onClick={() => {follow.current=true;setNewMessages(false);end.current?.scrollIntoView({block:"end",behavior:"instant"});}}>Xem tin nhắn mới</button>}
       <div ref={end} className="scroll-end" />
     </div>
   );
@@ -511,7 +523,7 @@ export function Composer({
       </form>
       {(reading || busy || !connected) && (
         <p className="composer-caption" role="status">
-          {reading ? "Đang đọc ảnh…" : busy ? "Đang gửi…" : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
+          {reading ? "Đang đọc ảnh…" : busy ? "Đang gửi tin nhắn…" : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
         </p>
       )}
     </div>

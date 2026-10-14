@@ -63,3 +63,28 @@ def test_reference_information_is_labelled_in_the_resident_reply():
             assert 'Nguồn tham khảo: Dịch vụ cư dân' in reply
             assert 'cần xác nhận thông tin hiện hành' in reply
     asyncio.run(run())
+
+
+def test_http_turn_persists_experience_without_calling_a_provider(monkeypatch,tmp_path):
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from src.runtime import service
+    from src.runtime.model import ModelConfig
+    saved=[]
+    def answer(request):
+        assert request.url.path.endswith('/replies')
+        saved.append(json.loads(request.content))
+        return httpx.Response(201,json={'id':'stored'})
+    monkeypatch.setattr(service,'httpx',SimpleNamespace(AsyncClient=lambda: httpx.AsyncClient(transport=httpx.MockTransport(answer))))
+    async def wording(backend,client,model,knowledge,context,message,telemetry):
+        telemetry['citations']=[{'title':'Nguồn tham khảo','excerpt':'Nội dung.','status':'reference'}]
+        return 'Phản hồi kiểm thử.',None
+    monkeypatch.setattr(service,'agent_turn',wording)
+    settings=service.Settings(backend_url='http://fixture',service_token='s'*32,state_path=str(tmp_path/'unused'),
+        agent='loop',model=ModelConfig(model='unused',api_key='none'))
+    with TestClient(service.create_app(settings,model=object()),headers={'Authorization':'Bearer '+'s'*32}) as client:
+        response=client.post('/v1/turns',json={'user_id':'resident','channel_id':'chat','message':{'id':'message','text':'hello'},
+            'delegation':{'token':'fixture','expiresAt':0,'context':{'tenantId':'tenant','runId':'run','bindingId':'channel:chat','principalId':'resident'}}})
+    assert response.status_code==200 and response.json()['reply']=='Phản hồi kiểm thử.'
+    assert saved[0]['citations'][0]['title']=='Nguồn tham khảo'
+    assert saved[0]['latency_ms']>=0 and saved[0]['reply_to_id']=='message'

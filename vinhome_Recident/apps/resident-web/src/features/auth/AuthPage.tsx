@@ -17,7 +17,7 @@ import {
   IconPhone,
   IconUser,
 } from "@tabler/icons-react";
-import { Neighborhood } from "../../components/Illustrations";
+import { Brand } from "../../components/Brand";
 import {
   normalizePhone,
   operationsUrl,
@@ -199,10 +199,7 @@ export function AuthPage({
         aria-label="Nhà, không gian dành cho cư dân"
       >
         <a href="/" className="resident-auth-wordmark">
-          <span>
-            <IconHome size={25} stroke={1.8} />
-          </span>
-          nhà.
+          <Brand />
         </a>
         <div className="resident-auth-story-copy">
           <span className="resident-auth-eyebrow">
@@ -219,7 +216,7 @@ export function AuthPage({
             đến một cuộc sống thật thảnh thơi.
           </p>
         </div>
-        <Neighborhood />
+        <img className="resident-auth-photo" src="/images/ocean-park-welcome-960.webp" alt="Không gian sống xanh tại Vinhomes Ocean Park" width={960} height={540} />
         <p className="resident-auth-story-footer">
           Không gian riêng cho cộng đồng cư dân.
         </p>
@@ -239,12 +236,7 @@ export function AuthPage({
             >
               <IconArrowLeft size={23} />
             </a>
-            <span
-              className="resident-auth-language"
-              aria-label="Ngôn ngữ: Tiếng Việt"
-            >
-              <span aria-hidden="true">★</span>VIE
-            </span>
+            <a className="resident-auth-mobile-brand" href="/" aria-label="Vinhomes, trang chủ"><Brand compact /></a>
           </div>
           <div className="resident-auth-heading">
             <h1 id="resident-auth-title" ref={heading} tabIndex={-1}>

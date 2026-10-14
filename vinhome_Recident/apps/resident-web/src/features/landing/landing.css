@@ -15,13 +15,13 @@
 }
 
 .landing {
-  --landing-primary: #173854;
-  --landing-on-primary: #f8fbff;
-  --landing-surface: #fcfdfd;
-  --landing-text: #183144;
-  --landing-muted: #526572;
-  --landing-subtle: #edf3f5;
-  --landing-border: #d6e0e5;
+  --landing-primary: var(--vh-accent);
+  --landing-on-primary: #fff;
+  --landing-surface: var(--vh-background);
+  --landing-text: var(--vh-ink);
+  --landing-muted: var(--vh-muted);
+  --landing-subtle: var(--vh-accent-soft);
+  --landing-border: var(--vh-border);
   color: var(--landing-text);
   background: var(--landing-surface);
   font-family: "Manrope Variable", system-ui, sans-serif;
@@ -40,7 +40,7 @@
 .landing-header-inner { min-height: 80px; display: flex; align-items: center; gap: 32px; position: relative; }
 .landing-brand { display: flex; gap: 20px; align-items: center; margin-right: auto; }
 .landing-brand img, .landing-footer-brand img { object-fit: contain; }
-.landing-brand span { font-size: 13px; color: var(--landing-muted); padding-left: 20px; border-left: 1px solid var(--landing-border); }
+.landing-brand .vinhomes-brand > span { font-size: 13px; color: var(--landing-muted); padding-left: 20px; border-left: 1px solid var(--landing-border); }
 .landing-nav { display: flex; gap: 28px; align-items: center; font-size: 14px; font-weight: 600; }
 .landing-nav a { padding-block: 14px; }
 .landing-nav a:hover, .landing-footer a:hover { text-decoration: underline; text-underline-offset: 5px; }
@@ -91,12 +91,9 @@
 .landing-footer nav a { min-height: 44px; display: flex; align-items: center; }
 .landing-footer p { grid-column: 1 / -1; }
 
-@media (prefers-color-scheme: dark) {
-  .landing { --landing-primary: #c6def0; --landing-on-primary: #132d41; --landing-surface: #12222e; --landing-text: #e8f0f5; --landing-muted: #b0c1cc; --landing-subtle: #1b303f; --landing-border: #35505f; }
-}
 @media (max-width: 1100px) {
   .landing-container { width: calc(100% - 64px); }
-  .landing-brand span { display: none; }
+  .landing-brand .vinhomes-brand > span { display: none; }
   .landing-hero { gap: 32px; }
   .landing-hero-actions { gap: 12px; }
   .landing-services { grid-template-columns: 1fr; gap: 36px; }

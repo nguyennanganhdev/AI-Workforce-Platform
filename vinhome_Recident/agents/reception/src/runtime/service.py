@@ -159,16 +159,27 @@ async def run_turn(graph, context: dict, message: dict) -> dict:
 
 
 async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, knowledge_url: str | None,
-                     context: dict, message: dict) -> tuple[str, str | None]:
+                     context: dict, message: dict, telemetry: dict | None = None) -> tuple[str, str | None]:
     """One turn of the model-led agent. Returns the reply and, when it is a question of the intake rules, the detail asked for."""
     channel = context["channelId"]
-    turn = await backend.call("GET", f"/internal/reception/chats/{channel}/context?message_id={message['id']}", context)
-    resident = await backend.execute(context, "get_verified_resident_context", {}, "agent-context:" + message["id"])
-    categories = (await backend.call("GET", "/internal/reception/catalog", context))["categories"]
-    policy = await backend.call("POST", "/internal/reception/policy/evaluate", context,
-                                {"message_text": message["text"], "assessment": None})
+    async def progress(stage):
+        try:
+            await asyncio.wait_for(backend.call("POST",f"/internal/reception/chats/{channel}/progress",context,{"stage":stage}),timeout=0.75)
+        except Exception:
+            # Presentation telemetry must never block a resident reply or emergency handoff.
+            log.warning("Could not update public activity")
+    if telemetry is not None: await progress("context")
+    turn, resident, catalog, policy = await asyncio.gather(
+        backend.call("GET", f"/internal/reception/chats/{channel}/context?message_id={message['id']}", context),
+        backend.execute(context, "get_verified_resident_context", {}, "agent-context:" + message["id"]),
+        backend.call("GET", "/internal/reception/catalog", context),
+        backend.call("POST", "/internal/reception/policy/evaluate", context,
+                     {"message_text": message["text"], "assessment": None}),
+    )
+    categories = catalog["categories"]
     toolbox = Toolbox(backend, client, knowledge_url, context, message, turn["open_request"],
                       {"homes": resident["residences"]}, categories)
+    if telemetry is not None: toolbox.progress=progress
     if policy.get("emergency") is True:
         # The policy's keywords decide before any model runs.
         outcome = await toolbox.emergency_request()
@@ -196,6 +207,7 @@ async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, k
         # The request exists: the resident is told so, whatever went wrong with the wording.
         log.exception("turn failed after the request was filed")
         reply = FILED_REPLY
+    if telemetry is not None: telemetry['citations']=toolbox.citations
     return reply, toolbox.clarification if reply == toolbox.question else None
 
 
@@ -265,18 +277,21 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
             backend = request.app.state.backend
             backend.tokens[body.channel_id] = body.delegation.token
             if settings.agent == "loop":
+                telemetry = {}
                 try:
                     try:
                         reply, asked = await asyncio.wait_for(agent_turn(
                             backend, request.app.state.client, request.app.state.model,
-                            settings.knowledge_url, context, message), TURN_SECONDS)
+                            settings.knowledge_url, context, message,telemetry), TURN_SECONDS)
                     except Exception:  # noqa: BLE001 - the resident still gets an answer
                         # Why it failed is the only trace of it: the reply itself says nothing.
                         log.exception("Reception turn failed")
                         reply, asked = FAILED_REPLY, None
                     await backend.call(
                         "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
-                        {"text": reply[:10000], "reply_to_id": body.message.id, **({"clarification": asked} if asked else {})})
+                        {"text": reply[:10000], "reply_to_id": body.message.id,
+                         "citations":telemetry.get('citations',[]),"latency_ms":int((time.monotonic()-started)*1000),
+                         **({"clarification": asked} if asked else {})})
                 finally:
                     backend.tokens.pop(body.channel_id, None)
                 return {"status": "completed", "reply": reply, "usage": measured()}

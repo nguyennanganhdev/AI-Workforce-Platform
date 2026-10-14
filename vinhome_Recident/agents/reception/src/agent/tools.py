@@ -76,6 +76,8 @@ class Toolbox:
         self.filings = 0
         self.status: str | None = None
         self.searched = False
+        self.progress = None
+        self.citations: list[dict] = []
 
     @property
     def acted(self) -> bool:
@@ -100,6 +102,8 @@ class Toolbox:
         try:
             if handler is None or name not in {spec["function"]["name"] for spec in SPECS}:
                 return {"error": "unknown_tool"}
+            if self.progress:
+                await self.progress({"search_knowledge":"searching","request_status":"status"}.get(name,"request"))
             result = await handler(**arguments)
         except TypeError:
             return {"error": "invalid_arguments"}

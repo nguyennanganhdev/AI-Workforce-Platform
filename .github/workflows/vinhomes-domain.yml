@@ -47,7 +47,7 @@ jobs:
           tests/test_password_recovery.py tests/test_mcp_onboarding.py
           tests/test_platform_ticket_api.py
           tests/test_platform_mcp_v2.py
-          tests/test_knowledge.py
+          tests/test_knowledge.py tests/test_resident_experience.py
           tests/test_duckdns_hook.py
           tests/test_schema_contract.py tests/test_browser_origin.py
           tests/test_sign_in_one_page.py tests/test_sign_in_doors.py tests/test_sign_in_limit.py
@@ -83,7 +83,13 @@ jobs:
           cache-dependency-path: vinhome_Recident/package-lock.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run typecheck
-      - run: npm exec -w @vinhomes/resident-web -- vitest run
+      - name: Resident UI tests in isolated processes
+        working-directory: vinhome_Recident/apps/resident-web
+        run: |
+          for file in tests/*.test.ts tests/*.test.tsx; do
+            [ -f "$file" ] || continue
+            npx vitest run "$file"
+          done
       - name: Staff UI tests in isolated processes
         working-directory: vinhome_Recident/apps/staff-web
         run: |

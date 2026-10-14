@@ -2,9 +2,9 @@
   min-height: 100dvh;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  background: #f7f9fc;
+  background: #faf9f6;
   color: #202b40;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: "Manrope Variable", system-ui, sans-serif;
   color-scheme: light;
 }
 .staff-auth * {
@@ -34,7 +34,7 @@
   flex-direction: column;
   justify-content: space-between;
   gap: 60px;
-  background: #eaf0ff;
+  background: #f4eee5;
   min-height: 100dvh;
 }
 .staff-auth-brand {
@@ -102,7 +102,7 @@
   height: 58px;
   border-radius: 18px;
   background: #e9efff;
-  color: #4169f5;
+  color: #a34d35;
   margin-bottom: 26px;
 }
 .staff-auth h1 {
@@ -136,8 +136,8 @@
   color: #8796ad;
 }
 .staff-auth-input:focus-within {
-  border-color: #4169f5;
-  box-shadow: 0 0 0 3px #4169f512;
+  border-color: #a34d35;
+  box-shadow: 0 0 0 3px #a34d3512;
 }
 .staff-auth-input input {
   width: 100%;
@@ -175,7 +175,7 @@
   min-height: 44px;
   background: none;
   border: 0;
-  color: #4169f5;
+  color: #a34d35;
   font-size: 13px !important;
   font-weight: 600 !important;
 }
@@ -188,7 +188,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  background: #4169f5;
+  background: #a34d35;
   color: white;
   font-weight: 600 !important;
   padding: 12px 18px;
@@ -222,7 +222,7 @@
 .staff-auth-provision button {
   background: none;
   border: 0;
-  color: #4169f5;
+  color: #a34d35;
   min-height: 44px;
   padding: 0 3px;
   font-weight: 600;

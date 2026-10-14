@@ -1,4 +1,4 @@
-import type { PlatformApproval, PlatformBooking, PlatformQuote, ResidentRequest, RequestStatus } from "./types";
+import type { PlatformApproval, PlatformBooking, PlatformQuote, ReceptionExperience, ResidentRequest, RequestStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -34,7 +34,7 @@ export async function allPages<T>(path: string): Promise<T[]> {
   let offset: number | null = 0;
   while (offset !== null) {
     const page: { items: T[]; nextOffset: number | null } = await api(
-      `${path}?limit=100&offset=${offset}`,
+      `${path}${path.includes("?") ? "&" : "?"}limit=100&offset=${offset}`,
     );
     items.push(...page.items);
     offset = page.nextOffset;
@@ -72,10 +72,12 @@ export type Message = {
   id: string;
   seq: number;
   sender_kind: string;
+  reply_to_id?: string | null;
   /** `fileIds`: photos the resident sent with this message, stored with the chat before it was posted. */
   body: {
     text?: string;
     fileIds?: string[];
+    reception?: ReceptionExperience;
     /** Written by the platform bridge: an approval or a repair quote the resident answers on a card. */
     platform?: {
       kind: string;

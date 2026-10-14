@@ -1,8 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import "@fontsource-variable/inter";
+import "@fontsource-variable/manrope";
 import { isResidentPreview } from "./features/auth/demo-access";
 import "./styles.css";
+import "./brand.css";
 import { isLandingRoute } from "./features/landing/routes";
 
 const LandingPage = React.lazy(() => import("./features/landing/LandingPage").then((module) => ({ default: module.LandingPage })));

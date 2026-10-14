@@ -1,12 +1,9 @@
-@import '@fontsource/be-vietnam-pro/400.css';
-@import '@fontsource/be-vietnam-pro/500.css';
-@import '@fontsource/be-vietnam-pro/600.css';
 
 :root {
-  --canvas: #F5F6F8; --surface: #FFFFFF; --sunken: #EEF0F3;
-  --line: #E3E6EB; --line-strong: #CDD2DA;
+  --canvas: #FAF9F6; --surface: #FFFFFF; --sunken: #F0EEE8;
+  --line: #E5E4DE; --line-strong: #CDD2DA;
   --ink: #101828; --ink-2: #475467; --ink-3: #7A8699;
-  --action: #1E4FD6; --action-hover: #1941B4; --action-soft: #EAF0FE;
+  --action: #A34D35; --action-hover: #893D29; --action-soft: #FCF0E9;
   --ok: #137A45; --ok-soft: #E6F4EC;
   --wait: #A85A00; --wait-soft: #FCF1DD;
   --danger: #B3261E; --danger-soft: #FCEBE9;
@@ -21,7 +18,7 @@
   --border: var(--line); --input: var(--line-strong); --destructive: var(--danger); --accent: var(--sunken); --accent-foreground: var(--ink);
   --sidebar: var(--canvas); --sidebar-foreground: var(--ink-2); --sidebar-accent: var(--surface); --sidebar-accent-foreground: var(--ink); --sidebar-border: var(--line);
   --radius: 6px; --ops-page: var(--canvas);
-  font-family: 'Be Vietnam Pro', system-ui, sans-serif; font-size: 14px; line-height: 20px;
+  font-family: 'Manrope Variable', system-ui, sans-serif; font-size: 14px; line-height: 20px;
   font-feature-settings: 'tnum' 1; color: var(--ink); background: var(--canvas);
 }
 .ops-ui :focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
@@ -115,3 +112,5 @@
 .ops-topbar:has(.ops-requests-toolbar) .ops-search-trigger {display:none;}
 @media(max-width:1100px) {.ops-topbar:has(.agents-toolbar,.ops-admin-heading) .ops-search-trigger {width:44px;border:0;}.ops-topbar:has(.agents-toolbar,.ops-admin-heading) .ops-search-trigger span,.ops-topbar:has(.agents-toolbar,.ops-admin-heading) .ops-search-trigger kbd {display:none;}}
 @media(max-width:767px) {.ops-topbar:has(.ops-page-controls > *) {flex-wrap:wrap;padding-block:6px;}.ops-page-controls {order:5;width:100%;}.ops-page-controls > * {width:100%;}.ops-page-controls .ops-admin-heading {justify-content:space-between;}.ops-page-controls .ops-requests-toolbar {flex-wrap:wrap;}.ops-page-controls .ops-requests-filters {width:100%;flex-wrap:wrap;}.ops-page-controls .agents-toolbar {flex-wrap:wrap;}}
+
+@media (max-width: 767px) { .ops-ui [data-slot=button],.ops-ui [data-slot=select-trigger] { min-height: 44px; } .ops-ui [data-slot=input] { min-height: 44px; font-size: 16px; } }

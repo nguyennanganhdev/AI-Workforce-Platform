@@ -136,7 +136,7 @@ async def append_agent_message(db: AsyncConnection, channel_id: str, agent: str,
 
 
 async def write_reply(db: AsyncConnection, channel_id: str, reply: str, reply_to: UUID,
-                      clarification: str | None = None) -> dict[str, object]:
+                      clarification: str | None = None, experience: dict | None = None) -> dict[str, object]:
     """One agent reply per resident message; a retry returns the stored reply."""
     agent = await reception_client(db)
     # Serialized on the conversation row, so a retry sees the stored reply.
@@ -147,8 +147,18 @@ async def write_reply(db: AsyncConnection, channel_id: str, reply: str, reply_to
     if old:
         return dict(old)
     # A question the intake rules asked is marked, so a later turn knows how often it was asked.
-    body = {"text": reply, **({"clarification": clarification} if clarification else {})}
-    return await append_agent_message(db, channel_id, agent, "customer", body, reply_to)
+    body = {"text": reply, **({"clarification": clarification} if clarification else {}),
+            **({"reception":experience} if experience else {})}
+    created = await append_agent_message(db, channel_id, agent, "customer", body, reply_to)
+    await db.execute(text(f"""insert into notification_deliveries
+        (tenant_id,user_id,message_id,channel,dedupe_key,payload,status,available_at)
+        select {TENANT},c.created_by,:message,'in_app',:key,cast(:payload as jsonb),'pending',now()
+        from channels c where c.id=:channel
+        on conflict(tenant_id,user_id,channel,dedupe_key) do nothing"""),
+        {"channel":channel_id,"message":created['id'],"key":"reception:"+str(created['id']),
+         "payload":json.dumps({"type":"reception.message","channelId":channel_id,
+                               "title":"Trợ lý cư dân đã phản hồi","message":reply[:200]},ensure_ascii=False)})
+    return created
 
 
 def _own_channel(channel_id: str, run: dict[str, Any]) -> None:
@@ -278,12 +288,43 @@ async def follow_up(channel_id: str, body: FollowUp, scope: Scope) -> dict[str, 
     return {"attached": len(photos), "delivered": delivered, "pending": request["pending"]}
 
 
+PublicStage = Literal["context", "searching", "request", "status", "responding"]
+
+
+class ProgressCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    stage: PublicStage
+
+
+@router.post("/internal/reception/chats/{channel_id}/progress")
+async def report_progress(channel_id: str, body: ProgressCreate, scope: Scope):
+    db,run=scope
+    _own_channel(channel_id,run)
+    await db.execute(text(f"""update delegations set resident_progress=resident_progress ||
+        jsonb_build_array(jsonb_build_object('stage',cast(:stage as text),'at',now()))
+        where tenant_id={TENANT} and id=:id and jsonb_array_length(resident_progress)<24"""),
+        {"id":run['run_id'],"stage":body.stage})
+    return {"ok":True}
+
+
+class Citation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1,max_length=500)
+    excerpt: str = Field(default="",max_length=1200)
+    documentId: UUID | None = None
+    status: Literal["approved","reference"] = "reference"
+    effectiveFrom: str | None = Field(default=None,max_length=40)
+    documentReference: str | None = Field(default=None,max_length=200)
+
+
 class ReplyCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(min_length=1, max_length=10000)
     reply_to_id: UUID
     clarification: Literal["symptom", "item"] | None = None
+    citations: list[Citation] = Field(default_factory=list,max_length=3)
+    latency_ms: int | None = Field(default=None,ge=0,le=600000)
 
 
 @router.post("/internal/reception/chats/{channel_id}/replies", status_code=201,
@@ -297,7 +338,11 @@ async def create_reply(channel_id: str, body: ReplyCreate, scope: Scope) -> dict
     """), {"id": body.reply_to_id, "channel": channel_id, "actor": run["user_id"]})
     if source.first() is None:
         raise HTTPException(422, "reply_to_id must be a resident message in this conversation")
-    return await write_reply(db, channel_id, body.text, body.reply_to_id, body.clarification)
+    steps = (await db.execute(text("select resident_progress from delegations where id=:id"),
+                              {"id":run['run_id']})).scalar_one()
+    experience = {"citations":[c.model_dump(mode='json') for c in body.citations],
+                  "steps":steps,"latencyMs":body.latency_ms}
+    return await write_reply(db, channel_id, body.text, body.reply_to_id, body.clarification,experience)
 
 
 @asynccontextmanager

@@ -48,6 +48,47 @@ class ReadCursor(BaseModel):
     sequence: int = Field(ge=0)
 
 
+@router.delete("/resident/chats/{channel_id}", summary="Move my conversation to recoverable deleted chats")
+async def archive_chat(channel_id: str, scope: Scope):
+    await _owned_chat(scope, channel_id, lock=True)
+    await scope[0].execute(text("""update channel_memberships set archived_at=coalesce(archived_at,now())
+        where channel_id=:id and user_id=:actor"""), {"id":channel_id,"actor":scope[1]})
+    return {"archived": True}
+
+
+@router.post("/resident/chats/{channel_id}/restore")
+async def restore_chat(channel_id: str, scope: Scope):
+    await _owned_chat(scope, channel_id, lock=True)
+    await scope[0].execute(text("""update channel_memberships set archived_at=null
+        where channel_id=:id and user_id=:actor"""), {"id":channel_id,"actor":scope[1]})
+    return {"archived": False}
+
+
+@router.get("/resident/chats/{channel_id}/turn-state")
+async def turn_state(channel_id: str, scope: Scope):
+    """Curated public activity, scoped to the owner's latest message. No raw traces."""
+    await _owned_chat(scope, channel_id)
+    row = (await scope[0].execute(text("""
+        select m.id,m.created_at,
+          exists(select 1 from messages r where r.channel_id=m.channel_id and r.reply_to_id=m.id
+            and r.visibility in ('room','customer')) as answered,
+          d.status,d.resident_progress,d.expires_at,
+          exists(select 1 from tickets t join platform_links p on p.ticket_id=t.id and p.tenant_id=t.tenant_id
+            where t.channel_id=m.channel_id and p.status='open') as handed_over,
+          extract(epoch from now()-m.created_at)*1000 as elapsed_ms
+        from messages m left join delegations d on d.channel_id=m.channel_id
+          and d.tenant_id=m.tenant_id and d.idempotency_key='reception-turn:'||m.id::text
+        where m.channel_id=:id and m.sender_kind='user' and m.sender_user_id=:actor
+        order by m.seq desc limit 1
+    """), {"id":channel_id,"actor":scope[1]})).mappings().first()
+    if not row: return {"status":"idle","steps":[]}
+    status = "completed" if row['answered'] else "waiting_platform" if row['handed_over'] else \
+        "unavailable" if row['status'] in ('failed','revoked','finished') or row['elapsed_ms']>180000 else \
+        "processing" if row['status']=='active' else "queued"
+    return {"messageId":str(row['id']),"status":status,"startedAt":row['created_at'],
+            "elapsedMs":max(0,int(row['elapsed_ms'])),"steps":row['resident_progress'] or []}
+
+
 @router.post("/resident/chats/{channel_id}/read")
 async def read_chat(channel_id: str, body: ReadCursor, scope: Scope):
     await _owned_chat(scope, channel_id)
@@ -56,7 +97,13 @@ async def read_chat(channel_id: str, body: ReadCursor, scope: Scope):
           least(:seq,(select next_message_seq-1 from channels where id=:id))),last_read_at=now()
         where channel_id=:id and user_id=:actor returning last_read_seq
     """), {"id": channel_id, "actor": scope[1], "seq": body.sequence})
-    return {"sequence": result.scalar_one()}
+    sequence = result.scalar_one()
+    # Reading a visible message also reads its in-app notification, across devices.
+    await scope[0].execute(text("""update notification_deliveries n set read_at=coalesce(n.read_at,now()),updated_at=now()
+        from messages m where n.message_id=m.id and m.channel_id=:id and m.seq<=:seq
+          and n.user_id=:actor and n.channel='in_app' and n.tenant_id=m.tenant_id and n.read_at is null"""),
+        {"id":channel_id,"actor":scope[1],"seq":sequence})
+    return {"sequence": sequence}
 
 
 @router.post("/resident/chats/{channel_id}/photos", status_code=201)

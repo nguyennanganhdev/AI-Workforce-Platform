@@ -56,6 +56,20 @@ export type ChatMessage = {
   approval?: PlatformApproval;
   quote?: PlatformQuote;
   booking?: PlatformBooking;
+  createdAt?: string;
+  delivery?: "sent" | "answered";
+  reception?: ReceptionExperience;
+};
+export type ReceptionStage = { stage: "context" | "searching" | "request" | "status" | "responding"; at: string };
+export type ReceptionExperience = {
+  latencyMs?: number | null;
+  steps?: ReceptionStage[];
+  citations?: { title: string; excerpt: string; documentId?: string | null; status: "reference" | "approved"; effectiveFrom?: string | null; documentReference?: string | null }[];
+};
+export type TurnState = { messageId?: string; status: "idle" | "queued" | "processing" | "completed" | "unavailable" | "waiting_platform"; startedAt?: string; elapsedMs?: number; steps: ReceptionStage[] };
+export type ResidentNotification = {
+  id: string; created_at: string; read_at: string | null; channel_id?: string | null; ticket_id?: string | null;
+  payload: { title?: string; message?: string; text?: string; type?: string; channelId?: string; ticketId?: string };
 };
 export type Draft = {
   step: "description" | "location" | "review";
@@ -72,8 +86,10 @@ export type ResidentState = {
   activeConversationId?: string;
   /** The resident's last message has no reply yet. */
   awaitingReply?: boolean;
+  turnState?: TurnState;
 };
 export type ResidentConversation = {
+  archived?: boolean;
   id: string;
   title: string;
   messages: ChatMessage[];

@@ -9,8 +9,10 @@ import {
   IconSparkles,
   IconX,
 } from "@tabler/icons-react";
+import { Brand } from "../components/Brand";
 import { LeafMark } from "../components/Illustrations";
 import { Assistant, Composer } from "../features/assistant/Assistant";
+import { NotificationCenter } from "../features/utilities/NotificationCenter";
 import { ConversationList } from "../features/assistant/ConversationList";
 import {
   normalizeConversations,
@@ -127,7 +129,7 @@ export function App({ live }: { live?: ConnectedResident }) {
     return () => window.removeEventListener("hashchange", change);
   }, []);
   useEffect(() => {
-    document.title = `${titles[route.page]} — Nhà`;
+    document.title = `${titles[route.page]} | Vinhomes`;
     scroll.current?.scrollTo({ top: 0 });
     if (previousPage.current !== route.page) title.current?.focus();
     previousPage.current = route.page;
@@ -245,7 +247,7 @@ export function App({ live }: { live?: ConnectedResident }) {
   const pending = state.requests.filter(
     (r) => r.status === "confirmation",
   ).length;
-  const unread = (state.conversations ?? []).reduce((n, c) => n + c.unread, 0);
+  const unread = live?.notificationUnread ?? (state.conversations ?? []).filter(c => !c.archived).reduce((n, c) => n+c.unread,0);
   const detail = state.requests.find((r) => r.id === route.id);
   const nav = (
     <>
@@ -272,13 +274,7 @@ export function App({ live }: { live?: ConnectedResident }) {
     <div className="app-shell">
       <aside className="desktop-sidebar">
         <a href="#/" className="brand">
-          <span className="brand-mark">
-            <IconHome size={23} stroke={1.8} />
-          </span>
-          <span>
-            nhà<span className="brand-period">.</span>
-            <small>RESIDENT COMPANION</small>
-          </span>
+          <Brand />
         </a>
         <div className="sidebar-label">KHÔNG GIAN CỦA BẠN</div>
         <nav aria-label="Điều hướng chính">{nav}</nav>
@@ -313,7 +309,7 @@ export function App({ live }: { live?: ConnectedResident }) {
         <header className={`app-header ${route.page === "assistant" ? "chat-header" : ""}`}>
           <div className="header-location">
             <span className="location-icon">
-              <img src="/images/vinhomes-logo.png" alt="Vinhomes" width={40} height={40} />
+              <img src="/images/vinhomes-official.png" alt="Vinhomes" width={40} height={40} />
             </span>
             <button onClick={() => navigate("profile")}>
               <span className="eyebrow">CHÀO MỪNG VỀ NHÀ</span>
@@ -327,6 +323,15 @@ export function App({ live }: { live?: ConnectedResident }) {
         {route.page === "assistant" && (
           <ConversationList compact
             state={state}
+            busy={live?.busy}
+            archived={live ? live.archivedChats.map(c => ({id:c.id,title:c.title || c.name,updatedAt:c.last_message_at || c.created_at,preview:c.last_message ?? undefined})) : state.conversations?.filter(c => c.archived)}
+            onDelete={async (id) => {
+              if (live) return live.archiveChat(id);
+              const ok=commit(s => {const next=s.activeConversationId===id ? newConversation(s) : s; return {...next,conversations:next.conversations?.map(c => c.id===id ? {...c,archived:true,draft:null} : c)};});
+              if (ok) {delete composerInputs.current[id];location.hash="/";}
+              return ok;
+            }}
+            onRestore={async (id) => live ? live.restoreChat(id) : commit(s => ({...s,conversations:s.conversations?.map(c => c.id===id ? {...c,archived:false} : c)}))}
             onNew={() => {
               if (live) {
                 void live.newChat();
@@ -361,7 +366,7 @@ export function App({ live }: { live?: ConnectedResident }) {
               onClick={() => navigate("notifications")}
             >
               <IconBell size={22} stroke={1.6} />
-              {(pending > 0 || unread > 0) && <i />}
+              {unread > 0 && <span className="notification-count" aria-hidden="true">{unread>99 ? "99+" : unread}</span>}
             </button>
             <button
               className="avatar header-avatar"
@@ -679,16 +684,20 @@ export function App({ live }: { live?: ConnectedResident }) {
                 </button>
               </div>
             ))}
-          {route.page === "notifications" && (
-            <Notifications
+          {route.page === "notifications" && (live ? <NotificationCenter
+            items={live.notifications} unread={live.notificationUnread} busy={live.busy} more={live.notificationOffset!==null}
+            onMore={live.moreNotifications} onRead={live.markNotificationsRead}
+            onOpen={async (item) => {
+              if (!item.read_at && !await live.markNotificationsRead([item.id])) return;
+              const chat=item.channel_id || item.payload.channelId;
+              const ticket=item.ticket_id || item.payload.ticketId;
+              if (chat) live.select(chat); else if (ticket) openRequest(ticket);
+            }}
+          /> : <Notifications
               requests={state.requests}
               conversations={state.conversations ?? []}
               onOpen={openRequest}
               onOpenChat={(id) => {
-                if (live) {
-                  live.select(id);
-                  return;
-                }
                 if (commit((s) => selectConversation(s, id)))
                   location.hash = `/chat/${id}`;
               }}

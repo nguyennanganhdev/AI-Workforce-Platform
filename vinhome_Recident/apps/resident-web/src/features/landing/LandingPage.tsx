@@ -6,7 +6,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "../../components/ui/button";
 import { operationsUrl } from "../auth/auth-service";
-import "@fontsource-variable/manrope";
+import { Brand } from "../../components/Brand";
 import "./landing.css";
 
 const services = [
@@ -42,8 +42,7 @@ export function LandingPage() {
       <header className="landing-header">
         <div className="landing-container landing-header-inner">
           <a className="landing-brand" href="/" aria-label="Vinhomes, trang chủ">
-            <img src="/images/vinhomes-official.png" alt="Vinhomes" width="124" height="56" />
-            <span>Cổng dịch vụ cư dân</span>
+            <Brand />
           </a>
           <nav id="landing-navigation" className={`landing-nav${menuOpen ? " is-open" : ""}`} aria-label="Điều hướng chính">
             <a href="#dich-vu" onClick={() => setMenuOpen(false)}>Dịch vụ</a>
@@ -64,9 +63,9 @@ export function LandingPage() {
           <div className="landing-hero-copy">
             <p className="landing-eyebrow">Không gian kết nối cư dân</p>
             <h1 id="landing-title">Sống an tâm.<br />Kết nối dễ dàng.</h1>
-            <p className="landing-hero-description">Gửi yêu cầu, theo dõi xử lý và đặt tiện ích ngay trong không gian cư dân.</p>
+            <p className="landing-hero-description">Gửi yêu cầu, tra cứu tiện ích và theo dõi xử lý trong một không gian.</p>
             <div className="landing-hero-actions">
-              <Button asChild size="lg"><a href="/resident">Vào không gian cư dân <IconArrowRight aria-hidden="true" /></a></Button>
+              <Button asChild size="lg"><a href="/resident">Vào ứng dụng <IconArrowRight aria-hidden="true" /></a></Button>
               <a className="landing-text-link" href={operationsUrl("/operations")}>Cổng vận hành <IconArrowUpRight aria-hidden="true" /></a>
             </div>
           </div>

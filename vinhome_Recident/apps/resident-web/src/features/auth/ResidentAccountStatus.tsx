@@ -24,7 +24,7 @@ export function ResidentAccountStatus({
   return (
     <main className="resident-auth-status">
       <a className="resident-auth-status-brand" href="/login">
-        <img src="/images/vinhomes-logo.png" alt="Vinhomes" width={120} height={48} style={{objectFit: "contain"}} />
+        <img src="/images/vinhomes-official.png" alt="Vinhomes" width={120} height={48} style={{objectFit: "contain"}} />
       </a>
       <section>
         {preview && (

@@ -130,3 +130,17 @@
   min-height: 44px;
   cursor: pointer;
 }
+
+.resident-rooms-list { border-color: var(--vh-border); }
+.conversation-row { display: flex; align-items: center; border-radius: 12px; }
+.conversation-row.selected { background: var(--vh-accent-soft); }
+.conversation-open { display: flex; align-items: center; gap: 10px; padding: 14px 10px; min-height: 64px; min-width: 0; flex: 1; text-align: left; }
+.conversation-row small,.conversation-row time { color: var(--vh-muted); font-size: 12px; }
+.conversation-action { width: 44px; min-height: 44px; flex-shrink: 0; color: var(--vh-muted); border-radius: 10px; }
+.conversation-action:hover { color: var(--vh-accent); background: var(--vh-accent-soft); }
+.resident-rooms-list > .notification-filters { margin-bottom: 8px; }
+.conversation-empty,.conversation-notice { padding: 16px 8px; color: var(--vh-muted); font-size: 13px; line-height: 1.6; }
+.resident-rooms-compact .resident-rooms-list { left: auto; right: 0; width: min(460px,calc(100vw - 32px)); }
+.resident-rooms b { background: var(--vh-accent); }
+.conversation-delete-dialog { max-width: min(460px,calc(100vw - 32px)); border: 1px solid var(--vh-border); border-radius: 16px; padding: 28px; }
+.conversation-delete-dialog p { line-height: 1.7; color: var(--vh-muted); }

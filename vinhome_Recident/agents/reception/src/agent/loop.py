@@ -77,6 +77,8 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
     conversation = " ".join(item["text"] for item in history) + " " + system
     retried = False
     for _ in range(MAX_STEPS):
+        if toolbox.progress:
+            await toolbox.progress("responding")
         answer = await model.complete(messages, SPECS)
         calls = answer.get("tool_calls") or []
         if calls:
@@ -110,6 +112,17 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
             # Three titles are enough to show where an answer comes from.
             titles = list(dict.fromkeys(str(passage["title"]) for passage in used))[:3]
             reference=any(p.get('unverified') or p.get('provenance',{}).get('status')=='reference' for p in used)
+            toolbox.citations = []
+            seen = set()
+            for p in used:
+                if p['title'] in seen: continue
+                seen.add(p['title'])
+                proof=p.get('provenance',{})
+                toolbox.citations.append({"title":str(p['title'])[:500],"excerpt":str(p['text'])[:1200],
+                    "documentId":p.get('documentId'),
+                    "status":"approved" if not p.get('unverified') and proof.get('status')=='approved' else "reference",
+                    "effectiveFrom":proof.get('effective_from'),"documentReference":proof.get('document_reference')})
+                if len(toolbox.citations)==3: break
             suffix=("\n(Nguồn tham khảo: " + "; ".join(titles) + "; cần xác nhận thông tin hiện hành với Ban quản lý.)"
                     if reference else "\n(Nguồn: " + "; ".join(titles) + ")") if titles else ""
             return reply + suffix

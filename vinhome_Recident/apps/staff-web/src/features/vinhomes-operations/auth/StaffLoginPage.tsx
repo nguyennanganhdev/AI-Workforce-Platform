@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   IconArrowLeft,
   IconArrowRight,
-  IconBuildingCommunity,
   IconEye,
   IconEyeOff,
   IconLock,
@@ -97,7 +96,7 @@ export function StaffLoginPage({
     <main className="staff-auth">
       <aside className="staff-auth-story">
         <div className="staff-auth-brand">
-          <IconBuildingCommunity size={32} />
+          <img src="/images/vinhomes-official.png" alt="Vinhomes" width={112} height={52} style={{objectFit:"contain"}} />
           <span>
             VINHOMES<small>OPERATIONS PLATFORM</small>
           </span>
@@ -127,7 +126,7 @@ export function StaffLoginPage({
       </aside>
       <section className="staff-auth-panel">
         <div className="staff-auth-mobile-brand">
-          <IconBuildingCommunity size={24} /> Vinhomes Operations
+          <img src="/images/vinhomes-official.png" alt="Vinhomes" width={96} height={44} style={{objectFit:"contain"}} /> Không gian vận hành
         </div>
         <div className="staff-auth-form-wrap">
           <span className="staff-auth-mark">

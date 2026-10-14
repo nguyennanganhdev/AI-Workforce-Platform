@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { IconBuildingCommunity, IconLogout } from '@tabler/icons-react';
+import { IconLogout } from '@tabler/icons-react';
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuBadge, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import type { ReactNode } from 'react';
 
@@ -18,8 +18,7 @@ export function ConnectedNavigation({ name, role, page, work, setup }: { name: s
   </SidebarGroup>;
   return <Sidebar collapsible="offcanvas" className="connected-navigation">
     <SidebarHeader className="flex-row items-center gap-2 px-4 py-4">
-      <IconBuildingCommunity className="size-5 text-primary" stroke={1.5} />
-      <span className="flex-1 text-base font-semibold tracking-tight">Vinhomes</span>
+      <a href="/" className="flex-1" aria-label="Vinhomes, trang chủ"><img src="/images/vinhomes-official.png" alt="Vinhomes" width={100} height={46} className="object-contain" /></a>
       <SidebarTrigger aria-label="Ẩn thanh điều hướng" />
     </SidebarHeader>
     <SidebarContent>{group('Không gian làm việc', work)}{group('Quản trị', setup)}</SidebarContent>

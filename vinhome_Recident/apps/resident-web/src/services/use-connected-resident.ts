@@ -22,6 +22,9 @@ import {
   type Draft,
   type Photo,
   type ResidentState,
+  type ResidentNotification,
+  type TurnState,
+  type ChatMessage,
 } from "./types";
 
 const empty: ResidentState = {
@@ -40,6 +43,10 @@ export function useConnectedResident() {
   const [profile, setProfile] = useState<Profile>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notifications, setNotifications] = useState<ResidentNotification[]>([]);
+  const [notificationUnread, setNotificationUnread] = useState(0);
+  const [notificationOffset, setNotificationOffset] = useState<number | null>(null);
+  const [archivedChats, setArchivedChats] = useState<Chat[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [interactions, setInteractions] = useState<SupervisorInteraction[]>([]);
   const [contact, setContact] = useState({ unit: "", category: "", phone: "" });
@@ -54,6 +61,11 @@ export function useConnectedResident() {
   const answered = useRef(new Map<string, boolean>());
   /** Booking cards confirmed here, shown as booked until the next read says so. */
   const booked = useRef(new Set<string>());
+  const messageCache = useRef(new Map<string, Message[]>());
+  const nextNotificationPage = useRef<number | null>(null);
+  const notificationsInitialized = useRef(false);
+  const overview = useRef<{ at: number; data: [Profile, Chat[], Ticket[], {items: Approval[]},
+    {items: SupervisorInteraction[]}, {items: ResidentNotification[]; unreadCount: number; nextOffset: number | null}, Chat[]] } | null>(null);
   const keyFor = (value: string) => {
     if (!keys.current.has(value)) keys.current.set(value, crypto.randomUUID());
     return keys.current.get(value)!;
@@ -66,15 +78,19 @@ export function useConnectedResident() {
       blob, photo.name, keyFor(`${chat}:photo:${photo.id}`));
     return stored.fileId;
   };
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (quick = false) => {
     const revision = ++generation.current;
-    const [p, chats, tickets, a, pending] = await Promise.all([
+    const summary = quick && overview.current && Date.now()-overview.current.at<5000 ? overview.current.data : await Promise.all([
       api<Profile>("/resident/me"),
       allPages<Chat>("/resident/chats"),
       allPages<Ticket>("/resident/tickets"),
       api<{ items: Approval[] }>("/resident/approvals?limit=100"),
       api<{items: SupervisorInteraction[]}>("/resident/supervisor-interactions"),
+      api<{items: ResidentNotification[]; unreadCount: number; nextOffset: number | null}>("/my/notifications?limit=100"),
+      allPages<Chat>("/resident/chats?archived=true"),
     ]);
+    overview.current={at:quick && overview.current && summary===overview.current.data ? overview.current.at : Date.now(),data:summary};
+    const [p, chats, tickets, a, pending, notices, archived] = summary;
     if (
       p.dataMode !== "database" &&
       import.meta.env.VITE_ALLOW_DEMO_BACKEND !== "true"
@@ -95,9 +111,12 @@ export function useConnectedResident() {
     const detail = detailId
       ? await api<TicketDetail>(`/resident/tickets/${detailId}`)
       : undefined;
-    const messages: Message[] = [];
+    const cached=messageCache.current.get(selected) ?? [];
+    // Approval/quote/booking cards have mutable server state even without a new sequence.
+    const messages: Message[] = cached.some(m => m.body.platform) ? [] : [...cached];
+    let turnState: TurnState | undefined;
     if (selected) {
-      let seq = 0;
+      let seq = messages.at(-1)?.seq ?? 0;
       while (true) {
         const page = await api<{ items: Message[] }>(
           `/resident/chats/${selected}/messages?afterSeq=${seq}&limit=100`,
@@ -106,7 +125,9 @@ export function useConnectedResident() {
         if (page.items.length < 100) break;
         seq = page.items.at(-1)!.seq;
       }
-      if (messages.length && path[0] === "chat")
+      messageCache.current.set(selected,messages);
+      turnState = await api<TurnState>(`/resident/chats/${selected}/turn-state`);
+      if (messages.length && path[0] === "chat" && selected===active.current && !document.hidden && document.hasFocus())
         await api(`/resident/chats/${selected}/read`, {
           method: "POST",
           body: JSON.stringify({ sequence: messages.at(-1)!.seq }),
@@ -114,6 +135,11 @@ export function useConnectedResident() {
     }
     if (selected !== active.current || revision !== generation.current) return;
     setProfile(p);
+    setNotifications((previous) => [...notices.items,...previous.filter(n => !notices.items.some(i => i.id===n.id))]);
+    setNotificationUnread(notices.unreadCount);
+    if (!notificationsInitialized.current) {nextNotificationPage.current=notices.nextOffset;notificationsInitialized.current=true;}
+    setNotificationOffset(nextNotificationPage.current);
+    setArchivedChats(archived);
     setApprovals(a.items);
     const requests = tickets.map((t) =>
       requestView(
@@ -132,7 +158,7 @@ export function useConnectedResident() {
     const latest = new Map(
       messages.flatMap((m) => (m.body.platform ? [[m.body.platform.approval_id, m.id]] : [])),
     );
-    const chatMessages = messages
+    const chatMessages: ChatMessage[] = messages
       .filter(
         (m) =>
           (m.body.text || m.body.fileIds?.length || m.body.platform) &&
@@ -145,6 +171,9 @@ export function useConnectedResident() {
             ? ("resident" as const)
             : ("assistant" as const),
         text: withoutRequestCode(m.body.text || ""),
+        createdAt: m.created_at,
+        delivery: m.sender_kind === "user" ? messages.some(r => r.reply_to_id===m.id) ? "answered" as const : "sent" as const : undefined,
+        reception: m.body.reception,
         ...(m.body.fileIds?.length
           ? { photos: m.body.fileIds.map((id) => ({ id, name: "Ảnh đính kèm", url: `/api/business/resident/photos/${id}` })) }
           : {}),
@@ -154,10 +183,7 @@ export function useConnectedResident() {
       }));
     // Reception answers within the backend's three-minute dispatch limit, or the backend
     // stores a fallback reply. Older unanswered messages predate the agent.
-    const last = messages.at(-1);
-    awaiting.current =
-      last?.sender_kind === "user" &&
-      Date.now() - Date.parse(last.created_at) < 180_000;
+    awaiting.current = !!turnState && ["queued","processing","waiting_platform"].includes(turnState.status);
     const linked = chats.find((c) => c.id === selected)?.ticket_id;
     if (linked)
       chatMessages.push({
@@ -173,6 +199,7 @@ export function useConnectedResident() {
       draft: drafts.current.get(selected) ?? null,
       activeConversationId: selected,
       awaitingReply: awaiting.current,
+      turnState,
       conversations: chats.map((c) => ({
         id: c.id,
         title: c.title || c.name,
@@ -200,6 +227,8 @@ export function useConnectedResident() {
       setApprovals([]);
       active.current = "";
       drafts.current.clear();
+      messageCache.current.clear();
+      setNotifications([]); setNotificationUnread(0); setArchivedChats([]);
     }
     // No session at all: the sign-in page is the only useful place to be.
     if (e instanceof ApiError && e.status === 401) {
@@ -238,11 +267,12 @@ export function useConnectedResident() {
   };
   useEffect(() => {
     let disposed = false;
-    const load = () => {
-      if (!lock.current)
-        void refresh().catch((e) => {
-          if (!disposed) fail(e);
-        });
+    let loading=false;
+    const load = (quick = false) => {
+      if (!lock.current && !loading) {
+        loading=true;
+        void refresh(quick).catch(e => {if (!disposed) fail(e);}).finally(() => {loading=false;});
+      }
     };
     const route = () => {
       const parts = location.hash.slice(2).split("/");
@@ -251,15 +281,17 @@ export function useConnectedResident() {
     };
     route();
     window.addEventListener("hashchange", route);
+    window.addEventListener("focus", route);
     let ticks = 0;
     const timer = setInterval(() => {
       // Poll quickly only while the resident is waiting for the assistant.
-      if (!document.hidden && (awaiting.current || ++ticks % 4 === 0)) load();
+      if (!document.hidden && (awaiting.current || ++ticks % 4 === 0)) load(awaiting.current);
     }, 1250);
     return () => {
       disposed = true;
       clearInterval(timer);
       window.removeEventListener("hashchange", route);
+      window.removeEventListener("focus", route);
     };
   }, [refresh]);
   const create = async () => {
@@ -296,6 +328,33 @@ export function useConnectedResident() {
     error,
     busy,
     contact,
+    notifications,
+    notificationUnread,
+    notificationOffset,
+    archivedChats,
+    markNotificationsRead: (ids: string[]) => run(async () => {
+      if (!ids.length) return;
+      for (let start=0;start<ids.length;start+=100) {
+        const batch=ids.slice(start,start+100);
+        const result=await api<{items:{id:string;read_at:string}[]}>("/my/notifications/read", {method:"POST",body:JSON.stringify({ids:batch})});
+        setNotifications(previous => previous.map(n => {const updated=result.items.find(i => i.id===n.id);return updated ? {...n,read_at:updated.read_at} : n;}));
+      }
+    }),
+    moreNotifications: () => run(async () => {
+      if (nextNotificationPage.current===null) return;
+      const page=await api<{items: ResidentNotification[]; nextOffset: number | null}>(`/my/notifications?limit=100&offset=${nextNotificationPage.current}`);
+      setNotifications(previous => [...previous,...page.items.filter(n => !previous.some(p => p.id===n.id))]);
+      nextNotificationPage.current=page.nextOffset;
+      setNotificationOffset(page.nextOffset);
+    }),
+    archiveChat: (id: string) => run(async () => {
+      await api(`/resident/chats/${id}`,{method:"DELETE"});
+      drafts.current.delete(id);messageCache.current.delete(id);
+      if (active.current===id) {active.current="";awaiting.current=false;location.hash="/";}
+    }),
+    restoreChat: (id: string) => run(async () => {
+      await api(`/resident/chats/${id}/restore`,{method:"POST"});
+    }),
     setContact,
     setError,
     refresh: () => run(async () => {}, false),
@@ -307,11 +366,10 @@ export function useConnectedResident() {
       return pending?.question;
     },
     openChatOf: (ticketId: string) => {
-      const chat = state.conversations?.find((c) => c.requestId === ticketId);
+      const chat = state.conversations?.find(c => c.requestId===ticketId) ?? archivedChats.find(c => c.ticket_id===ticketId);
       if (!chat) return;
-      active.current = chat.id;
-      location.hash = `/chat/${chat.id}`;
-      void run(async () => {});
+      // A linked request can reopen a conversation removed from the personal list.
+      void run(async () => {await api(`/resident/chats/${chat.id}/restore`,{method:"POST"});active.current=chat.id;location.hash=`/chat/${chat.id}`;});
     },
     respondSupervisor: (item: SupervisorInteraction, decision: 'information' | 'approve' | 'reject' | 'request_changes', note: string) =>
       run(async () => {
@@ -326,9 +384,10 @@ export function useConnectedResident() {
         await create();
       }),
     select: (id: string) => {
-      active.current = id;
-      location.hash = `/chat/${id}`;
-      void run(async () => {});
+      void run(async () => {
+        await api(`/resident/chats/${id}/restore`,{method:"POST"});
+        active.current=id;location.hash=`/chat/${id}`;
+      });
     },
     resume: () => {
       if (active.current) location.hash = `/chat/${active.current}`;

@@ -20,6 +20,7 @@ export function FieldShell({ name, notices = [], children }: { name?: string; no
     <div lang="vi" translate="no" className="operations-app field-shell notranslate flex h-[100dvh] w-full flex-col overflow-hidden font-sans">
       <header className="shrink-0 border-b border-border bg-background pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex min-h-16 w-full max-w-2xl items-center gap-3 px-4 py-2">
+          <a href="/" aria-label="Vinhomes, trang chủ"><img src="/images/vinhomes-official.png" alt="Vinhomes" width={64} height={40} style={{objectFit:"contain"}} /></a>
           <div className="min-w-0 flex-1">
             <p className="break-words text-sm font-semibold text-foreground">{name || "Đang tải tài khoản…"}</p>
             <p className="text-xs text-muted-foreground">Nhân viên hiện trường · Vinhomes</p>

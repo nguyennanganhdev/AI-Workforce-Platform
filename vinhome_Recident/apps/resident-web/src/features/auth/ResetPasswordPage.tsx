@@ -30,7 +30,7 @@ export function ResetPasswordPage() {
     finally {setPending(false);}
   }
   return <main className="resident-auth-status">
-    <a className="resident-auth-status-brand" href="/"><img src="/images/vinhomes-logo.png" alt="Vinhomes" width={120} height={48} style={{objectFit: "contain"}} /></a>
+    <a className="resident-auth-status-brand" href="/"><img src="/images/vinhomes-official.png" alt="Vinhomes" width={120} height={48} style={{objectFit: "contain"}} /></a>
     <section><h1>Đặt lại mật khẩu</h1>
       {done ? <><p role="status">Mật khẩu đã được đổi. Các phiên đăng nhập cũ đã kết thúc.</p><a className="resident-auth-status-action" href="/login">Đăng nhập</a></> : !token ?
         <><p role="alert">Link chưa đầy đủ hoặc đã được mở. Vui lòng yêu cầu email khôi phục mới.</p><a href="/forgot-password">Yêu cầu link mới</a></> :
