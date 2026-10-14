@@ -200,7 +200,7 @@ async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, k
     try:
         reply = await run_agent(model, toolbox, system_prompt(
             resident["resident"], resident["residences"], request, categories,
-            turn.get("past_requests", []), added), turn["history"])
+            turn.get("past_requests", []), added, intake=turn.get("pending_intake")), turn["history"])
     except Exception:
         if not toolbox.filed_code:
             raise

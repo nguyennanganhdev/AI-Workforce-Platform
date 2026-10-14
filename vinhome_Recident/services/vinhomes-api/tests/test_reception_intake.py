@@ -20,6 +20,36 @@ def test_a_room_and_a_symptom_are_not_enough_and_the_photo_is_kept():
     assert result["file_ids"] == ["f1"]
 
 
+def test_two_items_keep_verified_details_across_short_answers_without_restarting():
+    messages = said("Nhà tôi rò nước và đèn chập chờn", files=["f1"])
+    first = assess(messages, claims(symptom="rò nước và đèn chập chờn"), source_message_id="m1")
+    messages[0]["intake_facts"] = first["facts"]
+    messages += said("Cả hai ở phòng bếp")
+    messages[-1]["id"] = "m2"
+    second = assess(messages, claims(area="phòng bếp"), source_message_id="m2")
+    assert second["missing"] == "item", second
+    messages[-1]["intake_facts"] = second["facts"]
+    messages.append({"id": "m3", "text": "Chân vòi lavabo, bóng đèn trên bàn bếp", "file_ids": []})
+    third = assess(messages, claims(item="Chân vòi lavabo"), source_message_id="m3")
+    assert third["ready"] and third["question"] is None
+    assert third["description"] == "Nhà tôi rò nước và đèn chập chờn\nCả hai ở phòng bếp\nChân vòi lavabo, bóng đèn trên bàn bếp"
+    assert third["file_ids"] == ["f1"]
+
+
+def test_later_denial_invalidates_a_cached_detail_and_invented_detail_is_not_cached():
+    messages = said("Nhà tắm rò nước ở vòi sen", "Không phải vòi sen, là chân vòi lavabo")
+    messages[0]["intake_facts"] = claims(symptom="rò nước", item="vòi sen")
+    # Cache facts carry a citation, exactly as the backend persists them.
+    for fact in messages[0]["intake_facts"]:
+        fact["source_message_id"] = "m1"
+    missing = assess(messages, [], source_message_id="m2")
+    assert missing["missing"] == "item" and "item" in missing["rejected"]
+    corrected = assess(messages, claims(item="chân vòi lavabo", since="từ sáng"), source_message_id="m2")
+    assert corrected["ready"]
+    assert next(fact["value"] for fact in corrected["facts"] if fact["key"] == "item") == "chân vòi lavabo"
+    assert "since" in corrected["rejected"] and all(fact["key"] != "since" for fact in corrected["facts"])
+
+
 def test_invented_details_are_not_recorded_and_do_not_open_the_gate():
     result = assess(said("Nhà tắm của tôi bị rò nước"),
                     claims(symptom="bị rò nước", item="ống âm tường bị vỡ", since="từ sáng"), source_message_id="m1")

@@ -13,6 +13,12 @@ VIỆC BẠN LÀM
   nhân, thời điểm hay mức độ. Hệ thống ghi lời cư dân vào yêu cầu và tự hỏi lại cư dân khi còn thiếu chi tiết.
   Cư dân chưa nêu hiện tượng gì ("nhà tôi có vấn đề", "báo sự cố") thì hỏi MỘT câu để làm rõ, chưa gọi công cụ.
   Không hỏi số căn hộ, tên hay số điện thoại: hệ thống đã có. Không hỏi lại điều cư dân đã nói.
+  Một tin có nhiều hạng mục cùng nhóm dịch vụ: giữ đầy đủ lời cư dân trong cùng yêu cầu; không bỏ hạng mục thứ hai.
+  Câu trả lời ngắn về vị trí/thiết bị là bổ sung cho sự cố trước đó, không phải một yêu cầu mới. Gọi file_request với
+  chi tiết mới nguyên văn; hệ thống giữ những chi tiết đã xác thực. Không hỏi lại "sự cố gì" khi cư dân đã nêu.
+  Chỉ hỏi phần thực sự còn thiếu, nói rõ đang hỏi hạng mục nào; không gán vị trí/thiết bị của mục này cho mục khác.
+  chi_tiet_dang_tiep_nhan là chi tiết hệ thống đã kiểm tra từ lời cư dân, không phải yêu cầu đã được gửi.
+  Khi có chi tiết này, tiếp tục file_request để cập nhật câu trả lời; không bắt đầu lại từ câu hỏi "sự cố gì".
 - Cư dân NHỜ LÀM một việc cho căn hộ (đăng ký khách đến thăm, đặt hoặc hủy tiện ích, báo mất thẻ, xem thông báo của
   tòa nhà, hỏi công nợ của căn): chỉ gọi file_request khi có nhóm phù hợp trong danh_muc_dich_vu. Không gán việc
   đặt tiện ích, làm thẻ hay công nợ vào nhóm kỹ thuật/an ninh chỉ để tạo được yêu cầu. Khi chưa hỗ trợ thao tác đó,
@@ -73,7 +79,7 @@ Không nói "đoạn tri thức" hay "kho tri thức". Không viết mã yêu c�
 
 
 def system_prompt(resident: dict, homes: list[dict], open_request: dict | None, categories: list[dict],
-                  past_requests: list[dict] = (), added: dict | None = None) -> str:
+                  past_requests: list[dict] = (), added: dict | None = None, intake: dict | None = None) -> str:
     """The rules plus what the backend knows about this resident and conversation."""
     waiting = {"information": "cau_tra_loi_cua_cu_dan", "plan_approval": "phuong_an"}
     facts = {
@@ -83,6 +89,7 @@ def system_prompt(resident: dict, homes: list[dict], open_request: dict | None, 
                             "dang_cho": waiting.get(open_request.get("pending"))} if open_request else None,
         # What the backend just did with this message for the open request.
         "vua_luu": {"anh_them": added.get("attached", 0), "da_chuyen_cau_tra_loi": added.get("delivered") is True} if added else None,
+        "chi_tiet_dang_tiep_nhan": intake,
         "danh_muc_dich_vu": [{"code": c["code"], "name": {'technical':'Kỹ thuật','security':'An ninh','sanitation':'Vệ sinh'}.get(c['code'],c['name'])} for c in categories],
         "kha_nang_ung_dung": ["Tra cứu thông tin, nội quy, thủ tục và tiện ích theo nơi ở",
                               "Tiếp nhận phản ánh thuộc các nhóm dịch vụ đang bật",

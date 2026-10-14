@@ -213,7 +213,14 @@ async def conversation_context(channel_id: str, scope: Scope, message_id: UUID |
         open_request["submitted"] = current_wire(request["submitted"], request) if request["submitted"] else None
         # "information": the Supervisor asked the resident something. "plan_approval": a plan waits for their decision.
         open_request["pending"] = request["pending"]
-    return {"history": history, "open_request": open_request,
+    pending_intake = None
+    if request is None and message_id is not None:
+        pending_messages, asked = await conversation(db, channel_id, run["user_id"], str(message_id))
+        if any(message["intake_facts"] for message in pending_messages):
+            kind = next((message["intake_kind"] for message in reversed(pending_messages) if message["intake_kind"]), "incident")
+            checked = assess(pending_messages, [], source_message_id=str(message_id), kind=kind, asked=asked)
+            pending_intake = {key: checked[key] for key in ("facts", "missing", "question")}
+    return {"history": history, "open_request": open_request, "pending_intake": pending_intake,
             "past_requests": [{**dict(row), "id": str(row["id"])} for row in past.mappings()]}
 
 
@@ -231,10 +238,19 @@ class IntakeCheck(BaseModel):
 async def intake_check(channel_id: str, body: IntakeCheck, scope: Scope) -> dict[str, object]:
     db, run = scope
     _own_channel(channel_id, run)
-    messages, asked = await conversation(db, channel_id, run["user_id"])
+    await db.execute(text("select pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                     {"key": "reception-intake:" + channel_id})
+    messages, asked = await conversation(db, channel_id, run["user_id"], str(body.message_id))
+    if not any(message["id"] == str(body.message_id) for message in messages):
+        raise HTTPException(404, "Resident message not found in this intake")
     claims = [{"key": key, "value": value} for key, value in body.details.items()]
-    return assess(messages, claims, source_message_id=str(body.message_id), kind=body.kind,
-                  emergency=body.emergency, asked=asked)
+    report = assess(messages, claims, source_message_id=str(body.message_id), kind=body.kind,
+                    emergency=body.emergency, asked=asked)
+    await db.execute(text(f"""update messages set body=body || jsonb_build_object('intake_facts',cast(:facts as jsonb),'intake_kind',cast(:kind as text))
+        where id=:message and channel_id=:channel and tenant_id={TENANT} and sender_user_id=:actor"""),
+        {"facts": json.dumps(report["facts"], ensure_ascii=False), "kind": body.kind, "message": body.message_id,
+         "channel": channel_id, "actor": run["user_id"]})
+    return report
 
 
 async def attach_photos(db: AsyncConnection, actor: str, ticket_id, file_ids: list) -> list:

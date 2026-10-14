@@ -315,7 +315,8 @@ async def _update_incident(scope, call: OperationCall):
     # the resident's own words, and only the details found in the messages they cite.
     reported = [fact for fact in merged.get("facts") or [] if isinstance(fact, dict) and fact.get("source") == "customer_report"]
     other = [fact for fact in merged.get("facts") or [] if fact not in reported]
-    messages, asked = await conversation(scope[0], channel_id, scope[1])
+    messages, asked = await conversation(scope[0], channel_id, scope[1],
+                                        str(merged["source_message_id"]) if merged.get("source_message_id") else None)
     verdict = assess(messages, reported, source_message_id=merged.get("source_message_id"),
                      kind=merged.get("request_kind") or "incident", asked=asked)
     merged.update(

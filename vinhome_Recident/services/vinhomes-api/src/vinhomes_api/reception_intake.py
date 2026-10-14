@@ -91,9 +91,12 @@ def assess(messages: list[dict[str, Any]], claims: list[dict[str, Any]], *, sour
     corrects.
     """
     by_id = {str(message["id"]): message for message in messages}
-    facts: list[dict[str, Any]] = []
+    # A short answer supplements the pending report; it does not replace its verified details.
+    previous = [fact for message in messages for fact in message.get("intake_facts", [])
+                if isinstance(fact, dict)]
+    facts_by_key: dict[str, dict[str, Any]] = {}
     rejected: list[str] = []
-    for claim in claims:
+    for claim in previous + claims:
         key, value, cited = claim.get("key"), claim.get("value"), claim.get("source_message_id")
         if not isinstance(key, str) or not isinstance(value, str) or not value.strip():
             rejected.append(str(key))
@@ -106,7 +109,16 @@ def assess(messages: list[dict[str, Any]], claims: list[dict[str, Any]], *, sour
         if source is None:
             rejected.append(key)
             continue
-        facts.append({"key": key, "value": value.strip(), "source": "customer_report", "source_message_id": str(source["id"])})
+        # A later explicit correction invalidates an old detail even if the model repeats it.
+        later = messages[messages.index(source) + 1:]
+        needle = fold(value).strip(" .,;:!?\"'“”")
+        if any((start := fold(message["text"]).find(needle)) >= 0 and negated(fold(message["text"]), start)
+               for message in later):
+            facts_by_key.pop(key, None)
+            rejected.append(key)
+            continue
+        facts_by_key[key] = {"key": key, "value": value.strip(), "source": "customer_report", "source_message_id": str(source["id"])}
+    facts = list(facts_by_key.values())
 
     def held(key: str) -> str:
         return next((fold(fact["value"]) for fact in facts if fact["key"] == key), "")
@@ -142,20 +154,26 @@ def assess(messages: list[dict[str, Any]], claims: list[dict[str, Any]], *, sour
     }
 
 
-async def conversation(db, channel_id: str, actor: str) -> tuple[list[dict[str, Any]], int]:
+async def conversation(db, channel_id: str, actor: str, through: str | None = None) -> tuple[list[dict[str, Any]], int]:
     """The resident's own messages of this conversation, and how often Reception already asked for a detail."""
     rows = await db.execute(text(f"""
         select id,sender_kind,sender_user_id,coalesce(body->>'text','') as text,
-               coalesce(body->'fileIds','[]'::jsonb) as file_ids,body->>'clarification' as clarification
+               coalesce(body->'fileIds','[]'::jsonb) as file_ids,body->>'clarification' as clarification,
+               coalesce(body->'intake_facts','[]'::jsonb) as intake_facts,body->>'intake_kind' as intake_kind
         from messages
         where channel_id=:channel and tenant_id={TENANT} and visibility in ('room','customer')
           and coalesce(body->>'type','')<>'ticket_draft'
+          and (cast(:through as uuid) is null or seq<=(select seq from messages where id=cast(:through as uuid) and channel_id=:channel and tenant_id={TENANT}))
+          and (cast(:through as uuid) is null or created_at>coalesce((select max(t.created_at) from tickets t
+              where t.channel_id=:channel and t.tenant_id={TENANT} and t.requester_user_id=:actor),'-infinity'::timestamptz))
         order by seq
-    """), {"channel": channel_id})
+    """), {"channel": channel_id, "actor": actor, "through": through})
     messages, asked = [], 0
     for row in rows.mappings():
         if row["sender_kind"] == "user" and row["sender_user_id"] == actor:
-            messages.append({"id": str(row["id"]), "text": row["text"], "file_ids": list(row["file_ids"] or [])})
+            messages.append({"id": str(row["id"]), "text": row["text"], "file_ids": list(row["file_ids"] or []),
+                             "intake_facts": list(row["intake_facts"] or []) if through else [],
+                             "intake_kind": row["intake_kind"]})
         elif row["clarification"] == "item":
             asked += 1
     return messages, asked

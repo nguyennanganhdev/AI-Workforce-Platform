@@ -81,7 +81,8 @@ async def _deliver(client: Platform, link, command) -> dict:
             **({"stop_tracking_only": True} if body.get("stop_tracking_only") else {})})
     return await client.request({
         **base, "command_type": kind, "external_management_ref": link["management_ref"], "timezone": TIMEZONE,
-        "message": {"type": "text", "text": body["text"]},
+        "message": {"type": "text", "text": body["text"],
+                    **({"attachments": body["asset_attachments"]} if body.get("asset_attachments") else {})},
         **({"workflow_id": link["workflow_id"]} if kind == "workflow_reply" else {})})
 
 
@@ -121,6 +122,9 @@ async def _send(engine: AsyncEngine, client: Platform, tenant: str, ticket: str)
                 await kept.execute(text("update platform_commands set body=cast(:body as jsonb) where id=:id"),
                                    {"id": command["id"], "body": json.dumps(body, ensure_ascii=False)})
         try:
+            if body.get("file_ids"):
+                from .platform_assets import prepare
+                body = await prepare(engine, client, tenant, link, {**command, "body": body})
             answer = await _deliver(client, link, {**command, "body": body})
         except (httpx.HTTPError, PlatformError) as exc:
             code = exc.code if isinstance(exc, PlatformError) else type(exc).__name__

@@ -68,7 +68,7 @@ Không có bước BQL nhận/duyệt yêu cầu trước khi tạo session. Tic
 
 Ticket loại an ninh không khẩn cấp không gửi platform: việc an ninh do Ban quản lý điều động. Ticket an ninh **khẩn cấp** thì có gửi, để platform biết; leader chỉ báo tin cho cư dân, công cụ giao việc vẫn từ chối việc an ninh.
 
-`message.text` của `start_workflow` là văn bản duy nhất platform nhận, gồm: dòng `ticket_id: <uuid>` (agent phải chép đúng giá trị này vào mọi công cụ), loại yêu cầu, tiêu đề, mô tả của cư dân, căn, tòa, phân khu, mức ưu tiên, dòng `Mức khẩn cấp do Lễ tân đánh giá: …`, số ảnh, giờ tạo. Không có số điện thoại, không có mã `VH-…`.
+`message.text` của `start_workflow` gồm: dòng `ticket_id: <uuid>` (agent phải chép đúng giá trị này vào mọi công cụ), loại yêu cầu, tiêu đề, mô tả của cư dân, căn, tòa, phân khu, mức ưu tiên, dòng `Mức khẩn cấp do Lễ tân đánh giá: …`, số ảnh, giờ tạo. Không có số điện thoại, không có mã `VH-…`. Ảnh cư dân đã xác minh được gửi thêm trong `message.attachments` qua Asset API của contract 1.4, mỗi phần tử chỉ có `asset_id`.
 
 Dòng mức khẩn cấp lấy từ ticket: `KHẨN CẤP` kèm loại nguy hiểm khi nhận ra được (cháy hoặc khói, rò khí gas, chập điện hoặc giật điện, kẹt thang máy, ngập nước hoặc vỡ ống nước, sập trần) hoặc `không khẩn cấp`, rồi mức độ nghiêm trọng (nhẹ, vừa, nặng, nghiêm trọng) khi đã đánh giá.
 
@@ -94,7 +94,9 @@ Vòng lặp khoảng 1 giây, dùng vai trò database hạn chế của API, an 
 
 Trong `send_message` (`v3_resident.py`): nếu hộp chat có link đang chạy (link `pending` hoặc `open`, workflow chưa đóng, ticket chưa `closed` hay `cancelled`) thì ghi lệnh `workflow_reply` và **không** gọi Reception. Khi platform đang chờ approval (`APPROVAL_PENDING`), lệnh thử lại sau. Lệnh `workflow_reply` còn chờ khi workflow đã đóng thì bị bỏ, không báo lỗi cho cư dân.
 
-**Ảnh.** Ảnh trong tin nhắn được gắn vào ticket (cùng cách Reception gắn ảnh bổ sung: bảng `ticket_files`, sự kiện `ticket.conversation_images_attached`), nên nhân viên thấy trong yêu cầu và `vh_ticket_get` đếm được. Ticket đang `resolved` (chờ cư dân xác nhận kết quả) cũng gắn: ảnh chụp chỗ chưa đạt là thứ người làm lại cần. Platform chỉ nhận chữ: lệnh gửi đi có thêm câu "Cư dân gửi thêm N ảnh.", N là số ảnh vừa gắn thêm (ảnh ticket đã có thì không tính); tin chỉ có ảnh thì lệnh chỉ gồm câu đó.
+**Ảnh cư dân.** Ảnh được gắn vào ticket (`ticket_files`, sự kiện `ticket.conversation_images_attached`), nên nhân viên thấy trong yêu cầu và `vh_ticket_get` đếm được. Ticket đang `resolved` cũng nhận ảnh bổ sung. Bridge upload bytes đã xác minh bằng `POST /workforce/v1/partner/assets/upload-sessions` → PUT URL ký với đúng header → `POST /partner/assets/{asset_id}/complete`; chỉ sau trạng thái `active` mới gửi `message.attachments=[{"asset_id":"…"}]` trong start/reply. Worker kiểm tenant, ticket, người gửi, purpose `issue`, object sạch/ready, size và SHA-256. Không gửi ảnh riêng của staff, URL nguồn hoặc base64 vào message; không gửi credential Platform sang storage.
+
+Tối đa 10 ảnh/lệnh; nhiều ảnh được tách thành các lệnh cùng ticket. Tin chỉ có ảnh vẫn có câu "Cư dân gửi thêm N ảnh." và attachments. Mapping `platform_resident_assets` cùng tham chiếu đóng băng trong command được commit trước request, nên retry sau khi mất phản hồi giữ nguyên asset ID và request body. Upload/finalize lỗi không được âm thầm bỏ ảnh để gửi text. Session upload lỗi trước finalize có thể để lại object/session chưa dùng bên Platform; không phải booking/công việc hoặc request thành công. Không lưu URL ký trong database. Platform cần Asset API và storage hoạt động; kiểm thử transport giả không chứng minh cấu hình storage của môi trường thật.
 
 **Khẩn cấp.** Tin có dấu hiệu khẩn cấp (`emergency_kind`) đi **cả hai đường**: Reception xử lý tại chỗ như cũ (leo thang ticket, báo Ban quản lý), và một lệnh `workflow_reply` báo cho leader bằng một câu cố định: "Cư dân vừa báo tình huống khẩn cấp (<loại>). Lời cư dân:" rồi nguyên văn lời cư dân. Câu này không nói Ban quản lý đã nhận tin: lúc ghi lệnh, lượt của Reception chưa chạy và có thể không báo được. Ticket đang `resolved` vẫn leo thang khẩn cấp được.
 
@@ -181,7 +183,7 @@ Platform không sửa được bảng sự kiện đã lưu: đổi bảng này 
 
 ## 9. Ngoài phạm vi
 
-Ảnh không đi qua platform (hợp đồng chỉ nhận chữ): ảnh nằm ở kho ảnh của Vinhomes và gắn vào ticket, platform chỉ biết số ảnh. Đồng bộ danh sách căn hộ (`residences`), SSE, nhiều ban quản lý cùng lúc có khóa riêng, và thanh toán không làm ở bản này.
+Ảnh cư dân đi qua Asset API theo contract 1.4; Domain giữ bản gốc và quyền truy cập. Ảnh kết quả riêng của staff hiện vẫn qua luồng công bố kết quả/số ảnh, chưa tự mở provider upload trong lượt sửa ảnh cư dân. Đồng bộ danh sách căn hộ (`residences`), SSE, nhiều ban quản lý cùng lúc có khóa riêng, và thanh toán không làm ở bản này.
 
 ## 10. Câu của cầu nối và việc còn mở
 

@@ -100,16 +100,24 @@ def database(tmp_path_factory):
 
     import vinhomes_api.resident_photos as photos
     import vinhomes_api.v3_files as ticket_photos
+    import vinhomes_api.v3_conversation_images as conversation_photos
+    import vinhomes_api.v3_resident_support as chat_photos
     previous_root = photos.FILE_ROOT
     photos.FILE_ROOT = tmp_path_factory.mktemp("resident-images")
     previous_ticket_root = ticket_photos.FILE_ROOT
     ticket_photos.FILE_ROOT = photos.FILE_ROOT
+    previous_conversation_root = conversation_photos.FILE_ROOT
+    conversation_photos.FILE_ROOT = photos.FILE_ROOT
+    previous_chat_root = chat_photos.FILE_ROOT
+    chat_photos.FILE_ROOT = photos.FILE_ROOT
     try:
         asyncio.run(setup())
         yield TestDatabase(admin=database_url(admin_url,test_name), runtime=database_url(runtime_url,test_name).replace("postgresql:","postgresql+asyncpg:"))
     finally:
         photos.FILE_ROOT = previous_root
         ticket_photos.FILE_ROOT = previous_ticket_root
+        conversation_photos.FILE_ROOT = previous_conversation_root
+        chat_photos.FILE_ROOT = previous_chat_root
         asyncio.run(cleanup())
 
 

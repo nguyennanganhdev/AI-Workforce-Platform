@@ -18,6 +18,11 @@ router = APIRouter(tags=["V3 reception data APIs"])
 Scope = Annotated[tuple[AsyncConnection, str], Depends(resident_connection)]
 
 
+class ReceptionTicketCreate(ResidentTicketCreate):
+    """A conversation accumulates images across turns; the resident form keeps its own three-image limit."""
+    file_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+
 @router.get("/resident/context", response_model=AgentBusinessResponse)
 async def context(scope: Scope):
     user = (
@@ -218,7 +223,7 @@ async def commit_draft(channel_id: str, draft_id: UUID, index: int, scope: Scope
                 )["agentContext"],
             },
         )
-    body = ResidentTicketCreate(**{k: v for k, v in fields.items() if k in ResidentTicketCreate.model_fields},
+    body = ReceptionTicketCreate(**{k: v for k, v in fields.items() if k in ResidentTicketCreate.model_fields},
                                 idempotency_key=f"draft:{draft_id}:{index}")
     assessments = row["body"].get("assessments") or []
     assessment = assessments[index] if index < len(assessments) else None

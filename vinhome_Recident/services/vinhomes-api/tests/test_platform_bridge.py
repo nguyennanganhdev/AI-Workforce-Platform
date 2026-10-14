@@ -63,6 +63,7 @@ class FakePlatform:
         self.replies = []       # what the coordinator says to the next requests; default: one line
         self.meanwhile = None   # called once while the worker waits for the event log
         self.calls, self.done, self.flows, self.received = [], {}, {}, {}
+        self.assets, self.uploaded = {}, {}
 
     def id(self, prefix):
         return f"{prefix}_{uuid4().hex}"  # as the platform makes them: never the same twice
@@ -103,11 +104,35 @@ class FakePlatform:
         if self.down:
             raise httpx.ConnectError("no route to the platform", request=request)
         path = request.url.path.removeprefix("/workforce/v1")
-        body = json.loads(request.content) if request.method == "POST" else None
+        body = json.loads(request.content) if request.method == "POST" and request.content else None
         self.calls.append((request.method, path, body))
+        if request.method == "PUT" and path.startswith("/uploads/"):
+            asset = path.rsplit("/", 1)[1]
+            assert "authorization" not in request.headers and "cookie" not in request.headers
+            assert request.headers["x-amz-meta-asset-id"] == asset
+            assert request.headers["content-type"] == self.assets[asset]["content_type"]
+            self.uploaded[asset] = request.content
+            return httpx.Response(200)
         provider = path.startswith("/provider/")
         if request.headers.get("authorization") != "ApiKey " + (PROVIDER_KEY if provider else CUSTOMER_KEY):
             return refusal(401, "UNAUTHENTICATED")
+        if path == "/partner/assets/upload-sessions":
+            assert set(body) == {"schema_version", "external_management_ref", "external_user_id", "external_ticket_id",
+                                 "external_conversation_id", "filename", "content_type", "byte_size"}
+            asset = self.id("asset")
+            self.assets[asset] = body
+            return httpx.Response(201, json={"asset_id": asset, "upload_method": "PUT",
+                "upload_url": f"https://storage.test/uploads/{asset}", "required_headers": {
+                    "Content-Type": body["content_type"], "x-amz-meta-asset-id": asset},
+                "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+                "complete_url": f"/workforce/v1/partner/assets/{asset}/complete"})
+        if path.startswith("/partner/assets/") and path.endswith("/complete"):
+            asset = path.split("/")[-2]
+            expected = self.assets[asset]
+            assert all(request.url.params[key] == expected[key] for key in
+                       ("external_user_id", "external_ticket_id", "external_conversation_id"))
+            assert len(self.uploaded[asset]) == expected["byte_size"]
+            return httpx.Response(200, json={"asset_id": asset, "status": "active"})
         if provider:
             if request.method == "POST":
                 return self.job_event(request, body)
@@ -150,9 +175,19 @@ class FakePlatform:
             body["external_user_id"], body.get("external_ticket_id"), body["external_conversation_id"])
 
     def command(self, body):
-        if set(body) - REQUEST_FIELDS or body.get("schema_version") != "1" or set(body.get("message") or {}) != {"type", "text"} \
+        if set(body) - REQUEST_FIELDS or body.get("schema_version") != "1" or not {"type", "text"} <= set(body.get("message") or {}) \
+                or set(body.get("message") or {}) - {"type", "text", "attachments"} \
                 or body["message"]["type"] != "text" or not body["message"]["text"].strip():
             return refusal(422, "VALIDATION_FAILED")
+        attached = body["message"].get("attachments", [])
+        if len(attached) > 10:
+            return refusal(422, "VALIDATION_FAILED")
+        for reference in attached:
+            assert set(reference) == {"asset_id"}
+            asset = self.assets[reference["asset_id"]]
+            assert reference["asset_id"] in self.uploaded
+            assert all(asset[key] == body[key] for key in
+                       ("external_user_id", "external_ticket_id", "external_conversation_id", "external_management_ref"))
         if body["command_type"] == "start_workflow":
             if "workflow_id" in body:
                 return refusal(400, "INVALID_REQUEST")

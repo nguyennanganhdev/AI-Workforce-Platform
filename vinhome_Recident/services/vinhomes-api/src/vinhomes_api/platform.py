@@ -124,9 +124,34 @@ class Platform:
         self.bridge = bridge
         self.http = httpx.AsyncClient(base_url=bridge.url + "/workforce/v1", transport=transport,
                                       timeout=httpx.Timeout(QUICK_SECONDS, connect=5))
+        self.upload_http = httpx.AsyncClient(transport=transport, timeout=30, follow_redirects=False)
 
     async def aclose(self) -> None:
         await self.http.aclose()
+        await self.upload_http.aclose()
+
+    async def upload_asset(self, identity: dict, filename: str, mime: str, data: bytes) -> str:
+        from urllib.parse import quote, urlsplit
+        session = await self._call("POST", "/partner/assets/upload-sessions", json={
+            "schema_version": "1", **identity, "filename": filename, "content_type": mime, "byte_size": len(data)})
+        url = urlsplit(session.get("upload_url", ""))
+        headers = session.get("required_headers") or {}
+        if (session.get("upload_method") != "PUT" or url.scheme not in ("http", "https") or not url.netloc
+                or url.username or url.password or url.fragment or not isinstance(headers, dict)
+                or not isinstance(session.get("asset_id"), str) or not session["asset_id"]
+                or any(not isinstance(key, str) or not isinstance(value, str) or key.lower() in ("authorization", "cookie", "proxy-authorization")
+                       for key, value in headers.items())):
+            raise PlatformError(502, "ASSET_UPLOAD_SESSION_INVALID", retryable=True)
+        # A separate client has no partner credentials/cookies. Do not follow storage redirects.
+        uploaded = await self.upload_http.put(session["upload_url"], content=data, headers=headers)
+        if not 200 <= uploaded.status_code < 300:
+            raise PlatformError(503, "ASSET_STORAGE_UPLOAD_FAILED", retryable=True)
+        asset_id = str(session["asset_id"])
+        complete = await self._call("POST", "/partner/assets/" + quote(asset_id, safe="") + "/complete",
+            params={key: identity[key] for key in ("external_user_id", "external_ticket_id", "external_conversation_id")})
+        if complete.get("asset_id") != asset_id or complete.get("status") != "active":
+            raise PlatformError(502, "ASSET_NOT_ACTIVE", retryable=True)
+        return asset_id
 
     async def _call(self, method: str, path: str, *, key: str | None = None, headers: dict | None = None, **how) -> dict:
         response = await self.http.request(method, path, **how, headers={
@@ -200,6 +225,9 @@ async def link_ticket(db, ticket_id) -> None:
             and ur.user_id=t.requester_user_id and ur.verification_status='verified' and ur.valid_from<=now()
             and (ur.valid_to is null or ur.valid_to>now()) order by ur.verified_at desc,ur.id limit 1) as resident_relation,
           (select count(*) from ticket_files f where f.ticket_id=t.id and f.tenant_id=t.tenant_id) as photos
+          ,(select coalesce(jsonb_agg(f.file_id::text order by f.created_at,f.file_id),'[]'::jsonb)
+            from ticket_files f where f.ticket_id=t.id and f.tenant_id=t.tenant_id
+              and f.purpose='issue' and f.uploaded_by=t.requester_user_id) as file_ids
         from tickets t
         join users resident on resident.id=t.requester_user_id
         join management_units mu on mu.id=t.management_unit_id and mu.tenant_id=t.tenant_id
@@ -239,8 +267,12 @@ async def link_ticket(db, ticket_id) -> None:
               f"response_due_at: {ticket['response_due_at'].isoformat() if ticket['response_due_at'] else 'unknown'}",
               f"resolution_due_at: {ticket['resolution_due_at'].isoformat() if ticket['resolution_due_at'] else 'unknown'}",
               'Quyền thao tác phải đọc lại từ policy của vh_ticket_get; snapshot bàn giao không cấp thêm quyền.',
-              'Không xác định lại cư dân/căn hộ. Ảnh lưu tại domain; chỉ gửi số ảnh.']
-    await command(db, ticket_id, "start_workflow", {"text": "\n".join(lines)})
+              'Không xác định lại cư dân/căn hộ. Ảnh đính kèm qua Asset API được gắn đúng yêu cầu.']
+    files = list(ticket["file_ids"] or [])
+    await command(db, ticket_id, "start_workflow", {"text": "\n".join(lines), **({"file_ids": files[:10]} if files else {})})
+    for offset in range(10, len(files), 10):
+        await command(db, ticket_id, "workflow_reply", {"text": "Ảnh cư dân bổ sung cho cùng yêu cầu.",
+            "file_ids": files[offset:offset + 10], "own": True})
 
 
 async def notice(db,ticket_id,key,message_text):
@@ -283,8 +315,14 @@ async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids
         said += f"\nsource_message_id: {source_message_id}"
     # `own`: Reception answers an emergency in the chat itself, so a silent coordinator leaves nobody unanswered.
     await command(db, ticket["ticket_id"], "workflow_reply", {"text": said,
+        **({"file_ids": [str(file_id) for file_id in photos[:10]]} if photos else {}),
         **({"source_message_id": str(source_message_id)} if source_message_id else {}),
         **({"own": True} if kind else {})})
+    for offset in range(10, len(photos), 10):
+        await command(db, ticket["ticket_id"], "workflow_reply", {
+            "text": "Ảnh cư dân bổ sung cho cùng yêu cầu." + (f"\nsource_message_id: {source_message_id}" if source_message_id else ""),
+            "file_ids": [str(file_id) for file_id in photos[offset:offset + 10]], "own": True,
+            **({"source_message_id": str(source_message_id)} if source_message_id else {})})
     return kind is None
 
 

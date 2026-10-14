@@ -17,6 +17,33 @@ def say(c, channel, text):
     return sent.json()["id"]
 
 
+def test_intake_remembers_prior_details_but_never_reads_a_future_resident_message(database, monkeypatch):
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "2c" * 32)
+    with app(database) as c:
+        channel = c.post("/resident/chats", json={"title": "Hai hạng mục"}).json()["id"]
+        first = say(c, channel, "Nhà tôi rò nước và đèn chập chờn")
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, first)["token"]}
+        check = f"/internal/reception/chats/{channel}/intake"
+        report = c.post(check, headers=bearer, json={"message_id": first, "details": {"symptom": "rò nước và đèn chập chờn"}})
+        assert report.status_code == 200, report.text
+        assert report.json()["missing"] == "item"
+        second = say(c, channel, "Cả hai ở phòng bếp")
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, second)["token"]}
+        future = say(c, channel, "Chân vòi lavabo, bóng đèn trên bàn bếp")
+        context = c.get(f"/internal/reception/chats/{channel}/context?message_id={second}", headers=bearer)
+        assert context.status_code == 200, context.text
+        assert context.json()["pending_intake"]["facts"][0]["key"] == "symptom"
+        assert "Chân vòi lavabo" not in str(context.json())
+        report = c.post(check, headers=bearer, json={"message_id": second, "details": {"area": "phòng bếp", "item": "Chân vòi lavabo"}})
+        assert report.status_code == 200, report.text
+        assert report.json()["missing"] == "item" and "item" in report.json()["rejected"]
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, future)["token"]}
+        report = c.post(check, headers=bearer, json={"message_id": future, "details": {"item": "Chân vòi lavabo"}})
+        assert report.status_code == 200, report.text
+        assert report.json()["ready"] and "đèn chập chờn" in report.json()["description"]
+        assert {fact["key"] for fact in report.json()["facts"]} == {"symptom", "area", "item"}
+
+
 def test_reception_is_told_what_is_missing_and_the_question_is_counted(database, monkeypatch):
     monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "2c" * 32)
     with app(database) as c:
@@ -46,9 +73,10 @@ def test_reception_is_told_what_is_missing_and_the_question_is_counted(database,
             "symptom": "bị rò nước", "item": "chân vòi lavabo"}}).json()
         assert done["ready"] and not done["review"]
         assert done["description"] == "Nhà tắm của tôi bị rò nước\nRò ở chân vòi lavabo"
-        # Asked twice already: without the detail the report would now go to a person as it is.
+        # Repeating intake with fewer fields keeps the previously verified item.
         unfinished = c.post(check, headers=bearer, json={"message_id": third, "details": {"symptom": "bị rò nước"}}).json()
-        assert unfinished["ready"] and unfinished["review"]
+        assert unfinished["ready"] and not unfinished["review"]
+        assert next(fact["value"] for fact in unfinished["facts"] if fact["key"] == "item") == "chân vòi lavabo"
 
         # The turn of one message does not read what was sent after it.
         seen = c.get(f"/internal/reception/chats/{channel}/context?message_id={second}", headers=bearer).json()
