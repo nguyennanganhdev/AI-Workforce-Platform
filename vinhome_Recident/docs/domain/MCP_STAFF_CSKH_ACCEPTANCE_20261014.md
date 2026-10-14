@@ -102,4 +102,24 @@ Chi tiết, lệnh nghiệm thu trực tiếp và yêu cầu kiểm tra mạng n
 
 ## 7. Bằng chứng kiểm thử và triển khai
 
-Kết quả cuối, SHA/image và kiểm tra bản phục vụ trên VPS sẽ ghi sau khi toàn bộ gate hoàn tất. Kiểm thử isolated PostgreSQL + FakePlatform chỉ chứng minh hợp đồng phía domain, không chứng minh Platform production đã nối xong. Thông tin đăng nhập/log/dump giữ trong thư mục private được ignore, không đưa vào tài liệu bàn giao công khai.
+Source chức năng **`1d76ea3c4095f793f9e54488341bb8d50fc00936`**, đã push `origin/dev_Vinhome`. Các image API/Reception/Resident/Operations dùng tag **`staff-mcp-20261014-1d76ea3c`**. Đã đối chiếu hash các module thay đổi trong container, index.html và **61 asset JS/CSS đang được phục vụ** (Resident17, Staff44) với artifact dự kiến.
+
+- **126/126** kiểm thử PostgreSQL riêng: import, platform_tools, platform_bridge, platform_mcp_v2, staff_dispatch. Có full flow Kỹ thuật và Vệ sinh: nhận việc → di chuyển/đến nơi → báo giá/cư dân duyệt → ảnh trước/sau → nghiệm thu → cư dân xác nhận/đóng workflow; lỗi quyền, sai chuyên môn, busy409, nguồn cư dân, grant/CAS/retry, event signing/receipt/replay. FakePlatform, không model thật.
+- **119 UI tests** đạt: lần chạy chung114 pass, 5 chưa chạy do hook import timeout10s; chạy riêng file đó với hook timeout30s đạt5/5. TypeScript/build staff đạt. Không gọi đây là một lần chạy chung119/119 không có retry.
+- **20 tình huống browser** trên bundle VPS, API fixtures bị chặn/mock toàn bộ: 4 trạng thái staff × 5 viewport320×740,375×812,390×844,768×1024,844×390. Không overflow/JS error; nút thao tác chính ≥44px (file input dùng label80px); bản nháp giữ khi poll/version đổi. Đã xem ảnh render.
+- **Live smoke** tài khoản Vệ sinh: login200, role staff, category sanitation có trong catalog, đọc danh sách việc riêng200, truy cập quản trị accounts403; UI đã tải xong ở320/375/768/1440, không tràn ngang/JS error. Không tạo ticket/work order thật và không chạy Agent.
+- **MCP live:** tools/list đúng7 tool; anonymous401; bootstrap business call bị từ chối với TICKET_GRANT_REQUIRED. Không cấp grant hoặc chạy hành động trên ticket thật chỉ để smoke.
+- [CI38515165777](https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/38515165777): reception-cskh, business-api, frontend đều success trên SHA chức năng.
+- API/Reception/Resident/Operations/Gateway/PostgreSQL/MinIO/Backup healthy; scheduler/platform-sync running (không khai báo healthcheck riêng). Backup trước release và sau thêm staff đều exit0. Test PostgreSQL/anonymous volume đã gỡ sau đối chiếu khác volume production.
+
+### Dữ liệu Vệ sinh đã triển khai
+
+Một account `Nhân viên Vệ sinh 01 (khởi tạo)`, role staff, specialty sanitation, available, công suất1. Có đúng **7 building grants, 7 coverage cùng Local Management, 7 ca mẫu08:00–17:00 +07:00 từ14/10 đến20/10/2026**. Đây là account/lịch khởi tạo theo yêu cầu, chưa thay cho danh sách nhân sự/ca chính thức. Không đổi nhân viên Kỹ thuật thành Vệ sinh. Dữ liệu import riêng có thể kiểm tra tại `/opt/vinhomes/audits/sanitation-20261014/import`.
+
+Credentials lưu **ignored** tại `vinhome_Recident/deploy/test-accounts-20261013/sanitation-20261014/accounts.txt` và accounts.json; không có password/key trong Git hoặc tài liệu này. Khi bổ sung nhân sự thật, dùng chức năng quản trị/sửa profile và ca, không chạy importer add-only để giả định đã cập nhật row cũ.
+
+Sau triển khai: users722, accounts17, memberships722, staff27, shifts1412, categories3, coverage21. **Tickets939, work_orders677, files33, knowledge164/648 không đổi.** Gateway/DB/MinIO không bị thay container trong release source; dữ liệu trước release không mất.
+
+Bằng chứng private: `/opt/vinhomes/releases/staff-mcp-20261014-1d76ea3c/` (manifest, image IDs, hash, dump/config trước release); `/opt/vinhomes/audits/tls-staff-20261014/`; `/opt/vinhomes/audits/sanitation-20261014/`; local ignored `deploy/test-accounts-20261013/domain-audit/staff-mobile-20261014/`.
+
+**Chưa hoàn tất hai gate bên ngoài:** TLS direct renew dry-run exit0, và kết nối Platform production có grant transport/provider event receiver. Kiểm thử isolated PostgreSQL + FakePlatform chỉ chứng minh hợp đồng phía domain. Bridge vẫn tắt vì thiếu URL Platform; không tuyên bố integration E2E thật hoặc chất lượng Agent đã được nghiệm thu.
