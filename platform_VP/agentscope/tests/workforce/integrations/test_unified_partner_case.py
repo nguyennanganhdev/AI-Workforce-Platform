@@ -668,6 +668,32 @@ class UnifiedPartnerApprovalTest(_CaseHarness):
         self.assertEqual("awaiting_user", state)
 
 
+class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
+    async def test_the_route_leader_sees_only_case_and_declared_tools(self):
+        from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
+
+        middleware = PartnerCaseMiddleware(
+            SimpleNamespace(rules={}),
+            [SimpleNamespace(name="vh_ticket_get")],
+        )
+        seen = {}
+
+        async def next_handler(**kwargs):
+            seen.update(kwargs)
+            return "response"
+
+        offered = [
+            {"type": "function", "function": {"name": name}}
+            for name in ("TeamCreate", "TeamSay", "AgentInvite", "CaseSay", "CaseFinalize", "vh_ticket_get")
+        ]
+        answer = await middleware.on_model_call(None, {"tools": offered}, next_handler)
+        self.assertEqual("response", answer)
+        self.assertEqual(
+            ["CaseSay", "CaseFinalize", "vh_ticket_get"],
+            [tool["function"]["name"] for tool in seen["tools"]],
+        )
+
+
 class CheckSayTest(unittest.TestCase):
     def test_figures_must_be_cited_or_said_by_the_user(self):
         self.assertEqual([], check_say("Thợ đến lúc 09:30.", ["E2"], {}, {"E2": "eta 09:30"}, []))

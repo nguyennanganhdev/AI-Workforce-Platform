@@ -533,6 +533,21 @@ class PartnerCaseMiddleware(MiddlewareBase):
     async def list_tools(self) -> list[ToolBase]:
         return [CaseSay(self._case), CaseFinalize(self._case), *self._tools]
 
+    async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
+        """The route leader sees only its case tools and the declared tools.
+
+        The toolkit also offers team tools (TeamCreate, TeamSay, AgentInvite)
+        to any session outside a team; a partner leader works alone.
+        """
+
+        allowed = {"CaseSay", "CaseFinalize", *(tool.name for tool in self._tools)}
+
+        def name(schema: dict) -> str | None:
+            return (schema.get("function") or {}).get("name") or schema.get("name")
+
+        tools = [schema for schema in input_kwargs.get("tools") or [] if name(schema) in allowed]
+        return await next_handler(tools=tools)
+
     async def on_system_prompt(self, agent: Any, current_prompt: str) -> str:
         from ...._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY
 

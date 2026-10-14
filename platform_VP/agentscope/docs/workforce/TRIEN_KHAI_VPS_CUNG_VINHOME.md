@@ -75,11 +75,11 @@ Tài khoản quản lý demo và các khoá nằm trong
 ## Đổi khoá, cập nhật, gỡ
 
 - **Đổi khoá Vinhome:** chạy lại `onboard_partner.py` với `--new-keys`, dán lại
-  `platform.env`, rồi khởi động lại `api` và `platform-sync` như bước 6.
+  `platform.env`, rồi khởi động lại `api` và `platform-sync` như bước 7.
 - **Cập nhật platform:** build image mới ở máy dev, chép lên, `docker load`,
   rồi chạy lại bước 3. Migration chạy tự động.
 - **Tắt nối:** để `VINHOMES_API_PLATFORM_URL=` trống trong `deployment.env` rồi
-  làm lại bước 6. Cầu nối Vinhome tắt, Lễ tân xử lý như trước.
+  làm lại bước 7. Cầu nối Vinhome tắt, Lễ tân xử lý như trước.
 - **Gỡ platform:** `docker compose ... down` (thêm `-v` nếu muốn xoá dữ liệu).
 
 ## Ghi chú ngày 14/10
