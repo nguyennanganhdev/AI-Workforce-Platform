@@ -214,14 +214,17 @@ async def load(url: str, path: Path, tenant: str) -> dict:
         async with connection.transaction():
             await connection.execute("select set_config('app.tenant_id',$1,true)", tenant)
             sites = {row["code"]:row["id"] for row in await connection.fetch("select code,id from sites where tenant_id=$1", UUID(tenant))}
-            zones = {row["code"]: row["id"] for row in await connection.fetch("select code,id from zones where tenant_id=$1", UUID(tenant))}
-            buildings = {row["code"]: row for row in await connection.fetch("select code,id,zone_id from buildings where tenant_id=$1", UUID(tenant))}
+            zones = {(row["site_id"], row["code"]): row["id"] for row in await connection.fetch("select site_id,code,id from zones where tenant_id=$1", UUID(tenant))}
+            buildings = {(row["site_id"], row["code"]): row for row in await connection.fetch("select site_id,code,id,zone_id from buildings where tenant_id=$1", UUID(tenant))}
             loaded = []
             for document in documents:
                 zone, towers = document.get("zone"), document.get("buildings") or []
+                site = sites.get(document["site"])
+                scoped_zones = {code: value for (sid, code), value in zones.items() if sid == site}
+                scoped_buildings = {code: value for (sid, code), value in buildings.items() if sid == site}
                 # A place this database does not have: leave the document out. Loading it for the whole site would show it to everyone.
-                missing = ([] if document["site"] in sites else [f"site {document['site']}"]) + ([f"zone {zone}"] if zone and zone not in zones else []) \
-                    + [f"building {code}" for code in towers if code not in buildings or buildings[code]["zone_id"] != zones.get(zone)]
+                missing = ([] if site else [f"site {document['site']}"]) + ([f"zone {zone}"] if zone and zone not in scoped_zones else []) \
+                    + [f"building {code}" for code in towers if code not in scoped_buildings or scoped_buildings[code]["zone_id"] != scoped_zones.get(zone)]
                 if missing:
                     problems.append(f"{document['code']}: no {', '.join(missing)}")
                     continue
@@ -242,7 +245,7 @@ async def load(url: str, path: Path, tenant: str) -> dict:
                         is distinct from (excluded.code,excluded.version_id,excluded.title,excluded.category,excluded.audience,excluded.zone_id,excluded.building_ids,excluded.unverified,excluded.metadata,excluded.site_id)
                     returning id
                 """, UUID(document["id"]), UUID(tenant), document["code"], UUID(document["version_id"]), document["title"], document["category"], document["audience"],
-                    zones[zone] if zone else None, [buildings[code]["id"] for code in towers] or None, bool(document.get("unverified")),
+                    scoped_zones[zone] if zone else None, [scoped_buildings[code]["id"] for code in towers] or None, bool(document.get("unverified")),
                     json.dumps(document.get("metadata") or {}, ensure_ascii=False), sites[document["site"]]))
                 await connection.execute("delete from vh_knowledge_chunks where tenant_id=$3 and document_id=$1 and id<>all($2::uuid[])",
                                          UUID(document["id"]), [UUID(c["id"]) for c in chunks], UUID(tenant))

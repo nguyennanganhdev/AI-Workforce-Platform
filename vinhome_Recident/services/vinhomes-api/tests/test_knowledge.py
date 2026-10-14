@@ -303,3 +303,35 @@ def test_a_document_flag_alone_does_not_make_a_source_approved():
     assert knowledge.provenance(metadata,True)['status']=='reference'
     metadata['review']['effective_until']='2000-01-01'
     assert knowledge.provenance(metadata,False)['status']=='reference'
+
+
+def test_loading_repeated_zone_and_building_codes_stays_in_the_documents_site(database, tmp_path):
+    other, other_zone, other_building = uuid4(), uuid4(), uuid4()
+    original = sql(database, """select b.site_id,b.zone_id,b.id from buildings b
+        join zones z on z.id=b.zone_id and z.tenant_id=b.tenant_id
+        where b.tenant_id=$1 and b.code='S1.01' and z.code='sapphire'""", TENANT)[0]
+    sql(database, """insert into sites(id,tenant_id,domain_id,code,name,address,status)
+        select $1,tenant_id,domain_id,'loader-other-site','Fixture site','Fixture address','active' from sites where id=$2 returning id""", other, original['site_id'])
+    sql(database, """insert into zones(id,tenant_id,site_id,code,name,status)
+        values($1,$2,$3,'sapphire','Fixture zone','active') returning id""", other_zone, TENANT, other)
+    sql(database, """insert into buildings(id,tenant_id,site_id,zone_id,code,name,status)
+        values($1,$2,$3,$4,'S1.01','Fixture building','active') returning id""", other_building, TENANT, other, other_zone)
+    first = document('duplicate-code-first', 'Scope test', 'Scope test', zone='sapphire', buildings=['S1.01'], embedded=False)
+    second = document('duplicate-code-second', 'Scope test', 'Scope test', zone='sapphire', buildings=['S1.01'], embedded=False)
+    second['site'] = 'loader-other-site'
+    missing = document('cross-site-missing', 'Missing zone', 'Must not load', zone='hai-au', embedded=False)
+    missing['site'] = 'loader-other-site'
+    try:
+        done = asyncio.run(knowledge.load(database['admin'], write(tmp_path, [first, second, missing]), str(TENANT)))
+        assert done['documents'] == 2 and done['skipped'] == 1
+        for doc, site, zone, building in ((first, original['site_id'], original['zone_id'], original['id']), (second, other, other_zone, other_building)):
+            row = sql(database, 'select site_id,zone_id,building_ids from vh_knowledge_documents where id=$1', UUID(doc['id']))[0]
+            assert (row['site_id'], row['zone_id'], row['building_ids']) == (site, zone, [building])
+        assert asyncio.run(knowledge.load(database['admin'], write(tmp_path, [first, second]), str(TENANT)))['changed'] == 0
+        assert sql(database, 'select count(*) n from vh_knowledge_documents where id=$1', UUID(missing['id']))[0]['n'] == 0
+    finally:
+        for doc in (first, second):
+            sql(database, 'delete from vh_knowledge_documents where id=$1 returning id', UUID(doc['id']))
+        sql(database, 'delete from buildings where id=$1 returning id', other_building)
+        sql(database, 'delete from zones where id=$1 returning id', other_zone)
+        sql(database, 'delete from sites where id=$1 returning id', other)
