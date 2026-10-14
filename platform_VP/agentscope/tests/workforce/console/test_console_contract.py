@@ -165,10 +165,13 @@ def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> No
     governed = governed_system_prompt("business", "Hotel specialist")
     assert BUSINESS_AGENT_EVIDENCE_POLICY in governed
     assert governed_system_prompt("business", governed) == governed
-    assert "distinct calculation deliverable" in WORKFORCE_LEADER_PROMPT
-    assert "not a category price filter" in governed
-    assert "spend ceiling = total budget - requested" in governed
-    assert "margin/shortfall" in WORKFORCE_LEADER_PROMPT
+    # The platform prompts are domain-neutral: business rules such as a
+    # travel budget reserve belong to that business's agents.
+    for domain_word in ("hotel", "reserve", "vehicle", "cuisine", "itinerary"):
+        assert domain_word not in WORKFORCE_LEADER_PROMPT.casefold()
+        assert domain_word not in BUSINESS_AGENT_EVIDENCE_POLICY.casefold()
+    assert "done_when" in WORKFORCE_LEADER_PROMPT
+    assert "depends_on" in WORKFORCE_LEADER_PROMPT
 
 
 def test_builder_claims_each_tool_for_only_one_agent() -> None:

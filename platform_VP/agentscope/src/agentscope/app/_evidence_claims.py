@@ -147,7 +147,9 @@ def _proper_name_anchors(text: str) -> set[str]:
         if len(normalized) >= 3 and not normalized.isdigit():
             anchors.add(normalized)
 
-    for segment in re.split(r"[\n,.!?;:()\[\]{}*]+|\s[-–—]\s", text):
+    # A number ends a name: "Hotel A 1200000 VND" must not become the name
+    # "hotel a vnd" (word extraction drops digits and would join both sides).
+    for segment in re.split(r"[\n,.!?;:()\[\]{}*]+|\s[-–—]\s|\d+", text):
         words = _WORD_RE.findall(segment)
         for start, word in enumerate(words):
             first = _normalize(word)

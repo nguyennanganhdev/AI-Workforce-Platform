@@ -175,6 +175,12 @@ export const client = {
 		params?: Record<string, string>,
 		options?: { silent?: boolean },
 	) => request<T>(path, { method: 'PATCH', body, params, silent: options?.silent }),
+	put: <T>(
+		path: string,
+		body?: unknown,
+		params?: Record<string, string>,
+		options?: { silent?: boolean },
+	) => request<T>(path, { method: 'PUT', body, params, silent: options?.silent }),
 	delete: <T = void>(path: string, params?: Record<string, string>) =>
 		request<T>(path, { method: 'DELETE', params }),
 	stream: (path: string, options?: RequestOptions) => streamRequest(path, options),

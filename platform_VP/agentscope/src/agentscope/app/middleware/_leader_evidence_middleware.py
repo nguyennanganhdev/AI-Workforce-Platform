@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncGenerator, Callable
 
 from ..._utils._common import _generate_id
@@ -37,16 +38,28 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         agent_id: str,
         session_id: str,
         *,
-        wait_seconds: float = 60.0,
+        wait_seconds: float | None = None,
         max_nudges: int = 2,
+        max_rounds: int = 4,
+        on_verified_answer: Callable[[str], None] | None = None,
     ) -> None:
+        self._on_verified_answer = on_verified_answer
         self._storage = storage
         self._shared_context = shared_context
         self._user_id = user_id
         self._agent_id = agent_id
         self._session_id = session_id
-        self._wait_seconds = wait_seconds
+        # One budget for the whole reply, not per wait: a two-stage plan
+        # (lookups, then a dependent calculation) must not run out of
+        # patience after the first stage. Default leaves room for the
+        # per-assignment active-time budget (180 s) plus delivery.
+        self._wait_seconds = (
+            float(os.getenv("WORKFORCE_LEADER_WAIT_SECONDS", "240"))
+            if wait_seconds is None
+            else wait_seconds
+        )
         self._max_nudges = max_nudges
+        self._max_rounds = max_rounds
 
     @staticmethod
     def _expected_reports(agent: Agent) -> int:
@@ -80,14 +93,15 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 if call.name == "AgentInvite":
                     target = str(payload.get("target") or call.id)
                     targets.add(target.strip().casefold())
-                elif (
-                    call.name == "TeamSay"
-                    and payload.get("kind")
-                    in {
-                        "handoff",
-                        "question",
-                    }
-                    and payload.get("resolution") not in {"complete", "stop"}
+                elif call.name == "TeamSay" and (
+                    (
+                        payload.get("kind") in {"handoff", "question"}
+                        and payload.get("resolution") not in {"complete", "stop"}
+                    )
+                    or (
+                        payload.get("kind") == "review"
+                        and payload.get("decision") == "challenge"
+                    )
                 ):
                     target = str(payload.get("to") or call.id)
                     targets.add(target.strip().casefold())
@@ -131,8 +145,8 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id, self._session_id
         )
 
-    async def _wait_until_ready(self, expected: int) -> bool:
-        deadline = asyncio.get_running_loop().time() + self._wait_seconds
+    async def _wait_until_ready(self, expected: int, deadline: float) -> bool:
+        await self._shared_context_release()
         while True:
             if await self._ready(expected):
                 return True
@@ -141,6 +155,23 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             if asyncio.get_running_loop().time() >= deadline:
                 return False
             await asyncio.sleep(0.5)
+            await self._shared_context_release()
+
+    async def _shared_context_release(self) -> None:
+        """Start queued assignments whose dependencies already reported.
+
+        TeamSay releases them on each report; this covers reports that end
+        without a TeamSay (e.g. a worker run that failed).
+        """
+
+        release = getattr(self._shared_context, "deliver_ready_assignments", None)
+        if release is None:
+            return
+        session = await self._storage.get_session(
+            self._user_id, self._agent_id, self._session_id
+        )
+        if session is not None and session.team_id is not None:
+            await release(self._user_id, session.team_id)
 
     async def _pending_consent(self) -> bool:
         return bool(
@@ -383,8 +414,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         """Buffer customer text and retry after worker evidence arrives."""
 
         nudges = 0
-        dispatched = False
-        resynthesis_requested = False
+        rounds = 0
+        dispatched_seen = 0
+        deadline = asyncio.get_running_loop().time() + self._wait_seconds
         buffered_text: list[object] = []
 
         def discard_text():
@@ -426,16 +458,19 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
 
             expected = self._expected_reports(agent)
             pending_assignments = await self._review()
-            dispatched = dispatched or expected > 0 or bool(pending_assignments)
+            new_dispatch = expected > dispatched_seen
             current_text = self._buffered_text(buffered_text)
             _team_exists, completed, errors, _verified, waiting = await self._status()
             has_current_evidence = completed > 0 or errors > 0 or waiting
 
-            if dispatched and not resynthesis_requested:
+            if (new_dispatch or pending_assignments) and rounds < self._max_rounds:
                 # Even if the worker finished quickly, this text was authored
                 # before its report reached the Leader's model context. Drop
                 # it and force a fresh reasoning round after the inbox drain.
-                ready = await self._wait_until_ready(max(expected, 1))
+                # Every new dispatch (a dependent stage, a challenge) waits
+                # again within the same reply budget.
+                dispatched_seen = expected
+                ready = await self._wait_until_ready(max(expected, 1), deadline)
                 discard_text()
                 if await self._pending_consent():
                     # The structured pending action is already presented in
@@ -451,13 +486,15 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     ):
                         yield replacement
                     continue
-                resynthesis_requested = True
-                nudges += 1
+                rounds += 1
                 self._nudge(
                     agent,
                     "Read the newly arrived worker reports from the inbox and "
-                    "shared context. Then answer the customer using only that "
-                    "current evidence. Do not emit a progress placeholder.",
+                    "shared context. Check each report against its done_when; "
+                    "if one misses it, TeamSay(kind='review', decision='challenge') "
+                    "with exactly what is missing. Otherwise answer the customer "
+                    "using only that current evidence. Do not emit a progress "
+                    "placeholder.",
                 )
                 continue
 
@@ -467,7 +504,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 nudges += 1
                 self._nudge(
                     agent,
-                    "Review incoming peer results/proposals/conflicts. Resolve assignments with TeamSay resolution=complete/stop/verify, or request concrete missing work. Approve only genuine user questions. Do not forward a worker's internal dependency to the customer.",
+                    "Review incoming results/proposals/conflicts with TeamSay(kind='review', decision='accept'|'challenge'|'stop'), or request concrete missing work. Approve only genuine customer questions. Do not forward a worker's internal dependency to the customer.",
                 )
                 continue
             if review:
@@ -528,6 +565,15 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 for text_event in buffered_text:
                     yield text_event
                 buffered_text.clear()
+                if has_current_evidence and self._on_verified_answer is not None:
+                    session = await self._storage.get_session(
+                        self._user_id, self._agent_id, self._session_id
+                    )
+                    if session is not None and session.team_id is not None:
+                        try:
+                            self._on_verified_answer(session.team_id)
+                        except Exception:  # noqa: BLE001 - learning is optional
+                            pass
                 yield event
                 continue
 

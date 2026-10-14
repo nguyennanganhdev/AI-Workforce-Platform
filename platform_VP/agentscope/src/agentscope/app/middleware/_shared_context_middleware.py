@@ -6,11 +6,14 @@ from collections.abc import Awaitable, Callable
 
 from ..._logging import logger
 from ...agent import Agent
-from ...message import Msg, TextBlock
+from ...message import Msg, UserMsg
 from ...middleware import MiddlewareBase
 from ...model import ChatResponse
 from .._shared_context import SharedContextBudgetError, SharedContextService
 from ..storage import ContextMode, StorageBase
+
+SHARED_CONTEXT_MSG_NAME = "shared_context"
+"""Name of the trailing message that carries the ticket's shared packet."""
 
 
 class SharedContextIsolationMiddleware(MiddlewareBase):
@@ -32,8 +35,10 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         *,
         task_id: str | None = None,
         membership_storage: StorageBase | None = None,
+        agent_id: str | None = None,
     ) -> None:
         self._mode = mode
+        self._agent_id = agent_id
         self._service = service
         self._user_id = user_id
         self._team_id = team_id
@@ -146,29 +151,29 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                     revision=revision,
                 )
         messages = list(input_kwargs["messages"])
-        if self._packet_attachment:
-            if not messages:
-                raise SharedContextBudgetError(
-                    "Cannot attach shared context because the model input has "
-                    "no system message.",
-                )
-            messages[0] = messages[0].model_copy(
-                update={
-                    "content": [
-                        *messages[0].get_content_blocks(),
-                        TextBlock(text=self._packet_attachment),
-                    ],
-                },
-                deep=True,
+        if self._packet_attachment and not messages:
+            raise SharedContextBudgetError(
+                "Cannot attach shared context because the model input has "
+                "no system message.",
             )
         if self._mode in {"isolated", "references"}:
             # ``messages[1]`` may be the agent's old private summary and is
-            # intentionally excluded. Only the system prompt (which carries a
-            # references packet when requested) and this turn's context delta
-            # are visible.
+            # intentionally excluded. Only the system prompt, this turn's
+            # context delta and the (references) packet are visible.
             filtered = [messages[0], *self._current_turn_context(agent)]
         else:
             filtered = messages
+        if self._packet_attachment:
+            # The packet changes whenever a teammate reports. Keeping it as
+            # the LAST message leaves the system prompt, tool schemas and the
+            # private history as an unchanged prefix between calls, which is
+            # what provider prompt caching reuses. Appending it to the system
+            # message (the previous design) invalidated the cache for the
+            # whole conversation on every new shared event.
+            filtered = [
+                *filtered,
+                UserMsg(name=SHARED_CONTEXT_MSG_NAME, content=self._packet_attachment),
+            ]
 
         current_model = input_kwargs["current_model"]
         prompt_tokens = await current_model.count_tokens(
@@ -247,6 +252,23 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         started = time.monotonic()
         output_tokens = 0
 
+        usage = None
+
+        async def record_usage() -> None:
+            # Provider usage is observability, not a budget input: a failure
+            # here must never fail the agent's turn.
+            try:
+                await self._service.record_provider_usage(
+                    user_id=self._user_id,
+                    team_id=self._team_id,
+                    agent_id=self._agent_id or agent.name,
+                    agent_name=agent.name,
+                    model=str(getattr(current_model, "model", "") or ""),
+                    usage=usage,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Could not record provider usage")
+
         async def charge(*, elapsed_floor: float = 0.0):
             await self._service.measure_collaboration(
                 self._user_id,
@@ -275,6 +297,8 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             await charge()
             raise
         if not hasattr(response, "__aiter__"):
+            usage = response.usage
+            await record_usage()
             output_tokens = (
                 response.usage.output_tokens
                 if response.usage
@@ -287,7 +311,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             return response
 
         async def measured_stream():
-            nonlocal output_tokens
+            nonlocal output_tokens, usage
             partial_content = []
             complete = False
             try:
@@ -298,6 +322,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         partial_content.extend(chunk.content)
                         if chunk.is_last:
                             complete = True
+                            usage = chunk.usage
                             output_tokens = (
                                 chunk.usage.output_tokens
                                 if chunk.usage
@@ -328,6 +353,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         ],
                         None,
                     )
+                await record_usage()
                 await charge()
 
         return measured_stream()

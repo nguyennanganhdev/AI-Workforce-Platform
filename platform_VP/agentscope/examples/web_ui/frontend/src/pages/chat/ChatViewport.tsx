@@ -354,14 +354,15 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 	// eagerly on first render, so a later `const` would still be in
 	// the temporal dead zone.
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+	const team = view?.team;
 	const completeTeamMention = useCallback(
 		(input: string): string | null => {
 			if (!input.startsWith('@') || input.includes('\n')) return null;
 			const names = [
-				...(view?.team?.leader_agent ? [view.team.leader_agent.data.name] : []),
-				...(view?.team?.members.map(({ agent }) => agent.data.name) ?? []),
+				...(team?.leader_agent ? [team.leader_agent.data.name] : []),
+				...(team?.members.map(({ agent }) => agent.data.name) ?? []),
 			];
-			const candidate = view?.team?.members
+			const candidate = team?.members
 				.map(({ agent }) => {
 					const duplicate =
 						names.filter(
@@ -374,7 +375,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 				);
 			return candidate ? input + candidate.slice(input.length) : null;
 		},
-		[view?.team?.leader_agent, view?.team?.members],
+		[team],
 	);
 
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(

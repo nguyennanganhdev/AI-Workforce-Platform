@@ -10,6 +10,7 @@ import {
 	Languages,
 	LibraryBig,
 	LogOut,
+	UsersRound,
 } from 'lucide-react';
 import { useOnborda } from 'onborda';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -94,6 +95,16 @@ export function AppSidebar() {
 									className="justify-center"
 								>
 									<Hammer />
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									tooltip={{ children: 'Quản lý agent', hidden: false }}
+									isActive={location.pathname.startsWith('/workforce/agents')}
+									onClick={() => navigate('/workforce/agents')}
+									className="justify-center"
+								>
+									<UsersRound />
 								</SidebarMenuButton>
 							</SidebarMenuItem>
 							<SidebarMenuItem key={'chat'}>

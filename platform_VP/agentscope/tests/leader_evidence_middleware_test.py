@@ -439,3 +439,30 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         )
         self.assertNotIn("16/10", streamed)
         self.assertIn("17/10", streamed)
+
+
+class TestLeaderLearningHook(IsolatedAsyncioTestCase):
+    async def test_verified_answer_triggers_learning_once_per_reply(self) -> None:
+        learned: list[str] = []
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(),  # type: ignore[arg-type]
+            _SharedContext((1, 0, 1, False)),  # type: ignore[arg-type]
+            "user-1",
+            "leader-agent",
+            "session-1",
+            wait_seconds=0,
+            on_verified_answer=learned.append,
+        )
+        agent = TestLeaderEvidenceMiddleware._agent(None, dispatched=True)  # type: ignore[arg-type]
+
+        async def next_handler(**kwargs):
+            del kwargs
+            for event in _text_round("reply-1", "draft", "Đang chờ."):
+                yield event
+            for event in _text_round("reply-1", "final", "Khách sạn A còn phòng theo kết quả agent."):
+                yield event
+
+        async for _ in middleware.on_reply(agent, {}, next_handler):  # type: ignore[arg-type]
+            pass
+
+        self.assertEqual(["team-1"], learned)

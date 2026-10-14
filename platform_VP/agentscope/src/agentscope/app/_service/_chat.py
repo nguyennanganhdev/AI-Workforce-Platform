@@ -15,6 +15,7 @@ that wants them subscribes through the
 import asyncio
 import inspect
 import json
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -98,6 +99,7 @@ from ..storage import (
     SOPOrigin,
     StorageBase,
 )
+from ..storage._model._session import SessionKnowledgeConfig
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
@@ -132,6 +134,45 @@ class _WorkerContext:
 
 
 _TeamContext = _LeaderContext | _WorkerContext
+
+
+def _role_model_config(config, system_role: str, model_tier: str = "standard"):
+    """Use a stronger model for the Leader when the deployment names one.
+
+    ``WORKFORCE_LEADER_MODEL_NAME`` must be served by the same credential as
+    the session's model. Planning, review and synthesis happen in the Leader,
+    so that is where model quality pays off; specialists keep the session
+    model (normally a cheaper "mini" model) unless their Agent Spec asks for
+    the "strong" tier.
+    """
+
+    name = os.getenv("WORKFORCE_LEADER_MODEL_NAME", "").strip()
+    wants_strong = system_role == "leader" or model_tier == "strong"
+    if not wants_strong or not name or config.model == name:
+        return config
+    return config.model_copy(update={"model": name})
+
+
+def _apply_prompt_cache_key(model: ChatModelBase, agent_id: str) -> None:
+    """Opt-in OpenAI ``prompt_cache_key`` routing per agent.
+
+    Requests with the same key are routed to the same cache, which raises the
+    hit rate of the stable prefix (policy, role, tool schemas). Off by
+    default because some OpenAI-compatible gateways reject unknown fields.
+    """
+
+    if os.getenv("WORKFORCE_PROMPT_CACHE_KEY", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return
+    if not hasattr(model, "extra_body"):
+        return
+    model.extra_body = {
+        **(model.extra_body or {}),
+        "prompt_cache_key": f"workforce:{agent_id}",
+    }
 
 
 class _SessionTitle(BaseModel):
@@ -270,6 +311,13 @@ class ChatService:
         )
         self._access = resource_access_service
         self._knowledge_base_manager = knowledge_base_manager
+        from .._agent_learning import AgentLearningService
+
+        self._learning = AgentLearningService(
+            storage,
+            self._shared_context,
+            workspace_manager,
+        )
         self._extra_agent_middlewares = extra_agent_middlewares
         # Probed once (the service is built once per lifespan) so legacy
         # three-argument factories keep working without the per-turn cost.
@@ -370,6 +418,64 @@ class ChatService:
                 agent_id,
                 str(e),
             )
+
+    def _learning_hook(self, user_id: str, session_record, agent_record):
+        """Callback for the Leader: learn from a verified ticket in background."""
+
+        async def models():
+            base = session_record.config.chat_model_config
+            strong = _role_model_config(base, "leader")
+            return (
+                await get_model(user_id, base, self._access),
+                await get_model(user_id, strong, self._access),
+            )
+
+        def on_verified_answer(team_id: str) -> None:
+            if os.getenv("WORKFORCE_LEARNING", "true").strip().lower() in {"0", "false", "no"}:
+                return
+            self._learning.schedule(user_id, team_id, models)
+
+        return on_verified_answer
+
+    async def _recalled_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        team,
+        session_id: str,
+        customer_input_msgs: list,
+    ) -> str:
+        """Relevant long-term memory of a business agent for this turn."""
+
+        query_parts = [msg.get_text_content() or "" for msg in customer_input_msgs]
+        if team is not None:
+            record = await self._shared_context.storage.get_team_shared_context(
+                user_id,
+                team.id,
+            )
+            task = (
+                record.state.tasks.get(record.state.active_task_id)
+                if record and record.state.active_task_id
+                else None
+            )
+            if task is not None:
+                assignment = task.assignments.get(session_id)
+                if assignment is not None:
+                    query_parts.append(assignment.goal)
+                query_parts.extend(
+                    event.content
+                    for event in record.state.events[-20:]
+                    if event.task_id == task.id and event.kind == "customer_message"
+                )
+        query = " ".join(part for part in query_parts if part)[:4000]
+        if not query.strip():
+            return ""
+        try:
+            memories = await self._learning.memory.recall(user_id, agent_id, query)
+        except Exception:  # noqa: BLE001 - memory never blocks a turn
+            logger.exception("Memory recall failed for agent %s", agent_id)
+            return ""
+        return self._learning.memory.render(memories)
 
     async def _auto_name_session(
         self,
@@ -1163,6 +1269,11 @@ class ChatService:
                             user_id,
                             agent_id,
                             session_id,
+                            on_verified_answer=self._learning_hook(
+                                user_id,
+                                session_record,
+                                agent_record,
+                            ),
                         ),
                     )
                 # Equip the member middleware for loop control
@@ -1216,6 +1327,13 @@ class ChatService:
                 # and unaware of sharing.
                 # -------------------------------------------------------------
                 kb_cfg = session_record.config.knowledge_config
+                spec_kb_ids = [
+                    str(item.get("kb_id"))
+                    for item in (agent_record.data.spec or {}).get("knowledge", [])
+                    if item.get("kb_id")
+                ]
+                if spec_kb_ids and (kb_cfg is None or not kb_cfg.knowledge_base_ids):
+                    kb_cfg = SessionKnowledgeConfig(knowledge_base_ids=spec_kb_ids)
                 if (
                     kb_cfg is not None
                     and kb_cfg.knowledge_base_ids
@@ -1289,7 +1407,13 @@ class ChatService:
                         status_code=404,
                         detail=(f"No model configuration found for agent {agent_id}"),
                     )
+                model_cfg = _role_model_config(
+                    model_cfg,
+                    agent_record.data.system_role,
+                    str((agent_record.data.spec or {}).get("model_tier", "standard")),
+                )
                 model = await get_model(user_id, model_cfg, self._access)
+                _apply_prompt_cache_key(model, agent_id)
 
                 # Persist customer-visible input before any agent reasons.
                 # Message ids make retries idempotent. Team handoff wakeups
@@ -1426,6 +1550,7 @@ class ChatService:
                             shared_context_attachment,
                             task_id=context_task_id,
                             membership_storage=self._storage,
+                            agent_id=agent_id,
                         ),
                     )
 
@@ -1440,6 +1565,7 @@ class ChatService:
                         user_id,
                         None,
                         membership_storage=self._storage,
+                        agent_id=agent_id,
                     ))
 
                 fallback_cfg = session_record.config.fallback_chat_model_config
@@ -1479,9 +1605,8 @@ class ChatService:
                         "team turn. Team members report internally; combine "
                         "duplicate requests for missing information into one "
                         "concise question. Before asking it, call "
-                        "TeamSay(kind='requires_user_input', to=null, "
-                        "content=<question>) once, then ask it in your final "
-                        "reply."
+                        "TeamSay(kind='ask_customer', content=<question>) "
+                        "once, then ask it in your final reply."
                     )
                 elif isinstance(team_ctx, _WorkerContext):
                     if is_reply_owner:
@@ -1490,15 +1615,17 @@ class ChatService:
                             "the customer reply for this turn. Reply directly "
                             "once. Other members are internal collaborators. "
                             "Before asking the user for missing information, "
-                            "call TeamSay(kind='requires_user_input', to=null, "
+                            "call TeamSay(kind='need_customer_info', "
                             "content=<question>) once."
                         )
                     else:
                         attachment += (
                             " You are an internal collaborator. Never address "
-                            "the customer directly; report results or "
-                            "requires_user_input via TeamSay to the current "
-                            f"reply owner {(report_target_name or team_ctx.leader_name)!r}."
+                            "the customer directly; finish with "
+                            "TeamSay(kind='result') or TeamSay(kind='error'), "
+                            "which reach the current reply owner "
+                            f"{(report_target_name or team_ctx.leader_name)!r} "
+                            "automatically."
                         )
 
                 # Channel-bound sessions: tell the agent which chat it serves.
@@ -1534,6 +1661,17 @@ class ChatService:
                         )
 
                 attachment = f"<system-notification>{attachment}</system-notification>"
+                if (
+                    agent_record.data.system_role == "business"
+                    and (agent_record.data.spec or {}).get("memory_enabled", True)
+                ):
+                    attachment += await self._recalled_memory(
+                        user_id,
+                        agent_id,
+                        team,
+                        session_id,
+                        customer_input_msgs,
+                    )
                 system_prompt = runtime_system_prompt + "\n\n" + attachment
 
                 agent_state = session_record.state

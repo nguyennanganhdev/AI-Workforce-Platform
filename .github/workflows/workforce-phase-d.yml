@@ -3,9 +3,9 @@ name: Workforce Phase D Gate
 on:
   pull_request:
     paths:
-      - "platform_VP/agentscope/src/agentscope/app/workforce/**"
+      - "platform_VP/agentscope/src/agentscope/app/**"
       - "platform_VP/agentscope/src/agentscope/app/storage/_sql/_alembic/**"
-      - "platform_VP/agentscope/tests/workforce/**"
+      - "platform_VP/agentscope/tests/**"
       - "platform_VP/agentscope/scripts/workforce/**"
       - "platform_VP/agentscope/deploy/workforce/**"
       - "platform_VP/agentscope/examples/web_ui/frontend/**"
@@ -74,7 +74,8 @@ jobs:
           docker exec "$POSTGRES_CONTAINER" createdb -U agentscope agentscope_restore_test
           docker exec "$POSTGRES_CONTAINER" pg_dump -U agentscope --format=custom --file=/tmp/workforce-phase-d.dump agentscope_test
           docker exec "$POSTGRES_CONTAINER" pg_restore -U agentscope --exit-on-error --no-owner --no-privileges --dbname=agentscope_restore_test /tmp/workforce-phase-d.dump
-          test "$(docker exec "$POSTGRES_CONTAINER" psql -U agentscope -d agentscope_restore_test -Atc 'select version_num from alembic_version')" = "0012_workforce_assets"
+          EXPECTED_HEAD="$(python -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; print(ScriptDirectory.from_config(Config("src/agentscope/app/storage/_sql/_alembic/alembic.ini")).get_current_head())')"
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U agentscope -d agentscope_restore_test -Atc 'select version_num from alembic_version')" = "$EXPECTED_HEAD"
       - name: Build and lint the manager frontend
         run: |
           pnpm --dir examples/web_ui/frontend lint
@@ -119,6 +120,25 @@ jobs:
       - name: Run D5 full-platform and fault E2E
         continue-on-error: true
         run: python -m pytest tests/workforce/e2e --import-mode=importlib -q -rs --junitxml=.artifacts/phase-d/e2e.xml
+      - name: Run console and evaluation tooling gates
+        continue-on-error: true
+        run: python -m pytest tests/workforce/console tests/workforce/eval --import-mode=importlib -q -rs --junitxml=.artifacts/phase-d/console.xml
+      - name: Run team collaboration and shared-context gates
+        continue-on-error: true
+        run: >-
+          python -m pytest
+          tests/team_collaboration_test.py
+          tests/team_member_middleware_test.py
+          tests/team_say_shared_context_test.py
+          tests/team_shared_context_test.py
+          tests/leader_evidence_middleware_test.py
+          tests/service_chat_run_context_test.py
+          tests/workforce_provider_usage_test.py
+          tests/workforce_model_routing_test.py
+          tests/workforce_task_ledger_test.py
+          tests/workforce_agent_memory_test.py
+          tests/service_team_tools_test.py
+          -q -rs --junitxml=.artifacts/phase-d/collaboration.xml
       - name: Build D7 release-candidate report
         if: always()
         env:
@@ -136,7 +156,7 @@ jobs:
             --require orchestration.xml \
             --require execution.xml \
             --require integrations.xml \
-            --require e2e.xml
+            --require e2e.xml             --require console.xml             --require collaboration.xml
       - name: Upload D7 evidence
         if: always()
         uses: actions/upload-artifact@v4

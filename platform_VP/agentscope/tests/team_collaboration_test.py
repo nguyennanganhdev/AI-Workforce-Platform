@@ -788,7 +788,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         with self.assertRaises(CollaborationStoppedError):
             await runtime.invoke_turn(workflow.scope, {}, context, object())
         passed_context = runner.invoke_turn.call_args.args[2]
-        self.assertIn("BOUNDED COLLABORATION", passed_context.leader_system_prompt)
+        self.assertIn("COLLABORATION LIMITS", passed_context.leader_system_prompt)
         branch = self.storage.context.state.tasks[workflow.workflow_id].collaboration[
             "workflow-turn:partner-leader"
         ]

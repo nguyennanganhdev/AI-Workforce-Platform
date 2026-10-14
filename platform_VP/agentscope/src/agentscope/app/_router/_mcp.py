@@ -36,6 +36,11 @@ async def _discover_tools(client: MCPClient, timeout: float) -> list[dict]:
             "name": tool.name,
             "description": tool.description or "",
             "input_schema": tool.inputSchema or {},
+            # The server's own read-only hint; tools without it are treated
+            # as writes (never executed by Agent Studio tests).
+            "read_only": bool(
+                getattr(getattr(tool, "annotations", None), "readOnlyHint", False),
+            ),
         }
         for tool in raw_tools
     ]

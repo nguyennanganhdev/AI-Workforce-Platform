@@ -126,8 +126,8 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     HintBlock(
                         hint=(
                             "Repeated tool calls returned identical results with no progress. "
-                            f"Call TeamSay(to={self._leader_name!r}, kind='requires_user_input' "
-                            "or 'result') now to report the blocker and missing information. "
+                            "Call TeamSay(kind='error' or 'need_customer_info') now to "
+                            "report the blocker and missing information. "
                             "Do not retry tools or invent an external identifier/outcome."
                         ),
                     )
@@ -222,8 +222,19 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 return False
             declared_kind = kwargs.get("kind")
             kind = result.metadata.get("kind", declared_kind or "result")
-            if kind == "progress" or not kwargs.get("to"):
+            if kind == "progress":
                 return False
+            if not kwargs.get("to"):
+                # The runtime routed it (results/errors to the reply owner,
+                # answers to the asker); a worker broadcast never succeeds.
+                return kind in {
+                    "result",
+                    "error",
+                    "answer",
+                    "question",
+                    "requires_user_input",
+                    "user_input_proposal",
+                }
             if kwargs.get("to") != self._leader_name and declared_kind not in {
                 "question",
                 "answer",
@@ -374,9 +385,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             else:
                 instruction = (
                     "<system-reminder>You MUST call the tool `TeamSay` "
-                    "to report to the reply owner "
-                    f"{self._leader_name!r} with kind=result/error and evidence to finish your task. "
-                    "If missing another agent's output, use TeamSay(to=that peer, kind=question, content=a specific task) and wait. "
+                    "with kind='result' (verified findings) or kind='error' "
+                    f"(the blocker); it reaches {self._leader_name!r} automatically. "
+                    "If missing another agent's output, use TeamSay(kind='question', to=that peer, content=a specific request) and wait. "
                     "Progress alone is not a completed assignment. Propose only genuinely customer-owned decisions to the reply owner."
                     "</system-reminder>"
                 )

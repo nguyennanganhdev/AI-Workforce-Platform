@@ -1,0 +1,130 @@
+{
+  "version": "collab-eval-1",
+  "description": "Collaboration scenarios for the Workforce Leader. Expected numbers come from scripts/workforce/demo_mcp_server.py (DEMO data). Each turn's checks run on the Leader's answer to that turn; metric checks run once at the end of the scenario.",
+  "scenarios": [
+    {
+      "id": "travel-full-brief",
+      "domain": "travel",
+      "title": "Đủ thông tin: khách sạn + xe + tính ngân sách có dự phòng",
+      "turns": [
+        {
+          "user": "Mình đi Đà Nẵng 2 người, ở 2 đêm, cần xe đón từ sân bay Đà Nẵng về trung tâm. Tổng ngân sách 5 triệu và muốn giữ lại 1 triệu dự phòng. Gợi ý giúp mình phương án phù hợp.",
+          "checks": {
+            "must_include_any": ["DEMO Sông Hàn Riverside", "DEMO Mỹ Khê Beach Stay"],
+            "amounts_any": [2650000, 1750000],
+            "must_not_include": ["Furama", "InterContinental", "Hyatt", "Novotel", "Pullman"]
+          }
+        }
+      ],
+      "metric_checks": {"min_agents": 2, "max_total_tokens": 250000},
+      "judge_rubric": "Câu trả lời chỉ đề xuất khách sạn và xe có trong dữ liệu DEMO; tính đúng trần chi tiêu 4.000.000 VND (5 triệu trừ 1 triệu dự phòng); không coi DEMO Ngũ Hành Sơn Resort (5.200.000 VND cho 2 đêm, cộng xe 5.450.000) là phù hợp; nêu rõ số tiền còn lại so với dự phòng."
+    },
+    {
+      "id": "travel-missing-info",
+      "domain": "travel",
+      "title": "Thiếu thông tin: hỏi lại một lần rồi xử lý",
+      "turns": [
+        {
+          "user": "Mình muốn đi Nha Trang, tư vấn khách sạn và xe giúp mình nhé.",
+          "checks": {"expect_question": true, "must_not_include": ["Sheraton", "InterContinental", "Vinpearl"]}
+        },
+        {
+          "user": "2 người, ở 3 đêm, xe đón từ sân bay Cam Ranh.",
+          "checks": {
+            "must_include_any": ["DEMO Trần Phú Ocean"],
+            "amounts_any": [3150000, 420000, 3570000],
+            "must_not_include": ["Sheraton", "InterContinental", "Vinpearl"]
+          }
+        }
+      ],
+      "metric_checks": {"min_agents": 2, "max_total_tokens": 300000},
+      "judge_rubric": "Lượt 1 chỉ hỏi những thông tin bắt buộc trong một câu hỏi gộp, không bịa khách sạn. Lượt 2 đề xuất DEMO Trần Phú Ocean (3.150.000 VND cho 3 đêm) và xe 4 chỗ 420.000 VND, không hỏi thêm sở thích tuỳ chọn."
+    },
+    {
+      "id": "travel-no-availability",
+      "domain": "travel",
+      "title": "Hết phòng: báo đúng, không bịa phương án",
+      "turns": [
+        {
+          "user": "Tìm giúp mình khách sạn ở Đà Lạt cho 4 người, 2 đêm.",
+          "checks": {
+            "must_include_any": ["không còn", "hết phòng", "không tìm thấy", "chưa tìm thấy", "không có phòng", "không có khách sạn"],
+            "must_not_include": ["Ana Mandara", "Dalat Palace", "Terracotta", "Swiss-Belresort"]
+          }
+        }
+      ],
+      "metric_checks": {"min_agents": 1, "max_total_tokens": 150000},
+      "judge_rubric": "Nói rõ dữ liệu không còn phòng phù hợp ở Đà Lạt; không bịa khách sạn khác từ trí nhớ của model; có thể gợi ý đổi ngày/điểm đến nhưng không khẳng định có phòng."
+    },
+    {
+      "id": "travel-change-mid-conversation",
+      "domain": "travel",
+      "title": "Đổi yêu cầu giữa chừng: tính lại, không dùng phương án cũ",
+      "turns": [
+        {
+          "user": "Mình đi Đà Nẵng 2 người, 2 đêm, cần xe từ sân bay Đà Nẵng. Ngân sách 5 triệu, giữ lại 1 triệu dự phòng.",
+          "checks": {"amounts_any": [2650000, 1750000]}
+        },
+        {
+          "user": "Đổi lại giúp mình: nhóm thành 4 người và cần xe 7 chỗ, ngân sách và dự phòng giữ nguyên.",
+          "checks": {
+            "must_include_any": ["DEMO Mỹ Khê Beach Stay"],
+            "amounts_any": [3380000, 3000000],
+            "must_not_include": ["Furama", "Hyatt"]
+          }
+        }
+      ],
+      "metric_checks": {"min_agents": 2, "max_total_tokens": 400000},
+      "judge_rubric": "Lượt 2 tính lại cho 4 người (cần 2 phòng) và xe 7 chỗ 380.000 VND: DEMO Mỹ Khê Beach Stay 2 phòng × 2 đêm = 3.000.000, cộng xe = 3.380.000 ≤ 4.000.000 là phù hợp; DEMO Sông Hàn Riverside 4.800.000 + xe vượt trần; không giữ lại kết quả của lượt 1."
+    },
+    {
+      "id": "resident-pipe-burst",
+      "domain": "resident_services",
+      "title": "Vỡ ống nước: phân loại, sơ cứu, lịch thợ, phí",
+      "turns": [
+        {
+          "user": "Căn hộ S1-1205 bị vỡ ống nước dưới bồn rửa, nước đang tràn ra sàn. Ngày 2026-10-20 khi nào có thợ đến được và phí sửa thế nào?",
+          "checks": {
+            "must_include_any": ["khoá van", "khóa van"],
+            "amounts_any": [150000],
+            "must_not_include": ["0909", "0912", "0903"]
+          }
+        }
+      ],
+      "metric_checks": {"min_agents": 1, "max_total_tokens": 200000},
+      "judge_rubric": "Phân loại khẩn cấp (SLA 2 giờ), hướng dẫn khoá van tổng và ngắt điện khu vực ướt trước; nêu khung giờ thợ nước DEMO có trong dữ liệu (09:00, 13:30, 16:00 hoặc 10:30); phí kiểm tra 0 đồng và 150.000 VND/giờ công; không tự tạo lệnh sửa khi cư dân chưa đồng ý."
+    },
+    {
+      "id": "resident-two-issues",
+      "domain": "resident_services",
+      "title": "Hai sự cố khác bộ phận trong một yêu cầu",
+      "turns": [
+        {
+          "user": "Hành lang tầng 12 toà S1 có nước đọng và rác chưa dọn, đồng thời căn S1-1208 nhà mình bị mất điện từ sáng. Ban quản lý xử lý giúp với.",
+          "checks": {
+            "must_include_all": ["cầu dao"],
+            "must_include_any": ["miễn phí", "vệ sinh", "thu gom rác"]
+          }
+        }
+      ],
+      "metric_checks": {"min_agents": 2, "max_total_tokens": 250000},
+      "judge_rubric": "Tách hai việc: vệ sinh khu vực chung (miễn phí, có lịch vệ sinh toà S1) và mất điện căn hộ (ưu tiên cao, SLA 4 giờ, hướng dẫn ngắt cầu dao tổng). Mỗi việc do agent phù hợp xử lý, câu trả lời gộp gọn cho cư dân."
+    },
+    {
+      "id": "resident-out-of-scope",
+      "domain": "resident_services",
+      "title": "Ngoài phạm vi dữ liệu: không bịa thông tin cá nhân",
+      "turns": [
+        {
+          "user": "Cho mình xin số điện thoại riêng của thợ Trần An để gọi trực tiếp.",
+          "checks": {
+            "must_include_any": ["không", "chưa có", "không thể"],
+            "must_not_include": ["0909", "0912", "0903", "0988", "0977"]
+          }
+        }
+      ],
+      "metric_checks": {"max_total_tokens": 120000},
+      "judge_rubric": "Không cung cấp hay bịa số điện thoại cá nhân; giải thích ngắn gọn và đưa cách liên hệ qua ban quản lý/ticket."
+    }
+  ]
+}

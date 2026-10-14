@@ -20,16 +20,19 @@ from .._logging import logger
 from .._utils._common import _generate_id
 from ..message import Msg, SystemMsg, UserMsg
 from ..model import ChatModelBase
+from ._bus_ops import deliver_to_inbox
 from ._evidence_claims import unsupported_claim_anchors
 from .message_bus import MessageBus, MessageBusKeys
 from .storage import (
     ContextDelta,
     ContextMode,
+    ProviderUsage,
     SharedContextEvent,
     SharedContextItem,
     SharedContextSummary,
     SharedTaskState,
     StorageBase,
+    TaskAssignment,
     TeamHandoffRecord,
     TeamSharedContextRecord,
 )
@@ -1350,6 +1353,10 @@ class SharedContextService:
                 if any(event.id in trusted for event in reports):
                     branch.status = "completed"
                     branch.reason = "current evidence-backed result accepted by runtime"
+                    assignment = task.assignments.get(sid)
+                    if assignment is not None and assignment.status == "reported":
+                        assignment.status = "verified"
+                        assignment.updated_at = datetime.now(UTC)
                     mutated = True
                     continue
 
@@ -1385,13 +1392,24 @@ class SharedContextService:
 
             if mutated:
                 await self._commit_mutation(user_id, record)
-            return [
+            pending = [
                 sid
                 for sid, branch in task.collaboration.items()
                 if sid != owner
                 and branch.customer_revision == task.latest_customer_revision
                 and branch.status in {"running", "waiting_peer", "review"}
             ]
+            # A queued assignment has not run yet, so it has no branch; the
+            # Leader must still wait for it instead of answering early.
+            pending.extend(
+                sid
+                for sid, assignment in task.assignments.items()
+                if sid != owner
+                and sid not in pending
+                and assignment.status in {"queued", "assigned", "challenged"}
+                and sid not in task.collaboration
+            )
+            return pending
 
     async def coordinate_handoff(
         self,
@@ -1685,6 +1703,17 @@ class SharedContextService:
                         routed.append(sid)
                         if not waiting.waiting_for and waiting.status == "waiting_peer":
                             waiting.status = "running"
+            self._track_assignments(
+                task,
+                sender=sender,
+                owner=owner,
+                recipients=recipients,
+                kind=kind,
+                content=content,
+                handoff_id=handoff_id,
+                resolution=resolution,
+                stopped=bool(reason),
+            )
             receipt = {
                 "kind": kind,
                 "content": content,
@@ -1695,6 +1724,274 @@ class SharedContextService:
             branch.receipts[handoff_id] = receipt
             await self._commit_mutation(user_id, record)
             return receipt
+
+    @staticmethod
+    def _track_assignments(
+        task: SharedTaskState,
+        *,
+        sender: str,
+        owner: str,
+        recipients: tuple[str, ...],
+        kind: str,
+        content: str,
+        handoff_id: str,
+        resolution: str | None,
+        stopped: bool,
+    ) -> None:
+        """Keep the task ledger in step with one coordinated exchange."""
+
+        now = datetime.now(UTC)
+        if sender == owner:
+            for sid in recipients:
+                assignment = task.assignments.get(sid)
+                if resolution == "complete" and assignment is not None:
+                    assignment.status = "accepted"
+                elif resolution == "verify" and assignment is not None:
+                    assignment.status = "challenged"
+                    assignment.challenges += 1
+                    assignment.last_feedback = content[:4000]
+                elif resolution == "stop" and assignment is not None:
+                    assignment.status = "stopped"
+                    assignment.last_feedback = content[:4000]
+                elif kind == "handoff" and not resolution:
+                    if assignment is None:
+                        task.assignments[sid] = TaskAssignment(goal=content[:20000])
+                        continue
+                    if assignment.status != "queued":
+                        assignment.status = "assigned"
+                    assignment.last_feedback = content[:4000]
+                else:
+                    continue
+                assignment.updated_at = now
+            return
+        assignment = task.assignments.get(sender)
+        if assignment is None:
+            return
+        if stopped:
+            assignment.status = "stopped"
+        elif kind == "error":
+            assignment.status = "failed"
+            assignment.last_report_event_id = handoff_id
+        elif kind == "result" or (kind == "answer" and owner in recipients):
+            assignment.status = "reported"
+            assignment.last_report_event_id = handoff_id
+        else:
+            return
+        assignment.updated_at = now
+
+    async def record_assignments(
+        self,
+        user_id: str,
+        team_id: str,
+        assignments: dict[str, TaskAssignment],
+        *,
+        task_id: str | None = None,
+    ) -> None:
+        """Write the Leader's briefs into the task ledger (one lock, one CAS)."""
+
+        if not assignments:
+            return
+        default_task = task_id or await self.active_task_id(user_id, team_id)
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            task = record.state.tasks.get(default_task)
+            if task is None:
+                return
+            for sid, assignment in assignments.items():
+                task.assignments[sid] = assignment
+            await self._commit_mutation(user_id, record)
+
+    async def release_ready_assignments(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> list[tuple[str, str, dict]]:
+        """Release queued assignments whose dependencies have all reported.
+
+        Returns ``(session_id, agent_id, inbox_payload)`` for each released
+        assignment; the caller delivers the payloads. A dependency that
+        failed or was stopped also releases the waiter, whose brief then
+        tells it which input is missing instead of leaving it queued forever.
+        """
+
+        settled = {"reported", "verified", "accepted", "stopped", "failed"}
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            task = (
+                record.state.tasks.get(record.state.active_task_id)
+                if record and record.state.active_task_id
+                else None
+            )
+            if task is None:
+                return []
+            released: list[tuple[str, str, dict]] = []
+            for sid, assignment in task.assignments.items():
+                if assignment.status != "queued" or assignment.pending_payload is None:
+                    continue
+                dependencies = [
+                    task.assignments.get(dep) for dep in assignment.depends_on
+                ]
+                if any(
+                    dep is not None and dep.status not in settled
+                    for dep in dependencies
+                ):
+                    continue
+                payload = dict(assignment.pending_payload)
+                missing = [
+                    dep.agent_name or "?"
+                    for dep in dependencies
+                    if dep is not None and dep.status in {"stopped", "failed"}
+                ]
+                if missing:
+                    payload["hint"] = (
+                        payload.get("hint", "")
+                        + "\n<system-reminder>These dependencies did not "
+                        "deliver a result: "
+                        + ", ".join(missing)
+                        + ". Work with the verified results that exist and "
+                        "report what is missing; do not invent it."
+                        "</system-reminder>"
+                    )
+                assignment.pending_payload = None
+                assignment.status = "assigned"
+                assignment.updated_at = datetime.now(UTC)
+                released.append((sid, assignment.agent_id, payload))
+            if released:
+                await self._commit_mutation(user_id, record)
+            return released
+
+    async def mark_learned(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        revision: int,
+    ) -> None:
+        """Record that the learning loop processed ``task_id`` up to ``revision``."""
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            if record is None or task_id not in record.state.tasks:
+                return
+            task = record.state.tasks[task_id]
+            if task.learned_revision >= revision:
+                return
+            task.learned_revision = revision
+            await self._commit_mutation(user_id, record)
+
+    async def deliver_ready_assignments(self, user_id: str, team_id: str) -> int:
+        """Release and wake queued assignments whose dependencies reported."""
+
+        released = await self.release_ready_assignments(user_id, team_id)
+        for session_id, agent_id, payload in released:
+            await deliver_to_inbox(
+                self._bus,
+                user_id=user_id,
+                session_id=session_id,
+                agent_id=agent_id,
+                payload=payload,
+                wake=True,
+            )
+        return len(released)
+
+    async def pending_question_for(
+        self,
+        user_id: str,
+        team_id: str,
+        provider_session_id: str,
+    ) -> tuple[str, str] | None:
+        """Return ``(asker_session_id, question_id)`` of the newest open peer
+        question addressed to ``provider_session_id``."""
+
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = (
+            record.state.tasks.get(record.state.active_task_id)
+            if record and record.state.active_task_id
+            else None
+        )
+        if task is None:
+            return None
+        revisions = {event.id: event.revision for event in record.state.events}
+        candidates = [
+            (revisions.get(question_id, 0), asker, question_id)
+            for asker, branch in task.collaboration.items()
+            if branch.customer_revision == task.latest_customer_revision
+            for question_id, provider in branch.waiting_for.items()
+            if provider == provider_session_id
+        ]
+        if not candidates:
+            return None
+        _, asker, question_id = max(candidates)
+        return asker, question_id
+
+    async def assignment_evidence(
+        self,
+        user_id: str,
+        team_id: str,
+        member_session_id: str,
+    ) -> tuple[str, ...]:
+        """Evidence ids that let the Leader accept a member's latest report.
+
+        The member's newest result plus everything it (transitively) cites,
+        and the tool events of every session in that lineage. The Leader
+        model never has to copy opaque event ids to accept good work.
+        """
+
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = (
+            record.state.tasks.get(record.state.active_task_id)
+            if record and record.state.active_task_id
+            else None
+        )
+        if task is None:
+            return ()
+        current = {
+            event.id: event
+            for event in record.state.events
+            if event.task_id == task.id
+            and not event.stale
+            and event.revision > task.latest_customer_revision
+        }
+        reports = sorted(
+            (
+                event
+                for event in current.values()
+                if event.source_session_id == member_session_id
+                and event.kind in {"result", "answer"}
+            ),
+            key=lambda event: event.revision,
+        )
+        if not reports:
+            return ()
+        selected: list[str] = []
+        sessions: set[str] = set()
+        frontier = [reports[-1].id]
+        while frontier:
+            event_id = frontier.pop()
+            if event_id in selected or event_id not in current:
+                continue
+            selected.append(event_id)
+            event = current[event_id]
+            if event.source_session_id:
+                sessions.add(event.source_session_id)
+            frontier.extend(event.reference_event_ids)
+        selected.extend(
+            event.id
+            for event in current.values()
+            if event.kind == "external_event"
+            and event.source_session_id in sessions
+            and event.id not in selected
+        )
+        return tuple(selected[:50])
 
     async def measure_collaboration(
         self,
@@ -2243,6 +2540,9 @@ class SharedContextService:
             for branch in task.get("collaboration", {}).values():
                 branch.pop("receipts", None)
                 branch.pop("signatures", None)
+            for assignment in task.get("assignments", {}).values():
+                assignment.pop("pending_payload", None)
+                assignment.pop("created_at", None)
         selected_event_ids = {event.id for event in events}
         active_items = [
             item
@@ -2598,6 +2898,45 @@ class SharedContextService:
             metrics.last_token_counter = token_counter
             if budget_exceeded:
                 metrics.prompt_budget_failures += 1
+            await self._commit_mutation(user_id, record)
+
+    async def record_provider_usage(
+        self,
+        *,
+        user_id: str,
+        team_id: str,
+        agent_id: str,
+        agent_name: str,
+        model: str,
+        usage: object | None,
+    ) -> None:
+        """Accumulate the provider's own usage block for one model call.
+
+        ``usage`` is a :class:`~agentscope.model.ChatUsage` or ``None`` when
+        the provider/gateway did not report usage; the call is still counted
+        so a missing usage block is visible instead of silently zero.
+        """
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            entry = record.state.metrics.provider_usage.setdefault(
+                agent_id,
+                ProviderUsage(),
+            )
+            entry.agent_name = agent_name[:255]
+            entry.model = model[:255]
+            entry.calls += 1
+            if usage is not None:
+                entry.calls_with_usage += 1
+                entry.input_tokens += max(0, int(getattr(usage, "input_tokens", 0)))
+                entry.cached_input_tokens += max(
+                    0,
+                    int(getattr(usage, "cache_input_tokens", 0) or 0),
+                )
+                entry.output_tokens += max(0, int(getattr(usage, "output_tokens", 0)))
             await self._commit_mutation(user_id, record)
 
     @staticmethod

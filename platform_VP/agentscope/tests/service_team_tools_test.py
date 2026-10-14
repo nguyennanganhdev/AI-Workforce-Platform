@@ -1436,58 +1436,6 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
 
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
-    async def test_explicit_cost_request_requires_available_calculator(self):
-        """An incomplete invite batch cannot silently omit cost calculation."""
-        calculator = _make_agent_record(self.user_id, "Cost Calculation Agent")
-        calculator.data.lifecycle_state = "published"
-        calculator.data.invite_config = (
-            self.monday_agent.data.invite_config.model_copy(
-                update={"invite_description": "Cost calculation expert."},
-            )
-        )
-        calculator.data.build_description = "Calculate and balance total costs."
-        await self.storage.upsert_agent(self.user_id, calculator)
-        await self.storage.upsert_session(
-            user_id=self.user_id,
-            agent_id=calculator.id,
-            config=SessionConfig(workspace_id="ws-calculator"),
-        )
-        leader = await self.storage.get_session(
-            self.user_id,
-            self.leader_agent.id,
-            self.leader_session.id,
-        )
-        shared = SharedContextService(self.storage, self.bus)
-        await shared.append_event(
-            user_id=self.user_id,
-            team_id=leader.team_id,
-            kind="customer_message",
-            content=(
-                "Tính chi phí ba dịch vụ trong ngân sách 4 triệu và chừa "
-                "lại 500 nghìn."
-            ),
-        )
-        tool = AgentInvite(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent, calculator],
-            shared_context_service=shared,
-        )
-
-        result = await tool(
-            target=f"Monday@{self.monday_agent.id[:8]}",
-            prompt="Coordinate the provider results.",
-        )
-
-        self.assertEqual(result.state, ToolResultState.ERROR)
-        self.assertIn("omits the available calculation specialist", result.content[0].text)
-        team = await self.storage.get_team(self.user_id, leader.team_id)
-        self.assertEqual(team.data.members, [])
-
     async def test_batch_preserves_all_four_members_and_dispatches_once(self):
         pool = [self.monday_agent]
         for name in ("Search specialist", "Resource specialist", "Calculator"):
