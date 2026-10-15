@@ -2,7 +2,7 @@
 
 Phạm vi: nhánh `dev_Vinhome`, pilot **OP1 → The Sapphire 1 → S1.01 → Kỹ thuật**. Đây là nghiệm thu nghiên cứu, chuẩn bị dữ liệu và nhập tài liệu tham khảo; **chưa phải nghiệm thu vận hành thật hoặc Agent/Platform thật**.
 
-**Cập nhật vòng 2 cùng ngày:** đã bổ sung 6 bản ghi hỗ trợ/hoạt động công khai, 2 bản ghi mỗi khu OP1/OP2/OP3, vào VPS. Local chỉ có OP1 nên nạp 2, bỏ qua 4 bản ghi khác mà không tạo thêm site. Hiện VPS **308 tài liệu / 792 đoạn**, local **170 / 654**; **84 kiểm thử đạt**. Bộ pilot vẫn có 108 trường/hạng mục owner còn thiếu. Số liệu dưới đây là sau cả hai vòng.
+**Cập nhật mới nhất, vòng 3 cùng ngày:** đã thêm 3 reference lịch sử OP1 có thể tra cứu và lưu cách ly 3 bản từ mẫu hợp đồng lô thương mại. Hiện VPS **314 tài liệu / 798 đoạn**, local **176 / 660**; **89 kiểm thử đạt**. Bộ pilot vẫn có 108 trường/hạng mục owner còn thiếu. Số liệu database dưới đây là sau cả ba vòng; bằng chứng từng vòng được giữ riêng.
 
 ## Đã hoàn thành
 
@@ -31,8 +31,8 @@ Snapshot sau import, database **`vinhomes_clean_20261014_a08369c0`**, Compose pr
 | Owner proposal records | 113 | 0 bản ghi được xác nhận vận hành |
 | Catalog dịch vụ | 34 | 0 dịch vụ bật vận hành |
 | Operational staging batches / records | 0 / 0 | Chưa nhập bộ owner hoàn chỉnh |
-| Tài liệu / đoạn tri thức | **308 / 792** | Tăng tổng 10 / 10 qua hai vòng |
-| Tài liệu reference / quarantined | 186 / 122 | Toàn bộ 308 còn cờ `unverified`; reference không phải quy định đã duyệt |
+| Tài liệu / đoạn tri thức | **314 / 798** | Tăng tổng 16 / 16 qua ba vòng, gồm 3 bản cách ly mới |
+| Tài liệu reference / quarantined | 189 / 125 | Toàn bộ 314 còn cờ `unverified`; reference không phải quy định đã duyệt |
 | Travel mock catalog / booking | 15 / 0 | Mô phỏng, không phải nhà cung cấp/đặt chỗ thật |
 | Ticket / work order / MCP grant | 0 / 0 / 0 | Chưa có luồng nghiệp vụ đang chạy |
 | Platform connection setting | 1 | `enabled=false`, URL chưa cấu hình |
@@ -42,15 +42,15 @@ Hai `management_units` là **Local Management** (cấu hình bootstrap, chưa x�
 
 | Khu | Phân khu | Tòa | Tài liệu sau import | Dịch vụ bật vận hành |
 |---|---:|---:|---:|---:|
-| OP1 | 9 | 30 | 235 | 0 |
+| OP1 | 9 | 30 | 241 | 0 |
 | OP2 | 8 | 0 | 35 | 0 |
 | OP3 | 8 | 0 | 38 | 0 |
 
-Local dùng database `vinhomes`: **170 tài liệu / 654 đoạn** sau hai vòng import, 720 user nhưng chỉ 15 account; 380 căn, 690 quan hệ cư trú, 26 staff và 1.405 ca, 945 ticket và 683 work order là dữ liệu lịch sử phục vụ test. Không chuyển dữ liệu này sang VPS hoặc gọi là hồ sơ thật. Số liệu local và VPS khác nhau có chủ đích.
+Local dùng database `vinhomes`: **176 tài liệu / 660 đoạn** sau ba vòng import, 720 user nhưng chỉ 15 account; 380 căn, 690 quan hệ cư trú, 26 staff và 1.405 ca, 945 ticket và 683 work order là dữ liệu lịch sử phục vụ test. Không chuyển dữ liệu này sang VPS hoặc gọi là hồ sơ thật. Số liệu local và VPS khác nhau có chủ đích.
 
 ## Bằng chứng kiểm thử và triển khai
 
-- **84 kiểm thử đạt**, gồm candidate, nguồn tham khảo, nhập knowledge, pilot/staging, handoff v1, owner proposals, MCP v2 và schema; tăng hai ca kiểm thử ở vòng 2. Ruff đạt cho Python thay đổi. Một cảnh báo Starlette TestClient, không có lỗi trong bộ đã chạy.
+- **89 kiểm thử đạt**, gồm candidate, nguồn tham khảo, nhập knowledge, pilot/staging, handoff v1, owner proposals, MCP v2 và schema; tăng hai ca ở vòng 2 và năm ca ở vòng 3. Ruff đạt cho Python thay đổi. Một cảnh báo Starlette TestClient, không có lỗi trong bộ đã chạy.
 - PostgreSQL test riêng được tạo và gỡ cùng volume sau kiểm thử. Candidate thiếu hồ sơ trả `valid=false`; không được nhập staging hoặc mở dịch vụ thật. Happy case staging dùng dữ liệu synthetic chỉ ở database test riêng, không phải hồ sơ sản xuất.
 - Runtime tìm đúng tài liệu mới tại OP1: ba nhóm truy vấn có lần lượt **2 / 1 / 1** kết quả mới. OP2 và OP3 đều **0** ở cùng các truy vấn. Đây là kiểm thử truy xuất dữ liệu, không phải đánh giá chất lượng hội thoại Agent.
 - Backup PostgreSQL dạng custom trước import: local **9.561.326 byte**, VPS **6.270.353 byte**. Đã kiểm tra header và danh mục `pg_restore --list`; chưa chạy khôi phục toàn bộ backup.
@@ -83,6 +83,27 @@ Vòng 2 đã kiểm tra **18 tổ hợp truy vấn/site trên VPS**, cả 6 nộ
 Backup trước vòng 2: local **9.568.650 byte**, SHA-256 `b70ebaeed39fefe7742f0cc810d7f59ac8a7c35008c9e40f3097ae1b886069cb`; VPS **6.276.560 byte**, SHA-256 `bf42df65b7443635000f9657d36c3a499080ccad0167c775c7b8af2967b9245f`. Đã kiểm tra header và `pg_restore --list`, chưa chạy full restore. Gói 6 reference SHA-256 `21312bbf1a4ad6f5e466b62e76458412ee82303aec6176bd5e3c8cbbeb9bceb8`.
 
 Bằng chứng vòng 2: `E:\Vinhomes-Deploy\reference-expansion-20261015\` và `/opt/vinhomes/releases/reference-expansion-20261015/`. Nạp vào PostgreSQL dùng API image đang chạy; không rebuild image, thay Compose hay cấu hình Platform. Danh sách thiếu 108 mục vẫn giữ nguyên vì chưa có xác nhận vận hành mới.
+
+## Bổ sung vòng 3: hồ sơ lịch sử đúng cụm pilot
+
+Đã đối chiếu 5 PDF gốc; các hồ sơ scan được render và đọc trang 1–2. [Gói dữ liệu mới](../../deploy/reference-data/op1-legal-technical-public-20261015.json) có 6 bản ghi:
+
+| Nội dung | Cách sử dụng |
+|---|---|
+| Đối chiếu mã cụm B3-CT02: S1.01 ↔ L27M-2, S1.02 ↔ L27M-1, S1.03 ↔ Z28; hai khối L27M 27 tầng, Z28 28 tầng | Reference lịch sử từ thông báo nghiệm thu 12/11/2020; lưu 3 mục crosswalk trong metadata, không tạo căn hoặc đổi master |
+| Hồ sơ chấp thuận nghiệm thu PCCC số 2550/PCCC&CNCH-P4 ngày 02/11/2020 | Reference lịch sử đúng cụm; không dùng để cam kết an toàn/thiết bị hoạt động hiện tại hoặc làm SOP ứng phó |
+| Vai trò chủ đầu tư trong bản công khai OP1 ngày 21/06/2022 | Reference lịch sử; không tự gán pháp nhân phát triển Đô thị Gia Lâm thành operator hiện tại của tuyến Kỹ thuật |
+| Ba bản tóm tắt ghi nhận lỗi bàn giao, hồ sơ bảo hành và hồ sơ cải tạo của mẫu **lô thương mại** | **Quarantined**, không được retrieval cho cư dân; không áp thời hạn, phí/ký quỹ hoặc bước duyệt của lô thương mại cho căn hộ S1.01 |
+
+Đây là 3 nội dung mới có thể tra cứu và 3 bản lưu đối soát, không phải 6 SOP được kích hoạt. Compiler chỉ nhận trạng thái `reference`/`quarantined`, từ chối nguồn công khai tự gắn `approved`/`active` và từ chối mở retrieval cho mẫu thương mại trong pilot dân cư. Các bản đã có giữ nguyên ID/nội dung; runtime đã có bộ lọc quarantine nên không cần rebuild API image.
+
+Nguồn và trang PDF: [nghiên cứu thủ tục kỹ thuật](RESEARCH_TECHNICAL_PROCEDURES_20261015.md). `source_issued_at` lưu ngày ghi trên văn bản, `source_published_at` vẫn null khi không biết ngày đăng; không suy ngày hiệu lực từ tên file. Không nhập tên người đại diện, tài khoản nhận tiền, hồ sơ người mua hoặc điều khoản thời hạn thành dữ liệu phục vụ cư dân.
+
+Trên VPS, 18 tổ hợp query/site xác nhận 3 reference xuất hiện tại OP1; **0 bản thương mại cách ly xuất hiện**, không lẫn sang OP2/OP3. Local kiểm tra cùng 6 query tại OP1, chỉ 3 reference truy xuất được. Nhập lại `changed=0`; fingerprint toàn bộ dữ liệu được bảo vệ giữ nguyên ngoài heartbeat độc lập đã loại rõ khỏi so sánh. **0 cuộc gọi Agent/model/embedding**.
+
+Backup vòng 3: local **9.571.983 byte**, SHA-256 `6c105e7ea6a29c83b101d51aa684c3e3c16cddbc9bd1a39ce095ba8b9378e8a6`; VPS **6.283.905 byte**, SHA-256 `584de313dca4188eaf265f8026280e7aac03802f688dcd3281542badc53e53df`. Kiểm tra header và `pg_restore --list`, chưa chạy full restore. Gói dữ liệu SHA-256 `ceccab0b1d5ca32333adac4b36a6be6aae616ce314f9d6b5002f30e8eb61fdb1`.
+
+Bằng chứng: `E:\Vinhomes-Deploy\technical-procedures-20261015\` và `/opt/vinhomes/releases/technical-procedures-20261015/`. Danh sách thiếu vẫn **108 mục**: dịch vụ 39, SOP 48, và 21 mục về owner/địa bàn/tuyến/căn/cư trú/nhân sự/ca. Đối chiếu mã xây dựng làm tốt hơn bằng chứng địa bàn, nhưng không thay các xác nhận vận hành còn trống. Chưa tìm được nguồn gốc HomeCare hoặc SOP căn hộ hiện hành đủ điều kiện để nhập giá, lịch, SLA, roster hay mở tuyến.
 
 ## Còn thiếu gì để vận hành thật
 

@@ -8,6 +8,8 @@ Mở [missing-data.csv](missing-data.csv) để đối soát **108 trường/h�
 
 Đã bổ sung tiếp [6 reference hỗ trợ/hoạt động theo khu](../../reference-data/resident-support-public-20261015.json) vào kho tri thức VPS, không sửa các CSV owner của pilot. Tin tuyển dụng và nội dung quảng bá không thay xác nhận nhân sự, dịch vụ, SOP/SLA, phí hoặc giờ; 108 mục còn thiếu không tự giảm theo số lượng reference. Xem [nghiên cứu vòng 2](../../../docs/domain/RESEARCH_DOMAIN_REFERENCE_EXPANSION_20261015.md).
 
+[Hồ sơ lịch sử đúng cụm B3-CT02](../../reference-data/op1-legal-technical-public-20261015.json) bổ sung đối chiếu S1.01/L27M-2, S1.02/L27M-1, S1.03/Z28 và hồ sơ nghiệm thu năm 2020; không tạo căn hoặc xác nhận hiện trạng vận hành. Ba bản mẫu lô thương mại trong cùng gói được cách ly khỏi retrieval cư dân vì khác loại bất động sản. Các trường `approved_by`, ngày hiệu lực, operator và địa chỉ hiện tại trong CSV vẫn cần hồ sơ thật; không dùng ngày nghiệm thu lịch sử để điền thay.
+
 Đây là **schema v2 dành riêng pilot**, không thay bộ v1 nhiều khu. Cần hoàn thiện và nghiệm thu pilot trước khi thiết kế mở rộng phạm vi v2 sang OP2/3. `data_mode=owner_candidate` nghĩa là dữ liệu đề nghị tiếp nhận, chưa phải chứng nhận của đơn vị vận hành.
 
 ## Chuỗi dữ liệu cần điền

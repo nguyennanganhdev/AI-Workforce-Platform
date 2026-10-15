@@ -35,6 +35,14 @@ def compile_records(rows):
     documents = []
     codes = set()
     for row in rows:
+        retrieval_status = row.get("retrieval_status", "reference")
+        if retrieval_status not in {"reference", "quarantined"}:
+            raise ValueError("Public sources cannot grant operational approval.")
+        if (
+            row.get("kind") == "commercial-contract-template-reference"
+            and retrieval_status != "quarantined"
+        ):
+            raise ValueError("Commercial templates must stay quarantined from the residential pilot.")
         if (
             row["site_code"] not in {"ocean-park-1", "ocean-park-2", "ocean-park-3"}
             or row["authority"] != "reference"
@@ -95,6 +103,11 @@ def compile_records(rows):
                                 "applicability",
                                 "source_updated_at",
                                 "source_snapshot_sha256",
+                                "source_issued_at",
+                                "source_pages",
+                                "building_crosswalk",
+                                "retrieval_status",
+                                "quarantine_reason",
                             )
                             if key in row
                         }

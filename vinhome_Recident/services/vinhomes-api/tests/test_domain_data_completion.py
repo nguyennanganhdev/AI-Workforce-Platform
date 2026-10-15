@@ -22,6 +22,7 @@ DEPLOY = Path(__file__).resolve().parents[3] / "deploy"
 CATALOG = DEPLOY / "reference-data/owner-public-catalog-20261014.json"
 TECHNICAL = DEPLOY / "reference-data/op1-technical-public-20261015.json"
 SUPPORT = DEPLOY / "reference-data/resident-support-public-20261015.json"
+LEGAL_TECHNICAL = DEPLOY / "reference-data/op1-legal-technical-public-20261015.json"
 
 
 def test_candidate_prefills_geography_and_workflow_but_never_people_or_owner_approval(
@@ -354,3 +355,77 @@ def test_support_import_and_retrieval_preserve_site_boundaries_and_business_data
     assert {
         t: sql(database, "select count(*) n from " + t)[0]["n"] for t in tables
     } == before
+
+
+
+def test_building_history_preserves_aliases_without_approving_commercial_templates():
+    records = json.loads(LEGAL_TECHNICAL.read_text(encoding="utf-8"))
+    documents = script("prepare-reference-pack").compile_records(records)
+    assert len(documents) == 6
+    assert sum(d["metadata"]["retrieval_status"] == "quarantined" for d in documents) == 3
+    assert all(d["unverified"] and d["metadata"]["operational_approval"] == "pending" for d in documents)
+    crosswalk = documents[0]["metadata"]["building_crosswalk"]
+    assert {r["building_code"]: r["technical_code"] for r in crosswalk} == {
+        "S1.01": "L27M-2", "S1.02": "L27M-1", "S1.03": "Z28"
+    }
+    assert all(r["land_lot"] == "B3-CT02" and "unit_code" not in r for r in crosswalk)
+    assert documents[0]["metadata"]["source_issued_at"] == "2020-11-12"
+    assert documents[1]["metadata"]["source_issued_at"] == "2020-11-02"
+    assert documents[2]["metadata"]["source_issued_at"] == "2022-06-21"
+    for document in documents:
+        assert document["metadata"]["source_published_at"] is None
+        assert document["metadata"]["source_pages"]
+        assert document["metadata"]["fee_policy"] is None
+        assert document["metadata"]["operating_hours"] is None
+
+
+@pytest.mark.parametrize("status", ["approved", "active"])
+def test_public_reference_cannot_self_grant_approval(status):
+    records = json.loads(LEGAL_TECHNICAL.read_text(encoding="utf-8"))
+    records[0]["retrieval_status"] = status
+    with pytest.raises(ValueError, match="approval"):
+        script("prepare-reference-pack").compile_records(records)
+
+
+def test_commercial_template_cannot_be_published_for_the_residential_pilot():
+    records = json.loads(LEGAL_TECHNICAL.read_text(encoding="utf-8"))
+    records[3].pop("retrieval_status")
+    with pytest.raises(ValueError, match="quarantined"):
+        script("prepare-reference-pack").compile_records(records)
+
+
+def test_technical_history_import_keeps_wrong_property_templates_out_of_retrieval(
+    database, monkeypatch, tmp_path
+):
+    monkeypatch.delenv("VINHOMES_API_EMBEDDING_API_KEY", raising=False)
+    documents = script("prepare-reference-pack").compile_records(
+        json.loads(LEGAL_TECHNICAL.read_text(encoding="utf-8"))
+    )
+    pack = tmp_path / "history.jsonl.gz"
+    pack.write_bytes(gzip.compress("\n".join(json.dumps(d, ensure_ascii=False) for d in documents).encode()))
+    tables = ["users", "accounts", "units", "unit_residents", "staff_profiles", "staff_shifts", "management_coverage", "domain_service_catalog", "owner_operational_batches"]
+    before = {t: sql(database, "select count(*) n from " + t)[0]["n"] for t in tables}
+    site = sql(database, "select id from sites where tenant_id=$1 and code='ocean-park-1'", TENANT)[0]["id"]
+    quarantined = {d["id"] for d in documents if d["metadata"]["retrieval_status"] == "quarantined"}
+
+    async def check():
+        first = await knowledge.load(database["admin"], pack, str(TENANT))
+        second = await knowledge.load(database["admin"], pack, str(TENANT))
+        assert first["documents"] == 6 and first["embedded"] == 0
+        assert second["changed"] == 0
+        engine = create_async_engine(database["runtime"].replace("postgresql:", "postgresql+asyncpg:", 1))
+        try:
+            async with engine.begin() as db:
+                await db.execute(text("select set_config('app.tenant_id',:tenant,true)"), {"tenant": str(TENANT)})
+                for index, query in [(0,"S1.01 L27M-2 B3-CT02"),(1,"2550 PCCC 2020"),(2,"Gia Lam 0106205215")]:
+                    found = await knowledge.search(db, TENANT, "resident", None, None, query, 20, site_id=site)
+                    assert documents[index]["id"] in {h["documentId"] for h in found["hits"]}
+                    assert not quarantined.intersection(h["documentId"] for h in found["hits"])
+                for document in documents[3:]:
+                    found = await knowledge.search(db, TENANT, "resident", None, None, document["title"], 20, site_id=site)
+                    assert not quarantined.intersection(h["documentId"] for h in found["hits"])
+        finally:
+            await engine.dispose()
+
+    asyncio.run(check())
+    assert {t: sql(database, "select count(*) n from " + t)[0]["n"] for t in tables} == before
