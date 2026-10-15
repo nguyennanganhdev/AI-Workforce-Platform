@@ -280,6 +280,10 @@ class SessionConfig(BaseModel):
     chat_model_config: ChatModelConfig | None = None
     """The chat model config. None means no model has been configured yet."""
 
+    sub_agent_chat_model_config: ChatModelConfig | None = None
+    """Shared model for this session's team workers, including future members.
+    None preserves each worker's own model configuration."""
+
     fallback_chat_model_config: ChatModelConfig | None = None
     """The fallback chat model config. Used as a backup when the primary
     model fails. None means no fallback configured."""

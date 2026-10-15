@@ -9,7 +9,6 @@ from agentscope.app._router._schema import MCPView
 from agentscope.app._router._workforce_console import (
     _LEADER_PROMPT,
     BuilderKnowledgeBase,
-    BuilderGeneration,
     BuilderOutline,
     BuilderTool,
     GeneratedAgent,
@@ -18,7 +17,6 @@ from agentscope.app._router._workforce_console import (
     _agent_tool_settings,
     _claim_exclusive_tool_ids,
     _execution_mode_matches_tools,
-    _ensure_attraction_generation_coverage,
     _ensure_attraction_outline_coverage,
     _group_tool_catalog,
     _normalise_skill,
@@ -141,7 +139,9 @@ def test_builder_prepare_requires_user_selected_model() -> None:
     assert "chat_model_config" in schema["required"]
 
 
-def test_builder_follows_user_language_and_leader_answers_in_vietnamese() -> None:
+def test_builder_follows_user_language_and_leader_answers_in_vietnamese() -> (
+    None
+):
     assert _response_language("Hãy tạo cho tôi một team agent") == "vi"
     assert _response_language("Please create a travel agent team") == "en"
     assert _response_language("OK", "Tôi muốn tạo agent khách sạn") == "vi"
@@ -185,7 +185,9 @@ def test_builder_outline_keeps_team_capabilities_separate() -> None:
     ]
 
 
-def test_builder_materializes_requested_attraction_specialist_and_tools() -> None:
+def test_builder_materializes_requested_attraction_specialist_and_tools() -> (
+    None
+):
     tools = [
         BuilderTool(
             id="travel:search_attractions",
@@ -220,21 +222,14 @@ def test_builder_materializes_requested_attraction_specialist_and_tools() -> Non
     assert attraction.name == "Agent Địa Điểm Vui Chơi"
     assert set(attraction.suggested_tool_ids) == {tool.id for tool in tools}
 
-    generation = _ensure_attraction_generation_coverage(
-        BuilderGeneration(),
-        "Tư vấn địa điểm vui chơi tại Phú Quốc",
-        tools,
-        "vi",
+
+def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> (
+    None
+):
+    assert (
+        governed_system_prompt("leader", "old prompt")
+        == WORKFORCE_LEADER_PROMPT
     )
-    assert len(generation.agents) == 1
-    assert generation.agents[0].execution_mode == "tool_backed"
-    assert set(generation.agents[0].selected_tool_ids) == {
-        tool.id for tool in tools
-    }
-
-
-def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> None:
-    assert governed_system_prompt("leader", "old prompt") == WORKFORCE_LEADER_PROMPT
     governed = governed_system_prompt("business", "Hotel specialist")
     assert BUSINESS_AGENT_EVIDENCE_POLICY in governed
     assert governed_system_prompt("business", governed) == governed
@@ -463,7 +458,9 @@ class TestAgentToolWorkspaceSync(IsolatedAsyncioTestCase):
             saved_config.knowledge_config.knowledge_base_ids,
             ["kb-policy"],
         )
-        self.assertEqual(saved_config.knowledge_config.parameters["mode"], "agentic")
+        self.assertEqual(
+            saved_config.knowledge_config.parameters["mode"], "agentic"
+        )
 
 
 def test_builder_proposal_round_trips_through_persisted_message() -> None:

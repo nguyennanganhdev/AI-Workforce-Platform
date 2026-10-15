@@ -657,7 +657,10 @@ class AgentInvite(_TeamToolBase):
                 config=SessionConfig(
                     workspace_id=borrowed_workspace_id,
                     name=f"team:{team.id}/invited:{invited_handle}",
-                    chat_model_config=borrowed_chat_model,
+                    chat_model_config=(
+                        leader_session.config.sub_agent_chat_model_config
+                        or borrowed_chat_model
+                    ),
                     fallback_chat_model_config=borrowed_fallback_model,
                     knowledge_config=(
                         SessionKnowledgeConfig(

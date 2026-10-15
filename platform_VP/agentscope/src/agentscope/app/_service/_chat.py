@@ -1065,6 +1065,20 @@ class ChatService:
                             leader_agent_id=leader.agent.id,
                             leader_name=leader.name,
                         )
+                        leader_session = await self._storage.get_session(
+                            user_id,
+                            leader.agent.id,
+                            leader.session_id,
+                        )
+                        if leader_session is not None:
+                            shared_model = (
+                                leader_session.config.sub_agent_chat_model_config
+                            )
+                            if shared_model is not None:
+                                # Resolve each turn so existing workers follow room changes.
+                                session_record.config.chat_model_config = (
+                                    shared_model
+                                )
 
                     if team is not None:
                         turn_state = await get_team_turn(

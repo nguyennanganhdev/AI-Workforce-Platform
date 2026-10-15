@@ -326,7 +326,16 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             user_id=user_id,
             agent_id=leader_agent.id,
             team_id="team-1",
-            config=config,
+            config=config.model_copy(
+                update={
+                    "sub_agent_chat_model_config": ChatModelConfig(
+                        type="test",
+                        credential_id="worker-cred",
+                        model="shared-workers",
+                        parameters={"temperature": 0.2},
+                    )
+                }
+            ),
         )
         team = TeamRecord(
             id="team-1",
@@ -401,7 +410,12 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 del tools
                 return sum(len(msg.get_text_content() or "") for msg in messages)
 
-        async def _get_model(*_: object, **__: object) -> object:
+        model_configs = []
+
+        async def _get_model(
+            _user_id, model_config, *_args, **_kwargs
+        ) -> object:
+            model_configs.append(model_config)
             return _Model()
 
         class _Access:
@@ -434,6 +448,14 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 worker_agent.id,
                 None,
             )
+
+        self.assertEqual(
+            model_configs, [leader_session.config.sub_agent_chat_model_config]
+        )
+        self.assertEqual(
+            storage.sessions[worker_session.id].config.chat_model_config.model,
+            "m",
+        )
 
         self.assertDictEqual(
             {
@@ -491,6 +513,12 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
         )
         config = SessionConfig(
             workspace_id="ws-1",
+            sub_agent_chat_model_config=ChatModelConfig(
+                type="test",
+                credential_id="worker-cred",
+                model="shared-workers",
+                parameters={},
+            ),
             chat_model_config=ChatModelConfig(
                 type="test",
                 credential_id="cred-1",
@@ -551,7 +579,12 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 del tools
                 return sum(len(msg.get_text_content() or "") for msg in messages)
 
-        async def _get_model(*_: object, **__: object) -> object:
+        model_configs = []
+
+        async def _get_model(
+            _user_id, model_config, *_args, **_kwargs
+        ) -> object:
+            model_configs.append(model_config)
             return _Model()
 
         class _Access:
@@ -582,6 +615,7 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 UserMsg("user", "plan my trip"),
             )
 
+        self.assertEqual(model_configs, [config.chat_model_config])
         self.assertIsNotNone(shared_storage.record)
         self.assertIsNotNone(shared_storage.team_turn)
         assert shared_storage.record is not None

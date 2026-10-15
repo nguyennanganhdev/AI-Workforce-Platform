@@ -193,6 +193,9 @@ const ChatPageInner = () => {
 			...(seedConfig?.chat_model_config
 				? { chat_model_config: seedConfig.chat_model_config }
 				: {}),
+			...(seedConfig?.sub_agent_chat_model_config
+				? { sub_agent_chat_model_config: seedConfig.sub_agent_chat_model_config }
+				: {}),
 			...(seedConfig?.fallback_chat_model_config
 				? { fallback_chat_model_config: seedConfig.fallback_chat_model_config }
 				: {}),

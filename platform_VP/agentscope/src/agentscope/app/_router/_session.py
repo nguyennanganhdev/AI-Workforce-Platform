@@ -250,6 +250,26 @@ async def list_sessions(
                     user_id,
                     team_record,
                 )
+                if team_record.session_id != session.id:
+                    leader_session = await storage.get_session(
+                        user_id,
+                        "",
+                        team_record.session_id,
+                    )
+                    if leader_session is not None:
+                        shared_model = (
+                            leader_session.config.sub_agent_chat_model_config
+                        )
+                        if shared_model is not None:
+                            session = session.model_copy(
+                                update={
+                                    "config": session.config.model_copy(
+                                        update={
+                                            "chat_model_config": shared_model,
+                                        }
+                                    ),
+                                }
+                            )
         is_running = await message_bus.is_locked(
             MessageBusKeys.session_lock(session.id),
         )
@@ -333,6 +353,9 @@ async def create_session(
 
     await _ensure_credential_exists(access, user_id, body.chat_model_config)
     await _ensure_credential_exists(
+        access, user_id, body.sub_agent_chat_model_config
+    )
+    await _ensure_credential_exists(
         access,
         user_id,
         body.fallback_chat_model_config,
@@ -362,6 +385,7 @@ async def create_session(
         config=SessionConfig(
             workspace_id=resolved_workspace_id,
             chat_model_config=body.chat_model_config,
+            sub_agent_chat_model_config=body.sub_agent_chat_model_config,
             fallback_chat_model_config=body.fallback_chat_model_config,
             tts_model_config=body.tts_model_config,
             knowledge_config=knowledge_config,
@@ -515,7 +539,30 @@ async def update_session(
             ),
         )
 
+    if (
+        "sub_agent_chat_model_config" in body.model_fields_set
+        and existing.team_id
+    ):
+        team = await storage.get_team(user_id, existing.team_id)
+        if team is not None:
+            if team.session_id != session_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Change the shared sub-agent model from the leader session.",
+                )
+            for member in await _ensure_team_members(storage, user_id, team):
+                if await message_bus.is_locked(
+                    MessageBusKeys.session_lock(member.session_id),
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Cannot modify the sub-agent model while a team member is running.",
+                    )
+
     await _ensure_credential_exists(access, user_id, body.chat_model_config)
+    await _ensure_credential_exists(
+        access, user_id, body.sub_agent_chat_model_config
+    )
     await _ensure_credential_exists(
         access,
         user_id,

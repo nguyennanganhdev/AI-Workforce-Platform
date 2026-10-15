@@ -17,12 +17,19 @@ from collections.abc import AsyncIterator
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..._logging import logger
 from ..._utils._common import _generate_id
 from ...agent import ContextConfig, ReActConfig
-from ...credential import CredentialFactory
+from ...credential import CredentialFactory, TypeSafeCredential
+from ...classifier import (
+    BinaryAnswer,
+    BinaryQuestion,
+    ChoiceAnswer,
+    ChoiceQuestion,
+    JevClassifierModel,
+)
 from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
@@ -120,8 +127,22 @@ class BuilderGeneration(BaseModel):
     """Structured model output for a single-agent or batch build request."""
 
     assistant_message: str = ""
-    clarification_question: str | None = None
     agents: list[GeneratedAgent] = Field(default_factory=list, max_length=12)
+
+
+class _GeneratedAgentConfig(BaseModel):
+    """The LLM authors instructions; approved resources belong to the server."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    system_prompt: str = Field(min_length=20, max_length=30000)
+    skill_name: str = Field(min_length=1, max_length=100)
+    skill_markdown: str = Field(min_length=20, max_length=50000)
+
+
+class _BuilderConfigGeneration(BaseModel):
+    assistant_message: str = ""
+    agents: list[_GeneratedAgentConfig] = Field(min_length=1, max_length=12)
 
 
 class PlannedAgent(BaseModel):
@@ -129,8 +150,11 @@ class PlannedAgent(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=1, max_length=4000)
+    tool_requirements: list[str] = Field(default_factory=list)
+    knowledge_requirements: list[str] = Field(default_factory=list)
     suggested_tool_ids: list[str] = Field(default_factory=list)
     suggested_knowledge_base_ids: list[str] = Field(default_factory=list)
+    missing_resources: list[str] = Field(default_factory=list)
 
 
 class BuilderOutline(BaseModel):
@@ -173,6 +197,7 @@ class PrepareRequest(BaseModel):
     chat_model_config: ChatModelConfig
     conversation_id: str | None = None
     confirm_outline: bool = False
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class PlannedAgentView(BaseModel):
@@ -180,6 +205,7 @@ class PlannedAgentView(BaseModel):
     objective: str
     suggested_tools: list[BuilderTool] = Field(default_factory=list)
     suggested_knowledge_bases: list[BuilderKnowledgeBase] = Field(default_factory=list)
+    missing_resources: list[str] = Field(default_factory=list)
 
 
 class ProposedAgentView(BaseModel):
@@ -207,6 +233,8 @@ class ProposalView(BaseModel):
     agents: list[ProposedAgentView] = Field(default_factory=list)
     chat_model_config: ChatModelConfig
     fixed_config: dict
+    resources_locked: bool = False
+    resource_selection: Literal["jev", "llm"] | None = None
 
 
 class PublishRequest(BaseModel):
@@ -412,7 +440,11 @@ def _select_model_name(
 
 
 async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
-    credentials = await storage.list_credentials(user_id)
+    credentials = [
+        record
+        for record in await storage.list_credentials(user_id)
+        if record.data.get("type") != "typesafe_credential"
+    ]
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -619,6 +651,9 @@ def _ensure_attraction_outline_coverage(
                 "verified tool data."
             ),
         )
+        specialist.tool_requirements = [
+            tool.description or tool.tool_name for tool in attraction_tools
+        ]
         agents.append(specialist)
 
     for agent in agents:
@@ -633,98 +668,6 @@ def _ensure_attraction_outline_coverage(
         ),
     )
     return outline.model_copy(update={"agents": agents})
-
-
-def _ensure_attraction_generation_coverage(
-    generation: BuilderGeneration,
-    transcript: str,
-    tools: list[BuilderTool],
-    reply_language: Literal["vi", "en"],
-) -> BuilderGeneration:
-    """Keep the generated configuration aligned with the approved boundary."""
-
-    attraction_tools = _attraction_tools_requested(transcript, tools)
-    if not attraction_tools:
-        return generation
-    attraction_ids = {tool.id for tool in attraction_tools}
-    agents = [agent.model_copy(deep=True) for agent in generation.agents]
-    specialist = next(
-        (
-            agent
-            for agent in agents
-            if any(
-                phrase in _fold_for_capability_match(
-                    f"{agent.name} {agent.objective}",
-                )
-                for phrase in (
-                    "dia diem vui choi",
-                    "diem vui choi",
-                    "tham quan",
-                    "attraction",
-                    "sightseeing",
-                )
-            )
-        ),
-        None,
-    )
-    if specialist is None:
-        if reply_language == "vi":
-            specialist = GeneratedAgent(
-                name="Agent Địa Điểm Vui Chơi",
-                objective=(
-                    "Tìm kiếm, kiểm tra và xử lý riêng các lựa chọn địa điểm "
-                    "vui chơi bằng dữ liệu công cụ đã xác minh."
-                ),
-                execution_mode="tool_backed",
-                system_prompt=(
-                    "Bạn phụ trách địa điểm vui chơi. Dùng đúng công cụ được "
-                    "gắn để tra cứu dữ liệu thực, trình bày lựa chọn trước và "
-                    "chỉ đặt vé sau yêu cầu cùng xác nhận rõ ràng của khách."
-                ),
-                selected_tool_ids=[],
-                skill_name="dia-diem-vui-choi",
-                skill_markdown=(
-                    "# Quy trình\n\nTra cứu rộng theo dữ kiện khách đã cung cấp, "
-                    "kiểm tra lựa chọn bằng công cụ, rồi báo cáo kết quả đã xác minh."
-                ),
-            )
-        else:
-            specialist = GeneratedAgent(
-                name="Attraction Specialist",
-                objective=(
-                    "Search, verify, and handle attraction options using "
-                    "verified tool data."
-                ),
-                execution_mode="tool_backed",
-                system_prompt=(
-                    "Own attraction work. Use the assigned tools for live data, "
-                    "present options first, and book only after an explicit "
-                    "customer request and confirmation."
-                ),
-                selected_tool_ids=[],
-                skill_name="attraction-options",
-                skill_markdown=(
-                    "# Workflow\n\nSearch from customer-provided constraints, "
-                    "verify options with tools, then report exact evidence."
-                ),
-            )
-        agents.append(specialist)
-
-    for agent in agents:
-        agent.selected_tool_ids = [
-            tool_id
-            for tool_id in agent.selected_tool_ids
-            if tool_id not in attraction_ids or agent is specialist
-        ]
-        if agent is not specialist and not agent.selected_tool_ids:
-            agent.execution_mode = "context_only"
-    specialist.execution_mode = "tool_backed"
-    specialist.selected_tool_ids = list(
-        dict.fromkeys(
-            (*specialist.selected_tool_ids, *(tool.id for tool in attraction_tools)),
-        ),
-    )
-    return generation.model_copy(update={"agents": agents})
 
 
 async def _builder_structured_call(
@@ -759,51 +702,347 @@ async def _builder_structured_call(
     return response, prompt_tokens, reserved_output_tokens
 
 
-async def _outline(
+def _validate_resource_selection(
+    outline: BuilderOutline,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> None:
+    """Reject invented IDs and cross-agent tool duplication before review."""
+    names = [agent.name for agent in outline.agents]
+    if len(names) != len(set(names)):
+        raise ValueError("Agent names must be unique")
+    available = {tool.id for tool in tools}
+    knowledge_ids = {knowledge.id for knowledge in knowledge_bases}
+    claimed: set[str] = set()
+    for agent in outline.agents:
+        _, invalid, duplicates = _claim_exclusive_tool_ids(
+            agent.suggested_tool_ids,
+            available,
+            claimed,
+        )
+        if (
+            invalid
+            or duplicates
+            or not set(agent.suggested_knowledge_base_ids) <= knowledge_ids
+        ):
+            raise ValueError(
+                "Resource selection contains unavailable or duplicate resources"
+            )
+        for kind, ids in (
+            ("tool", agent.suggested_tool_ids),
+            ("knowledge", agent.suggested_knowledge_base_ids),
+        ):
+            if not ids:
+                agent.missing_resources = list(
+                    dict.fromkeys(
+                        [
+                            *agent.missing_resources,
+                            *(
+                                f"{kind}: {requirement}"
+                                for requirement in getattr(
+                                    agent, f"{kind}_requirements"
+                                )
+                            ),
+                        ]
+                    )
+                )
+
+
+async def _builder_classifier(
+    access: ResourceAccessService, user_id: str
+) -> JevClassifierModel | None:
+    credentials = await access.list_resource(user_id, ResourceKind.CREDENTIAL)
+    selected = next(
+        (
+            record
+            for record in credentials
+            if record.data.get("type") == "typesafe_credential"
+        ),
+        None,
+    )
+    if selected is None:
+        return None
+    record = await access.resolve_credential(user_id, selected.id)
+    return JevClassifierModel(
+        TypeSafeCredential.model_validate(record.data),
+        timeout=15,
+        max_retries=0,
+    )
+
+
+def _binary_resource_answer(answer: BinaryAnswer) -> bool:
+    if (
+        not isinstance(answer, BinaryAnswer)
+        or not 0 <= answer.probability <= 1
+    ):
+        raise ValueError("Invalid resource judgment")
+    # shortcut: conservative initial gates; calibrate on labeled Builder cases.
+    if 0.2 < answer.probability < 0.8:
+        raise ValueError("Uncertain resource judgment")
+    return answer.probability >= 0.8
+
+
+async def _jev_resources(
+    classifier: JevClassifierModel,
+    outline: BuilderOutline,
+    transcript: str,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> BuilderOutline:
+    """Assign each tool one owner; independently select shared KBs."""
+    selected = outline.model_copy(deep=True)
+    for agent in selected.agents:
+        agent.suggested_tool_ids = []
+        agent.suggested_knowledge_base_ids = []
+        agent.missing_resources = []
+    state = {
+        "request": transcript,
+        "agents": [
+            agent.model_dump(
+                exclude={
+                    "suggested_tool_ids",
+                    "suggested_knowledge_base_ids",
+                    "missing_resources",
+                }
+            )
+            for agent in selected.agents
+        ],
+    }
+    owners = {
+        f"agent_{i}": f"{agent.name}: {agent.objective}. Required operations: {agent.tool_requirements}"
+        for i, agent in enumerate(selected.agents)
+    }
+    owners["none"] = (
+        "No agent needs this tool to fulfill its own responsibility."
+    )
+    questions = {}
+    for index, tool in enumerate(tools):
+        questions[f"tool_{index}"] = ChoiceQuestion(
+            instructions=(
+                "Which single agent owns the narrow business capability served by this tool? "
+                "Assign operational tools to specialists, not their coordinator. Choose none "
+                "when no agent needs the tool. Tool: " + tool.model_dump_json()
+            ),
+            criteria=owners,
+        )
+    for index, agent in enumerate(selected.agents):
+        for kb_index, knowledge in enumerate(knowledge_bases):
+            questions[f"kb_{index}_{kb_index}"] = BinaryQuestion(
+                instructions=(
+                    f"Does agent {agent.name!r}, whose objective is {agent.objective!r}, need "
+                    "this knowledge base for internal/reference facts? Do not use a KB as a "
+                    "substitute for live data or external operations. KB: "
+                    + knowledge.model_dump_json()
+                )
+            )
+    if questions:
+        response = await classifier(state=state, questions=questions)
+        for index, tool in enumerate(tools):
+            answer = response.content[f"tool_{index}"]
+            if (
+                not isinstance(answer, ChoiceAnswer)
+                or answer.choice not in owners
+                or not 0.8 <= answer.confidence <= 1
+            ):
+                raise ValueError("Uncertain tool ownership")
+            if answer.choice != "none":
+                owner = int(answer.choice.removeprefix("agent_"))
+                selected.agents[owner].suggested_tool_ids.append(tool.id)
+        for index, agent in enumerate(selected.agents):
+            for kb_index, knowledge in enumerate(knowledge_bases):
+                if _binary_resource_answer(
+                    response.content[f"kb_{index}_{kb_index}"]
+                ):
+                    agent.suggested_knowledge_base_ids.append(knowledge.id)
+    by_id = {tool.id: tool for tool in tools}
+    knowledge_by_id = {
+        knowledge.id: knowledge for knowledge in knowledge_bases
+    }
+    coverage = {}
+    for index, agent in enumerate(selected.agents):
+        state["agents"][index]["selected_tools"] = [
+            by_id[item].model_dump() for item in agent.suggested_tool_ids
+        ]
+        state["agents"][index]["selected_knowledge_bases"] = [
+            knowledge_by_id[item].model_dump()
+            for item in agent.suggested_knowledge_base_ids
+        ]
+        for kind in ("tool", "knowledge"):
+            for requirement_index, requirement in enumerate(
+                getattr(agent, f"{kind}_requirements")
+            ):
+                key = f"{kind}_{index}_{requirement_index}"
+                coverage[key] = BinaryQuestion(
+                    instructions=(
+                        f"For agent {agent.name!r}, do its selected {kind} resources actually "
+                        f"cover this required capability: {requirement!r}? Use only the selected "
+                        "resource descriptions. An empty set cannot cover a requirement. "
+                        "Instructions or a KB cannot supply a missing external operation."
+                    )
+                )
+    if coverage:
+        response = await classifier(state=state, questions=coverage)
+        for index, agent in enumerate(selected.agents):
+            for kind in ("tool", "knowledge"):
+                for requirement_index, requirement in enumerate(
+                    getattr(agent, f"{kind}_requirements")
+                ):
+                    if not _binary_resource_answer(
+                        response.content[f"{kind}_{index}_{requirement_index}"]
+                    ):
+                        agent.missing_resources.append(
+                            f"{kind}: {requirement}"
+                        )
+    return selected
+
+
+async def _select_builder_resources(
+    outline: BuilderOutline,
     transcript: str,
     tools: list[BuilderTool],
     knowledge_bases: list[BuilderKnowledgeBase],
     model: ChatModelBase,
+    access: ResourceAccessService,
+    user_id: str,
+) -> tuple[BuilderOutline, Literal["jev", "llm"]]:
+    """Fall back only the selection step when Jev is unavailable or uncertain."""
+    classifier = None
+    try:
+        classifier = await _builder_classifier(access, user_id)
+        if classifier is not None:
+            async with asyncio.timeout(30):
+                selected = await _jev_resources(
+                    classifier, outline, transcript, tools, knowledge_bases
+                )
+            _validate_resource_selection(selected, tools, knowledge_bases)
+            return selected, "jev"
+    except Exception as exc:  # noqa: BLE001 - selection falls back to the LLM
+        logger.warning(
+            "Builder Jev selection fell back: %s", type(exc).__name__
+        )
+    finally:
+        if classifier is not None:
+            await classifier.client.aclose()
+    async with asyncio.timeout(60):
+        response, _, _ = await _builder_structured_call(
+            model,
+            [
+                SystemMsg(
+                    name="agent_builder",
+                    content=(
+                        "Select resources for the exact agent boundaries in the provided outline. "
+                        "Keep every agent name, objective and requirement unchanged. Select only catalog "
+                        "IDs; one tool belongs to only one narrow specialist across the whole team. "
+                        "Coordinators delegate to specialists. KBs may be shared. Match actual capabilities, "
+                        "not just names. Record each unmet tool/knowledge requirement in missing_resources "
+                        "with tool: for missing operations and knowledge: for missing KBs. "
+                        "in the user's language. An agent may need no resources. Never invent a tool or "
+                        "treat a KB/instruction as a missing external operation. Do not generate skills or prompts."
+                    ),
+                ),
+                UserMsg(
+                    name="area_manager",
+                    content=json.dumps(
+                        {
+                            "request": transcript,
+                            "outline": outline.model_dump(),
+                            "tools": [tool.model_dump() for tool in tools],
+                            "knowledge_bases": [
+                                knowledge.model_dump()
+                                for knowledge in knowledge_bases
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                ),
+            ],
+            BuilderOutline,
+        )
+    selected = BuilderOutline.model_validate(response.content)
+    fields = {
+        "suggested_tool_ids",
+        "suggested_knowledge_base_ids",
+        "missing_resources",
+    }
+    if [agent.model_dump(exclude=fields) for agent in selected.agents] != [
+        agent.model_dump(exclude=fields) for agent in outline.agents
+    ]:
+        raise HTTPException(
+            status_code=502,
+            detail="Bước chọn tài nguyên đã đổi định hướng agent. Hãy thử lại.",
+        )
+    try:
+        _validate_resource_selection(selected, tools, knowledge_bases)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Lựa chọn tài nguyên không hợp lệ. Hãy thử lại.",
+        ) from exc
+    return selected, "llm"
+
+
+def _check_approved_resources(
+    proposal: ProposalView,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> None:
+    """Recheck saved selections; never silently substitute changed resources."""
+    if not proposal.resources_locked or not proposal.planned_agents:
+        raise HTTPException(
+            status_code=409,
+            detail="Hãy lập và duyệt lại plan trước khi sinh cấu hình.",
+        )
+    by_id = {tool.id: tool for tool in tools}
+    knowledge_by_id = {
+        knowledge.id: knowledge for knowledge in knowledge_bases
+    }
+    claimed = set()
+    for agent in proposal.planned_agents:
+        if any(
+            not missing.strip().lower().startswith("knowledge:")
+            for missing in agent.missing_resources
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Plan còn thiếu tài nguyên. Hãy bổ sung hoặc sửa yêu cầu.",
+            )
+        for tool in agent.suggested_tools:
+            if by_id.get(tool.id) != tool or tool.id in claimed:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Tool trong plan đã thay đổi hoặc bị trùng. Hãy lập lại plan.",
+                )
+            claimed.add(tool.id)
+        for knowledge in agent.suggested_knowledge_bases:
+            if knowledge_by_id.get(knowledge.id) != knowledge:
+                raise HTTPException(
+                    status_code=409,
+                    detail="KB trong plan đã thay đổi. Hãy lập lại plan.",
+                )
+
+
+async def _outline(
+    transcript: str,
+    tools: list[BuilderTool],
+    model: ChatModelBase,
     config: ChatModelConfig,
 ) -> tuple[BuilderOutline, int, int]:
-    """Propose capability boundaries without generating agent config yet."""
-    tool_json = json.dumps(
-        [tool.model_dump(mode="json") for tool in tools],
-        ensure_ascii=False,
-    )
-    knowledge_json = json.dumps(
-        [knowledge.model_dump(mode="json") for knowledge in knowledge_bases],
-        ensure_ascii=False,
-    )
+    """Propose boundaries and resource needs before selecting resources."""
     instructions = """You are the planning stage of Agent Builder.
 Propose agent names and narrowly-scoped reusable business objectives only.
-Do not generate system prompts or skills yet. Respect whether the user asked
-for one agent or a team. For a team request, split independent business
-capabilities into separate agents instead of creating one monolithic agent.
-Related actions in one domain, such as hotel search and hotel booking, may stay
-in one agent. Planning, hotel, transport, attraction/sightseeing, calculation
-and technical support are separate domains when the registered tools support
-them. Every capability explicitly requested by the user and supported by the
-catalog must appear in the outline. Select only exact
-suggested_tool_ids from the catalog. One tool ID may belong to only one agent
-in the whole proposal. When a specialist agent exists, assign its operational
-tools to that specialist; a planning/coordinator agent must collaborate through
-TeamSay instead of duplicating hotel, transport, restaurant, calculation or
-other specialist tools. An agent may intentionally have no suggested tools when
-it only plans, summarizes, compares supplied values, answers from runtime-
-retrieved knowledge-base context, or combines verified peer results. Live
-search, availability, status, booking and other external actions still require
-matching registered tools. Never invent a tool or create two agents for the
-same capability. Incorporate the user's latest feedback into the revised outline.
-Select only exact suggested_knowledge_base_ids from the knowledge-base catalog.
-Use each knowledge base's description to decide whether it supplies stable
-internal/reference knowledge needed by that agent. Knowledge bases may be shared
-by multiple agents when their objectives genuinely require the same reference
-material. Do not select a knowledge base for live availability, current status,
-booking or another external action that requires a registered tool.
-Use the language of the user's latest real request for every human-readable
-field: Vietnamese for a Vietnamese request and English for an English request.
-Write naturally and clearly, as a helpful human collaborator would.
+Do not generate system prompts or skills, and do not select resource IDs yet.
+Respect whether the user asked for one agent or a team. Split independent
+business capabilities into separate agents; related actions within one domain
+may stay together. Every explicitly requested capability must be represented.
+For each agent, list tool_requirements as specific live lookups or external
+actions it must perform. Use an empty list for planning, summaries or reasoning
+from supplied data and verified peer results. List knowledge_requirements only
+for internal/reference facts or policies needed for the objective, never for
+live availability or external actions. Describe needs even when the system may
+not have a matching resource. A coordinator delegates operational work to its
+specialists through TeamSay; do not repeat those specialists' resource needs.
+Use the language of the user's latest request for names, objectives and needs.
+Incorporate the user's latest feedback and avoid duplicate agent boundaries.
 """
     try:
         async with asyncio.timeout(60):
@@ -816,13 +1055,7 @@ Write naturally and clearly, as a helpful human collaborator would.
                 [
                     SystemMsg(
                         name="agent_builder",
-                        content=(
-                            instructions
-                            + "\nRegistered tool catalog:\n"
-                            + tool_json
-                            + "\nKnowledge-base catalog:\n"
-                            + knowledge_json
-                        ),
+                        content=instructions,
                     ),
                     UserMsg(name="area_manager", content=transcript),
                 ],
@@ -885,90 +1118,84 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
 
 async def _generate(
     message: str,
-    tools: list[BuilderTool],
-    knowledge_bases: list[BuilderKnowledgeBase],
+    planned_agents: list[PlannedAgentView],
     model: ChatModelBase,
     config: ChatModelConfig,
     reply_language: Literal["vi", "en"],
 ) -> tuple[BuilderGeneration, int, int]:
-    tool_json = json.dumps(
-        [tool.model_dump(mode="json") for tool in tools],
-        ensure_ascii=False,
-    )
-    knowledge_json = json.dumps(
-        [knowledge.model_dump(mode="json") for knowledge in knowledge_bases],
-        ensure_ascii=False,
-    )
-    instructions = """You are Agent Builder, not the runtime Leader.
-The conversation contains an outline approved by the area manager. Generate
-exactly those reusable independent business agents; do not merge their
-capabilities into one agent. A team request is only a batch creation shortcut;
-do not pre-bind a permanent team or a ticket. You may author ONLY: name, objective,
-execution_mode, system_prompt, selected_tool_ids, selected_knowledge_base_ids and
-one reusable SKILL.md.
-Set execution_mode=context_only only when the agent can complete its work from
-customer input, runtime-retrieved knowledge-base context and verified peer
-results without live lookup or external action; it must then select no MCP tool.
-Set execution_mode=tool_backed for live search, availability, status, booking or
-other external actions; it must select at least one exact tool ID from the
-supplied catalog. A tool ID may appear in only one generated agent. Give each
-operational tool to the narrowest specialist that owns that capability; a
-planning/coordinator agent must call that specialist through TeamSay instead of
-receiving a duplicate tool. Select only exact knowledge-base IDs from the
-supplied knowledge-base catalog, using their descriptions to match stable
-internal/reference knowledge to the agent's objective. A knowledge base may be
-used by more than one agent when genuinely relevant. The system prompt must tell
-the runtime agent to use search_knowledge for facts likely stored in its equipped
-knowledge bases, MCP tools for live state or external actions, and both in that
-order when reference context is needed before a live operation. Never output or
-modify model parameters,
-context limits, ReAct settings, timeouts, credentials, permissions or publish
-policy. The system prompt must explain when to communicate with another agent
-through TeamSay, but must not hard-code a particular future ticket. If the
-business capability cannot be implemented with the available tools, ask one
-specific clarification question or return no agents and explain the missing
-capability. Never claim that an unavailable tool exists.
-
-LANGUAGE AND VOICE:
-- Use the language of the user's latest real request for every human-readable
-  field: Vietnamese for Vietnamese and English for English.
-- Make assistant_message and clarification_question sound like a natural,
-  concise conversation with a person. Avoid robotic acknowledgements, system
-  status prose, and unnecessary repetition.
-- Generated system prompts and skills must instruct each runtime agent to
-  answer in the language of the user's latest message and to communicate
-  naturally, without exposing internal orchestration unless asked.
+    instructions = """You are the configuration stage of Agent Builder.
+The attached approved plan is authoritative. Return exactly its agents, keeping
+names verbatim. Author only each agent's system_prompt and one reusable SKILL.md
+(skill_name, skill_markdown). Resource selection is complete: do not choose,
+add, remove or redistribute tools/KBs, change agent boundaries, or invent missing
+capabilities. Write the skill for that agent's objective and exact selected
+tools/KBs. Use search_knowledge for equipped internal/reference facts, MCP tools
+for live data/actions, and TeamSay for collaborating with other specialists.
+An agent without tools works from customer input, equipped KBs and verified peer
+results. Do not change model parameters, permissions or platform policy.
+Missing knowledge bases are advisory and do not prevent agent creation. Generate
+the agent with its available tools and context. Its prompt and skill must ask
+for missing policy/reference facts when needed and never invent those facts.
+Answer naturally in the user's language; generated prompts and skills must tell
+runtime agents to follow the language of their user's latest message.
 """
-    instructions += (
-        "\nThe required language for this build is Vietnamese."
-        if reply_language == "vi"
-        else "\nThe required language for this build is English."
-    )
+    instructions += f"\nRequired authoring language: {reply_language}."
     try:
         async with asyncio.timeout(60):
-            (
-                response,
-                prompt_tokens,
-                reserved_output_tokens,
-            ) = await _builder_structured_call(
-                model,
-                [
-                    SystemMsg(
-                        name="agent_builder",
-                        content=(
-                            instructions
-                            + "\nRegistered tool catalog:\n"
-                            + tool_json
-                            + "\nKnowledge-base catalog:\n"
-                            + knowledge_json
+            response, prompt_tokens, reserved_output_tokens = (
+                await _builder_structured_call(
+                    model,
+                    [
+                        SystemMsg(name="agent_builder", content=instructions),
+                        UserMsg(
+                            name="area_manager",
+                            content=json.dumps(
+                                {
+                                    "conversation": message,
+                                    "approved_plan": [
+                                        agent.model_dump()
+                                        for agent in planned_agents
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            ),
                         ),
-                    ),
-                    UserMsg(name="area_manager", content=message),
-                ],
-                BuilderGeneration,
+                    ],
+                    _BuilderConfigGeneration,
+                )
+            )
+        generated = _BuilderConfigGeneration.model_validate(response.content)
+        configs = {agent.name: agent for agent in generated.agents}
+        if len(configs) != len(generated.agents) or set(configs) != {
+            agent.name for agent in planned_agents
+        }:
+            raise ValueError(
+                "Generated agent boundaries differ from the approved plan"
             )
         return (
-            BuilderGeneration.model_validate(response.content),
+            BuilderGeneration(
+                assistant_message=generated.assistant_message,
+                agents=[
+                    GeneratedAgent(
+                        name=agent.name,
+                        objective=agent.objective,
+                        execution_mode=(
+                            "tool_backed"
+                            if agent.suggested_tools
+                            else "context_only"
+                        ),
+                        selected_tool_ids=[
+                            tool.id for tool in agent.suggested_tools
+                        ],
+                        selected_knowledge_base_ids=[
+                            knowledge.id
+                            for knowledge in agent.suggested_knowledge_bases
+                        ],
+                        **configs[agent.name].model_dump(exclude={"name"}),
+                    )
+                    for agent in planned_agents
+                ],
+            ),
             prompt_tokens,
             reserved_output_tokens,
         )
@@ -1551,6 +1778,20 @@ async def prepare_builder(
     )
     tools = await _catalog(storage, user_id)
     knowledge_bases = await _knowledge_catalog(access, user_id)
+    previous_proposal = _stored_proposal(messages)
+    revision = previous_proposal.revision + 1 if previous_proposal else 1
+    if body.confirm_outline:
+        if (
+            previous_proposal is None
+            or previous_proposal.status != "needs_input"
+            or body.expected_revision != previous_proposal.revision
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Plan đã thay đổi. Hãy tải lại và duyệt plan hiện tại.",
+            )
+        _check_approved_resources(previous_proposal, tools, knowledge_bases)
+
     model = await get_model(user_id, body.chat_model_config, access)
     transcript = await _prepare_builder_memory(
         model=model,
@@ -1566,7 +1807,6 @@ async def prepare_builder(
             outline, prompt_tokens, reserved_output_tokens = await _outline(
                 transcript,
                 tools,
-                knowledge_bases,
                 model,
                 body.chat_model_config,
             )
@@ -1589,20 +1829,30 @@ async def prepare_builder(
             reserved_output_tokens,
             model.context_size,
         )
+        try:
+            outline, selection_source = await _select_builder_resources(
+                outline,
+                transcript,
+                tools,
+                knowledge_bases,
+                model,
+                access,
+                user_id,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            _raise_builder_model_error(exc, body.chat_model_config)
         by_id = {tool.id: tool for tool in tools}
         knowledge_by_id = {knowledge.id: knowledge for knowledge in knowledge_bases}
-        claimed_outline_tools: set[str] = set()
         planned_agents: list[PlannedAgentView] = []
         for agent in outline.agents:
-            tool_ids, _invalid, _duplicates = _claim_exclusive_tool_ids(
-                agent.suggested_tool_ids,
-                set(by_id),
-                claimed_outline_tools,
-            )
+            tool_ids = list(dict.fromkeys(agent.suggested_tool_ids))
             planned_agents.append(
                 PlannedAgentView(
                     name=agent.name,
                     objective=agent.objective,
+                    missing_resources=agent.missing_resources,
                     suggested_tools=[by_id[tool_id] for tool_id in tool_ids],
                     suggested_knowledge_bases=[
                         knowledge_by_id[kb_id]
@@ -1626,7 +1876,10 @@ async def prepare_builder(
         )
         proposal = ProposalView(
             conversation_id=session.id,
+            revision=revision,
             status="needs_input",
+            resources_locked=True,
+            resource_selection=selection_source,
             assistant_message=summary,
             clarification_question=(
                 "Bạn xem hướng này đã đúng ý chưa nhé. Nếu muốn thay đổi, cứ "
@@ -1651,8 +1904,7 @@ async def prepare_builder(
     try:
         generation, prompt_tokens, reserved_output_tokens = await _generate(
             transcript,
-            tools,
-            knowledge_bases,
+            previous_proposal.planned_agents,
             model,
             body.chat_model_config,
             reply_language,
@@ -1668,12 +1920,6 @@ async def prepare_builder(
             budget_exceeded=True,
         )
         raise
-    generation = _ensure_attraction_generation_coverage(
-        generation,
-        transcript,
-        tools,
-        reply_language,
-    )
     await _record_builder_prompt_measurement(
         storage,
         user_id,
@@ -1682,24 +1928,6 @@ async def prepare_builder(
         reserved_output_tokens,
         model.context_size,
     )
-    if generation.clarification_question and not generation.agents:
-        proposal = ProposalView(
-            conversation_id=session.id,
-            status="needs_input",
-            assistant_message=generation.assistant_message,
-            clarification_question=generation.clarification_question,
-            chat_model_config=body.chat_model_config,
-            fixed_config=_fixed_config(),
-        )
-        await _persist_builder_turn(
-            storage,
-            user_id,
-            session.id,
-            body.message,
-            proposal,
-        )
-        return proposal
-
     by_id = {tool.id: tool for tool in tools}
     existing = [
         record
@@ -1721,7 +1949,18 @@ async def prepare_builder(
             agent.selected_knowledge_base_ids,
         )
         reuse = max(
-            existing,
+            [
+                item
+                for item in existing
+                if {
+                    binding.get("id")
+                    or f"{binding.get('mcp_id')}:{binding.get('tool_name')}"
+                    for binding in item.data.tool_bindings
+                }
+                == set(agent.selected_tool_ids)
+                and set(item.data.knowledge_base_ids)
+                == set(agent.selected_knowledge_base_ids)
+            ],
             key=lambda item: _similarity(
                 agent.objective,
                 item.data.build_description or item.data.system_prompt,
@@ -1785,6 +2024,10 @@ async def prepare_builder(
     proposal = ProposalView(
         conversation_id=session.id,
         proposal_id=_generate_id(),
+        revision=revision,
+        planned_agents=previous_proposal.planned_agents,
+        resources_locked=True,
+        resource_selection=previous_proposal.resource_selection,
         status="blocked" if any_blocked else "ready",
         assistant_message=(
             generation.assistant_message
@@ -1795,7 +2038,6 @@ async def prepare_builder(
                 "review it before publishing."
             )
         ),
-        clarification_question=generation.clarification_question,
         agents=views,
         chat_model_config=body.chat_model_config,
         fixed_config=_fixed_config(),
@@ -1849,6 +2091,42 @@ async def publish_builder(
                 status_code=409,
                 detail="Proposal chưa đạt điều kiện phát hành",
             )
+        if proposal.resources_locked:
+            _check_approved_resources(
+                proposal,
+                await _catalog(storage, user_id),
+                await _knowledge_catalog(access, user_id),
+            )
+            approved = {agent.name: agent for agent in proposal.planned_agents}
+            if len(approved) != len(proposal.agents) or {
+                agent.name for agent in proposal.agents
+            } != set(approved):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cấu hình không khớp plan đã duyệt.",
+                )
+            for index, item in enumerate(proposal.agents):
+                plan = approved[item.name]
+                if (
+                    item.selected_tools != plan.suggested_tools
+                    or item.selected_knowledge_bases
+                    != plan.suggested_knowledge_bases
+                    or (
+                        body.knowledge_base_selections is not None
+                        and (
+                            index >= len(body.knowledge_base_selections)
+                            or set(body.knowledge_base_selections[index])
+                            != {
+                                knowledge.id
+                                for knowledge in plan.suggested_knowledge_bases
+                            }
+                        )
+                    )
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Tài nguyên đã đổi so với plan. Hãy lập và duyệt lại plan.",
+                    )
         assigned_tools: set[str] = set()
         duplicate_tools: set[str] = set()
         for item in proposal.agents:

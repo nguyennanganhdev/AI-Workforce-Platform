@@ -44,6 +44,7 @@ from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.storage import (
     AgentData,
     AgentRecord,
+    ChatModelConfig,
     MCPRecord,
     RedisStorage,
     SessionConfig,
@@ -414,6 +415,49 @@ class TestAgentCreate(_TeamToolsTestBase):
                 "input": None,
             },
         )
+
+    async def test_new_worker_uses_shared_model_instead_of_coordinator_model(
+        self,
+    ):
+        shared_model = ChatModelConfig(
+            type="test",
+            credential_id="worker-cred",
+            model="workers",
+            parameters={},
+        )
+        config = self.leader_session.config.model_copy(
+            update={
+                "chat_model_config": shared_model.model_copy(
+                    update={"model": "coordinator"}
+                ),
+                "sub_agent_chat_model_config": shared_model,
+            }
+        )
+        await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=self.leader_agent.id,
+            session_id=self.leader_session.id,
+            config=config,
+        )
+        result = await AgentCreate(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+        )(name="worker", description="research", prompt="look up X")
+        self.assertEqual(result.state, ToolResultState.RUNNING)
+        leader = await self.storage.get_session(
+            self.user_id, self.leader_agent.id, self.leader_session.id
+        )
+        team = await self.storage.get_team(self.user_id, leader.team_id)
+        member = team.data.members[0]
+        worker = await self.storage.get_session(
+            self.user_id, member.agent_id, member.session_id
+        )
+        self.assertEqual(worker.config.chat_model_config, shared_model)
+        self.assertEqual(leader.config.chat_model_config.model, "coordinator")
 
     async def _spawn_worker_with_template(
         self,
@@ -1471,6 +1515,63 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
 
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
+
+    async def test_invited_worker_uses_shared_model_without_changing_primary(
+        self,
+    ):
+        shared_model = ChatModelConfig(
+            type="test",
+            credential_id="worker-cred",
+            model="workers",
+            parameters={},
+        )
+        await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=self.leader_agent.id,
+            session_id=self.leader_session.id,
+            config=self.leader_session.config.model_copy(
+                update={
+                    "chat_model_config": shared_model.model_copy(
+                        update={"model": "coordinator"}
+                    ),
+                    "sub_agent_chat_model_config": shared_model,
+                }
+            ),
+        )
+        builder_model = shared_model.model_copy(update={"model": "builder"})
+        await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=self.monday_agent.id,
+            session_id=self.monday_session.id,
+            config=self.monday_session.config.model_copy(
+                update={"chat_model_config": builder_model}
+            ),
+        )
+        result = await AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )(target=f"Monday@{self.monday_agent.id[:8]}", prompt="look up X")
+        self.assertEqual(result.state, ToolResultState.RUNNING)
+        leader = await self.storage.get_session(
+            self.user_id, self.leader_agent.id, self.leader_session.id
+        )
+        team = await self.storage.get_team(self.user_id, leader.team_id)
+        member = team.data.members[0]
+        borrowed = await self.storage.get_session(
+            self.user_id, member.agent_id, member.session_id
+        )
+        primary = await self.storage.get_session(
+            self.user_id, self.monday_agent.id, self.monday_session.id
+        )
+        self.assertEqual(borrowed.config.chat_model_config, shared_model)
+        self.assertEqual(primary.config.chat_model_config, builder_model)
+        self.assertEqual(leader.config.chat_model_config.model, "coordinator")
+
     async def test_assignment_is_not_semantically_validated(self):
         leader = await self.storage.get_session(
             self.user_id,

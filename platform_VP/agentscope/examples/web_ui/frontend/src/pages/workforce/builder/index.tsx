@@ -72,11 +72,13 @@ function prefersVietnamese(text: string) {
 
 function AgentProposalCard({
 	proposal,
+	resourcesLocked,
 	knowledgeBases,
 	knowledgeBasesLoading,
 	onKnowledgeBaseIdsChange,
 }: {
 	proposal: BuilderProposal['agents'][number];
+	resourcesLocked: boolean;
 	knowledgeBases: KnowledgeBaseView[];
 	knowledgeBasesLoading: boolean;
 	onKnowledgeBaseIdsChange: (ids: string[]) => void;
@@ -123,6 +125,11 @@ function AgentProposalCard({
 					<div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
 						<Database className="size-3.5" /> Knowledge Base
 					</div>
+					{resourcesLocked && (
+						<p className="mb-2 text-xs text-muted-foreground">
+							KB đã chốt theo plan. Muốn thay đổi, hãy nhắn yêu cầu để lập và duyệt lại plan.
+						</p>
+					)}
 					{knowledgeBasesLoading ? (
 						<div className="flex items-center gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
 							<Spinner /> Đang tải Knowledge Base…
@@ -135,6 +142,7 @@ function AgentProposalCard({
 									className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
 								>
 									<Checkbox
+										disabled={resourcesLocked}
 										checked={selectedKnowledgeIds.has(knowledge.id)}
 										onCheckedChange={(checked) => {
 											const next = new Set(selectedKnowledgeIds);
@@ -321,6 +329,7 @@ export function AgentBuilderPage() {
 				selectedModel,
 				conversationId,
 				true,
+				proposal.revision,
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
@@ -581,7 +590,14 @@ export function AgentBuilderPage() {
 											proposal.planned_agents.length > 0 && (
 												<Button
 													onClick={() => void confirmOutline()}
-													disabled={working}
+													disabled={
+														working ||
+														proposal.planned_agents.some((agent) =>
+															agent.missing_resources?.some(
+																(missing) => !missing.trim().toLowerCase().startsWith('knowledge:'),
+															),
+														)
+													}
 												>
 													<CheckCircle2 /> Chốt định hướng và sinh cấu
 													hình
@@ -608,6 +624,19 @@ export function AgentBuilderPage() {
 													<p className="mt-2 text-sm text-muted-foreground">
 														{agent.objective}
 													</p>
+													{!!agent.missing_resources?.length && (
+														<div className="mt-2 text-sm text-destructive">
+															<p className="font-medium">Còn thiếu tài nguyên:</p>
+															<ul className="list-disc pl-4">
+																{agent.missing_resources.map((missing) => (
+																	<li key={missing}>{missing}</li>
+																))}
+															</ul>
+															<p className="mt-1 text-xs text-muted-foreground">
+																KB có thể bổ sung sau khi tạo agent.
+															</p>
+														</div>
+													)}
 													<div className="mt-3 flex flex-wrap gap-1.5">
 														{agent.suggested_tools.map((tool) => (
 															<Badge
@@ -639,6 +668,7 @@ export function AgentBuilderPage() {
 										<AgentProposalCard
 											key={`${agent.name}:${agent.skill_name}`}
 											proposal={agent}
+											resourcesLocked={proposal.resources_locked === true}
 											knowledgeBases={knowledgeBases}
 											knowledgeBasesLoading={knowledgeBasesLoading}
 											onKnowledgeBaseIdsChange={(ids) =>

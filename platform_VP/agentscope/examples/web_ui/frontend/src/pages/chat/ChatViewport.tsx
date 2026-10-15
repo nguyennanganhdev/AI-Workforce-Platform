@@ -181,6 +181,7 @@ export function ChatViewport({
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
+	const [selectedSubAgentModel, setSelectedSubAgentModel] = useState<ChatModelConfig | null>(null);
 	const [selectedFallbackModel, setSelectedFallbackModel] = useState<ChatModelConfig | null>(
 		null,
 	);
@@ -626,6 +627,7 @@ export function ChatViewport({
 	useEffect(() => {
 		if (!view) return;
 		const sessionModel = view.session.config.chat_model_config;
+		setSelectedSubAgentModel(view.session.config.sub_agent_chat_model_config ?? null);
 
 		if (sessionModel) {
 			setSelectedModel(sessionModel);
@@ -677,6 +679,14 @@ export function ChatViewport({
 	const handleLlmChange = async (config: ChatModelConfig | null) => {
 		if (!config) return;
 		await patchConfig({ chat_model_config: config }, () => setSelectedModel(config));
+	};
+
+	const handleSubAgentLlmChange = async (config: ChatModelConfig | null) => {
+		if (!config) return;
+		await patchConfig(
+			{ sub_agent_chat_model_config: config },
+			() => setSelectedSubAgentModel(config),
+		);
 	};
 
 	/**
@@ -753,7 +763,7 @@ export function ChatViewport({
 						minSize="24rem"
 					>
 						<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden p-2">
-							<div className="flex flex-row gap-x-2 justify-between">
+							<div className="flex flex-row flex-wrap gap-x-2 gap-y-1 justify-between">
 								<div className="flex min-w-0 flex-row items-center gap-x-1">
 									<SidebarTrigger className="md:hidden" />
 									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Chat chung của team</Badge>}
@@ -784,17 +794,37 @@ export function ChatViewport({
 								</div>
 								{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
-								<div className="flex shrink-0 flex-row gap-x-1">
-									<LlmSelect
-										id="tour-llm-select"
-										variant="ghost"
-										className="font-mono text-muted-foreground hover:text-foreground"
-										value={selectedModel}
-										onChange={handleLlmChange}
-										onAddCredential={() => setCredentialOpen(true)}
-										refetchTrigger={credentialRefetchTrigger}
-										disabled={readOnly || configPending}
-									/>
+								<div className="flex min-w-0 max-w-full flex-row flex-wrap items-center gap-x-1">
+									{!readOnly && (
+										<div className="flex items-center gap-1">
+											<span className="text-xs text-muted-foreground">Sub-agent</span>
+											<LlmSelect
+												id="tour-llm-select"
+												aria-label="Model chung cho tất cả sub-agent"
+												variant="ghost"
+												className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
+												value={selectedSubAgentModel}
+												onChange={handleSubAgentLlmChange}
+												onAddCredential={() => setCredentialOpen(true)}
+												refetchTrigger={credentialRefetchTrigger}
+												disabled={configPending || !view}
+											/>
+										</div>
+									)}
+									<div className="flex items-center gap-1">
+										<span className="text-xs text-muted-foreground">{readOnly ? 'Model' : 'Điều phối'}</span>
+										<LlmSelect
+											id="coordinator-llm-select"
+											aria-label={readOnly ? 'Model của sub-agent' : 'Model riêng cho agent điều phối'}
+											variant="ghost"
+											className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
+											value={selectedModel}
+											onChange={handleLlmChange}
+											onAddCredential={() => setCredentialOpen(true)}
+											refetchTrigger={credentialRefetchTrigger}
+											disabled={readOnly || configPending}
+										/>
+									</div>
 									<ModelParametersPopover
 										selectedModel={selectedModel}
 										modelCard={selectedModelCard}
