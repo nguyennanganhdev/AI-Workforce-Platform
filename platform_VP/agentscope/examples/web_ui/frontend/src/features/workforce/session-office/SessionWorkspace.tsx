@@ -33,13 +33,14 @@ function Workspace({
 	children: ReactNode;
 }) {
 	const panelId = useId();
-	const storageKey = `session-workspace:view:${snapshot.id}`;
+	// Chat first: the conversation is the work. The office is one click away,
+	// and the viewer's last choice holds for every session.
+	const storageKey = 'session-workspace:view';
 	const [view, setView] = useState<View>(() => {
-		// Office by default; only a session the viewer switched to Chat stays on Chat.
 		try {
-			return localStorage.getItem(storageKey) === 'chat' ? 'chat' : 'office';
+			return localStorage.getItem(storageKey) === 'office' ? 'office' : 'chat';
 		} catch {
-			return 'office';
+			return 'chat';
 		}
 	});
 	const select = (value: string) => {
