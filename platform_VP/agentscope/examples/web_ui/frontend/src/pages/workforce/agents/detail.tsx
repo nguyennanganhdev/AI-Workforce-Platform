@@ -215,14 +215,14 @@ export function AgentDetailPage() {
 	}
 
 	return (
-		<div className="flex size-full min-h-0 gap-2 p-2">
-			<main className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
-				<header className="space-y-3 border-b p-5">
+		<div className="flex size-full min-h-0">
+			<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+				<header className="space-y-3 border-b px-4 pt-3 pb-3">
 					<div className="flex flex-wrap items-center gap-3">
 						<Button variant="ghost" size="icon-sm" onClick={() => navigate('/workforce/agents')} aria-label="Quay lại">
 							<ArrowLeft />
 						</Button>
-						<h1 className="text-lg font-medium">{spec.name}</h1>
+						<h1 className="text-[17px]/6 font-semibold">{spec.name}</h1>
 						<Badge variant={detail.lifecycle_state === 'published' ? 'default' : 'secondary'}>
 							{STATUS_LABEL[detail.lifecycle_state]}
 						</Badge>
@@ -515,7 +515,7 @@ export function AgentDetailPage() {
 					</div>
 				</Tabs>
 			</main>
-			<aside className="flex w-[380px] shrink-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
+			<aside className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l bg-background">
 				<CopilotPanel turns={turns} busy={busy === 'copilot'} onSend={sendCopilot} />
 			</aside>
 			<Dialog open={confirmRemove} onOpenChange={setConfirmRemove}>

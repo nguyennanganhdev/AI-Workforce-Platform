@@ -51,7 +51,8 @@
 		"message": "Message",
 		"llm": "LLM",
 		"tts": "TTS",
-		"embedding": "Embedding"
+		"embedding": "Embedding",
+		"switchToVi": "Chuyển sang tiếng Việt"
 	},
 	"error": {
 		"description": "The page hit an unexpected error. You can retry or go back home.",
@@ -65,16 +66,21 @@
 			"fileCount_one": "{{count}} file",
 			"fileCount_other": "{{count}} files",
 			"lineCount_one": "Read {{formatted}} line",
-			"lineCount_other": "Read {{formatted}} lines"
+			"lineCount_other": "Read {{formatted}} lines",
+			"lines": "{{count}} lines"
 		},
 		"glob": {
-			"name": "Glob"
+			"name": "Glob",
+			"pattern": "Glob pattern"
 		},
 		"taskCreate": {
-			"name": "TaskCreate"
+			"name": "TaskCreate",
+			"title": "Create task",
+			"untitled": "(untitled)"
 		},
 		"grep": {
-			"name": "Grep"
+			"name": "Grep",
+			"pattern": "Grep pattern"
 		},
 		"summary": {
 			"separator": ", ",
@@ -92,7 +98,9 @@
 			"mcp_other": "called {{count}} MCP tools",
 			"fallback_one": "called {{count}} tool",
 			"fallback_other": "called {{count}} tools"
-		}
+		},
+		"input": "Input",
+		"output": "Output"
 	},
 	"textInput": {
 		"toComplete": "to complete",
@@ -163,23 +171,142 @@
 			"emptyNoAgent": "Select an agent first.",
 			"emptyHasAgent": "Create a session to start chatting.",
 			"today": "Today",
-			"earlier": "Earlier"
+			"earlier": "Earlier",
+			"search": "Search chats",
+			"searchPlaceholder": "Search chats…",
+			"recent": "Recent chats",
+			"results": "Results",
+			"noResults": "No chats match “{{query}}”.",
+			"previewAgent": "Agent: {{name}}",
+			"previewRunning": "Working on it…",
+			"previewAwaiting": "Waiting for you",
+			"demoSection": "Sample cases",
+			"newMenu": "New",
+			"newAgent": "New agent",
+			"close": "Close"
+		},
+		"header": {
+			"openProfile": "Open {{name}}’s settings",
+			"panels": "Side panels"
+		},
+		"messagePlaceholder": "Message {{name}}",
+		"onboarding": {
+			"greeting": "Hi {{name}}, glad to meet you. I’m here to help.",
+			"greetingNoName": "Hi, glad to meet you. I’m here to help.",
+			"question": "Which would you like to start with?",
+			"hint": "No desired options? Just type your reply.",
+			"continue": "Continue",
+			"options": [
+				"A resident of S1.01-1201 reports water leaking under the kitchen sink since this morning; please handle it",
+				"A resident reports a living-room socket smoking with a burning smell",
+				"The 12th-floor corridor has a large stain; assign someone to clean it",
+				"Who is on the agent team and what does each agent handle?"
+			]
+		},
+		"agents": {
+			"label": "Agents",
+			"emptyTitle": "No agents yet",
+			"emptyDescription": "Press + to create your first agent.",
+			"sessions": "Chats",
+			"renameSession": "Rename this chat",
+			"deleteSession": "Delete this chat",
+			"chatsOf": "Chats with {{name}}"
+		}
+	},
+	"shell": {
+		"backToChat": "Back to chat",
+		"collapseSidebar": "Collapse sidebar",
+		"expandSidebar": "Expand sidebar",
+		"groupWorkforce": "Workforce",
+		"leader": "Leader and tickets",
+		"builder": "Builder",
+		"agentStudio": "Agent management",
+		"groupOperations": "Operations",
+		"groupCapabilities": "What agents can use",
+		"account": "Account"
+	},
+	"agents": {
+		"list": {
+			"noDescription": "No description yet",
+			"chat": "Open chat",
+			"edit": "Edit"
+		},
+		"graph": {
+			"agentCount": "Agents: {{count}}",
+			"running": "{{count}} tickets in {{days}} days",
+			"fullscreen": "Full screen",
+			"exitFullscreen": "Exit full screen",
+			"zoomIn": "Zoom in",
+			"zoomOut": "Zoom out",
+			"fit": "Fit to view",
+			"legendLive": "replied in the last 15 minutes",
+			"legendIdle": "configured, idle",
+			"resident": "Residents",
+			"residentNote": "send requests through a partner",
+			"you": "You",
+			"youNote": "chat directly",
+			"leader": "Leader",
+			"leaderNote": "Picks the agents for each request",
+			"sessionCount": "{{count}} tickets",
+			"idle": "idle",
+			"invitable": "Leader can pick",
+			"notInvitable": "Invites off",
+			"notInvitableShort": "Not invitable",
+			"invitableHelp": "The Leader can bring this agent into a session when a request needs it.",
+			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
+			"inspectorSessions": "Tickets",
+			"inspectorRunning": "Replies",
+			"inspectorResponse": "Last active"
+		},
+		"office": {
+			"phase": {
+				"idle": "Everyone at their desks",
+				"request": "New request",
+				"call": "Leader calls a meeting",
+				"meeting": "In a meeting",
+				"return": "Heading back to desks",
+				"work": "Working",
+				"collab": "Collaborating",
+				"approval": "Waiting for your approval",
+				"done": "Done"
+			},
+			"log": "Activity",
+			"rooms": {
+				"meeting": "Meeting room",
+				"approval": "Your office · Approval",
+				"reception": "Reception",
+				"workspace": "Workspace"
+			},
+			"status": {
+				"idle": "Idle at desk",
+				"working": "Working on a task",
+				"off": "Not invitable, skips meetings",
+				"walking": "Walking"
+			},
+			"live": "Session activity"
 		}
 	},
 	"dialog-agent-create": {
 		"title": "Create agent",
-		"description": "Define a new agent's identity and behaviour."
+		"description": "Define a new agent's identity and behaviour.",
+		"submit": "Create agent"
 	},
 	"agent-form": {
+		"advanced": {
+			"legend": "Advanced settings",
+			"description": "The defaults work. Open a section when you need to change it."
+		},
 		"identity": {
 			"legend": "Agent Identity",
 			"description": "Name and instructions that define this agent's behaviour.",
 			"name": {
 				"label": "Name",
-				"placeholder": "My agent"
+				"placeholder": "My agent",
+				"description": "A name that states a role, such as Technical, Reception or Calculator, selects the corresponding portrait."
 			},
 			"system-prompt": {
-				"label": "System prompt"
+				"label": "System prompt",
+				"description": "Describe the agent's role, the scope of its work and how it should answer."
 			}
 		},
 		"context-config": {
@@ -190,6 +317,9 @@
 			},
 			"reserve-ratio": {
 				"label": "Reserve ratio"
+			},
+			"context-buffer-ratio": {
+				"label": "Context buffer ratio"
 			},
 			"tool-result-limit": {
 				"label": "Tool result limit"
@@ -240,7 +370,8 @@
 	},
 	"dialog-agent-edit": {
 		"title": "Edit agent",
-		"description": "Update this agent's configuration."
+		"description": "Update this agent's configuration.",
+		"submit": "Save changes"
 	},
 	"dialog-agent-delete": {
 		"entity": "agent",
@@ -566,6 +697,22 @@
 		"heroTitle": "Build and operate agents for your area",
 		"heroDescription": "Create an Area Manager account, manage your agents, and receive requests routed to the correct domain and area.",
 		"securityHint": "Short-lived access tokens and rotating secure sessions",
+		"showcase": {
+			"live": "Live",
+			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
+			"statusIdle": "Waiting",
+			"statusBusy": "In progress",
+			"statusDone": "Done",
+			"resident": "Resident",
+			"routed": "Routed: Ocean Park 1 · Plumbing",
+			"request": "A pipe burst in my flat, please send a plumber.",
+			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
+			"agents": {
+				"reception": "Reception",
+				"technical": "Technical",
+				"hotel": "Hotel"
+			}
+		},
 		"loginTitle": "Welcome back",
 		"loginDescription": "Sign in with your email address or username.",
 		"registerTitle": "Create your account",
@@ -584,7 +731,18 @@
 		"selectArea": "Select area",
 		"createAccount": "Create account",
 		"connectedTo": "Service:",
-		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it."
+		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it.",
+		"brand": "VAgents Platform",
+		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
+		"errors": {
+			"invalidCredentials": "invalid credentials",
+			"invalidEmail": "invalid email address",
+			"invalidUsername": "username must be 3-64 lowercase letters, numbers, ., _, or -",
+			"invalidPassword": "password must be 12-1024 bytes",
+			"alreadyExists": "email or username already exists",
+			"scopeRequired": "domain_id and area_id are required",
+			"invalidArea": "area does not belong to the selected domain"
+		}
 	},
 	"setup": {
 		"title": "Connect to Service",
@@ -894,5 +1052,63 @@
 		"empty": "This folder is empty",
 		"pressEnter": "Press Enter to check this path first",
 		"gitTooltip": "{{staged}} staged · {{unstaged}} modified · {{untracked}} untracked\nLine counts exclude untracked files"
+	},
+	"quickAgent": {
+		"title": "Quick agent with the Agent Builder",
+		"description": "Describe what the agent should do. The Agent Builder drafts it (instructions, tools, knowledge, test cases); you adjust and publish it in agent management.",
+		"templates": "Start from a template",
+		"role": "What does this agent do?",
+		"rolePlaceholder": "E.g. take residents' cleaning requests, ask for the place and how bad it is, then assign the cleaner on duty.",
+		"team": "Allow splitting into a team of agents",
+		"teamHint": "The Builder decides when the work needs different specialities.",
+		"waiting": "The Agent Builder is drafting; this can take a minute or more.",
+		"nothing": "The Agent Builder made no agent from this description.",
+		"advanced": "Open the Agent Builder",
+		"create": "Build it",
+		"creating": "Building…",
+		"presets": {
+			"reception": {
+				"name": "Reception",
+				"prompt": "Front desk of the management board: take residents' requests, ask for the apartment, problem and time, and route them to the right team. Polite and clear."
+			},
+			"technician": {
+				"name": "Technician",
+				"prompt": "Electrical and plumbing specialist: assess an issue from the resident's description and photos, state the urgency, give safe interim steps and propose which technician to send."
+			},
+			"cleaning": {
+				"name": "Cleaning",
+				"prompt": "Cleaning coordinator: take requests to clean common areas, pin down the place and extent, assign the cleaner on duty and report the expected time."
+			},
+			"report": {
+				"name": "Ticket report",
+				"prompt": "Reporting for the management board: summarise tickets by area (open, overdue, waiting for the resident's confirmation) and point out the ones that need attention and why."
+			}
+		}
+	},
+	"groupChat": {
+		"menuAgent": "Create agent",
+		"menuGroup": "Create group chat",
+		"title": "New group chat",
+		"description": "Pick the agents that will work together. The leader coordinates and hands work to the members.",
+		"name": "Group name",
+		"namePlaceholder": "e.g. Resident care team",
+		"members": "Members",
+		"selected": "{{count}} selected",
+		"searchPlaceholder": "Search agents…",
+		"leader": "Leader",
+		"makeLeader": "Make leader",
+		"goal": "What is this group for? (optional)",
+		"goalPlaceholder": "The group's shared goal, e.g. take in and handle residents' repair requests.",
+		"willEnable": "“Allow invites” will be turned on for {{names}} so the leader can bring them in.",
+		"blocked": "Can't invite {{names}}: invites are off and you can't edit this agent.",
+		"notEnough": "A group needs at least 2 agents; you have {{count}}.",
+		"needTwo": "Pick at least 2 agents",
+		"create": "Create group",
+		"creating": "Creating…",
+		"delete": "Delete group",
+		"entity": "group chat",
+		"kickoff": "This is the group chat “{{name}}”.{{goal}} Use TeamCreate to form the team with you as its leader, then AgentInvite to bring in: {{members}}. Once everyone has joined, briefly introduce the team and wait for my request.",
+		"kickoffGoal": " Goal: {{goal}}.",
+		"headerNote": "Led by {{leader}} · {{count}} agents"
 	}
 }

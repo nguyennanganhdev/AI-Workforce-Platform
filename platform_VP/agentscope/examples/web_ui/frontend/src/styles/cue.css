@@ -1,0 +1,378 @@
+/*
+ * The Cue design layer: an iMessage/Notion-like minimal look.
+ *
+ *   1. White everywhere. Sidebar, chat and side panels are all `#fff`; they
+ *      are told apart by a 1px divider, never by a coloured ground or a gap.
+ *   2. Neutral greys only. The single dark tone (`#1a1a1a`) is both the text
+ *      and the filled button; colour appears only on badges and status dots.
+ *   3. Almost no shadow. Depth is reserved for what floats above the page —
+ *      the composer, popovers, the command palette and dialogs.
+ *
+ * It reaches components nobody rewrote by rebinding the tokens they already
+ * read — the shadcn set (`--background`, `--primary`, `--border`, ...), this
+ * app's own (`--bg`, `--panel-shadow`, ...) and the older design layer's
+ * role names (`--raised`, `--sunken`, `--ink`, `--r-tile`, ...), which screens
+ * still reference by name.
+ *
+ * Scoped to a class, not `:root`: every shell puts `.cue-theme` on `<body>`
+ * through `useCueTheme`. Light only — `index.css` switches the `dark:`
+ * variant off under this class.
+ */
+
+.cue-theme {
+	color-scheme: light;
+
+	/* ---- Cue tokens (see the design spec). ---- */
+	--cue-bg: #ffffff;
+	--cue-bg-subtle: #f4f4f4;
+	--cue-bg-hover: #f7f7f7;
+	--cue-bg-bubble: #f2f2f2;
+	--cue-bg-muted: #f5f5f5;
+	--cue-border: #e8e8e8;
+	--cue-divider: #efefef;
+	--cue-text: #1a1a1a;
+	--cue-text-secondary: #6b6b6b;
+	--cue-text-tertiary: #a8a8a8;
+	--cue-blue: #2f80ed;
+	--cue-blue-soft: #e8f1fd;
+	--cue-success: #34c759;
+	--cue-avatar-user: #e5484d;
+	--cue-mascot: #8a8a8a;
+	--cue-radio: #d0d0d0;
+	--cue-disabled: #f0f0f0;
+	--cue-overlay: rgba(0, 0, 0, 0.12);
+
+	--cue-shadow-composer: 0 1px 2px rgba(0, 0, 0, 0.04);
+	--cue-shadow-float: 0 8px 32px rgba(0, 0, 0, 0.1);
+	--cue-shadow-fab: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+	/* ---- Role names the screens read, mapped onto Cue. ---- */
+	--canvas: var(--cue-bg);
+	--panel: var(--cue-bg);
+	--surface: var(--cue-bg);
+	--raised: var(--cue-bg);
+	--sunken: var(--cue-bg-subtle);
+
+	--line: var(--cue-border);
+	--line-soft: var(--cue-divider);
+	--line-warm: var(--cue-divider);
+
+	--ink: var(--cue-text);
+	--ink-2: var(--cue-text-secondary);
+	--ink-3: var(--cue-text-tertiary);
+
+	--action: var(--cue-text);
+	--action-deep: var(--cue-text);
+	--action-soft: var(--cue-bg-subtle);
+
+	/* Accents: only for telling states apart, kept pale and quiet. */
+	--mint: #c9ecd3;
+	--mint-ink: #1f7a3a;
+	--mint-soft: #eaf8ee;
+	--coral: #fbd0d1;
+	--coral-ink: #b4282d;
+	--coral-soft: #fdeeee;
+	--amber-soft: #fdf4e3;
+	--amber-ink: #8a5a00;
+	--violet-soft: var(--cue-blue-soft);
+	--violet-ink: var(--cue-blue);
+
+	/* The selected row: a flat grey, no accent bar, no colour change. */
+	--selected: var(--cue-bg-subtle);
+	--selected-line: transparent;
+
+	/* No clay: every former shadow recipe collapses to (almost) nothing. */
+	--clay: none;
+	--clay-sunken: none;
+	--clay-bubble: none;
+	--clay-bubble-mine: none;
+	--clay-action: none;
+	--clay-selected: none;
+
+	/* ---- Radii (4/8/12/16/20/24/pill). ---- */
+	--r-panel: 0px;
+	--r-card: 24px;
+	--r-bubble: 20px;
+	--r-tile: 12px;
+	--r-control: 12px;
+	--r-chip: 8px;
+
+	/* ---- shadcn tokens. ---- */
+	--background: var(--cue-bg);
+	--foreground: var(--cue-text);
+	--card: var(--cue-bg);
+	--card-foreground: var(--cue-text);
+	--popover: var(--cue-bg);
+	--popover-foreground: var(--cue-text);
+	--primary: var(--cue-text);
+	--primary-foreground: #ffffff;
+	--secondary: var(--cue-bg-subtle);
+	--secondary-foreground: var(--cue-text);
+	--muted: var(--cue-bg-muted);
+	--muted-foreground: var(--cue-text-secondary);
+	--accent: var(--cue-bg-subtle);
+	--accent-foreground: var(--cue-text);
+	--destructive: #e5484d;
+	--border: var(--cue-border);
+	--input: var(--cue-border);
+	--ring: rgba(26, 26, 26, 0.2);
+	--sidebar: var(--cue-bg);
+	--sidebar-foreground: var(--cue-text);
+	--sidebar-primary: var(--cue-text);
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-accent: var(--cue-bg-hover);
+	--sidebar-accent-foreground: var(--cue-text);
+	--sidebar-border: var(--cue-divider);
+	--sidebar-ring: rgba(26, 26, 26, 0.2);
+	--sidebar-active: var(--cue-bg-subtle);
+	--sidebar-active-line: transparent;
+
+	/* ---- This app's own tokens (see `index.css`). ---- */
+	--bg: var(--cue-bg);
+	--text: var(--cue-text-secondary);
+	--text-h: var(--cue-text);
+	--text-secondary: var(--cue-text-secondary);
+	--text-tertiary: var(--cue-text-tertiary);
+	--text-data: var(--cue-text-tertiary);
+	--surface-muted: var(--cue-bg-subtle);
+	--row-hover: var(--cue-bg-hover);
+	--panel-shadow: none;
+	--tab-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+
+	/* `rounded-lg` = 12px (items, inputs); `2xl` ≈ 21.6px (bubbles, cards). */
+	--radius: 12px;
+
+	--font-sans:
+		-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto,
+		'Helvetica Neue', sans-serif;
+}
+
+html:has(> .cue-theme) {
+	background: #ffffff;
+	color-scheme: light;
+}
+
+@layer base {
+	/* On the container, not through `--font-sans`: `html` already resolved it. */
+	.cue-theme {
+		background: var(--cue-bg);
+		color: var(--cue-text);
+		font-family: var(--font-sans);
+		letter-spacing: -0.005em;
+	}
+
+	.cue-theme :focus-visible {
+		outline: 2px solid rgba(26, 26, 26, 0.35);
+		outline-offset: 2px;
+	}
+
+	.cue-theme ::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	.cue-theme ::-webkit-scrollbar-thumb {
+		background: #e2e2e2;
+		border-radius: 999px;
+	}
+	.cue-theme * {
+		scrollbar-color: #e2e2e2 transparent;
+		scrollbar-width: thin;
+	}
+
+	/* Lucide icons are drawn thin (stroke 1.5) throughout. */
+	.cue-theme svg.lucide {
+		stroke-width: 1.5;
+	}
+}
+
+@layer components {
+	/* A card that used to float on a coloured ground: now a white box with a
+	   hairline. `shadow-panel` marks every such surface in the app. */
+	.cue-theme .shadow-panel {
+		border: 1px solid var(--cue-border);
+	}
+
+	/* A shell column (sidebar, side panel): flush, divided by a hairline. */
+	.cue-theme .cue-column {
+		background: var(--cue-bg);
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	/* Floating layers: popovers, menus, palettes, dialogs. */
+	.cue-theme [data-slot='dropdown-menu-content'],
+	.cue-theme [data-slot='popover-content'],
+	.cue-theme [data-slot='select-content'] {
+		border-radius: 16px;
+		box-shadow: var(--cue-shadow-float);
+		--tw-ring-color: var(--cue-border);
+	}
+
+	/* Skeleton rows: a slow opacity pulse rather than a shimmer. */
+	.cue-skeleton {
+		background: var(--cue-bg-subtle, #f4f4f4);
+		animation: cue-pulse 1.4s ease-in-out infinite;
+	}
+}
+
+/* Menus: the primitive bakes in the mono face as a utility, so this is
+   unlayered to beat it — Cue's menus use the system face. */
+.cue-theme [data-slot='dropdown-menu-content'] {
+	font-family: inherit;
+}
+
+@keyframes cue-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+/*
+ * Buttons. Unlayered on purpose — it has to beat the `rounded-*` utility the
+ * primitive bakes in. Text buttons (filled, outline, secondary) are pills;
+ * icon-only buttons are 8px squares. Ghost text buttons double as list rows
+ * (the account menu, settings nav) and keep their own radius.
+ */
+.cue-theme
+	[data-slot='button']:is(
+		[data-variant='default'],
+		[data-variant='outline'],
+		[data-variant='secondary'],
+		[data-variant='destructive']
+	):not([data-size^='icon']) {
+	border-radius: 9999px;
+}
+.cue-theme [data-slot='button'][data-size^='icon'] {
+	border-radius: 8px;
+}
+.cue-theme [data-slot='button'][data-variant='default']:disabled {
+	background: var(--cue-disabled);
+	color: var(--cue-text-tertiary);
+	opacity: 1;
+}
+
+/*
+ * Multi-agent motion. One-shot classes the transcript adds to whatever just
+ * happened on screen — an event arriving, a step finishing, an agent joining —
+ * so the eye follows the hand-off between agents. Each runs once, under
+ * 400ms, and all of them stop for a reader who asks for reduced motion.
+ */
+.cue-enter {
+	animation: cue-enter 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.cue-fade {
+	animation: cue-fade 280ms ease-out both;
+}
+
+/* A chip or badge appearing: in from small, a touch past full size, settle. */
+.cue-pop {
+	animation: cue-pop 420ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+
+/* A reasoning box opening up out of its header line. */
+.cue-unfold {
+	overflow: hidden;
+	animation: cue-unfold 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* The check stroke draws itself where the spinner was. */
+.cue-check path {
+	stroke-dasharray: 24;
+	stroke-dashoffset: 24;
+	animation: cue-draw 360ms 60ms ease-out forwards;
+}
+
+/* One ring outward in the badge's own colour: a write just happened. */
+.cue-flash {
+	animation: cue-flash 900ms ease-out;
+}
+
+/* Cue's "working" mark: a soft blue ring breathing out, not a violet outline. */
+.cue-theme .agent-avatar-working {
+	outline: none;
+	animation:
+		cue-ring 1.4s ease-out infinite,
+		agent-working-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes cue-enter {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+}
+
+@keyframes cue-fade {
+	from {
+		opacity: 0;
+	}
+}
+
+@keyframes cue-pop {
+	0% {
+		opacity: 0;
+		transform: scale(0.6);
+	}
+	60% {
+		opacity: 1;
+		transform: scale(1.06);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+
+@keyframes cue-unfold {
+	from {
+		opacity: 0;
+		max-height: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		max-height: 400px;
+	}
+}
+
+@keyframes cue-draw {
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+@keyframes cue-flash {
+	0% {
+		box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent);
+	}
+	100% {
+		box-shadow: 0 0 0 8px transparent;
+	}
+}
+
+@keyframes cue-ring {
+	0% {
+		box-shadow: 0 0 0 0 rgb(47 128 237 / 0.45);
+	}
+	100% {
+		box-shadow: 0 0 0 7px rgb(47 128 237 / 0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cue-enter,
+	.cue-fade,
+	.cue-pop,
+	.cue-unfold,
+	.cue-flash,
+	.cue-theme .agent-avatar-working {
+		animation: none;
+	}
+	.cue-check path {
+		animation: none;
+		stroke-dashoffset: 0;
+	}
+}

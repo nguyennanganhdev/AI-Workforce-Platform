@@ -10,9 +10,9 @@ function getPattern(input: string): string {
 export const GrepRenderer: ToolRenderer = {
 	getDisplayName: (_call, t) => t('tool.grep.name'),
 
-	renderHeader: (pair) => (
+	renderHeader: (pair, t) => (
 		<>
-			<span className={toolLabelClass}>Grep pattern</span>
+			<span className={toolLabelClass}>{t('tool.grep.pattern')}</span>
 			<span className={toolArgClass}>{getPattern(pair.call.input)}</span>
 		</>
 	),

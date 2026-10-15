@@ -42,16 +42,16 @@ export const ReadRenderer: ToolRenderer = {
 		</div>
 	),
 
-	renderHeader: (pair) => {
+	renderHeader: (pair, t) => {
 		const fileName = tryGetFileName(pair.call.input);
 		const readContent = getResultText(pair.result);
 		const lines = readContent ? readContent.split('\n').length : 0;
 		return (
 			<>
-				<span className={toolLabelClass}>Read</span>
+				<span className={toolLabelClass}>{t('tool.read.name')}</span>
 				{fileName && <span className={toolArgClass}>{fileName}</span>}
 				{pair.result?.state === 'success' && (
-					<span className={toolLabelClass}>{lines} lines</span>
+					<span className={toolLabelClass}>{t('tool.read.lines', { count: lines })}</span>
 				)}
 			</>
 		);

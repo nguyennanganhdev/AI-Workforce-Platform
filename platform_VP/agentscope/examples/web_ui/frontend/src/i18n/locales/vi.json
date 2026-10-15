@@ -1,12 +1,719 @@
 {
+	"common": {
+		"add": "Thêm",
+		"agent": "Tác nhân AI",
+		"cancel": "Hủy",
+		"channel": "Kênh kết nối",
+		"chat": "Trò chuyện",
+		"close": "Đóng",
+		"confirm": "Xác nhận",
+		"create": "Tạo",
+		"creating": "Đang tạo…",
+		"credential": "Thông tin xác thực",
+		"date": "Ngày",
+		"delete": "Xóa",
+		"disabled": "Đã tắt",
+		"edit": "Chỉnh sửa",
+		"error": "Đã xảy ra lỗi",
+		"information": "Thông tin",
+		"knowledge": "Kho tri thức",
+		"loading": "Đang tải...",
+		"shownCount": "Hiển thị {{count}}",
+		"selectedCount": "Đã chọn {{selected}} / {{total}}",
+		"model": "Mô hình",
+		"name": "Tên",
+		"no": "Không",
+		"noData": "Chưa có dữ liệu",
+		"readOnly": "Chỉ đọc",
+		"readOnlyTooltip": "Được chia sẻ với bạn ở chế độ chỉ đọc; không thể chỉnh sửa hoặc xóa.",
+		"completed": "Hoàn tất",
+		"failed": "Thất bại",
+		"running": "Đang chạy",
+		"save": "Lưu",
+		"saving": "Đang lưu…",
+		"schedule": "Lịch chạy",
+		"selectAgent": "Chọn tác nhân AI",
+		"settings": "Cài đặt",
+		"switchToZh": "切换为中文",
+		"switchToEn": "Switch to English",
+		"team": "Nhóm",
+		"uploading": "Đang tải lên",
+		"leader": "Trưởng nhóm",
+		"time": "Thời gian",
+		"yes": "Có",
+		"deleteTitle": "Xóa {{entity}} \"{{name}}\"?",
+		"deleteDescription": "Không thể hoàn tác thao tác này.",
+		"mcp-hub": "Kho MCP",
+		"mine": "Của tôi",
+		"my-mcp": "MCP đã cài đặt",
+		"skill-hub": "Kho kỹ năng",
+		"my-skill": "Kỹ năng đã cài đặt",
+		"message": "Tin nhắn",
+		"llm": "LLM",
+		"tts": "Chuyển văn bản thành giọng nói",
+		"embedding": "Embedding",
+		"switchToVi": "Chuyển sang tiếng Việt"
+	},
+	"error": {
+		"description": "Trang gặp lỗi không mong muốn. Bạn có thể thử lại hoặc về trang chủ.",
+		"retry": "Thử lại",
+		"home": "Về trang chủ"
+	},
+	"tool": {
+		"callGeneric": "Gọi công cụ",
+		"read": {
+			"name": "Đọc",
+			"fileCount_one": "{{count}} tệp",
+			"fileCount_other": "{{count}} tệp",
+			"lineCount_one": "Đọc {{formatted}} dòng",
+			"lineCount_other": "Đọc {{formatted}} dòng",
+			"lines": "{{count}} dòng"
+		},
+		"glob": {
+			"name": "Glob",
+			"pattern": "Mẫu tìm tệp"
+		},
+		"taskCreate": {
+			"name": "TaskCreate",
+			"title": "Tạo công việc",
+			"untitled": "(chưa đặt tên)"
+		},
+		"grep": {
+			"name": "Grep",
+			"pattern": "Mẫu tìm nội dung"
+		},
+		"summary": {
+			"separator": ", ",
+			"bash_one": "đã chạy {{count}} lệnh shell",
+			"bash_other": "đã chạy {{count}} lệnh shell",
+			"read_one": "đã đọc {{count}} tệp",
+			"read_other": "đã đọc {{count}} tệp",
+			"edit_one": "đã sửa {{count}} tệp",
+			"edit_other": "đã sửa {{count}} tệp",
+			"search_one": "đã tìm {{count}} mẫu",
+			"search_other": "đã tìm {{count}} mẫu",
+			"todo_one": "đã cập nhật {{count}} công việc",
+			"todo_other": "đã cập nhật {{count}} công việc",
+			"mcp_one": "đã gọi {{count}} công cụ MCP",
+			"mcp_other": "đã gọi {{count}} công cụ MCP",
+			"fallback_one": "đã gọi {{count}} công cụ",
+			"fallback_other": "đã gọi {{count}} công cụ"
+		},
+		"input": "Đầu vào",
+		"output": "Đầu ra"
+	},
+	"textInput": {
+		"toComplete": "để hoàn thành",
+		"attach": "Đính kèm tệp",
+		"attachNotSupported": "Mô hình này không hỗ trợ đính kèm tệp",
+		"send": "Gửi",
+		"stop": "Dừng tạo phản hồi",
+		"stopping": "Đang dừng..."
+	},
+	"confirmCard": {
+		"toConfirm": "để xác nhận",
+		"yesWithRule": "Có, và cho phép {{toolName}} thực hiện {{ruleContent}} trong phiên này"
+	},
+	"messageBubble": {
+		"thinking": "Đang suy nghĩ",
+		"thinkingFor": "Đã suy nghĩ {{duration}}",
+		"audioGenerating": "Đang tạo âm thanh…",
+		"playAudio": "Phát âm thanh",
+		"pauseAudio": "Tạm dừng âm thanh",
+		"running": "Đang chạy...",
+		"hintSource": {
+			"tool_output": "Kết quả công cụ",
+			"team": "Nhóm",
+			"team_message": "Nhóm",
+			"schedule": "Lịch chạy",
+			"system": "Hệ thống",
+			"channel": "Kênh kết nối",
+			"runtime_state": "Trạng thái thực thi"
+		},
+		"error": {
+			"title": "Không thể phản hồi",
+			"authentication": "Xác thực thất bại — hãy kiểm tra khóa API hoặc thông tin xác thực của mô hình.",
+			"permission": "Yêu cầu bị từ chối — thông tin xác thực không có quyền dùng mô hình hoặc địa chỉ API này.",
+			"rate_limit": "Vượt giới hạn tần suất hoặc hạn mức — hãy thử lại sau.",
+			"invalid_request": "Yêu cầu gửi tới mô hình không hợp lệ.",
+			"upstream": "Dịch vụ mô hình trả về lỗi.",
+			"connection": "Không thể kết nối dịch vụ mô hình — lỗi mạng hoặc hết thời gian chờ.",
+			"internal": "Đã xảy ra lỗi nội bộ không mong muốn.",
+			"setup": "Không thể chuẩn bị phiên — hãy kiểm tra mô hình, công cụ và kho tri thức của tác nhân.",
+			"unknown": "Phản hồi thất bại do lỗi chưa xác định."
+		},
+		"copy": "Sao chép"
+	},
+	"chat": {
+		"inputPlaceholder": "Nhập tin nhắn...",
+		"confirmToolCall": "Cho phép thao tác này?",
+		"subagentConfirmTitle": "{{name}} yêu cầu xác nhận",
+		"newSession": "Phiên mới",
+		"greeting": "Bạn muốn bắt đầu từ đâu?",
+		"maxItersExceeded": {
+			"title": "Đã đạt giới hạn số vòng lặp",
+			"description": "Gửi tin nhắn mới để tiếp tục hoặc tiếp tục công việc hiện tại.",
+			"continue": "Tiếp tục"
+		},
+		"agent": {
+			"selectPlaceholder": "Chọn tác nhân AI",
+			"emptyTitle": "Chưa có tác nhân AI",
+			"emptyDescription": "Tạo tác nhân AI để bắt đầu.",
+			"groupYours": "Của bạn",
+			"groupShared": "Được chia sẻ với bạn"
+		},
+		"session": {
+			"label": "Phiên",
+			"emptyTitle": "Chưa có phiên",
+			"emptyNoAgent": "Hãy chọn tác nhân AI trước.",
+			"emptyHasAgent": "Tạo phiên để bắt đầu trò chuyện.",
+			"today": "Hôm nay",
+			"earlier": "Trước đó",
+			"search": "Tìm cuộc trò chuyện",
+			"searchPlaceholder": "Tìm cuộc trò chuyện…",
+			"recent": "Trò chuyện gần đây",
+			"results": "Kết quả",
+			"noResults": "Không có cuộc trò chuyện nào khớp “{{query}}”.",
+			"previewAgent": "Agent: {{name}}",
+			"previewRunning": "Đang xử lý…",
+			"previewAwaiting": "Đang chờ bạn",
+			"demoSection": "Kịch bản mẫu",
+			"newMenu": "Tạo mới",
+			"newAgent": "Agent mới",
+			"close": "Đóng"
+		},
+		"header": {
+			"openProfile": "Mở cài đặt của {{name}}",
+			"panels": "Bảng bên"
+		},
+		"messagePlaceholder": "Nhắn cho {{name}}",
+		"onboarding": {
+			"greeting": "Chào {{name}}, rất vui được gặp bạn. Mình ở đây để giúp.",
+			"greetingNoName": "Chào bạn, rất vui được gặp bạn. Mình ở đây để giúp.",
+			"question": "Bạn muốn bắt đầu với việc nào?",
+			"hint": "Không có lựa chọn phù hợp? Cứ gõ câu trả lời của bạn.",
+			"continue": "Tiếp tục",
+			"options": [
+				"Cư dân căn S1.01-1201 báo nước rỉ dưới bồn rửa bếp từ sáng, xử lý giúp tôi",
+				"Cư dân báo ổ cắm phòng khách đang bốc khói và có mùi khét",
+				"Hành lang tầng 12 có vết bẩn lớn, cần giao người vệ sinh",
+				"Đội agent hiện có những ai và mỗi agent phụ trách việc gì?"
+			]
+		},
+		"agents": {
+			"label": "Agent",
+			"emptyTitle": "Chưa có agent",
+			"emptyDescription": "Bấm + để tạo agent đầu tiên.",
+			"sessions": "Phiên trò chuyện",
+			"renameSession": "Đổi tên phiên này",
+			"deleteSession": "Xoá phiên này",
+			"chatsOf": "Trò chuyện với {{name}}"
+		}
+	},
+	"shell": {
+		"backToChat": "Quay lại trò chuyện",
+		"collapseSidebar": "Thu gọn thanh bên",
+		"expandSidebar": "Mở rộng thanh bên",
+		"groupWorkforce": "Workforce",
+		"leader": "Leader và ticket",
+		"builder": "Builder",
+		"agentStudio": "Quản lý agent",
+		"groupOperations": "Vận hành",
+		"groupCapabilities": "Năng lực của agent",
+		"account": "Tài khoản"
+	},
+	"agents": {
+		"list": {
+			"noDescription": "Chưa có mô tả",
+			"chat": "Mở trò chuyện",
+			"edit": "Chỉnh sửa"
+		},
+		"graph": {
+			"agentCount": "{{count}} agent",
+			"running": "{{count}} phiếu trong {{days}} ngày",
+			"fullscreen": "Toàn màn hình",
+			"exitFullscreen": "Thoát toàn màn hình",
+			"zoomIn": "Phóng to",
+			"zoomOut": "Thu nhỏ",
+			"fit": "Vừa khung nhìn",
+			"legendLive": "trả lời trong 15 phút qua",
+			"legendIdle": "đã cấu hình, đang rảnh",
+			"resident": "Cư dân",
+			"residentNote": "gửi yêu cầu qua đối tác",
+			"you": "Bạn",
+			"youNote": "trò chuyện trực tiếp",
+			"leader": "Leader",
+			"leaderNote": "Chọn agent cho từng yêu cầu",
+			"sessionCount": "{{count}} phiếu",
+			"idle": "đang rảnh",
+			"invitable": "Leader chọn được",
+			"notInvitable": "Chưa bật được mời",
+			"notInvitableShort": "Chưa bật mời",
+			"invitableHelp": "Leader có thể đưa agent này vào phiên khi yêu cầu cần đến nó.",
+			"notInvitableHelp": "Agent này chưa bật “Cho phép được mời” nên Leader không đưa được vào phiên. Bật trong phần chỉnh sửa, mục Cấu hình lời mời.",
+			"inspectorSessions": "Phiếu",
+			"inspectorRunning": "Lượt trả lời",
+			"inspectorResponse": "Gần nhất"
+		},
+		"office": {
+			"phase": {
+				"idle": "Mọi người đang ở vị trí",
+				"request": "Có yêu cầu mới",
+				"call": "Leader gọi họp",
+				"meeting": "Đang họp",
+				"return": "Về vị trí làm việc",
+				"work": "Đang xử lý",
+				"collab": "Đang phối hợp",
+				"approval": "Chờ bạn duyệt",
+				"done": "Hoàn tất"
+			},
+			"log": "Diễn biến",
+			"rooms": {
+				"meeting": "Phòng họp",
+				"approval": "Phòng của bạn · Duyệt",
+				"reception": "Quầy tiếp nhận",
+				"workspace": "Khu làm việc"
+			},
+			"status": {
+				"idle": "Đang rảnh tại bàn",
+				"working": "Đang xử lý việc",
+				"off": "Chưa bật được mời, không tham gia họp",
+				"walking": "Đang di chuyển"
+			},
+			"live": "Hoạt động của phiên"
+		}
+	},
+	"dialog-agent-create": {
+		"title": "Tạo tác nhân AI",
+		"description": "Thiết lập danh tính và hành vi cho tác nhân mới.",
+		"submit": "Tạo tác nhân"
+	},
+	"agent-form": {
+		"advanced": {
+			"legend": "Cài đặt nâng cao",
+			"description": "Có thể để mặc định. Mở từng mục khi bạn cần chỉnh."
+		},
+		"identity": {
+			"legend": "Danh tính tác nhân",
+			"description": "Tên và chỉ dẫn xác định hành vi của tác nhân.",
+			"name": {
+				"label": "Tên",
+				"placeholder": "Tác nhân của tôi",
+				"description": "Tên có từ chỉ vai trò, ví dụ Kỹ thuật, Lễ tân hoặc Tính toán, sẽ chọn ảnh đại diện tương ứng."
+			},
+			"system-prompt": {
+				"label": "Chỉ dẫn hệ thống",
+				"description": "Mô tả vai trò, phạm vi công việc và cách trả lời của tác nhân."
+			}
+		},
+		"context-config": {
+			"legend": "Cấu hình ngữ cảnh",
+			"description": "Quản lý và nén cửa sổ ngữ cảnh.",
+			"trigger-ratio": {
+				"label": "Tỷ lệ kích hoạt"
+			},
+			"reserve-ratio": {
+				"label": "Tỷ lệ dự trữ"
+			},
+			"context-buffer-ratio": {
+				"label": "Tỷ lệ vùng đệm ngữ cảnh"
+			},
+			"tool-result-limit": {
+				"label": "Giới hạn kết quả công cụ"
+			},
+			"compression-prompt": {
+				"label": "Chỉ dẫn nén ngữ cảnh"
+			},
+			"summary-template": {
+				"label": "Mẫu tóm tắt"
+			},
+			"max-image-num": {
+				"label": "Số ảnh tối đa"
+			}
+		},
+		"react-config": {
+			"legend": "Cấu hình ReAct",
+			"description": "Điều khiển vòng lặp suy luận và hành động.",
+			"max-iters": {
+				"label": "Số vòng lặp tối đa"
+			},
+			"stop-on-reject": {
+				"label": "Dừng khi bị từ chối"
+			},
+			"structured-output-grace-iters": {
+				"label": "Vòng lặp bổ sung cho đầu ra có cấu trúc",
+				"description": "Số vòng lặp bổ sung sau giới hạn để tác nhân vẫn có thể tạo đầu ra có cấu trúc được yêu cầu."
+			},
+			"interruption-message": {
+				"label": "Phản hồi khi bị ngắt",
+				"description": "Phản hồi của tác nhân khi người dùng ngắt quá trình chạy."
+			},
+			"interruption-raise-cancelled-error": {
+				"label": "Phát sinh CancelledError",
+				"description": "Phát lại asyncio.CancelledError sau khi xử lý ngắt thay vì bỏ qua lỗi."
+			}
+		},
+		"invite-config": {
+			"legend": "Cấu hình lời mời",
+			"description": "Cho phép tác nhân khác sử dụng tác nhân này qua AgentInvite.",
+			"invitable": {
+				"label": "Cho phép được mời"
+			},
+			"invite-description": {
+				"label": "Mô tả lời mời",
+				"placeholder": "Mô tả ngắn chuyên môn của tác nhân; bắt buộc khi cho phép được mời."
+			}
+		}
+	},
+	"dialog-agent-edit": {
+		"title": "Chỉnh sửa tác nhân AI",
+		"description": "Cập nhật cấu hình tác nhân này.",
+		"submit": "Lưu thay đổi"
+	},
+	"dialog-agent-delete": {
+		"entity": "tác nhân AI",
+		"confirm": "Xóa"
+	},
+	"dialog-session-delete": {
+		"entity": "phiên",
+		"confirm": "Xóa"
+	},
+	"dialog-session-rename": {
+		"title": "Đổi tên phiên",
+		"description": "Đặt tên mới cho phiên này.",
+		"label": "Tên",
+		"placeholder": "Tên phiên"
+	},
+	"session-menu": {
+		"rename": "Đổi tên",
+		"delete": "Xóa"
+	},
+	"dialog-credential-create": {
+		"title": "Thêm thông tin xác thực",
+		"description": "Thêm thông tin xác thực cho nhà cung cấp mô hình.",
+		"selectType": "Nhà cung cấp",
+		"selectTypePlaceholder": "Chọn nhà cung cấp"
+	},
+	"dialog-credential-edit": {
+		"title": "Chỉnh sửa thông tin xác thực",
+		"description": "Cập nhật thông tin xác thực đã lưu của nhà cung cấp này."
+	},
+	"dialog-knowledge-base-create": {
+		"title": "Tạo kho tri thức",
+		"description": "Tạo kho tri thức mới bằng mô hình embedding.",
+		"name": {
+			"label": "Tên",
+			"placeholder": "Kho tri thức của tôi"
+		},
+		"descriptionField": {
+			"label": "Mô tả",
+			"placeholder": "Mô tả mục đích của kho tri thức."
+		},
+		"embeddingModel": {
+			"label": "Mô hình embedding"
+		},
+		"dimension": {
+			"label": "Số chiều"
+		},
+		"chunker": {
+			"label": "Bộ chia đoạn"
+		},
+		"policy": {
+			"lockedTitle": "Số chiều được cố định ở {{dimension}}",
+			"lockedDescription": "Máy chủ cố định embedding của mọi kho tri thức ở {{dimension}} chiều. Chỉ hiển thị mô hình tương thích.",
+			"noCompatibleTitle": "Không có mô hình embedding tương thích",
+			"noCompatibleAny": "Chưa có thông tin xác thực nào cung cấp mô hình embedding. Hãy thêm thông tin xác thực trước.",
+			"noCompatibleLocked": "Chưa có mô hình nào tạo được embedding {{dimension}} chiều."
+		},
+		"errors": {
+			"nameRequired": "Hãy đặt tên cho kho tri thức.",
+			"embeddingRequired": "Hãy chọn mô hình embedding.",
+			"dimensionRequired": "Hãy chọn số chiều.",
+			"chunkerRequired": "Hãy chọn cách chia đoạn."
+		}
+	},
+	"dialog-knowledge-base-edit": {
+		"title": "Chỉnh sửa kho tri thức",
+		"description": "Cập nhật tên và mô tả kho tri thức.",
+		"name": {
+			"label": "Tên",
+			"placeholder": "Kho tri thức của tôi"
+		},
+		"descriptionField": {
+			"label": "Mô tả",
+			"placeholder": "Mô tả mục đích của kho tri thức."
+		},
+		"embeddingModel": {
+			"label": "Mô hình embedding"
+		},
+		"chunker": {
+			"label": "Bộ chia đoạn"
+		},
+		"errors": {
+			"nameRequired": "Hãy đặt tên cho kho tri thức."
+		}
+	},
+	"dialog-knowledge-base-delete": {
+		"title": "Xóa kho tri thức",
+		"description": "Kho tri thức \"{{name}}\" và tất cả tài liệu đã lập chỉ mục sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
+	},
+	"credential": {
+		"noProviders": "Không có nhà cung cấp",
+		"selectHint": "Chưa chọn thông tin xác thực",
+		"selectHintDescription": "Chọn thông tin xác thực từ thanh bên để xem chi tiết.",
+		"availableModels": "Mô hình khả dụng",
+		"noModels": "Không có mô hình",
+		"noModelsDescription": "Nhà cung cấp này không trả về mô hình nào.",
+		"deleteEntity": "thông tin xác thực",
+		"subtitle": "Cấu hình thông tin xác thực API mô hình",
+		"configured": "Đã cấu hình",
+		"addProvider": "Thêm thông tin xác thực",
+		"reasoning": "Suy luận",
+		"realtime": "Thời gian thực",
+		"table": {
+			"model": "Mô hình",
+			"context": "Ngữ cảnh",
+			"maxOutput": "Đầu ra tối đa",
+			"accepts": "Đầu vào",
+			"outputs": "Đầu ra",
+			"legend": "Ngữ cảnh và đầu ra tối đa được tính theo token. SUY LUẬN đánh dấu mô hình hỗ trợ suy nghĩ mở rộng.",
+			"dimensions": "Số chiều"
+		}
+	},
+	"knowledge": {
+		"subtitle": "Quản lý kho tri thức cho tác nhân AI",
+		"selectHint": "Chưa chọn kho tri thức",
+		"selectHintDescription": "Chọn kho tri thức từ thanh bên để xem chi tiết.",
+		"list": {
+			"label": "Kho tri thức",
+			"emptyTitle": "Chưa có kho tri thức",
+			"emptyDescription": "Tạo kho tri thức để bắt đầu lập chỉ mục tài liệu.",
+			"createButton": "Tạo kho tri thức"
+		},
+		"document": {
+			"emptyTitle": "Chưa có tài liệu",
+			"emptyDescription": "Tải tài liệu lên để lập chỉ mục trong kho tri thức này.",
+			"uploadButton": "Tải tài liệu lên",
+			"uploadButtonShort": "Tải lên",
+			"chunkCount_one": "{{count}} đoạn",
+			"chunkCount_other": "{{count}} đoạn",
+			"deleteConfirmTitle": "Xóa tài liệu",
+			"deleteConfirmDescription": "Xóa \"{{name}}\"? Tài liệu và mọi đoạn đã lập chỉ mục sẽ bị xóa. Không thể hoàn tác.",
+			"deleteError": "Không thể xóa tài liệu.",
+			"dropHintIdle": "hoặc thả tệp vào đây",
+			"unsupportedExtension": "Đã bỏ qua \"{{name}}\" — loại tệp không được hỗ trợ.",
+			"status": {
+				"queued": "Đang xếp hàng",
+				"uploading": "Đang tải lên",
+				"pending": "Đang chờ xử lý",
+				"parsing": "Đang phân tích",
+				"chunking": "Đang chia đoạn",
+				"indexing": "Đang lập chỉ mục",
+				"ready": "Sẵn sàng",
+				"error": "Lỗi",
+				"cancelled": "Đã hủy"
+			},
+			"actions": {
+				"cancel": "Hủy",
+				"dismiss": "Ẩn",
+				"remove": "Xóa",
+				"clearFinished": "Dọn mục đã hoàn tất"
+			},
+			"title": "Tài liệu"
+		},
+		"test": {
+			"button": "Kiểm tra",
+			"title": "Kiểm tra truy xuất",
+			"description": "Kiểm tra \"{{name}}\" bằng một truy vấn.",
+			"queryLabel": "Truy vấn",
+			"queryPlaceholder": "Nhập câu hỏi bằng ngôn ngữ tự nhiên…",
+			"topKLabel": "Top K",
+			"searchButton": "Tìm kiếm",
+			"score": "điểm",
+			"chunkPosition": "Đoạn {{index}} / {{total}}",
+			"emptyTitle": "Không có kết quả phù hợp",
+			"emptyDescription": "Không có đoạn nào đạt ngưỡng điểm cho truy vấn này."
+		},
+		"config": {
+			"title": "Cấu hình",
+			"embeddingModel": "Mô hình embedding",
+			"dimensions": "Số chiều",
+			"credential": "Thông tin xác thực",
+			"chunker": "Bộ chia đoạn",
+			"counts": "Nội dung",
+			"countsValue": "{{documents}} tài liệu · {{chunks}} đoạn",
+			"status": "Lập chỉ mục",
+			"statusValue": "{{ready}} sẵn sàng · {{indexing}} đang xử lý · {{failed}} thất bại",
+			"createdAt": "Ngày tạo"
+		},
+		"documentDetail": {
+			"description": "{{count}} đoạn đã lập chỉ mục",
+			"chunksTab": "Các đoạn",
+			"previewTab": "Xem trước",
+			"chunksEmptyTitle": "Chưa có đoạn",
+			"chunksEmptyDescription": "Tài liệu này chưa có đoạn nào được lập chỉ mục.",
+			"chunksUnsupportedTitle": "Không thể xem các đoạn",
+			"chunksUnsupportedDescription": "Kho vector đang dùng không hỗ trợ liệt kê các đoạn.",
+			"previousPage": "Trước",
+			"nextPage": "Tiếp",
+			"pageIndicator": "Trang {{page}} / {{pageCount}}",
+			"previewUnavailableTitle": "Không thể xem trước trực tiếp",
+			"previewUnavailableDescription": "Không thể xem trước loại tệp này trong trình duyệt.",
+			"previewTooLargeTitle": "Tệp quá lớn để xem trước",
+			"previewTooLargeDescription": "Tệp vượt giới hạn xem trước. Hãy tải về để xem bản gốc.",
+			"downloadButton": "Tải tệp gốc"
+		}
+	},
+	"llm-select": {
+		"placeholder": "Chọn mô hình",
+		"loading": "Đang tải…",
+		"empty": {
+			"title": "Không có mô hình",
+			"description": "Thêm thông tin xác thực để bắt đầu."
+		},
+		"addCredential": "Thêm thông tin xác thực",
+		"clear": "Bỏ chọn",
+		"noFallback": "Không có dự phòng"
+	},
+	"embedding-select": {
+		"placeholder": "Chọn mô hình embedding",
+		"loading": "Đang tải…",
+		"empty": {
+			"title": "Không có mô hình embedding",
+			"description": "Thêm thông tin xác thực hỗ trợ embedding để bắt đầu."
+		},
+		"addCredential": "Thêm thông tin xác thực"
+	},
+	"chunker-select": {
+		"placeholder": "Chọn bộ chia đoạn",
+		"loading": "Đang tải…",
+		"empty": "Không có bộ chia đoạn"
+	},
+	"chunker-types": {
+		"approx_token": {
+			"label": "Token ước lượng",
+			"params": {
+				"chunk_size": {
+					"label": "Kích thước đoạn",
+					"description": "Số token ước lượng tối đa trong mỗi đoạn."
+				},
+				"overlap": {
+					"label": "Phần chồng lặp",
+					"description": "Số token ước lượng dùng chung giữa các đoạn liên tiếp."
+				}
+			}
+		}
+	},
+	"dimension-select": {
+		"placeholder": "Chọn số chiều",
+		"pickModelFirst": "Hãy chọn mô hình trước"
+	},
+	"permission-mode": {
+		"placeholder": "Chọn chế độ quyền",
+		"trigger-tooltip": "Chế độ quyền",
+		"label": "Chế độ quyền",
+		"default-tooltip": "Mặc định: mọi thao tác đều cần cấp quyền rõ ràng (an toàn nhất)",
+		"accept_edits-tooltip": "Tự cho phép đọc/ghi tệp trong thư mục làm việc và lệnh hệ thống tệp; các thao tác khác tuân theo quy tắc thông thường",
+		"explore-tooltip": "Chỉ đọc: cho phép read/grep/glob, từ chối công cụ sửa đổi write/edit/bash",
+		"bypass-tooltip": "Tự cho phép mọi thao tác mà không kiểm tra quyền (dùng trong môi trường tin cậy hoặc sandbox)",
+		"dont_ask-tooltip": "Chuyển mọi quyết định ASK thành DENY; phù hợp tác vụ theo lịch hoặc chạy nền khi người dùng vắng mặt"
+	},
+	"dialog-mcp-create": {
+		"configLabel": "Cấu hình MCP",
+		"keepAlive": "Duy trì kết nối",
+		"keepAliveDesc": "Duy trì trạng thái giữa các tương tác. Bật cho MCP trình duyệt hoặc MCP chạy lâu.",
+		"parseError": "Cấu hình JSON không hợp lệ: {{message}}",
+		"missingMcpServers": "Cấu hình phải chứa đối tượng \"mcpServers\".",
+		"emptyMcpServers": "Không tìm thấy máy chủ MCP trong cấu hình."
+	},
+	"dialog-mcp-delete": {
+		"entity": "máy chủ MCP",
+		"skillEntity": "kỹ năng",
+		"skillDescription": "Bạn có chắc muốn gỡ kỹ năng này khỏi không gian làm việc?"
+	},
+	"schedule": {
+		"subtitle": "Lên lịch tác vụ định kỳ hoặc một lần cho tác nhân AI",
+		"calendar": "Lịch",
+		"createSchedule": {
+			"description": "Thiết lập tác vụ định kỳ hoặc một lần cho tác nhân AI.",
+			"descriptionLabel": "Mô tả",
+			"descriptionPlaceholder": "Mô tả công việc cần chạy theo lịch...",
+			"namePlaceholder": "Ví dụ: Báo cáo hằng ngày",
+			"title": "Tạo lịch chạy"
+		},
+		"deleteSchedule": {
+			"entity": "lịch chạy"
+		},
+		"endAt": "Ngày kết thúc",
+		"end_at": "Kết thúc lúc",
+		"executionHistory": "Lịch sử thực thi",
+		"freqDaily": "Hằng ngày",
+		"freqMonthly": "Hằng tháng",
+		"freqOnce": "Một lần",
+		"freqWeekly": "Hằng tuần",
+		"frequency": "Tần suất",
+		"friday": "T6",
+		"list": "Danh sách",
+		"monday": "T2",
+		"more": "khác",
+		"nextMonth": "Tháng sau",
+		"nextYear": "Năm sau",
+		"noSchedules": "Chưa có lịch chạy",
+		"noSchedulesDescription": "Tạo lịch để tự động hóa công việc của tác nhân.",
+		"pickDate": "Chọn ngày",
+		"permissionMode": "Chế độ quyền",
+		"timezone": "Múi giờ",
+		"triggerTime": "Thời gian kích hoạt",
+		"createdAt": "Ngày tạo",
+		"dayOfMonthSuffix": "",
+		"stateful": "Duy trì trạng thái",
+		"statefulDesc": "Dùng lại một phiên giữa các lần chạy để tích lũy ngữ cảnh. Khi tắt, mỗi lần chạy tạo một phiên mới.",
+		"previousMonth": "Tháng trước",
+		"previousYear": "Năm trước",
+		"saturday": "T7",
+		"sunday": "CN",
+		"thursday": "T5",
+		"today": "Hôm nay",
+		"tuesday": "T3",
+		"wednesday": "T4"
+	},
+	"model-parameters": {
+		"title": "Tham số mô hình",
+		"description": "Điều chỉnh tham số suy luận của mô hình đã chọn.",
+		"empty": "Không có tham số có thể cấu hình.",
+		"fallbackLabel": "Mô hình dự phòng",
+		"fallbackLabelWithModel": "Mô hình dự phòng ({{model}})",
+		"parametersLabel": "Tham số",
+		"ttsLabel": "Chuyển văn bản thành giọng nói",
+		"ttsEmpty": "Không có mô hình chuyển văn bản thành giọng nói.",
+		"ttsParameters": "Tham số",
+		"ttsParametersDescription": "Điều chỉnh tham số cho mô hình giọng nói đã chọn.",
+		"noTts": "Không dùng giọng nói"
+	},
 	"auth": {
-		"heroTitle": "Xây dựng và vận hành agent cho khu vực của bạn",
-		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý agent và tiếp nhận các yêu cầu được định tuyến đúng domain, đúng khu vực.",
-		"securityHint": "Access token ngắn hạn và phiên đăng nhập được tự động luân chuyển",
+		"heroTitle": "Xây dựng và vận hành tác nhân AI cho khu vực của bạn",
+		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý tác nhân AI và nhận yêu cầu được định tuyến đúng lĩnh vực, đúng khu vực.",
+		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
+		"showcase": {
+			"live": "Đang hoạt động",
+			"caption": "Minh hoạ: yêu cầu của cư dân được Leader định tuyến tới đúng agent và được xử lý",
+			"statusIdle": "Chờ yêu cầu",
+			"statusBusy": "Đang xử lý",
+			"statusDone": "Hoàn tất",
+			"resident": "Cư dân",
+			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
+			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
+			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
+			"agents": {
+				"reception": "Lễ tân",
+				"technical": "Kỹ thuật",
+				"hotel": "Khách sạn"
+			}
+		},
 		"loginTitle": "Chào mừng bạn quay lại",
 		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",
 		"registerTitle": "Tạo tài khoản",
-		"registerDescription": "Chọn domain và khu vực mà bạn chịu trách nhiệm.",
+		"registerDescription": "Chọn lĩnh vực và khu vực bạn chịu trách nhiệm.",
 		"login": "Đăng nhập",
 		"register": "Đăng ký",
 		"logout": "Đăng xuất",
@@ -15,12 +722,390 @@
 		"username": "Tên đăng nhập",
 		"password": "Mật khẩu",
 		"passwordHint": "Sử dụng ít nhất 12 ký tự.",
-		"domain": "Domain",
+		"domain": "Lĩnh vực",
 		"area": "Khu vực",
-		"selectDomain": "Chọn domain",
+		"selectDomain": "Chọn lĩnh vực",
 		"selectArea": "Chọn khu vực",
 		"createAccount": "Tạo tài khoản",
 		"connectedTo": "Máy chủ:",
-		"authenticationDisabled": "Backend chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại backend."
+		"authenticationDisabled": "Máy chủ chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại.",
+		"brand": "Nền tảng VAgents",
+		"usernameHint": "3–64 ký tự: chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
+		"errors": {
+			"invalidCredentials": "Email, tên đăng nhập hoặc mật khẩu không đúng.",
+			"invalidEmail": "Địa chỉ email không hợp lệ.",
+			"invalidUsername": "Tên đăng nhập phải có 3–64 ký tự, chỉ gồm chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
+			"invalidPassword": "Mật khẩu phải có ít nhất 12 ký tự và không vượt quá 1024 byte.",
+			"alreadyExists": "Email hoặc tên đăng nhập đã được sử dụng.",
+			"scopeRequired": "Hãy chọn lĩnh vực và khu vực.",
+			"invalidArea": "Khu vực không thuộc lĩnh vực đã chọn."
+		}
+	},
+	"setup": {
+		"title": "Kết nối máy chủ",
+		"description": "Nhập địa chỉ máy chủ và tên đăng nhập để bắt đầu.",
+		"serverUrl": "Địa chỉ máy chủ",
+		"serverUrlPlaceholder": "https://...",
+		"username": "Tên đăng nhập",
+		"usernamePlaceholder": "Tên đăng nhập của bạn",
+		"submit": "Bắt đầu",
+		"checking": "Đang kết nối...",
+		"errorUnreachable": "Không thể kết nối máy chủ. Kiểm tra địa chỉ, trạng thái dịch vụ và quyền cho phép yêu cầu khác nguồn.",
+		"errorTimeout": "Máy chủ đã nhận kết nối nhưng không phản hồi kịp. Có thể đang quá tải hoặc bị kẹt khi khởi động.",
+		"errorNotAgentScope": "Đã kết nối nhưng đây không phải dịch vụ AgentScope — hãy kiểm tra địa chỉ hoặc nâng cấp backend quá cũ chưa có API health.",
+		"errorUnauthorized": "Máy chủ từ chối tên đăng nhập này. Hãy nhập tên hợp lệ.",
+		"errorNotReady": "Máy chủ có thể kết nối nhưng chưa sẵn sàng. Các thành phần sau khởi động thất bại:",
+		"hint": "Ứng dụng giao diện này lấy toàn bộ dữ liệu từ địa chỉ máy chủ ở trên. Tên đăng nhập chỉ được dùng để xác thực trên máy chủ."
+	},
+	"tour": {
+		"trigger": "Hướng dẫn sử dụng",
+		"prev": "Quay lại",
+		"next": "Tiếp",
+		"finish": "Hoàn tất",
+		"skip": "Bỏ qua",
+		"step": "Bước {{current}} / {{total}}",
+		"createAgent": {
+			"title": "Tạo tác nhân AI",
+			"content": "Bắt đầu bằng cách tạo tác nhân AI để trò chuyện cùng bạn."
+		},
+		"createSession": {
+			"title": "Tạo phiên",
+			"content": "Nhấn + để bắt đầu phiên mới."
+		},
+		"llmSelect": {
+			"title": "Chọn mô hình",
+			"content": "Chọn mô hình; thêm thông tin xác thực từ danh sách nếu cần."
+		},
+		"permissionMode": {
+			"title": "Chế độ quyền",
+			"content": "Chọn có cần xác nhận khi gọi công cụ hay không."
+		},
+		"chatInput": {
+			"title": "Bắt đầu trò chuyện",
+			"content": "Nhập tin nhắn và nhấn Enter. Nhấn biểu tượng kẹp giấy để đính kèm tệp."
+		}
+	},
+	"task-panel": {
+		"blockedBy": "bị chặn bởi"
+	},
+	"panel": {
+		"plan": {
+			"title": "Kế hoạch",
+			"completed": "Hoàn tất: {{count}}",
+			"total": "Tổng: {{count}}",
+			"emptyTitle": "Chưa có công việc",
+			"emptyDescription": "Công việc do tác nhân lập kế hoạch sẽ xuất hiện ở đây."
+		},
+		"mcp": {
+			"description": "Các máy chủ MCP trong không gian làm việc.",
+			"searchPlaceholder": "Tìm MCP trong không gian làm việc",
+			"add": "Thêm MCP",
+			"addDescription": "Dùng lại MCP đã cài đặt hoặc dán cấu hình.",
+			"fromConfig": "Từ cấu hình",
+			"tools": "{{count}} công cụ",
+			"unhealthy": "Không thể kết nối MCP này",
+			"healthy": "Đã kết nối",
+			"emptyTitle": "Chưa có máy chủ MCP",
+			"emptyDescription": "Thêm máy chủ MCP để cung cấp công cụ cho không gian làm việc.",
+			"fromInstalled": "MCP đã cài đặt",
+			"installedEmptyTitle": "Chưa cài đặt mục nào",
+			"installedEmptyDescription": "Cài từ kho MCP hoặc dán cấu hình."
+		},
+		"skill": {
+			"title": "Kỹ năng",
+			"description": "Các kỹ năng trong không gian làm việc.",
+			"searchPlaceholder": "Tìm kỹ năng trong không gian làm việc",
+			"add": "Thêm kỹ năng",
+			"emptyTitle": "Chưa có kỹ năng",
+			"emptyDescription": "Thêm kỹ năng cho không gian làm việc.",
+			"addDescription": "Chọn kỹ năng đã cài đặt hoặc tải thư mục trên máy lên.",
+			"fromInstalled": "Từ mục đã cài đặt",
+			"fromFolder": "Tải thư mục lên",
+			"installedEmptyTitle": "Chưa có kỹ năng đã cài đặt",
+			"installedEmptyDescription": "Cài từ kho kỹ năng rồi thêm vào đây.",
+			"pickFolderTitle": "Chọn thư mục kỹ năng",
+			"pickFolderDescription": "Thư mục phải có tệp SKILL.md ở cấp gốc.",
+			"pickFolder": "Chọn thư mục",
+			"pickAnother": "Chọn thư mục khác",
+			"fileCount": "{{count}} tệp"
+		},
+		"knowledge": {
+			"title": "Kho tri thức",
+			"description": "Các kho tri thức tác nhân có thể truy xuất.",
+			"searchPlaceholder": "Tìm kho tri thức",
+			"emptyTitle": "Chưa có kho tri thức",
+			"emptyDescription": "Hãy tạo kho tri thức tại trang Kho tri thức trước.",
+			"parametersTitle": "Cài đặt truy xuất",
+			"parametersDescription": "Cài đặt truy xuất kho tri thức."
+		},
+		"permission": {
+			"title": "Quyền truy cập",
+			"description": "Các quyền áp dụng trong phiên này.",
+			"mode": "Chế độ: {{mode}}",
+			"workingDirectories": "Thư mục làm việc",
+			"noWorkingDirectories": "Chưa có thư mục làm việc.",
+			"allow": "Cho phép",
+			"deny": "Từ chối",
+			"ask": "Hỏi",
+			"anyInvocation": "mọi lần gọi",
+			"emptyTitle": "Chưa cấu hình quy tắc",
+			"emptyDescription": "Quy tắc cho phép / từ chối / hỏi sẽ xuất hiện khi được thêm."
+		},
+		"search": {
+			"emptyTitle": "Không có kết quả",
+			"emptyDescription": "Không có mục nào khớp với “{{query}}”."
+		},
+		"loading": "Đang tải…",
+		"team": {
+			"membersHeading": "Thành viên",
+			"noMembers": "Chưa có thành viên — yêu cầu trưởng nhóm tạo bằng AgentCreate.",
+			"emptyTitle": "Chưa có nhóm",
+			"emptyDescription": "Phiên này chưa thuộc nhóm nào. Tác nhân tạo nhóm bằng TeamCreate.",
+			"running": "Đang chạy",
+			"idle": "Đang chờ",
+			"missingSession": "(chưa có phiên)"
+		}
+	},
+	"channel": {
+		"credentialBinding": {
+			"tab": "Quét mã QR",
+			"manualTab": "Nhập thủ công",
+			"scanHint": "Quét bằng ứng dụng của nền tảng và phê duyệt để tạo thông tin xác thực.",
+			"authorized": "Đã phê duyệt. Thông tin xác thực đã sẵn sàng.",
+			"failed": "Không thể hoàn tất liên kết.",
+			"unsafeUrl": "Nền tảng trả về liên kết không thể hiển thị an toàn.",
+			"retry": "Thử lại"
+		},
+		"title": "Kênh kết nối",
+		"subtitle": "Kết nối nền tảng như Feishu và Discord để tác nhân làm việc trong nhóm chat",
+		"status": "Trạng thái",
+		"connected": "Đã kết nối",
+		"enable": "Bật",
+		"disable": "Tắt",
+		"deleteEntity": "kênh kết nối",
+		"routing": "Định tuyến",
+		"routingDesc": "Ghép tin nhắn đến với tác nhân và phạm vi phiên. Quy tắc cuối áp dụng cho mọi tin nhắn còn lại.",
+		"sectionActive": "Đã kết nối",
+		"sectionAdd": "Thêm kênh",
+		"rules": "{{count}} quy tắc",
+		"empty": {
+			"title": "Chưa có kênh kết nối",
+			"description": "Tạo kênh để kết nối tác nhân với nền tảng bên ngoài như Feishu, DingTalk."
+		},
+		"create": {
+			"title": "Tạo kênh",
+			"titleFor": "Kết nối {{name}}",
+			"description": "Kết nối tác nhân với nền tảng nhắn tin bên ngoài.",
+			"channelType": "Nền tảng",
+			"nameLabel": "Tên",
+			"namePlaceholder": "Ví dụ: Bộ phận hỗ trợ",
+			"nameDesc": "Phân biệt các kênh trên cùng nền tảng",
+			"modelDesc": "Mô hình ban đầu cho phiên mới",
+			"permissionMode": "Chế độ quyền",
+			"permissionModeDesc": "Chế độ quyền ban đầu cho phiên mới",
+			"showToolMessages": "Hiển thị tin nhắn công cụ",
+			"showToolMessagesDesc": "Hiển thị lời gọi và kết quả công cụ trong kênh.",
+			"showThinking": "Hiển thị suy luận",
+			"showThinkingDesc": "Hiển thị quá trình suy luận của mô hình trong kênh."
+		},
+		"fields": {
+			"app_id": {
+				"title": "ID ứng dụng",
+				"description": "ID ứng dụng Feishu"
+			},
+			"app_secret": {
+				"title": "Khóa bí mật ứng dụng",
+				"description": "Khóa bí mật ứng dụng Feishu"
+			},
+			"bot_token": {
+				"title": "Token bot"
+			},
+			"application_id": {
+				"title": "ID ứng dụng"
+			},
+			"only_at_reply": {
+				"title": "Chỉ phản hồi khi được nhắc tên",
+				"description": "Trong nhóm chat, chỉ phản hồi khi bot được @nhắc tên"
+			},
+			"show_tool_process": {
+				"title": "Hiển thị quá trình dùng công cụ",
+				"description": "Hiển thị lời gọi và kết quả công cụ trong phản hồi"
+			},
+			"show_thinking": {
+				"title": "Hiển thị suy luận",
+				"description": "Hiển thị suy luận của mô hình trong phản hồi"
+			}
+		},
+		"edit": {
+			"title": "Chỉnh sửa kênh",
+			"description": "Cập nhật định tuyến, mô hình và cài đặt phản hồi. Không thể thay đổi nền tảng và thông tin xác thực."
+		},
+		"sessionScope": {
+			"per_chat": "Theo cuộc trò chuyện",
+			"per_chat_user": "Theo người dùng trong cuộc trò chuyện"
+		},
+		"sessions": {
+			"title": "Các phiên",
+			"empty": "Chưa có phiên",
+			"openInChat": "Mở trong trò chuyện"
+		},
+		"detail": {
+			"config": "Cấu hình",
+			"configDesc": "Cấu hình ban đầu áp dụng cho phiên mới",
+			"configItem": "Mục",
+			"configValue": "Giá trị",
+			"condition": "Điều kiện",
+			"created": "Ngày tạo",
+			"deleteChannel": "Xóa kênh",
+			"routingDesc": "Cách tin nhắn đến được ghép với tác nhân và phạm vi phiên",
+			"sessionsDesc": "Các phiên được tạo bởi kênh này",
+			"selectHint": "Chọn kênh để xem chi tiết"
+		},
+		"state": {
+			"stopped": "Đã dừng",
+			"connecting": "Đang kết nối",
+			"retrying": "Đang kết nối lại",
+			"connected": "Đã kết nối",
+			"failed": "Thất bại"
+		},
+		"binding": {
+			"rule": "Quy tắc đối chiếu",
+			"matchKey": "Trường đối chiếu",
+			"matchValue": "Giá trị đối chiếu",
+			"matchValuePlaceholder": "Ví dụ: chat_id",
+			"routeTo": "Định tuyến tới",
+			"scope": "Phạm vi phiên",
+			"fallback": "Quy tắc dự phòng",
+			"fallbackDesc": "Tin nhắn không khớp quy tắc nào ở trên sẽ được chuyển tới đây",
+			"catchAll": "Mọi tin nhắn còn lại",
+			"addRule": "Thêm quy tắc"
+		}
+	},
+	"mcp": {
+		"subtitle": "Khám phá và cài đặt máy chủ MCP",
+		"hubsLabel": "Các kho",
+		"searchPlaceholder": "Tìm trong kho này",
+		"mineSearchPlaceholder": "Tìm MCP của bạn",
+		"noHubsTitle": "Không có kho khả dụng",
+		"noHubsDescription": "Yêu cầu quản trị viên thêm kho.",
+		"noCardsTitle": "Không tìm thấy mục nào",
+		"noCardsDescription": "Thử từ khóa khác.",
+		"mineDescription": "Các máy chủ MCP bạn đã cài đặt",
+		"mineEmptyTitle": "Chưa có máy chủ MCP",
+		"mineEmptyDescription": "Cài từ kho bên trái.",
+		"needsConfig": "Cần cấu hình",
+		"stateful": "Duy trì trạng thái",
+		"configLabel": "Cấu hình",
+		"install": "Cài đặt",
+		"installed": "Đã cài đặt",
+		"installTitle": "Cài đặt {{name}}",
+		"installDescription": "Thêm vào MCP của bạn. Sau đó chọn phiên để sử dụng.",
+		"editTitle": "Chỉnh sửa {{name}}",
+		"editDescription": "Để trống khóa bí mật nếu muốn giữ giá trị đã lưu.",
+		"nameLabel": "Tên",
+		"loadFailedTitle": "Không thể kết nối máy chủ",
+		"loadFailedDescription": "Kiểm tra địa chỉ máy chủ và trạng thái dịch vụ.",
+		"retry": "Thử lại"
+	},
+	"skill": {
+		"subtitle": "Khám phá và cài đặt kỹ năng",
+		"hubsLabel": "Các kho",
+		"searchPlaceholder": "Tìm trong kho này",
+		"mineSearchPlaceholder": "Tìm kỹ năng của bạn",
+		"noHubsTitle": "Không có kho khả dụng",
+		"noHubsDescription": "Yêu cầu quản trị viên thêm kho.",
+		"noCardsTitle": "Không tìm thấy mục nào",
+		"noCardsDescription": "Thử từ khóa khác.",
+		"mineDescription": "Các kỹ năng bạn đã cài đặt",
+		"mineEmptyTitle": "Chưa có kỹ năng",
+		"mineEmptyDescription": "Cài từ kho bên trái.",
+		"install": "Cài đặt",
+		"installed": "Đã cài đặt",
+		"versionLabel": "Phiên bản",
+		"hubLabel": "Kho",
+		"updatedLabel": "Cập nhật",
+		"updatedAgo": "Cập nhật cách đây {{ago}}",
+		"updatedRecently": "Vừa cập nhật",
+		"installsLabel": "Lượt cài đặt",
+		"downloadsLabel": "Lượt tải xuống",
+		"linkLabel": "Trang",
+		"viewOnHub": "Xem trên kho",
+		"noReadme": "Kỹ năng này không có nội dung SKILL.md.",
+		"loadFailedTitle": "Không thể kết nối máy chủ",
+		"loadFailedDescription": "Kiểm tra địa chỉ máy chủ và trạng thái dịch vụ.",
+		"retry": "Thử lại"
+	},
+	"agent-menu": {
+		"settings": "Cài đặt",
+		"delete": "Xóa tác nhân AI"
+	},
+	"workdir": {
+		"title": "Thư mục làm việc",
+		"description": "Chọn thư mục làm việc của tác nhân.",
+		"root": "Thư mục gốc không gian làm việc",
+		"parent": "Lên một cấp",
+		"errorTitle": "Không thể liệt kê thư mục này",
+		"pathPlaceholder": "Nhập hoặc dán đường dẫn",
+		"empty": "Thư mục này trống",
+		"pressEnter": "Nhấn Enter để kiểm tra đường dẫn trước",
+		"gitTooltip": "{{staged}} đã stage · {{unstaged}} đã sửa · {{untracked}} chưa theo dõi\nSố dòng không bao gồm tệp chưa được theo dõi"
+	},
+	"quickAgent": {
+		"title": "Tạo agent nhanh với Agent Builder",
+		"description": "Mô tả agent cần làm gì. Agent Builder dựng bản nháp (lời dặn, công cụ, kiến thức, kịch bản kiểm thử); bạn chỉnh và phát hành ở trang Quản lý agent.",
+		"templates": "Bắt đầu từ mẫu",
+		"role": "Agent này làm gì?",
+		"rolePlaceholder": "Ví dụ: tiếp nhận yêu cầu vệ sinh của cư dân, hỏi đủ vị trí và mức độ, rồi giao cho nhân viên vệ sinh đang trực.",
+		"team": "Cho phép tách thành một đội nhiều agent",
+		"teamHint": "Builder tự quyết khi việc gồm nhiều chuyên môn khác nhau.",
+		"waiting": "Agent Builder đang dựng bản nháp, có thể mất một đến vài phút.",
+		"nothing": "Agent Builder chưa tạo được agent nào từ mô tả này.",
+		"advanced": "Mở Agent Builder",
+		"create": "Dựng bằng Builder",
+		"creating": "Đang dựng…",
+		"presets": {
+			"reception": {
+				"name": "Lễ tân",
+				"prompt": "Lễ tân của ban quản lý: tiếp nhận yêu cầu của cư dân, hỏi đủ căn hộ, sự cố, thời gian và chuyển đúng bộ phận. Lịch sự, rõ ràng, gọi cư dân là bạn."
+			},
+			"technician": {
+				"name": "Kỹ thuật",
+				"prompt": "Chuyên viên kỹ thuật điện nước: đánh giá sự cố từ mô tả và ảnh của cư dân, nêu mức khẩn cấp, hướng dẫn xử lý tạm thời an toàn và đề xuất loại thợ cần cử."
+			},
+			"cleaning": {
+				"name": "Vệ sinh",
+				"prompt": "Điều phối vệ sinh: nhận yêu cầu dọn dẹp khu chung, xác định vị trí và mức độ, giao cho nhân viên vệ sinh đang trực và báo lại thời gian dự kiến."
+			},
+			"report": {
+				"name": "Báo cáo phiếu",
+				"prompt": "Báo cáo cho ban quản lý: tổng hợp tình trạng các phiếu (đang mở, quá hạn, chờ cư dân xác nhận) theo khu, nêu phiếu cần chú ý và lý do."
+			}
+		}
+	},
+	"groupChat": {
+		"menuAgent": "Tạo agent",
+		"menuGroup": "Tạo nhóm chat",
+		"title": "Nhóm chat mới",
+		"description": "Chọn các agent sẽ cùng làm việc. Trưởng nhóm điều phối và giao việc cho các thành viên.",
+		"name": "Tên nhóm",
+		"namePlaceholder": "Ví dụ: Đội chăm sóc cư dân",
+		"members": "Thành viên",
+		"selected": "Đã chọn {{count}}",
+		"searchPlaceholder": "Tìm agent…",
+		"leader": "Trưởng nhóm",
+		"makeLeader": "Đặt làm trưởng nhóm",
+		"goal": "Nhóm này làm gì? (không bắt buộc)",
+		"goalPlaceholder": "Mục tiêu chung của nhóm, ví dụ: tiếp nhận và xử lý yêu cầu sửa chữa của cư dân.",
+		"willEnable": "Sẽ bật “Cho phép được mời” cho {{names}} để trưởng nhóm mời được vào nhóm.",
+		"blocked": "Không mời được {{names}}: agent chưa bật “Cho phép được mời” và bạn không có quyền sửa.",
+		"notEnough": "Cần ít nhất 2 agent để lập nhóm, bạn đang có {{count}}.",
+		"needTwo": "Chọn ít nhất 2 agent",
+		"create": "Tạo nhóm",
+		"creating": "Đang tạo…",
+		"delete": "Xóa nhóm",
+		"entity": "nhóm chat",
+		"kickoff": "Đây là nhóm chat “{{name}}”.{{goal}} Hãy dùng TeamCreate để lập nhóm với bạn là trưởng nhóm, rồi dùng AgentInvite để mời các thành viên: {{members}}. Khi đủ thành viên, hãy giới thiệu ngắn gọn nhóm và chờ yêu cầu của tôi.",
+		"kickoffGoal": " Mục tiêu: {{goal}}.",
+		"headerNote": "Trưởng nhóm {{leader}} · {{count}} agent"
 	}
 }

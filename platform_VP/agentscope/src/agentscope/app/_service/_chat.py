@@ -255,6 +255,13 @@ def _apply_reasoning_effort(model: ChatModelBase, system_role: str) -> None:
     cached prefix. Reasoning tokens are billed as output.
     """
 
+    from ...model import OpenAIChatModel
+
+    if isinstance(model, OpenAIChatModel):
+        # OpenAI rejects reasoning_effort together with function tools on
+        # Chat Completions (gpt-5.4-mini, gpt-5.5: 400 "use /v1/responses or
+        # set reasoning_effort to 'none'"), and every agent here has tools.
+        return
     name = "LEADER" if system_role == "leader" else "AGENT"
     effort = os.getenv(f"WORKFORCE_REASONING_EFFORT_{name}", "").strip().lower()
     parameters = getattr(model, "parameters", None)

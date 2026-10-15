@@ -1,0 +1,101 @@
+/* 1448 × 1086 sheet, 300 × 300 upper-body windows. Keep the waving hand visible. */
+.agent-sprite {
+	display: block;
+	flex-shrink: 0;
+	background-color: #fff;
+	background-repeat: no-repeat;
+	background-size: 482.666667% 362%;
+	background-position: 6.09756% 0%;
+	animation: agent-sprite-blink 5.8s steps(1, end) infinite;
+	animation-delay: var(--blink-delay, 0s);
+}
+
+.agent-sprite:hover,
+button:focus-visible .agent-sprite,
+a:focus-visible .agent-sprite {
+	animation: agent-sprite-action 1.4s steps(1, end) 1;
+}
+
+@keyframes agent-sprite-blink {
+	0%,
+	93% {
+		background-position: 6.09756% 0%;
+	}
+	94% {
+		background-position: 35.10453% 0%;
+	}
+	96% {
+		background-position: 64.1115% 0%;
+	}
+	98% {
+		background-position: 93.11847% 0%;
+	}
+	100% {
+		background-position: 6.09756% 0%;
+	}
+}
+
+@keyframes agent-sprite-action {
+	0.000% {
+		background-position: 6.09756% 0%;
+	}
+	11.111% {
+		background-position: 6.09756% 46.56489%;
+	}
+	22.222% {
+		background-position: 35.10453% 46.56489%;
+	}
+	33.333% {
+		background-position: 64.1115% 46.56489%;
+	}
+	44.444% {
+		background-position: 93.11847% 46.56489%;
+	}
+	55.556% {
+		background-position: 6.09756% 92.11196%;
+	}
+	66.667% {
+		background-position: 35.10453% 92.11196%;
+	}
+	77.778% {
+		background-position: 64.1115% 92.11196%;
+	}
+	88.889% {
+		background-position: 93.11847% 92.11196%;
+	}
+	100.000% {
+		background-position: 6.09756% 0%;
+	}
+}
+
+/* Task activity takes precedence over the one-shot hover greeting. */
+.agent-sprite[data-working='true'] {
+	animation: agent-sprite-action 2.4s steps(1, end) infinite;
+}
+
+.agent-avatar-working {
+	outline: 2px solid var(--violet-ink, #7460c8);
+	outline-offset: 2px;
+	animation: agent-working-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes agent-working-breathe {
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-2px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.agent-avatar-working,
+	.agent-sprite[data-working='true'],
+	.agent-sprite,
+	.agent-sprite:hover,
+	button:focus-visible .agent-sprite,
+	a:focus-visible .agent-sprite {
+		animation: none;
+	}
+}

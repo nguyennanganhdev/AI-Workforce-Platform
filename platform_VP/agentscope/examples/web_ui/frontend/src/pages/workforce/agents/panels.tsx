@@ -97,10 +97,10 @@ export function CopilotPanel({
 	};
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<header className="border-b p-4">
+			<header className="border-b px-4 pt-3 pb-3">
 				<div className="flex items-center gap-2">
 					<Sparkles className="size-4 text-primary" />
-					<h2 className="text-sm font-medium">Builder copilot</h2>
+					<h2 className="text-[15px]/5 font-semibold">Builder copilot</h2>
 				</div>
 				<p className="mt-1 text-xs text-muted-foreground">
 					Nói điều bạn muốn đổi; copilot sửa đúng chỗ trong form và cho bạn xem trước khi phát hành.

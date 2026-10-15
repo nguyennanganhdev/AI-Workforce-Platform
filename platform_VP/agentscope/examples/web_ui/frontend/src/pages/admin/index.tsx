@@ -1,5 +1,5 @@
-import { Building2, Check, LogOut, Plus, Search, ShieldCheck, UserPlus, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Check, LogOut, MapPinned, Network, Plus, Search, ShieldCheck, UserCheck, UserPlus, X } from 'lucide-react';
+import { type ComponentType, type CSSProperties, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { adminApi } from '@/api/admin';
@@ -16,11 +16,30 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from '@/components/ui/dialog';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import {
+	Sidebar,
+	SidebarContent,
+	SidebarFooter,
+	SidebarGroup,
+	SidebarGroupContent,
+	SidebarHeader,
+	SidebarMenu,
+	SidebarMenuBadge,
+	SidebarMenuButton,
+	SidebarMenuItem,
+	SidebarProvider,
+	SidebarRail,
+	SidebarTrigger,
+	useSidebar,
+} from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCueTheme } from '@/hooks/useCueTheme';
 
 function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -28,32 +47,6 @@ function errorText(error: unknown): string {
 
 function when(value: string | null): string {
 	return value ? new Date(value).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : 'Chưa đăng nhập';
-}
-
-function Panel({ title, hint, action, children }: { title: string; hint?: string; action?: React.ReactNode; children: React.ReactNode }) {
-	return (
-		<section className="space-y-4 rounded-[22px] bg-card p-5 shadow-panel">
-			<div className="flex flex-wrap items-start gap-3">
-				<div className="min-w-0 flex-1">
-					<h2 className="text-base font-medium">{title}</h2>
-					{hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-				</div>
-				{action}
-			</div>
-			{children}
-		</section>
-	);
-}
-
-function Stat({ label, value, tone }: { label: string; value: number; tone?: 'warn' }) {
-	return (
-		<div className="rounded-2xl bg-card px-4 py-3 shadow-panel">
-			<p className="text-xs text-muted-foreground">{label}</p>
-			<p className={`mt-1 text-2xl font-semibold tabular-nums ${tone === 'warn' && value > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-				{value}
-			</p>
-		</div>
-	);
 }
 
 /** A small form in a dialog; ``submit`` resolves true when the dialog may close. */
@@ -200,13 +193,131 @@ function AreaTable({ areas, accounts }: { areas: DirectoryArea[]; accounts: Map<
 	);
 }
 
+type Section = 'areas' | 'pending' | 'admins';
+
+/** One admin page: a title, what it is for, its actions, then its content. */
+function Page({ title, hint, action, children }: { title: string; hint: string; action?: React.ReactNode; children: React.ReactNode }) {
+	return (
+		<main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+			<div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-3 pb-3">
+				<div className="min-w-0">
+					<h1 className="text-[17px]/6 font-semibold">{title}</h1>
+					<p className="mt-0.5 text-[13px]/[18px] text-muted-foreground">{hint}</p>
+				</div>
+				{action}
+			</div>
+			<Separator />
+			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>
+		</main>
+	);
+}
+
+/** Figures in a row, no boxes: the number carries the weight. */
+function Figures({ items }: { items: { label: string; value: number; warn?: boolean }[] }) {
+	return (
+		<dl className="flex flex-wrap gap-x-10 gap-y-3 py-4">
+			{items.map((item) => (
+				<div key={item.label}>
+					<dt className="text-[13px]/[18px] text-muted-foreground">{item.label}</dt>
+					<dd
+						className={`text-2xl font-semibold tabular-nums ${item.warn && item.value > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}
+					>
+						{item.value}
+					</dd>
+				</div>
+			))}
+		</dl>
+	);
+}
+
+/** A Cue nav row, as in the settings sidebar. */
+const ITEM =
+	'h-10 gap-3 rounded-xl px-3 text-[15px]/5 [&_svg]:size-[18px] group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:[&>span]:sr-only';
+
+function AdminSidebar({
+	user,
+	title,
+	items,
+	section,
+	onSection,
+	onLogout,
+}: {
+	user: AuthUser;
+	title: string;
+	items: { key: Section; label: string; icon: ComponentType; count?: number }[];
+	section: Section;
+	onSection: (section: Section) => void;
+	onLogout: () => void;
+}) {
+	const { isMobile, setOpenMobile } = useSidebar();
+	return (
+		<Sidebar collapsible={isMobile ? 'offcanvas' : 'icon'} className="cue-column border-r border-sidebar-border">
+			<SidebarHeader className="h-12 shrink-0 justify-center px-4 py-0 group-data-[collapsible=icon]:px-2">
+				<p className="truncate text-[15px]/5 font-semibold group-data-[collapsible=icon]:sr-only">{title}</p>
+			</SidebarHeader>
+			<SidebarContent>
+				<SidebarGroup className="px-2 py-1">
+					<SidebarGroupContent>
+						<SidebarMenu>
+							{items.map((item) => (
+								<SidebarMenuItem key={item.key}>
+									<SidebarMenuButton
+										className={ITEM}
+										isActive={section === item.key}
+										tooltip={item.label}
+										onClick={() => {
+											onSection(item.key);
+											setOpenMobile(false);
+										}}
+									>
+										<item.icon />
+										<span>{item.label}</span>
+									</SidebarMenuButton>
+									{item.count ? <SidebarMenuBadge>{item.count}</SidebarMenuBadge> : null}
+								</SidebarMenuItem>
+							))}
+						</SidebarMenu>
+					</SidebarGroupContent>
+				</SidebarGroup>
+			</SidebarContent>
+			<SidebarFooter className="border-t border-sidebar-border p-2">
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<div className="flex h-12 items-center gap-3 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+							<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cue-avatar-user,#e5484d)] text-[15px] font-medium text-white">
+								{user.username.charAt(0).toUpperCase()}
+							</span>
+							<span className="min-w-0 flex-1 truncate text-[15px]/5 group-data-[collapsible=icon]:hidden">
+								{user.username}
+							</span>
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								className="group-data-[collapsible=icon]:hidden"
+								aria-label="Đăng xuất"
+								title="Đăng xuất"
+								onClick={onLogout}
+							>
+								<LogOut />
+							</Button>
+						</div>
+					</SidebarMenuItem>
+				</SidebarMenu>
+			</SidebarFooter>
+			<SidebarRail />
+		</Sidebar>
+	);
+}
+
 export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+	useCueTheme();
 	const platform = user.role === 'PLATFORM_ADMIN';
 	const [accounts, setAccounts] = useState<AdminAccount[]>([]);
 	const [directory, setDirectory] = useState<DirectoryDomain[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [query, setQuery] = useState('');
+	const [section, setSection] = useState<Section>('areas');
 
 	const load = useCallback(async () => {
 		try {
@@ -252,20 +363,6 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 		return `${area.name} ${area.id} ${people}`.toLowerCase().includes(text);
 	};
 
-	if (loading) {
-		return (
-			<div className="mx-auto max-w-6xl space-y-4 p-6">
-				<Skeleton className="h-10 w-72" />
-				<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-					{[0, 1, 2, 3].map((index) => (
-						<Skeleton key={index} className="h-20 rounded-2xl" />
-					))}
-				</div>
-				<Skeleton className="h-64 rounded-[22px]" />
-			</div>
-		);
-	}
-
 	const addArea = (domainId?: string) => (
 		<FormDialog
 			trigger={
@@ -299,227 +396,247 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 		</div>
 	);
 
-	return (
-		<div className="min-h-[100dvh] bg-canvas">
-			<div className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
-				<header className="flex flex-wrap items-center gap-3">
-					<div className="flex size-9 items-center justify-center rounded-xl bg-card shadow-panel">
-						{platform ? <ShieldCheck className="size-5" /> : <Building2 className="size-5" />}
-					</div>
-					<div className="min-w-0 flex-1">
-						<h1 className="text-lg font-semibold">
-							{platform ? 'Quản trị platform' : `Quản trị ${ownDomain?.name ?? user.domain_id ?? 'domain'}`}
-						</h1>
-						<p className="text-xs text-muted-foreground">
-							{platform
-								? 'Mọi domain tích hợp, quản trị domain, khu và tài khoản BQL.'
-								: 'Khu và tài khoản BQL trong domain của bạn.'}
-						</p>
-					</div>
-					<span className="text-sm text-muted-foreground">{user.username}</span>
-					<Button size="sm" variant="ghost" onClick={onLogout}>
-						<LogOut /> Đăng xuất
-					</Button>
-				</header>
+	const figures = [
+		...(platform ? [{ label: 'Domain', value: directory.length }] : []),
+		{ label: 'Khu', value: areas.length },
+		{ label: 'BQL đang hoạt động', value: areas.flatMap((area) => area.managers).filter((m) => m.status === 'active').length },
+		{ label: 'Chờ duyệt', value: pending.length, warn: true },
+		{ label: 'Khu chưa có BQL', value: areas.filter((area) => area.managers.length === 0).length, warn: true },
+	];
 
-				<div className={`grid grid-cols-2 gap-3 ${platform ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
-					{platform && <Stat label="Domain" value={directory.length} />}
-					<Stat label="Khu" value={areas.length} />
-					<Stat label="BQL đang hoạt động" value={areas.flatMap((area) => area.managers).filter((m) => m.status === 'active').length} />
-					<Stat label="Chờ duyệt" value={pending.length} tone="warn" />
-					<Stat label="Khu chưa có BQL" value={areas.filter((area) => area.managers.length === 0).length} tone="warn" />
-				</div>
+	const items: { key: Section; label: string; icon: ComponentType; count?: number }[] = [
+		{ key: 'areas', label: platform ? 'Domain, khu và BQL' : 'Khu và BQL', icon: platform ? Network : MapPinned },
+		{ key: 'pending', label: 'BQL chờ duyệt', icon: UserCheck, count: pending.length },
+		...(platform ? [{ key: 'admins' as const, label: 'Quản trị domain', icon: ShieldCheck }] : []),
+	];
 
-				{pending.length > 0 && (
-					<Panel title="Tài khoản BQL chờ duyệt" hint="Mỗi khu có đúng một BQL. Duyệt xong, BQL đăng nhập và dùng platform cho khu của mình.">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Tài khoản</TableHead>
-									<TableHead>Khu</TableHead>
-									<TableHead>Đăng ký lúc</TableHead>
-									<TableHead />
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{pending.map((account) => {
-									const area = areas.find((item) => item.domain_id === account.domain_id && item.id === account.area_id);
-									return (
-										<TableRow key={account.id}>
-											<TableCell>
-												<p className="font-medium">{account.username}</p>
-												<p className="text-xs text-muted-foreground">{account.email}</p>
-											</TableCell>
-											<TableCell>
-												{area?.name ?? account.area_id}
-												{platform && <p className="text-xs text-muted-foreground">{account.domain_id}</p>}
-											</TableCell>
-											<TableCell className="text-sm text-muted-foreground">{when(account.created_at)}</TableCell>
-											<TableCell className="space-x-1 text-right">
-												<Button
-													size="sm"
-													disabled={busy !== null}
-													onClick={() => run(`approve-${account.id}`, () => adminApi.approve(account.id), `Đã duyệt ${account.username}.`)}
-												>
-													<Check /> Duyệt
-												</Button>
-												<Button
-													size="sm"
-													variant="ghost"
-													disabled={busy !== null}
-													onClick={() => run(`reject-${account.id}`, () => adminApi.reject(account.id), `Đã từ chối ${account.username}.`)}
-												>
-													<X /> Từ chối
-												</Button>
-											</TableCell>
-										</TableRow>
-									);
-								})}
-							</TableBody>
-						</Table>
-					</Panel>
-				)}
-
-				{platform ? (
-					<Panel
-						title="Domain, khu và BQL"
-						hint="Domain là một đối tác tích hợp (ví dụ Vinhomes). Mỗi khu trong domain có một BQL."
-						action={
-							<div className="flex flex-wrap items-center gap-2">
-								{search}
-								<FormDialog
-									trigger={
-										<Button size="sm" variant="outline" disabled={busy !== null}>
-											<Plus /> Thêm domain
+	const content = loading ? (
+		<main className="flex-1 space-y-4 p-4">
+			<Skeleton className="h-10 w-72" />
+			<Skeleton className="h-16 w-full" />
+			<Skeleton className="h-64 w-full" />
+		</main>
+	) : section === 'pending' ? (
+		<Page title="BQL chờ duyệt" hint="Mỗi khu có đúng một BQL. Duyệt xong, BQL đăng nhập và dùng platform cho khu của mình.">
+			{pending.length === 0 ? (
+				<Empty className="border-none">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<UserCheck />
+						</EmptyMedia>
+						<EmptyTitle>Không có tài khoản chờ duyệt</EmptyTitle>
+						<EmptyDescription>BQL của một khu tự đăng ký; tài khoản mới hiện ở đây để bạn duyệt.</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			) : (
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead>Tài khoản</TableHead>
+							<TableHead>Khu</TableHead>
+							<TableHead>Đăng ký lúc</TableHead>
+							<TableHead />
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{pending.map((account) => {
+							const area = areas.find((item) => item.domain_id === account.domain_id && item.id === account.area_id);
+							return (
+								<TableRow key={account.id}>
+									<TableCell>
+										<p className="font-medium">{account.username}</p>
+										<p className="text-xs text-muted-foreground">{account.email}</p>
+									</TableCell>
+									<TableCell>
+										{area?.name ?? account.area_id}
+										{platform && <p className="text-xs text-muted-foreground">{account.domain_id}</p>}
+									</TableCell>
+									<TableCell className="text-sm text-muted-foreground">{when(account.created_at)}</TableCell>
+									<TableCell className="space-x-1 text-right">
+										<Button
+											size="sm"
+											disabled={busy !== null}
+											onClick={() => run(`approve-${account.id}`, () => adminApi.approve(account.id), `Đã duyệt ${account.username}.`)}
+										>
+											<Check /> Duyệt
 										</Button>
-									}
-									title="Thêm domain"
-									description="Một đối tác tích hợp mới. Sau đó tạo quản trị domain và các khu của nó."
-									fields={[
-										{ name: 'id', label: 'Mã domain', hint: 'Chữ thường, không dấu, ví dụ vinhomes.' },
-										{ name: 'name', label: 'Tên domain' },
-									]}
-									submitLabel="Thêm domain"
-									onSubmit={(values) => run('domain', () => adminApi.saveDomain(values.id.trim(), values.name.trim()), 'Đã thêm domain.')}
-								/>
-							</div>
+										<Button
+											size="sm"
+											variant="ghost"
+											disabled={busy !== null}
+											onClick={() => run(`reject-${account.id}`, () => adminApi.reject(account.id), `Đã từ chối ${account.username}.`)}
+										>
+											<X /> Từ chối
+										</Button>
+									</TableCell>
+								</TableRow>
+							);
+						})}
+					</TableBody>
+				</Table>
+			)}
+		</Page>
+	) : section === 'admins' ? (
+		<Page
+			title="Quản trị domain"
+			hint="Mỗi domain có người quản trị riêng: thêm khu và duyệt BQL trong domain đó, không thấy domain khác."
+			action={
+				<FormDialog
+					trigger={
+						<Button size="sm" disabled={busy !== null || directory.length === 0}>
+							<UserPlus /> Tạo quản trị domain
+						</Button>
+					}
+					title="Tạo quản trị domain"
+					description="Tài khoản này chỉ quản lý khu và BQL của domain được chọn."
+					fields={[
+						{ name: 'domain_id', label: 'Domain', options: domainOptions },
+						{ name: 'email', label: 'Email', type: 'email' },
+						{ name: 'username', label: 'Tên đăng nhập' },
+						{ name: 'password', label: 'Mật khẩu', type: 'password', hint: 'Tối thiểu 12 ký tự.' },
+					]}
+					submitLabel="Tạo tài khoản"
+					onSubmit={async (values) => {
+						if (values.password.length < 12) {
+							toast.error('Mật khẩu cần tối thiểu 12 ký tự.');
+							return false;
 						}
-					>
-						{directory.length === 0 ? (
-							<p className="py-6 text-center text-sm text-muted-foreground">Chưa có domain nào. Thêm domain đầu tiên.</p>
-						) : (
-							<Tabs defaultValue={directory[0].id}>
-								<TabsList className="flex-wrap">
-									{directory.map((domain) => (
-										<TabsTrigger key={domain.id} value={domain.id}>
-											{domain.name}
-											<span className="ml-1.5 text-xs text-muted-foreground tabular-nums">{domain.areas.length}</span>
-										</TabsTrigger>
-									))}
-								</TabsList>
-								{directory.map((domain) => {
-									const admins = domainAdmins.filter((admin) => admin.domain_id === domain.id);
-									return (
-										<TabsContent key={domain.id} value={domain.id} className="space-y-3 pt-2">
-											<div className="flex flex-wrap items-center gap-2 text-sm">
-												<span className="text-muted-foreground">Quản trị domain:</span>
-												{admins.length === 0 ? (
-													<span className="text-muted-foreground">chưa có</span>
-												) : (
-													admins.map((admin) => (
-														<Badge key={admin.id} variant="secondary">
-															{admin.username}
-														</Badge>
-													))
-												)}
-												<span className="ml-auto">{addArea(domain.id)}</span>
-											</div>
-											<AreaTable areas={domain.areas.filter(match)} accounts={byId} />
-										</TabsContent>
-									);
-								})}
-							</Tabs>
-						)}
-					</Panel>
-				) : (
-					<Panel
-						title="Khu và BQL"
-						hint="Mỗi khu có một BQL. Thêm khu mới, rồi BQL của khu tự đăng ký và chờ bạn duyệt."
-						action={
-							<div className="flex flex-wrap items-center gap-2">
-								{search}
-								{addArea(user.domain_id ?? undefined)}
-							</div>
+						const body = {
+							email: values.email.trim(),
+							username: values.username.trim(),
+							password: values.password,
+							domain_id: values.domain_id,
+						};
+						return run('domain-admin', () => adminApi.createDomainAdmin(body), 'Đã tạo quản trị domain.');
+					}}
+				/>
+			}
+		>
+			{domainAdmins.length === 0 ? (
+				<p className="py-6 text-center text-sm text-muted-foreground">Chưa có quản trị domain nào.</p>
+			) : (
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead>Tài khoản</TableHead>
+							<TableHead>Domain</TableHead>
+							<TableHead>Đăng nhập gần nhất</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{domainAdmins.map((admin) => (
+							<TableRow key={admin.id}>
+								<TableCell>
+									<p className="font-medium">{admin.username}</p>
+									<p className="text-xs text-muted-foreground">{admin.email}</p>
+								</TableCell>
+								<TableCell>{directory.find((domain) => domain.id === admin.domain_id)?.name ?? admin.domain_id}</TableCell>
+								<TableCell className="text-sm text-muted-foreground">{when(admin.last_login_at)}</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
+			)}
+		</Page>
+	) : platform ? (
+		<Page
+			title="Domain, khu và BQL"
+			hint="Domain là một đối tác tích hợp (ví dụ Vinhomes). Mỗi khu trong domain có một BQL."
+			action={
+				<div className="flex flex-wrap items-center gap-2">
+					{search}
+					<FormDialog
+						trigger={
+							<Button size="sm" variant="outline" disabled={busy !== null}>
+								<Plus /> Thêm domain
+							</Button>
 						}
-					>
-						<AreaTable areas={areas.filter(match)} accounts={byId} />
-					</Panel>
-				)}
+						title="Thêm domain"
+						description="Một đối tác tích hợp mới. Sau đó tạo quản trị domain và các khu của nó."
+						fields={[
+							{ name: 'id', label: 'Mã domain', hint: 'Chữ thường, không dấu, ví dụ vinhomes.' },
+							{ name: 'name', label: 'Tên domain' },
+						]}
+						submitLabel="Thêm domain"
+						onSubmit={(values) => run('domain', () => adminApi.saveDomain(values.id.trim(), values.name.trim()), 'Đã thêm domain.')}
+					/>
+				</div>
+			}
+		>
+			<Figures items={figures} />
+			{directory.length === 0 ? (
+				<p className="py-6 text-center text-sm text-muted-foreground">Chưa có domain nào. Thêm domain đầu tiên.</p>
+			) : (
+				<Tabs defaultValue={directory[0].id}>
+					<TabsList className="flex-wrap">
+						{directory.map((domain) => (
+							<TabsTrigger key={domain.id} value={domain.id}>
+								{domain.name}
+								<span className="ml-1.5 text-xs text-muted-foreground tabular-nums">{domain.areas.length}</span>
+							</TabsTrigger>
+						))}
+					</TabsList>
+					{directory.map((domain) => {
+						const admins = domainAdmins.filter((admin) => admin.domain_id === domain.id);
+						return (
+							<TabsContent key={domain.id} value={domain.id} className="space-y-3 pt-2">
+								<div className="flex flex-wrap items-center gap-2 text-sm">
+									<span className="text-muted-foreground">Quản trị domain:</span>
+									{admins.length === 0 ? (
+										<span className="text-muted-foreground">chưa có</span>
+									) : (
+										admins.map((admin) => (
+											<Badge key={admin.id} variant="secondary">
+												{admin.username}
+											</Badge>
+										))
+									)}
+									<span className="ml-auto">{addArea(domain.id)}</span>
+								</div>
+								<AreaTable areas={domain.areas.filter(match)} accounts={byId} />
+							</TabsContent>
+						);
+					})}
+				</Tabs>
+			)}
+		</Page>
+	) : (
+		<Page
+			title="Khu và BQL"
+			hint="Mỗi khu có một BQL. Thêm khu mới, rồi BQL của khu tự đăng ký và chờ bạn duyệt."
+			action={
+				<div className="flex flex-wrap items-center gap-2">
+					{search}
+					{addArea(user.domain_id ?? undefined)}
+				</div>
+			}
+		>
+			<Figures items={figures} />
+			<AreaTable areas={areas.filter(match)} accounts={byId} />
+		</Page>
+	);
 
-				{platform && (
-					<Panel
-						title="Quản trị domain"
-						hint="Mỗi domain có người quản trị riêng: thêm khu và duyệt BQL trong domain đó, không thấy domain khác."
-						action={
-							<FormDialog
-								trigger={
-									<Button size="sm" disabled={busy !== null || directory.length === 0}>
-										<UserPlus /> Tạo quản trị domain
-									</Button>
-								}
-								title="Tạo quản trị domain"
-								description="Tài khoản này chỉ quản lý khu và BQL của domain được chọn."
-								fields={[
-									{ name: 'domain_id', label: 'Domain', options: domainOptions },
-									{ name: 'email', label: 'Email', type: 'email' },
-									{ name: 'username', label: 'Tên đăng nhập' },
-									{ name: 'password', label: 'Mật khẩu', type: 'password', hint: 'Tối thiểu 12 ký tự.' },
-								]}
-								submitLabel="Tạo tài khoản"
-								onSubmit={async (values) => {
-									if (values.password.length < 12) {
-										toast.error('Mật khẩu cần tối thiểu 12 ký tự.');
-										return false;
-									}
-									const body = {
-										email: values.email.trim(),
-										username: values.username.trim(),
-										password: values.password,
-										domain_id: values.domain_id,
-									};
-									return run('domain-admin', () => adminApi.createDomainAdmin(body), 'Đã tạo quản trị domain.');
-								}}
-							/>
-						}
-					>
-						{domainAdmins.length === 0 ? (
-							<p className="py-6 text-center text-sm text-muted-foreground">Chưa có quản trị domain nào.</p>
-						) : (
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Tài khoản</TableHead>
-										<TableHead>Domain</TableHead>
-										<TableHead>Đăng nhập gần nhất</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{domainAdmins.map((admin) => (
-										<TableRow key={admin.id}>
-											<TableCell>
-												<p className="font-medium">{admin.username}</p>
-												<p className="text-xs text-muted-foreground">{admin.email}</p>
-											</TableCell>
-											<TableCell>{directory.find((domain) => domain.id === admin.domain_id)?.name ?? admin.domain_id}</TableCell>
-											<TableCell className="text-sm text-muted-foreground">{when(admin.last_login_at)}</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						)}
-					</Panel>
-				)}
+	return (
+		<SidebarProvider
+			className="h-screen min-h-0 bg-canvas"
+			style={{ '--sidebar-width': '16rem', '--sidebar-width-icon': '3.5rem' } as CSSProperties}
+		>
+			<AdminSidebar
+				user={user}
+				title={platform ? 'Quản trị platform' : `Quản trị ${ownDomain?.name ?? user.domain_id ?? 'domain'}`}
+				items={items}
+				section={section}
+				onSection={setSection}
+				onLogout={onLogout}
+			/>
+			<div className="flex min-w-0 flex-1 flex-col">
+				{/* Mobile only: the one way to reach the drawer. */}
+				<div className="flex h-12 shrink-0 items-center gap-2 px-2 md:hidden">
+					<SidebarTrigger />
+					<span className="text-[17px]/6 font-medium">Quản trị</span>
+				</div>
+				<div className="flex min-h-0 flex-1">{content}</div>
 			</div>
-		</div>
+		</SidebarProvider>
 	);
 }

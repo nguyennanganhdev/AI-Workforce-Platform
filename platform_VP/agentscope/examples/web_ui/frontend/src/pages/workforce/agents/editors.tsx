@@ -39,7 +39,7 @@ export function Section({
 	action?: ReactNode;
 }) {
 	return (
-		<section className="space-y-3 rounded-2xl border border-border/70 p-4">
+		<section className="space-y-3 border-t border-border/70 pt-5 first:border-t-0 first:pt-0">
 			<div className="flex items-start justify-between gap-3">
 				<div>
 					<h3 className="text-sm font-medium">{title}</h3>

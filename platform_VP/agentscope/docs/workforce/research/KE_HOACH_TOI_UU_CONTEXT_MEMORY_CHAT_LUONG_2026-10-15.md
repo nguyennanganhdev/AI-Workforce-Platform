@@ -109,7 +109,7 @@ PM chọn làm Đợt 1 và Đợt 2.
 | 1.1 Nén lịch sử riêng theo token | Xong | `WORKFORCE_PRIVATE_CONTEXT_TOKENS=16000`; không còn thông báo "sắp nén" khi dưới trần |
 | 1.2 Thu dọn kết quả tool cũ của thành viên | Xong | Kết quả > 400 ký tự của các lượt trước còn lại mã E; chỉ làm khi giải phóng ≥ 6.000 ký tự |
 | 1.3 Recall ra cuối prompt | Xong | Tin `memory_recall` ngay trước gói `shared_context` |
-| 1.4 Reasoning cố định theo vai trò | Xong | `WORKFORCE_REASONING_EFFORT_LEADER` (để trống: mặc định của model), `WORKFORCE_REASONING_EFFORT_AGENT=low` ở local |
+| 1.4 Reasoning cố định theo vai trò | **Gỡ (15/10 tối)** | Model thật từ chối: OpenAI không cho `reasoning_effort` đi cùng function tool trên Chat Completions (gpt-5.4-mini, gpt-5.5: lỗi 400, "use /v1/responses"). Mọi phiếu thật bị `needs_attention` vì lỗi này. Không còn áp cho `OpenAIChatModel`; chỉ dùng lại được khi chuyển sang Responses API (3.1) |
 | 1.5 Gọn tool Leader | Xong | Bỏ TeamDelete khỏi Leader phiếu đối tác |
 | 1.6 Học khi cư dân xác nhận | Xong | `route.config.success_close_reasons` (mặc định `resident_confirmed`); hủy không học |
 | 1.7 Chỉ số chất lượng | Xong | `GET /workforce/console/studio/quality`, đầu hộp "Hoạt động"; giá theo bảng OpenAI 15/10, đổi bằng `WORKFORCE_MODEL_PRICES` |
