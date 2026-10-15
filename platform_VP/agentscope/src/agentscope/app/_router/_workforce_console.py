@@ -15,7 +15,7 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 
 from ..._logging import logger
@@ -105,8 +105,12 @@ class GeneratedAgent(BaseModel):
     # False only for an agent whose work is coordinating teammates (TeamSay):
     # it is then complete without a tool of its own.
     needs_tools: bool = True
-    skill_name: str = Field(min_length=1, max_length=100)
-    skill_markdown: str = Field(min_length=20, max_length=50000)
+    # Knowledge bases and library skills of the manager, by id.
+    knowledge_ids: list[str] = Field(default_factory=list)
+    library_skill_ids: list[str] = Field(default_factory=list)
+    # The Builder's own SKILL.md; empty when a library skill already covers it.
+    skill_name: str = Field(default="", max_length=100)
+    skill_markdown: str = Field(default="", max_length=50000)
     tests: list[GeneratedTest] = Field(default_factory=list, max_length=5)
 
 
@@ -195,6 +199,8 @@ class ProposedAgentView(BaseModel):
     selected_tools: list[BuilderTool]
     skill_name: str
     skill_markdown: str
+    knowledge: list[dict] = Field(default_factory=list)
+    library_skills: list[dict] = Field(default_factory=list)
     evaluation: dict
     reuse_agent_id: str | None = None
     reuse_agent_name: str | None = None
@@ -490,6 +496,7 @@ async def _outline(
     tools: list[BuilderTool],
     model: ChatModelBase,
     config: ChatModelConfig,
+    library: str = "",
 ) -> tuple[BuilderOutline, int, int]:
     """Propose capability boundaries without generating agent config yet."""
     tool_json = json.dumps(
@@ -528,7 +535,7 @@ Write naturally and clearly, as a helpful human collaborator would.
                     SystemMsg(
                         name="agent_builder",
                         content=(
-                            instructions + "\nRegistered tool catalog:\n" + tool_json
+                            instructions + "\nRegistered tool catalog:\n" + tool_json + library
                         ),
                     ),
                     UserMsg(name="area_manager", content=transcript),
@@ -598,6 +605,7 @@ async def _generate(
     model: ChatModelBase,
     config: ChatModelConfig,
     reply_language: Literal["vi", "en"],
+    library: str = "",
 ) -> tuple[BuilderGeneration, int, int]:
     tool_json = json.dumps(
         [tool.model_dump(mode="json") for tool in tools],
@@ -608,7 +616,8 @@ The conversation contains an outline approved by the area manager. Generate
 exactly those reusable independent business agents; do not merge their
 capabilities into one agent. A team request is only a batch creation shortcut;
 do not pre-bind a permanent team or a ticket. You may author ONLY: name, objective,
-system_prompt, selected_tool_ids, one reusable SKILL.md and 3 tests per agent
+system_prompt, selected_tool_ids, knowledge_ids, library_skill_ids, one reusable
+SKILL.md and 3 tests per agent
 (scenario = what a customer says; expected = the behaviour to check, covering a
 normal request, an out-of-scope request and a case that needs consent or
 escalation). Tests run with the real model before the agent can change later. Select only exact
@@ -617,7 +626,11 @@ agent. Give each operational tool to the narrowest specialist that owns that
 capability; a planning/coordinator agent must call that specialist through
 TeamSay instead of receiving a duplicate tool; set needs_tools=false for an
 agent that only coordinates teammates and needs no tool of its own (true for
-every agent that has to read or change data). Never output or modify model parameters,
+every agent that has to read or change data). Attach a registered knowledge base
+(knowledge_ids) to an agent that must answer from those documents. When a
+library skill already covers the agent's way of working, list it in
+library_skill_ids and leave skill_name and skill_markdown empty instead of
+writing a new one. Use only ids from the catalogs below. Never output or modify model parameters,
 context limits, ReAct settings, timeouts, credentials, permissions or publish
 policy. The system prompt must explain when to communicate with another agent
 through TeamSay, but must not hard-code a particular future ticket. If the
@@ -652,7 +665,7 @@ LANGUAGE AND VOICE:
                     SystemMsg(
                         name="agent_builder",
                         content=(
-                            instructions + "\nRegistered tool catalog:\n" + tool_json
+                            instructions + "\nRegistered tool catalog:\n" + tool_json + library
                         ),
                     ),
                     UserMsg(name="area_manager", content=message),
@@ -670,20 +683,31 @@ LANGUAGE AND VOICE:
         _raise_builder_model_error(exc, config)
 
 
-def _seed_spec(record: AgentRecord, tests: list[dict]) -> None:
-    """Give a Builder-made agent its Agent Spec (v1) with its tests, so later
-    edits and self-improvement are tested before they are published."""
+def _seed_spec(
+    record: AgentRecord,
+    tests: list[dict],
+    knowledge: list[dict] | None = None,
+    skills: list[dict] | None = None,
+) -> None:
+    """Give a Builder-made agent its Agent Spec (v1) with its tests, knowledge
+    bases and library skills, so later edits and self-improvement are tested
+    before they are published (the runtime reads the spec's knowledge)."""
 
     from .._agent_spec import AgentSpec
     from .._service._agent_studio import ensure_spec
 
     ensure_spec(record)
-    if not tests:
+    if not (tests or knowledge or skills):
         return
-    record.data.spec["tests"] = [
-        {"scenario": test["scenario"], "expected": test["expected"]}
-        for test in tests
-    ]
+    if tests:
+        record.data.spec["tests"] = [
+            {"scenario": test["scenario"], "expected": test["expected"]}
+            for test in tests
+        ]
+    if knowledge:
+        record.data.spec["knowledge"] = [{"kb_id": item["kb_id"], "name": item.get("name", "")} for item in knowledge]
+    if skills:
+        record.data.spec["skills"] = [{"skill_id": item["skill_id"], "name": item.get("name", "")} for item in skills]
     record.data.spec = AgentSpec.model_validate(record.data.spec).model_dump(mode="json")
     for version in record.data.versions:
         version["spec"] = record.data.spec
@@ -1212,6 +1236,8 @@ def _agent_checks(
     selected: list[BuilderTool],
     invalid: list[str],
     duplicates: list[str],
+    library_skills: list[dict] | None = None,
+    unknown_library_ids: list[str] | None = None,
 ) -> dict[str, bool]:
     """What a generated agent must have before it can be published."""
 
@@ -1222,8 +1248,30 @@ def _agent_checks(
         # A coordinator works through its teammates; every other agent needs a
         # registered tool for what it does.
         "capability_has_tools": bool(selected) or not agent.needs_tools,
-        "skill": len(agent.skill_markdown.strip()) >= 40,
+        # Knowledge bases and library skills must exist in the manager's library.
+        "registered_library": not unknown_library_ids,
+        # Its own SKILL.md, or a library skill that already covers the work.
+        "skill": len(agent.skill_markdown.strip()) >= 40 or bool(library_skills),
     }
+
+
+async def _library(storage: StorageBase, user_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
+    """The manager's knowledge bases and enabled library skills, by id."""
+
+    from .._service._agent_studio import knowledge_catalog, skill_catalog
+
+    return await knowledge_catalog(storage, user_id), await skill_catalog(storage, user_id)
+
+
+def _library_note(knowledge: dict[str, dict], skills: dict[str, dict]) -> str:
+    """The library as the Builder reads it, after the tool catalog."""
+
+    return (
+        "\nRegistered knowledge bases (attach by kb_id):\n"
+        + json.dumps(list(knowledge.values()), ensure_ascii=False)[:6000]
+        + "\nLibrary skills (reuse by skill_id):\n"
+        + json.dumps(list(skills.values()), ensure_ascii=False)[:6000]
+    )
 
 
 @workforce_console_router.post("/builder/prepare", response_model=ProposalView)
@@ -1245,6 +1293,8 @@ async def prepare_builder(
         previous_transcript or body.message,
     )
     tools = await _catalog(storage, user_id)
+    knowledge, skills = await _library(storage, user_id)
+    library = _library_note(knowledge, skills)
     model = await get_model(user_id, body.chat_model_config, access)
     transcript = await _prepare_builder_memory(
         model=model,
@@ -1262,6 +1312,7 @@ async def prepare_builder(
                 tools,
                 model,
                 body.chat_model_config,
+                library,
             )
         except _BuilderPromptBudgetError as exc:
             await _record_builder_prompt_measurement(
@@ -1357,6 +1408,7 @@ async def prepare_builder(
             model,
             body.chat_model_config,
             reply_language,
+            library,
         )
     except _BuilderPromptBudgetError as exc:
         await _record_builder_prompt_measurement(
@@ -1411,6 +1463,13 @@ async def prepare_builder(
             claimed_tool_ids,
         )
         selected = [by_id[item] for item in exclusive_tool_ids]
+        attached = [knowledge[item] for item in dict.fromkeys(agent.knowledge_ids) if item in knowledge]
+        reused_skills = [skills[item] for item in dict.fromkeys(agent.library_skill_ids) if item in skills]
+        unknown = [
+            item
+            for item in [*agent.knowledge_ids, *agent.library_skill_ids]
+            if item not in knowledge and item not in skills
+        ]
         reuse = max(
             existing,
             key=lambda item: _similarity(
@@ -1427,7 +1486,7 @@ async def prepare_builder(
             if reuse is not None
             else 0.0
         )
-        checks = _agent_checks(agent, selected, invalid, duplicate_tool_ids)
+        checks = _agent_checks(agent, selected, invalid, duplicate_tool_ids, reused_skills, unknown)
         passed = all(checks.values()) or reuse_score >= 0.72
         any_blocked = any_blocked or not passed
         views.append(
@@ -1439,8 +1498,10 @@ async def prepare_builder(
                     agent.system_prompt,
                 ),
                 selected_tools=selected,
-                skill_name=_slug(agent.skill_name),
-                skill_markdown=_normalise_skill(agent),
+                skill_name=_slug(agent.skill_name) if agent.skill_markdown.strip() else "",
+                skill_markdown=_normalise_skill(agent) if agent.skill_markdown.strip() else "",
+                knowledge=attached,
+                library_skills=reused_skills,
                 tests=[test.model_dump() for test in agent.tests],
                 evaluation={
                     "passed": passed,
@@ -1491,6 +1552,7 @@ async def prepare_builder(
 @workforce_console_router.post("/builder/publish", response_model=PublishResponse)
 async def publish_builder(
     body: PublishRequest,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
@@ -1579,7 +1641,7 @@ async def publish_builder(
                 evaluation=item.evaluation,
             ),
         )
-        _seed_spec(record, item.tests)
+        _seed_spec(record, item.tests, item.knowledge, item.library_skills)
         await storage.upsert_agent(user_id, record)
         session = await _primary_session(
             storage,
@@ -1617,12 +1679,19 @@ async def publish_builder(
             client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
             client.enable_tools = list(dict.fromkeys(enabled_tools))
             await workspace.add_mcp(client, agent_id=record.id, session_id=session.id)
-        await workspace.add_skill_archive(
-            _archive(item.skill_name, item.skill_markdown),
-            "tar",
-            item.skill_name,
-            agent_id=record.id,
-        )
+        if item.skill_markdown.strip():
+            await workspace.add_skill_archive(
+                _archive(item.skill_name, item.skill_markdown),
+                "tar",
+                item.skill_name,
+                agent_id=record.id,
+            )
+        if item.library_skills:
+            from ._workforce_studio import _skill_installer
+
+            install = _skill_installer(request, storage, user_id, record.id)
+            for skill in item.library_skills:
+                await install(workspace, skill["skill_id"])
         result.append(
             PublishedAgent(
                 agent_id=record.id,

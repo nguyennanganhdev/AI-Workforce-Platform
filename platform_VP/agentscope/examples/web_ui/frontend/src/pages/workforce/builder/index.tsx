@@ -98,12 +98,28 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 						)}
 					</div>
 				</section>
-				<details className="xl:col-span-2 rounded-lg border bg-background p-3">
-					<summary className="cursor-pointer text-sm font-medium">Skill: {proposal.skill_name}</summary>
-					<pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
-						{proposal.skill_markdown}
-					</pre>
-				</details>
+				{(proposal.knowledge?.length ?? 0) + (proposal.library_skills?.length ?? 0) > 0 && (
+					<section className="xl:col-span-2 flex flex-wrap items-center gap-2 text-xs">
+						{proposal.knowledge?.map((kb) => (
+							<Badge key={kb.kb_id} variant="secondary">
+								Kho tri thức: {kb.name}
+							</Badge>
+						))}
+						{proposal.library_skills?.map((skill) => (
+							<Badge key={skill.skill_id} variant="secondary">
+								Dùng lại skill: {skill.name}
+							</Badge>
+						))}
+					</section>
+				)}
+				{proposal.skill_markdown && (
+					<details className="xl:col-span-2 rounded-lg border bg-background p-3">
+						<summary className="cursor-pointer text-sm font-medium">Skill: {proposal.skill_name}</summary>
+						<pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+							{proposal.skill_markdown}
+						</pre>
+					</details>
+				)}
 				{reused && (
 					<div className="xl:col-span-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
 						<CircleAlert className="mt-0.5 size-4 text-amber-600" />

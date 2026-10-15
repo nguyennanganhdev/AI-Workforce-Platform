@@ -16,6 +16,10 @@ export interface ProposedAgent {
 	selected_tools: BuilderTool[];
 	skill_name: string;
 	skill_markdown: string;
+	/** Knowledge bases of the manager attached by the Builder. */
+	knowledge?: { kb_id: string; name: string; description?: string }[];
+	/** Library skills reused instead of a written SKILL.md. */
+	library_skills?: { skill_id: string; name: string; description?: string }[];
 	evaluation: {
 		passed?: boolean;
 		score?: number;
