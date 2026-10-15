@@ -3,7 +3,14 @@
 import asyncio
 import json
 
-from src.agent.loop import EMERGENCY_FAILED_REPLY, EMERGENCY_REPLY, FILED_REPLY, SAFE_REPLY, run_agent, violations
+from src.agent.loop import (
+    EMERGENCY_FAILED_REPLY,
+    EMERGENCY_REPLY,
+    FILED_REPLY,
+    SAFE_REPLY,
+    run_agent,
+    violations,
+)
 
 HISTORY = [{"role": "resident", "text": "Phí gửi xe máy tháng bao nhiêu?"}]
 
@@ -14,6 +21,7 @@ class Toolbox:
         self.calls, self.evidence, self.passages = [], [], {}
         self.status, self.emergency, self.acted = None, False, False
         self.emergency_failed, self.question, self.filed_code = False, None, None
+        self.progress = None
 
     async def call(self, name, arguments):
         self.calls.append((name, arguments))

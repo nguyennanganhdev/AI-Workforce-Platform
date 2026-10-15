@@ -4,11 +4,11 @@
 
 from uuid import UUID, uuid4
 
-from test_resident_contract import sql
+from test_domain_database import app, delegate, operation
+from test_resident_contract import CATEGORY, image, key, sql
 from test_resident_contract import (
     database as database,  # noqa: PLC0414 -- pytest fixture export
 )
-from test_domain_database import app, delegate, operation
 
 
 def say(c, channel, text):
@@ -17,14 +17,48 @@ def say(c, channel, text):
     return sent.json()["id"]
 
 
+def test_explicit_multi_item_report_is_handed_over_with_its_photo_when_model_omits_item(database, monkeypatch):
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "2c" * 32)
+    with app(database) as c:
+        place = operation(c, "get_verified_resident_context")[0]["residences"][0]
+        channel = c.post("/resident/chats", json={"title": "Hai hạng mục"}).json()["id"]
+        photo = c.post(f"/resident/chats/{channel}/photos?filename=issue.png&mimeType=image/png",
+                       content=image(), headers=key())
+        assert photo.status_code == 201, photo.text
+        text = "Ở bếp vòi lavabo bị rò nước từ sáng; đèn LED trên trần nhấp nháy liên tục. Kiểm tra cả hai giúp tôi."
+        sent = c.post(f"/resident/chats/{channel}/messages", json={
+            "text": text, "client_message_id": str(uuid4()), "file_ids": [photo.json()["id"]]})
+        assert sent.status_code == 201, sent.text
+        source = sent.json()["id"]
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, source)["token"]}
+        report = c.post(f"/internal/reception/chats/{channel}/intake", headers=bearer, json={
+            "message_id": source, "details": {"symptom": "bị rò nước", "area": "bếp"}})
+        assert report.status_code == 200, report.text
+        assert report.json()["ready"] and report.json()["question"] is None
+        assert report.json()["description"] == text and report.json()["file_ids"] == [photo.json()["id"]]
+        draft, _ = operation(c, "create_ticket_draft", {
+            "channel_id": channel, "domain_id": place["domain_id"], "building_id": place["building_id"],
+            "unit_id": place["unit_id"], "category_id": CATEGORY, "source_message_id": source})
+        target = {"channel_id": channel, "draft_id": draft["draftId"]}
+        operation(c, "update_ticket_incident", {**target, "fields": {
+            "source_message_id": source, "facts": report.json()["facts"]}})
+        operation(c, "submit_ticket_assessment", {**target, "assessment": {
+            "priority": "normal", "severity": "minor", "reason": "Resident report"}})
+        handoff, _ = operation(c, "handoff_ticket", {**target, "plan_required": False})
+        assert handoff["accepted"], handoff
+        ticket = UUID(handoff["ticket"]["id"])
+        assert sql(database, "select description from tickets where id=$1", ticket)[0]["description"] == text
+        assert [str(row["file_id"]) for row in sql(database, "select file_id from ticket_files where ticket_id=$1", ticket)] == [photo.json()["id"]]
+
+
 def test_intake_remembers_prior_details_but_never_reads_a_future_resident_message(database, monkeypatch):
     monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "2c" * 32)
     with app(database) as c:
         channel = c.post("/resident/chats", json={"title": "Hai hạng mục"}).json()["id"]
-        first = say(c, channel, "Nhà tôi rò nước và đèn chập chờn")
+        first = say(c, channel, "Nhà tôi rò nước và mất điện")
         bearer = {"Authorization": "Bearer " + delegate(c, channel, first)["token"]}
         check = f"/internal/reception/chats/{channel}/intake"
-        report = c.post(check, headers=bearer, json={"message_id": first, "details": {"symptom": "rò nước và đèn chập chờn"}})
+        report = c.post(check, headers=bearer, json={"message_id": first, "details": {"symptom": "rò nước và mất điện"}})
         assert report.status_code == 200, report.text
         assert report.json()["missing"] == "item"
         second = say(c, channel, "Cả hai ở phòng bếp")
@@ -40,7 +74,7 @@ def test_intake_remembers_prior_details_but_never_reads_a_future_resident_messag
         bearer = {"Authorization": "Bearer " + delegate(c, channel, future)["token"]}
         report = c.post(check, headers=bearer, json={"message_id": future, "details": {"item": "Chân vòi lavabo"}})
         assert report.status_code == 200, report.text
-        assert report.json()["ready"] and "đèn chập chờn" in report.json()["description"]
+        assert report.json()["ready"] and "mất điện" in report.json()["description"]
         assert {fact["key"] for fact in report.json()["facts"]} == {"symptom", "area", "item"}
 
 
