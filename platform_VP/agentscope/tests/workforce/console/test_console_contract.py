@@ -14,6 +14,8 @@ from agentscope.app._router._workforce_console import (
     BuilderOutline,
     BuilderTool,
     GeneratedAgent,
+    PlannedAgent,
+    PlannedAgentView,
     PrepareRequest,
     ProposalView,
     _agent_tool_settings,
@@ -132,6 +134,22 @@ def _generated_agent(
     )
 
 
+def _approved_outline_for(*agents: GeneratedAgent) -> BuilderOutline:
+    return BuilderOutline(
+        agents=[
+            PlannedAgent(
+                name=agent.name,
+                objective=(
+                    agent.behavior_contract.requirement.business_profile.objective
+                ),
+                suggested_tool_ids=agent.selected_tool_ids,
+                suggested_knowledge_base_ids=agent.selected_knowledge_base_ids,
+            )
+            for agent in agents
+        ],
+    )
+
+
 def test_agent_schema_does_not_expose_server_owned_builder_fields() -> None:
     schema = AgentData.model_json_schema()
 
@@ -201,23 +219,55 @@ def test_skill_normalisation_adds_safe_front_matter() -> None:
     assert "## Quyền trả lời" in skill
 
 
-def test_contract_compiler_covers_runtime_failure_scenarios() -> None:
+def test_contract_compiler_keeps_role_delta_and_runtime_policy_separate() -> None:
     agent = _generated_agent(role="coordinator")
 
-    prompt = _compile_system_prompt(agent)
+    authored = _compile_system_prompt(agent)
+    runtime = governed_system_prompt("business", authored)
     checks = _contract_checks(agent)
 
     assert all(checks.values())
-    assert "advice bao gồm read và transform" in prompt
-    assert "external action tạo, cập nhật, xóa" in prompt
-    assert "monitor là theo dõi trạng thái" in prompt
-    assert "Không có dữ liệu" in prompt
-    assert "Công cụ lỗi" in prompt
-    assert "Chỉ có kết quả một phần" in prompt
-    assert "không được suy diễn" in prompt
-    assert "Không xin Leader phê duyệt" in prompt
-    assert "Khi khách @mention trực tiếp" in prompt
-    assert "Không gửi lời hứa, báo cáo tiến độ" in prompt
+    assert "VAI TRÒ NGHIỆP VỤ" in authored
+    assert "Phạm vi:" in authored
+    assert agent.behavior_contract.no_data_behavior in authored
+    assert agent.behavior_contract.peer_coordination_policy in authored
+    assert 'Input: {"request":"string"}' in authored
+    assert len(authored) < 5_000
+    for duplicated_policy in (
+        "advice bao gồm read và transform",
+        "external action tạo, cập nhật, xóa",
+        "monitor là theo dõi trạng thái",
+        "Một truy vấn lookup rỗng",
+        "Khi khách @mention trực tiếp",
+        "Không gửi lời hứa, báo cáo tiến độ",
+    ):
+        assert duplicated_policy not in authored
+    assert "Advice, lookup and action are different intents" in runtime
+    assert "A result or answer is completed" in runtime
+    assert runtime.count("WORKFORCE RUNTIME EXECUTION POLICY:") == 1
+
+
+def test_builder_contract_schema_limits_prompt_bloat() -> None:
+    schema = GeneratedAgent.model_json_schema()
+    contract = schema["$defs"]["AgentBehaviorContract"]
+    properties = contract["properties"]
+
+    assert properties["deliverables"]["maxItems"] == 5
+    assert properties["operational_facts"]["maxItems"] == 10
+    assert properties["no_data_behavior"]["maxLength"] == 300
+    assert properties["synthesis_policy"]["maxLength"] == 300
+
+
+def test_semantic_validation_rejects_oversized_authored_prompt() -> None:
+    payload = _generated_agent().model_dump(mode="json")
+    payload["behavior_contract"]["requirement"]["business_profile"]["objective"] = (
+        "x" * 4_000
+    )
+    agent = GeneratedAgent.model_validate(payload)
+
+    issues = _generation_issues(BuilderGeneration(agents=[agent]), [], [])
+
+    assert any("authored system prompt quá dài" in issue for issue in issues)
 
 
 def test_contract_compiler_reuses_canonical_async_completion_condition() -> None:
@@ -280,7 +330,117 @@ def test_semantic_validation_rejects_read_only_action_contract() -> None:
     assert any("action_requires_approval" in issue for issue in issues)
 
 
+def test_semantic_validation_enforces_the_approved_outline() -> None:
+    expected = _generated_agent(
+        name="Agent đã duyệt",
+        execution_mode="tool_backed",
+        selected_tool_ids=["travel:book"],
+    )
+    expected_payload = expected.model_dump(mode="json")
+    expected_payload["selected_knowledge_base_ids"] = ["travel-policy"]
+    expected = GeneratedAgent.model_validate(expected_payload)
+    changed_payload = expected.model_dump(mode="json")
+    changed_payload["name"] = "Agent bị đổi tên"
+    changed_payload["selected_tool_ids"] = []
+    changed_payload["selected_knowledge_base_ids"] = []
+    changed_payload["behavior_contract"]["requirement"]["business_profile"][
+        "objective"
+    ] = "Objective bị thay đổi"
+    changed_payload["execution_mode"] = "context_only"
+    changed = GeneratedAgent.model_validate(changed_payload)
+    extra = _generated_agent(name="Agent phát sinh")
+
+    issues = _generation_issues(
+        BuilderGeneration(agents=[changed, extra]),
+        [
+            BuilderTool(
+                id="travel:book",
+                mcp_id="travel",
+                mcp_name="Travel",
+                tool_name="book",
+            ),
+        ],
+        [BuilderKnowledgeBase(id="travel-policy", name="Travel policy")],
+        _approved_outline_for(expected),
+    )
+
+    assert any("Số agent không khớp" in issue for issue in issues)
+    assert any("tên phải giữ nguyên" in issue for issue in issues)
+    assert any("objective phải giữ nguyên" in issue for issue in issues)
+    assert any("tool phải giữ nguyên" in issue for issue in issues)
+    assert any("Knowledge Base phải giữ nguyên" in issue for issue in issues)
+
+
 class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
+    async def test_generate_repairs_new_cross_field_error_on_second_pass(self) -> None:
+        repaired = _generated_agent()
+        repaired_generation = BuilderGeneration(agents=[repaired])
+        invalid = repaired_generation.model_dump(mode="json")
+        invalid_requirement = invalid["agents"][0]["behavior_contract"]["requirement"]
+        invalid_requirement["business_profile"]["capabilities"] = [
+            "different-capability",
+        ]
+        invalid_tracking = repaired_generation.model_dump(mode="json")
+        invalid_tracking_requirement = invalid_tracking["agents"][0][
+            "behavior_contract"
+        ]["requirement"]
+        invalid_tracking_requirement["tracking_intent"] = "track_to_completion"
+
+        class _Model:
+            context_size = 100_000
+
+            def __init__(self):
+                self.outputs = [
+                    invalid,
+                    invalid_tracking,
+                    repaired_generation.model_dump(mode="json"),
+                ]
+                self.calls = 0
+                self.messages = []
+
+            async def count_tokens(self, messages, tools):
+                del messages, tools
+                return 100
+
+            async def generate_structured_output(self, messages, schema):
+                assert isinstance(schema, dict)
+                self.messages.append(messages)
+                output = self.outputs[self.calls]
+                self.calls += 1
+                return SimpleNamespace(content=output)
+
+        model = _Model()
+        generation, _tokens, _reserve = await _generate(
+            "Tạo agent tư vấn",
+            _approved_outline_for(repaired),
+            [],
+            [],
+            model,  # type: ignore[arg-type]
+            ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4.1",
+                parameters={},
+            ),
+        )
+
+        self.assertEqual(3, model.calls)
+        self.assertIn(
+            "Approved outline (authoritative JSON)",
+            str(model.messages[0][0].content),
+        )
+        self.assertIn(repaired.name, str(model.messages[0][0].content))
+        capability = generation.agents[0].behavior_contract.requirement.capabilities[0]
+        self.assertEqual("recommend", capability.capability)
+        self.assertIn(
+            "capabilities must belong to the business profile",
+            str(model.messages[1][-1].content),
+        )
+        self.assertIn(
+            "tracking requires an external-operation capability",
+            str(model.messages[2][-1].content),
+        )
+
     async def test_generate_repairs_invalid_contract_once(self) -> None:
         invalid = _generated_agent(request_modes=("action",))
         repaired = _generated_agent(
@@ -312,6 +472,7 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
         model = _Model()
         generation, _tokens, _reserve = await _generate(
             "Tạo agent thực hiện hành động",
+            _approved_outline_for(repaired),
             [
                 BuilderTool(
                     id="travel:book",
@@ -715,6 +876,26 @@ def test_builder_proposal_round_trips_through_persisted_message() -> None:
         status="needs_input",
         assistant_message="Đề xuất Plan Agent và Hotel Agent.",
         clarification_question="Bạn có chốt định hướng này không?",
+        planned_agents=[
+            PlannedAgentView(
+                name="Plan Agent",
+                objective="Lập kế hoạch từ kết quả của các specialist.",
+                suggested_tools=[
+                    BuilderTool(
+                        id="travel:plan",
+                        mcp_id="travel",
+                        mcp_name="Travel",
+                        tool_name="plan",
+                    ),
+                ],
+                suggested_knowledge_bases=[
+                    BuilderKnowledgeBase(
+                        id="travel-policy",
+                        name="Travel policy",
+                    ),
+                ],
+            ),
+        ],
         chat_model_config=ChatModelConfig(
             type="openai_credential",
             credential_id="credential-1",
@@ -736,3 +917,8 @@ def test_builder_proposal_round_trips_through_persisted_message() -> None:
     assert restored is not None
     assert restored.conversation_id == "builder-conversation-1"
     assert restored.status == "needs_input"
+    assert restored.planned_agents[0].suggested_tools[0].id == "travel:plan"
+    assert (
+        restored.planned_agents[0].suggested_knowledge_bases[0].id
+        == "travel-policy"
+    )

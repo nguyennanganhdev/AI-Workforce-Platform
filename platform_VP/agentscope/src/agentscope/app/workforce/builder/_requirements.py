@@ -2,12 +2,14 @@
 
 import asyncio
 import json
-from typing import Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
 from pydantic import Field, ValidationError, model_validator
 
 from ..contracts import WorkforceModel
 from .async_capabilities import AgentRequirement, BuildRequirements
+
+_ContractItem = Annotated[str, Field(min_length=1, max_length=240)]
 
 
 class AgentBehaviorContract(WorkforceModel):
@@ -19,18 +21,24 @@ class AgentBehaviorContract(WorkforceModel):
         min_length=1,
         max_length=3,
     )
-    deliverables: tuple[str, ...] = Field(min_length=1, max_length=20)
-    completion_criteria: tuple[str, ...] = Field(min_length=1, max_length=20)
-    exclusions: tuple[str, ...] = Field(min_length=1, max_length=20)
-    operational_facts: tuple[str, ...] = Field(min_length=1, max_length=30)
-    no_data_behavior: str = Field(min_length=20, max_length=4000)
-    tool_error_behavior: str = Field(min_length=20, max_length=4000)
-    partial_result_behavior: str = Field(min_length=20, max_length=4000)
-    customer_input_policy: str = Field(min_length=20, max_length=4000)
-    peer_coordination_policy: str = Field(min_length=20, max_length=4000)
-    internal_reporting_policy: str = Field(min_length=20, max_length=4000)
-    synthesis_policy: str = Field(min_length=20, max_length=4000)
-    output_sections: tuple[str, ...] = Field(min_length=1, max_length=20)
+    deliverables: tuple[_ContractItem, ...] = Field(min_length=1, max_length=5)
+    completion_criteria: tuple[_ContractItem, ...] = Field(
+        min_length=1,
+        max_length=5,
+    )
+    exclusions: tuple[_ContractItem, ...] = Field(min_length=1, max_length=5)
+    operational_facts: tuple[_ContractItem, ...] = Field(
+        min_length=1,
+        max_length=10,
+    )
+    no_data_behavior: str = Field(min_length=20, max_length=300)
+    tool_error_behavior: str = Field(min_length=20, max_length=300)
+    partial_result_behavior: str = Field(min_length=20, max_length=300)
+    customer_input_policy: str = Field(min_length=20, max_length=300)
+    peer_coordination_policy: str = Field(min_length=20, max_length=300)
+    internal_reporting_policy: str = Field(min_length=20, max_length=300)
+    synthesis_policy: str = Field(min_length=20, max_length=300)
+    output_sections: tuple[_ContractItem, ...] = Field(min_length=1, max_length=5)
 
     @model_validator(mode="after")
     def validate_contract(self) -> "AgentBehaviorContract":

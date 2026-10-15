@@ -66,6 +66,11 @@ _BUILDER_AGENT_ID = "workforce-builder"
 _LEADER_NAME = "Workforce Leader"
 _BUILDER_MEMORY_KEY = "workforce_builder_memory_v1"
 _BUILDER_SUMMARY_ATTEMPTS = 2
+_BUILDER_OUTLINE_TIMEOUT_SECONDS = 180
+_BUILDER_GENERATION_TIMEOUT_SECONDS = 180
+_BUILDER_REPAIR_TIMEOUT_SECONDS = 180
+_BUILDER_SEMANTIC_REPAIR_ATTEMPTS = 2
+_BUILDER_AUTHORED_PROMPT_MAX_CHARS = 5_000
 # Builder prompts also carry the MCP catalog plus a large output schema, so
 # compact earlier than runtime private memory's 80% hard threshold.
 _BUILDER_SUMMARY_TRIGGER_RATIO = 0.60
@@ -376,14 +381,24 @@ def _completion_criteria(contract: AgentBehaviorContract) -> tuple[str, ...]:
 
 
 def _compile_system_prompt(agent: GeneratedAgent) -> str:
-    """Compile the model-authored contract into a deterministic runtime role."""
+    """Compile only role-specific deltas; server policy is appended separately."""
 
     contract = agent.behavior_contract
     profile = contract.requirement.business_profile
     modes = ", ".join(contract.request_modes)
-    return f"""VAI TRÒ VÀ PHẠM VI
-Bạn là {agent.name}, một {contract.role} nghiệp vụ. Mục tiêu của bạn là:
-{profile.objective}
+    input_contract = json.dumps(
+        profile.input_contract,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    output_contract = json.dumps(
+        profile.output_contract,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"""VAI TRÒ NGHIỆP VỤ
+Bạn là {agent.name} ({contract.role}). {profile.objective}
+Phạm vi: {profile.business_scope}
 
 Trách nhiệm:
 {_bullets(profile.responsibilities)}
@@ -391,64 +406,34 @@ Trách nhiệm:
 Năng lực:
 {_bullets(profile.capabilities)}
 
-Không được sở hữu hoặc thực hiện:
+Ngoài phạm vi:
 {_bullets(contract.exclusions)}
 
-DELIVERABLE VÀ ĐIỀU KIỆN HOÀN THÀNH
-Bạn phải tạo ra:
+KẾT QUẢ
+Chế độ: {modes}
+Deliverable:
 {_bullets(contract.deliverables)}
 
-Chỉ coi công việc hoàn thành khi:
+Hoàn thành khi:
 {_bullets(_completion_criteria(contract))}
 
-PHÂN LOẠI YÊU CẦU
-Các chế độ được phép: {modes}.
-- advice bao gồm read và transform không gây side effect; không tự thêm yêu cầu
-  về trạng thái hiện thời hoặc biến yêu cầu thành external action.
-- lookup là đọc dữ liệu từ nguồn bên ngoài; chỉ nói đã kiểm tra khi nguồn hoặc
-  công cụ tương ứng thực sự trả kết quả thành công.
-- action là external action tạo, cập nhật, xóa, gửi hoặc kích hoạt thay đổi bên
-  ngoài; chỉ thực hiện khi khách yêu cầu đúng hành động và runtime đã lấy consent
-  cho chính lần gọi đó.
-- monitor là theo dõi trạng thái thay đổi theo thời gian; chỉ dùng khi contract
-  có completion condition và runtime có nguồn trạng thái hoặc sự kiện phù hợp.
-
-BẰNG CHỨNG
-Các dữ kiện vận hành phải có bằng chứng:
+Dữ kiện cần bằng chứng:
 {_bullets(contract.operational_facts)}
 
-Input contract: {json.dumps(profile.input_contract, ensure_ascii=False)}
-Output contract: {json.dumps(profile.output_contract, ensure_ascii=False)}
+Input: {input_contract}
+Output: {output_contract}
 
-XỬ LÝ KẾT QUẢ KHÔNG HOÀN HẢO
-- Không có dữ liệu: {contract.no_data_behavior}
-- Công cụ lỗi: {contract.tool_error_behavior}
-- Chỉ có kết quả một phần: {contract.partial_result_behavior}
-- Một truy vấn lookup rỗng chỉ chứng minh không có bản ghi khớp đúng truy vấn đó
-  trong nguồn hiện tại; không được suy diễn rằng thực thể hoặc lựa chọn không
-  tồn tại.
-- Không lặp lại truy vấn không đổi sau cùng một kết quả rỗng hoặc lỗi.
-
-PHỐI HỢP VÀ QUYỀN TRẢ LỜI
-- Thông tin cần từ khách: {contract.customer_input_policy}
-- Phối hợp peer: {contract.peer_coordination_policy}
-- Báo cáo nội bộ: {contract.internal_reporting_policy}
+NHÁNH NGHIỆP VỤ RIÊNG
+- No data: {contract.no_data_behavior}
+- Tool error: {contract.tool_error_behavior}
+- Partial: {contract.partial_result_behavior}
+- Input khách hàng: {contract.customer_input_policy}
+- Peer: {contract.peer_coordination_policy}
+- Báo cáo: {contract.internal_reporting_policy}
 - Tổng hợp: {contract.synthesis_policy}
-- Không xin Leader phê duyệt cách xử lý nghiệp vụ. Tự thực hiện nhánh đã quy
-  định trong contract; nếu bị chặn thì gửi kết quả một phần hoặc blocker cụ thể.
-- Khi khách @mention trực tiếp, bạn giữ quyền trả lời, thu thập dependency từ
-  peer rồi tự tổng hợp và trả khách. Khi làm collaborator nội bộ, gửi kết quả
-  hoàn chỉnh cho reply owner hiện tại.
 
-ĐẦU RA
-Trả lời tự nhiên bằng tiếng Việt, ưu tiên kết luận và đề xuất dùng được. Trình
-bày các phần sau khi phù hợp:
-{_bullets(contract.output_sections)}
-
-`result` hoặc `answer` phải là sản phẩm đã hoàn thành hoặc blocker cuối cùng có
-kết quả một phần. Không gửi lời hứa, báo cáo tiến độ, “tôi sẽ…”, “xin chờ…” hay
-diễn đạt lại nhiệm vụ như một kết quả. Tách rõ dữ kiện đã xác minh, khuyến nghị,
-tính toán, phần chưa xác minh, xung đột và lỗi."""
+TRÌNH BÀY
+{_bullets(contract.output_sections)}"""
 
 
 def _compile_skill_body(agent: GeneratedAgent) -> str:
@@ -545,7 +530,6 @@ def _contract_checks(agent: GeneratedAgent) -> dict[str, bool]:
             and contract.internal_reporting_policy.strip()
         ),
         "output_contract": bool(profile.output_contract and contract.output_sections),
-        "no_progress_as_result": ("Không gửi lời hứa" in _compile_system_prompt(agent)),
         "coordinator_synthesis": (
             contract.role != "coordinator" or bool(contract.synthesis_policy.strip())
         ),
@@ -566,12 +550,41 @@ def _generation_issues(
     generation: BuilderGeneration,
     tools: list[BuilderTool],
     knowledge_bases: list[BuilderKnowledgeBase],
+    approved_outline: BuilderOutline | None = None,
 ) -> list[str]:
     """Validate one complete Builder generation before compilation/publish."""
 
     if not generation.agents:
+        if approved_outline is not None:
+            return ["Generation không được bỏ các agent trong outline đã duyệt."]
         return [] if generation.clarification_question else ["Không có agent nào."]
     issues: list[str] = []
+    if approved_outline is not None:
+        expected_agents = approved_outline.agents
+        if len(generation.agents) != len(expected_agents):
+            issues.append(
+                "Số agent không khớp outline đã duyệt: "
+                f"cần {len(expected_agents)}, nhận {len(generation.agents)}.",
+            )
+        for index, (expected, agent) in enumerate(
+            zip(expected_agents, generation.agents),
+            start=1,
+        ):
+            prefix = f"Agent {index}"
+            if agent.name != expected.name:
+                issues.append(
+                    f"{prefix}: tên phải giữ nguyên là {expected.name!r}.",
+                )
+            if _agent_objective(agent) != expected.objective:
+                issues.append(f"{prefix}: objective phải giữ nguyên theo outline.")
+            if set(agent.selected_tool_ids) != set(expected.suggested_tool_ids):
+                issues.append(f"{prefix}: tool phải giữ nguyên theo outline.")
+            if set(agent.selected_knowledge_base_ids) != set(
+                expected.suggested_knowledge_base_ids,
+            ):
+                issues.append(
+                    f"{prefix}: Knowledge Base phải giữ nguyên theo outline.",
+                )
     try:
         BuildRequirements(
             mode="single" if len(generation.agents) == 1 else "batch",
@@ -613,6 +626,13 @@ def _generation_issues(
         for check, passed in _contract_checks(agent).items():
             if not passed:
                 issues.append(f"{prefix}: thiếu contract {check}")
+        prompt_chars = len(_compile_system_prompt(agent))
+        if prompt_chars > _BUILDER_AUTHORED_PROMPT_MAX_CHARS:
+            issues.append(
+                f"{prefix}: authored system prompt quá dài "
+                f"({prompt_chars} > {_BUILDER_AUTHORED_PROMPT_MAX_CHARS} ký tự); "
+                "rút gọn các trường và loại bỏ ý lặp",
+            )
     return issues
 
 
@@ -781,7 +801,12 @@ async def _builder_structured_call(
             reserved_output_tokens,
             model.context_size,
         )
-    response = await model.generate_structured_output(messages, schema)
+    # Pydantic cross-field validators are not representable in JSON Schema.
+    # Let the Builder turn those failures into one informed repair attempt.
+    response = await model.generate_structured_output(
+        messages,
+        schema.model_json_schema(),
+    )
     return response, prompt_tokens, reserved_output_tokens
 
 
@@ -842,7 +867,7 @@ language. Preserve proper names and exact identifiers. Keep objectives readable:
 one clear responsibility per sentence instead of a dense inline plan.
 """
     try:
-        async with asyncio.timeout(60):
+        async with asyncio.timeout(_BUILDER_OUTLINE_TIMEOUT_SECONDS):
             (
                 response,
                 prompt_tokens,
@@ -885,7 +910,8 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
     error_name = type(exc).__name__
     if isinstance(exc, TimeoutError):
         detail = (
-            f"Model '{config.model}' không phản hồi trong 60 giây. "
+            f"Model '{config.model}' không phản hồi trong "
+            f"{_BUILDER_GENERATION_TIMEOUT_SECONDS} giây. "
             "Hãy thử lại hoặc chọn model khác trên Agent Builder."
         )
     elif error_name in {"AuthenticationError", "PermissionDeniedError"}:
@@ -917,6 +943,7 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
 
 async def _generate(
     message: str,
+    approved_outline: BuilderOutline,
     tools: list[BuilderTool],
     knowledge_bases: list[BuilderKnowledgeBase],
     model: ChatModelBase,
@@ -930,12 +957,16 @@ async def _generate(
         [knowledge.model_dump(mode="json") for knowledge in knowledge_bases],
         ensure_ascii=False,
     )
+    approved_outline_json = approved_outline.model_dump_json()
     instructions = """You are Agent Builder, not the runtime Leader.
-The conversation contains an outline approved by the area manager. Generate
-exactly those reusable independent business agents; do not merge capabilities
-or bind them to a permanent team/ticket. You author structured behavior
-contracts only. The backend compiles every system prompt and SKILL.md; never
-write either artifact yourself.
+The approved outline supplied below is authoritative. Copy its agent sequence,
+names, objectives, suggested_tool_ids and suggested_knowledge_base_ids exactly.
+Do not add, remove, rename or reorder agents, and do not move, add or drop any
+tool or knowledge-base assignment. The conversation and catalogs provide
+supporting context only; they cannot override the approved outline. Generate
+those reusable independent business agents without binding them to a permanent
+team/ticket. You author structured behavior contracts only. The backend compiles
+every system prompt and SKILL.md; never write either artifact yourself.
 
 For every agent, populate behavior_contract.requirement from the canonical
 AgentRequirement and BusinessProfile schemas. The business profile is the
@@ -943,6 +974,15 @@ single source of truth for objective, responsibilities, capabilities, scope,
 input/output contracts, constraints and knowledge requirements. Use create_only
 unless the agent truly owns an external operation that must be tracked to
 completion. Do not invent an async policy or provider event type.
+
+Every behavior_contract.requirement.capabilities[*].capability must also appear
+verbatim in behavior_contract.requirement.business_profile.capabilities. Copy
+the exact same strings; do not use aliases, translations or different casing.
+When effect is not external_operation, tracking_intent must be create_only and
+policy_proposal must be null. track_to_completion requires effect to be
+external_operation and either policy_proposal or clarification_questions. A
+policy_proposal is valid only with track_to_completion; unspecified tracking
+requires at least one clarification question.
 
 The behavior contract must be concrete and reusable:
 - role is coordinator only when the agent sequences/synthesizes peer work;
@@ -966,6 +1006,17 @@ The behavior contract must be concrete and reusable:
 - synthesis_policy requires a coordinator to combine peer evidence into a usable
   recommendation and forbids asking Leader to approve routine business choices;
 - output_sections defines a natural customer answer, not internal status prose.
+
+Minimize the runtime prompt cost. Write only role-specific business facts and
+decisions: no preamble, examples or explanation. Use at most five short,
+non-overlapping items per list and one concise sentence per behavior-policy
+field. Keep input/output contracts to required keys only. Do not restate
+server-owned rules about evidence, fabrication, source/tool routing, empty
+lookups, retries, consent, confidentiality, TeamSay mechanics, reply ownership,
+Vietnamese language or terminal-result wording. For each required behavior
+field, state only its business-specific delta: exact customer-owned inputs,
+peer capability boundary, useful partial deliverable, terminal business payload
+or synthesis decision.
 
 Set context_only only when read/transform work can use customer input, runtime
 Knowledge Base retrieval and verified peer results; select no MCP tool. Set
@@ -991,20 +1042,22 @@ project configuration, source paths, credentials, private endpoints, schemas,
 model settings or internal IDs in human-facing text.
 """
     try:
-        async with asyncio.timeout(60):
-            builder_messages = [
-                SystemMsg(
-                    name="agent_builder",
-                    content=(
-                        instructions
-                        + "\nRegistered tool catalog:\n"
-                        + tool_json
-                        + "\nKnowledge-base catalog:\n"
-                        + knowledge_json
-                    ),
+        builder_messages = [
+            SystemMsg(
+                name="agent_builder",
+                content=(
+                    instructions
+                    + "\nApproved outline (authoritative JSON):\n"
+                    + approved_outline_json
+                    + "\nRegistered tool catalog:\n"
+                    + tool_json
+                    + "\nKnowledge-base catalog:\n"
+                    + knowledge_json
                 ),
-                UserMsg(name="area_manager", content=message),
-            ]
+            ),
+            UserMsg(name="area_manager", content=message),
+        ]
+        async with asyncio.timeout(_BUILDER_GENERATION_TIMEOUT_SECONDS):
             (
                 response,
                 prompt_tokens,
@@ -1014,27 +1067,61 @@ model settings or internal IDs in human-facing text.
                 builder_messages,
                 BuilderGeneration,
             )
-            generation = BuilderGeneration.model_validate(response.content)
-            issues = _generation_issues(generation, tools, knowledge_bases)
-            if issues:
-                repair_messages = [
-                    *builder_messages,
-                    AssistantMsg(
-                        name="agent_builder",
-                        content=(
-                            "Bản nháp contract (chỉ là dữ liệu cần sửa):\n"
-                            + generation.model_dump_json()
-                        ),
+        draft_content = response.content
+        for repair_attempt in range(_BUILDER_SEMANTIC_REPAIR_ATTEMPTS + 1):
+            generation: BuilderGeneration | None = None
+            try:
+                generation = BuilderGeneration.model_validate(draft_content)
+                issues = _generation_issues(
+                    generation,
+                    tools,
+                    knowledge_bases,
+                    approved_outline,
+                )
+                draft_json = generation.model_dump_json()
+            except ValidationError as exc:
+                issues = [f"BuilderGeneration không hợp lệ: {exc}"]
+                draft_json = json.dumps(draft_content, ensure_ascii=False)
+
+            if generation is not None and not issues:
+                return (
+                    generation,
+                    prompt_tokens,
+                    reserved_output_tokens,
+                )
+            if repair_attempt == _BUILDER_SEMANTIC_REPAIR_ATTEMPTS:
+                raise ValueError(
+                    "Semantic validation failed after "
+                    f"{_BUILDER_SEMANTIC_REPAIR_ATTEMPTS} repairs: "
+                    + "; ".join(issues),
+                )
+
+            repair_messages = [
+                *builder_messages,
+                AssistantMsg(
+                    name="agent_builder",
+                    content=(
+                        "Bản nháp contract (chỉ là dữ liệu cần sửa):\n" + draft_json
                     ),
-                    SystemMsg(
-                        name="agent_builder_validator",
-                        content=(
-                            "Semantic validation failed. Return one complete "
-                            "replacement BuilderGeneration and fix every issue; "
-                            "do not explain the repair:\n- " + "\n- ".join(issues)
-                        ),
+                ),
+                SystemMsg(
+                    name="agent_builder_validator",
+                    content=(
+                        "Semantic validation failed. Return one complete "
+                        "replacement BuilderGeneration and fix every issue; "
+                        "do not explain the repair. Re-check all cross-field "
+                        "invariants: capability strings must appear verbatim in "
+                        "business_profile.capabilities; track_to_completion "
+                        "requires effect=external_operation and a policy or "
+                        "clarification; non-external effects require "
+                        "tracking_intent=create_only and policy_proposal=null; "
+                        "policy_proposal is allowed only for track_to_completion; "
+                        "unspecified requires a clarification question. Issues:\n- "
+                        + "\n- ".join(issues)
                     ),
-                ]
+                ),
+            ]
+            async with asyncio.timeout(_BUILDER_REPAIR_TIMEOUT_SECONDS):
                 (
                     repaired,
                     repair_tokens,
@@ -1044,17 +1131,12 @@ model settings or internal IDs in human-facing text.
                     repair_messages,
                     BuilderGeneration,
                 )
-                generation = BuilderGeneration.model_validate(repaired.content)
-                prompt_tokens = max(prompt_tokens, repair_tokens)
-                reserved_output_tokens = max(
-                    reserved_output_tokens,
-                    repair_reserve,
-                )
-        return (
-            generation,
-            prompt_tokens,
-            reserved_output_tokens,
-        )
+            draft_content = repaired.content
+            prompt_tokens = max(prompt_tokens, repair_tokens)
+            reserved_output_tokens = max(
+                reserved_output_tokens,
+                repair_reserve,
+            )
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - provider errors become HTTP 502
@@ -1711,9 +1793,65 @@ async def prepare_builder(
         )
         return proposal
 
+    approved_proposal = _stored_proposal(messages)
+    if (
+        approved_proposal is None
+        or approved_proposal.status != "needs_input"
+        or not approved_proposal.planned_agents
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Không tìm thấy outline đang chờ xác nhận. "
+                "Hãy tạo hoặc chỉnh lại đề xuất trước khi build."
+            ),
+        )
+    approved_outline = BuilderOutline(
+        agents=[
+            PlannedAgent(
+                name=agent.name,
+                objective=agent.objective,
+                suggested_tool_ids=[tool.id for tool in agent.suggested_tools],
+                suggested_knowledge_base_ids=[
+                    knowledge.id for knowledge in agent.suggested_knowledge_bases
+                ],
+            )
+            for agent in approved_proposal.planned_agents
+        ],
+    )
+    approved_tool_ids = {
+        tool_id
+        for agent in approved_outline.agents
+        for tool_id in agent.suggested_tool_ids
+    }
+    approved_knowledge_ids = {
+        knowledge_id
+        for agent in approved_outline.agents
+        for knowledge_id in agent.suggested_knowledge_base_ids
+    }
+    missing_tool_ids = approved_tool_ids - {tool.id for tool in tools}
+    missing_knowledge_ids = approved_knowledge_ids - {
+        knowledge.id for knowledge in knowledge_bases
+    }
+    if missing_tool_ids or missing_knowledge_ids:
+        logger.warning(
+            "Approved Builder outline references unavailable resources "
+            "(tools=%s, knowledge_bases=%s)",
+            sorted(missing_tool_ids),
+            sorted(missing_knowledge_ids),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Tool hoặc Knowledge Base trong outline đã duyệt không còn khả dụng. "
+                "Hãy tạo lại outline trước khi build."
+            ),
+        )
+
     try:
         generation, prompt_tokens, reserved_output_tokens = await _generate(
             transcript,
+            approved_outline,
             tools,
             knowledge_bases,
             model,
@@ -1765,7 +1903,12 @@ async def prepare_builder(
     views: list[ProposedAgentView] = []
     any_blocked = False
     claimed_tool_ids: set[str] = set()
-    semantic_issues = _generation_issues(generation, tools, knowledge_bases)
+    semantic_issues = _generation_issues(
+        generation,
+        tools,
+        knowledge_bases,
+        approved_outline,
+    )
     for agent in generation.agents:
         objective = _agent_objective(agent)
         compiled_prompt = _compile_system_prompt(agent)
