@@ -39,6 +39,12 @@ GENERIC = ("nước", "điện", "sự cố", "vấn đề", "có", "đang")
 # An acknowledgement says nothing about the incident: "ok" answers no question.
 FILLER = ("ok", "oke", "okay", "okie", "ừ", "ừm", "uh", "vâng", "dạ", "được", "rồi", "nhé", "ạ", "yes", "no", "không", "thế",
           "vậy", "đấy", "đó", "bạn", "cảm ơn", "xin chào", "chào", "hi", "hello")
+# A bounded fallback for explicit household objects/precise spots, never a diagnosis.
+ITEM_NAMES = ("chân vòi", "vòi lavabo", "vòi nước", "vòi", "lavabo", "bồn cầu", "bồn rửa", "đường ống", "ống",
+              "đèn led", "đèn", "ổ cắm", "ổ điện", "công tắc", "cầu dao", "aptomat", "máy nước nóng", "bình nóng lạnh",
+              "máy lạnh", "điều hòa", "quạt", "khóa cửa", "khóa", "cửa", "thang máy", "trần", "tường", "sàn")
+ITEM = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(s) for s in sorted(ITEM_NAMES, key=len, reverse=True)) + r")(?!\w)", re.IGNORECASE)
+WORKING_ITEM = re.compile(r"\s+(?:(?:thì|vẫn)\s+)?(?:(?:không|chưa|ko)\s+(?:bị\s+)?(?:hỏng|hư|vỡ|tắc|kẹt)|bình thường|hoạt động bình thường|vẫn (?:sáng|chạy|hoạt động))", re.IGNORECASE)
 
 
 def fold(value: str) -> str:
@@ -81,6 +87,29 @@ def _question(missing: str, symptom: str, area: str) -> str:
     return f"Sự cố ở thiết bị hay vị trí cụ thể nào{place}? Nếu chưa xác định được, bạn cứ nói chưa rõ nhé."
 
 
+def explicit_items(messages: list[dict[str, Any]], asked: int) -> list[dict[str, str]]:
+    """Recover only literal objects in a fault clause or a brief clarification answer.
+
+    A missing model field must not make the resident repeat text already stored.
+    Words outside this vocabulary still work through the normal verified claims.
+    """
+    claims = []
+    pending = any(fact.get("key") == "symptom" for message in messages for fact in message.get("intake_facts", []) if isinstance(fact, dict))
+    for index, message in enumerate(messages):
+        text = unicodedata.normalize("NFC", message["text"])
+        short_answer = (asked > 0 or pending) and index == len(messages) - 1 and len(text) <= 200 and not text.rstrip().endswith("?")
+        for clause in re.split(r"[,;.!?\n]", text):
+            if re.match(r"\s*(?:có phải|liệu|hay là|có thể|phải chăng|nếu)\b", fold(clause)):
+                continue
+            if not short_answer and not any(found(word.strip(), clause) for word in FAULT + ("nhấp nháy", "chập chờn", "không sáng")):
+                continue
+            for match in ITEM.finditer(clause):
+                value = match.group()
+                if found(value, clause) and not WORKING_ITEM.match(clause[match.end():]):
+                    claims.append({"key": "item", "value": value, "source_message_id": str(message["id"])})
+    return claims
+
+
 def assess(messages: list[dict[str, Any]], claims: list[dict[str, Any]], *, source_message_id: str | None,
            kind: str = "incident", emergency: bool = False, asked: int = 0) -> dict[str, Any]:
     """Decide what is recorded and whether it may be handed over.
@@ -96,7 +125,9 @@ def assess(messages: list[dict[str, Any]], claims: list[dict[str, Any]], *, sour
                 if isinstance(fact, dict)]
     facts_by_key: dict[str, dict[str, Any]] = {}
     rejected: list[str] = []
-    for claim in previous + claims:
+    has_symptom = any(fact.get("key") == "symptom" for fact in previous + claims)
+    recovered = explicit_items(messages, asked) if has_symptom and not emergency else []
+    for claim in previous + recovered + claims:
         key, value, cited = claim.get("key"), claim.get("value"), claim.get("source_message_id")
         if not isinstance(key, str) or not isinstance(value, str) or not value.strip():
             rejected.append(str(key))
@@ -114,9 +145,15 @@ def assess(messages: list[dict[str, Any]], claims: list[dict[str, Any]], *, sour
         needle = fold(value).strip(" .,;:!?\"'“”")
         if any((start := fold(message["text"]).find(needle)) >= 0 and negated(fold(message["text"]), start)
                for message in later):
-            facts_by_key.pop(key, None)
+            current_fact = facts_by_key.get(key)
+            if current_fact and fold(current_fact["value"]) == fold(value) and current_fact["source_message_id"] == str(source["id"]):
+                facts_by_key.pop(key, None)
             rejected.append(key)
             continue
+        current_fact = facts_by_key.get(key)
+        if (key == "item" and current_fact and current_fact["source_message_id"] == str(source["id"])
+                and fold(value) in fold(current_fact["value"])):
+            continue  # Do not reduce a verified precise item to a shorter dictionary match.
         facts_by_key[key] = {"key": key, "value": value.strip(), "source": "customer_report", "source_message_id": str(source["id"])}
     facts = list(facts_by_key.values())
 

@@ -330,6 +330,32 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         other_task = {**items[0], "task_id": "different"}
         self.assertEqual(len(self.service._compact_tool_facts([*items, other_task])), 2)
 
+    def test_claim_gate_reads_a_quoted_reply_as_words_not_as_a_name(self):
+        support = ('E3: {"staff": [{"name": "Trần Bình", "skills": ["plumbing"]}]}',)
+        proposal = (
+            'Câu đề xuất: "Bạn vui lòng giữ khu vực dưới bồn rửa khô ráo và chờ '
+            'kỹ thuật tới kiểm tra." Người phù hợp: Trần Bình.'
+        )
+        self.assertEqual((), unsupported_claim_anchors(proposal, support))
+        # Identifiers are matched whole: a ticket id or a unit is not an amount,
+        # and "…ea0 đang" is not "0 đồng"; an invented job id is still caught.
+        ticket = ('E1: {"ticket_id": "cleaning--3cb7ea0", "status": "open"}', "Căn: S1.01-1201")
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Phiếu cleaning--3cb7ea0 đang mở, căn S1.01-1201 cần vệ sinh hành lang.", ticket
+            ),
+        )
+        self.assertEqual(("id:wo-9999",), unsupported_claim_anchors("Đã giao việc WO-9999.", ticket))
+        self.assertEqual(("number:500000",), unsupported_claim_anchors("Phí 500.000 đồng.", ticket))
+        # Citing the evidence codes is not a claim of the number 3.
+        self.assertEqual((), unsupported_claim_anchors("E1, E2, E3 đã đủ để kết luận.", support))
+        # A short quoted name still has to be in the evidence.
+        self.assertEqual(
+            ("name:nhà hàng sen",),
+            unsupported_claim_anchors('Đặt bàn ở "Nhà hàng Sen".', support),
+        )
+
     def test_claim_gate_understands_vietnamese_amounts_and_budget_arithmetic(self):
         support = (
             "Ngân sách 4 triệu, cần để dư 500 nghìn.",

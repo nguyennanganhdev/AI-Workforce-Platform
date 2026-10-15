@@ -7,8 +7,6 @@ import {
 	Hammer,
 	KeyRound,
 	LibraryBig,
-	PanelLeftClose,
-	PanelLeftOpen,
 	Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -27,11 +25,9 @@ import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
-	SidebarRail,
 	useSidebar,
 } from '@/components/ui/sidebar';
 import { useTranslation } from '@/i18n/useI18n';
-import { cn } from '@/lib/utils';
 
 interface SettingsItem {
 	/** i18n key of the label. */
@@ -88,7 +84,7 @@ export function SettingsSidebar() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const { t } = useTranslation();
-	const { isMobile, setOpenMobile, open, toggleSidebar } = useSidebar();
+	const { isMobile, setOpenMobile } = useSidebar();
 
 	const go = (path: string) => {
 		navigate(path);
@@ -153,29 +149,8 @@ export function SettingsSidebar() {
 				))}
 			</SidebarContent>
 			<SidebarFooter className="border-t border-sidebar-border p-2">
-				{!isMobile && (
-					<SidebarMenu>
-						<SidebarMenuItem>
-							<SidebarMenuButton
-								className={cn(
-									ITEM,
-									'text-[var(--cue-text-secondary,var(--muted-foreground))]',
-								)}
-								tooltip={t('shell.expandSidebar')}
-								aria-expanded={open}
-								onClick={toggleSidebar}
-							>
-								{open ? <PanelLeftClose /> : <PanelLeftOpen />}
-								<span>
-									{t(open ? 'shell.collapseSidebar' : 'shell.expandSidebar')}
-								</span>
-							</SidebarMenuButton>
-						</SidebarMenuItem>
-					</SidebarMenu>
-				)}
 				<AccountMenu />
 			</SidebarFooter>
-			<SidebarRail />
 		</Sidebar>
 	);
 }

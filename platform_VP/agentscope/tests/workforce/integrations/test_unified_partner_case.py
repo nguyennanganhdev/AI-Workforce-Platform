@@ -1230,6 +1230,38 @@ class TicketTitleTest(unittest.TestCase):
         self.assertTrue(long.endswith("…"))
 
 
+class TicketBriefTest(unittest.TestCase):
+    SPEC = {
+        "fields": ["ticket_id", "Tiêu đề", "Mô tả của cư dân", "Căn", "response_due_at"],
+        "request": ["Tiêu đề", "Mô tả của cư dân"],
+        "facts": ["Căn"],
+    }
+    HANDOVER = (
+        "ticket_id: T-77\nhandover_version: v1.1\nTiêu đề: Rò nước bồn rửa\n"
+        "Mô tả của cư dân: Rò nước bồn rửa, nước chảy ra sàn\nCăn: S1-1205\n"
+        "response_due_at: unknown\nKhông xác định lại cư dân/căn hộ."
+    )
+
+    def test_the_leader_reads_only_the_declared_fields(self):
+        from agentscope.app.workforce.integrations.unified._runner import ticket_brief
+
+        brief, card = ticket_brief(self.HANDOVER, self.SPEC)
+        self.assertEqual(
+            "ticket_id: T-77\nTiêu đề: Rò nước bồn rửa\n"
+            "Mô tả của cư dân: Rò nước bồn rửa, nước chảy ra sàn\nCăn: S1-1205",
+            brief,
+        )
+        # The description repeats the title, so the card shows it alone.
+        self.assertEqual({"request": "Rò nước bồn rửa, nước chảy ra sàn", "facts": ["S1-1205"]}, card)
+
+    def test_without_a_declaration_or_a_handover_the_text_passes_through(self):
+        from agentscope.app.workforce.integrations.unified._runner import ticket_brief
+
+        self.assertEqual((self.HANDOVER, None), ticket_brief(self.HANDOVER, None))
+        self.assertEqual(("Nước vẫn chảy", None), ticket_brief("Nước vẫn chảy", self.SPEC))
+        self.assertEqual((None, None), ticket_brief(None, self.SPEC))
+
+
 class PartnerFactTest(unittest.TestCase):
     def test_a_partner_result_enters_the_room_as_a_labelled_preview(self):
         from agentscope.app._service._chat import _PARTNER_FACT_CHARS, _partner_fact

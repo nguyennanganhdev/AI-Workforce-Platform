@@ -23,6 +23,8 @@ import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
+import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
+import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
 import { McpPanel } from '@/components/panel/McpPanel';
@@ -95,6 +97,8 @@ interface ChatViewportProps {
 	 * session's name instead.
 	 */
 	headerSlot?: ReactNode;
+	/** A partner ticket of the Leader page: an empty session says so. */
+	ticketView?: boolean;
 }
 
 /** Maximum number of panels stacked in a single dock column. */
@@ -194,6 +198,7 @@ export function ChatViewport({
 	agentName,
 	onOpenAgentSettings,
 	headerSlot,
+	ticketView = false,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
@@ -403,6 +408,30 @@ export function ChatViewport({
 		},
 		[team],
 	);
+
+	// The room's agents: a leading `@name` sends the message to that agent.
+	const mentions = useMemo(
+		() =>
+			(team?.members ?? []).map(({ agent }) => ({
+				id: agent.id,
+				name: cleanName(agent.data.name),
+				insert: `${completeTeamMention(`@${agent.data.name}`) ?? `@${agent.data.name} `}`,
+			})),
+		[team, completeTeamMention],
+	);
+	// Names to portraits, for the room's message cards ("Leader" is the team's leader).
+	const roster = useMemo(
+		() =>
+			new Map([
+				...[...(team?.leader_agent ? [team.leader_agent] : []), ...(team?.members.map(({ agent }) => agent) ?? [])].map(
+					(agent) => [cleanName(agent.data.name).toLocaleLowerCase(), agent.id] as const,
+				),
+				...(team?.leader_agent ? [['leader', team.leader_agent.id] as const] : []),
+			]),
+		[team],
+	);
+	// The room's log (members' reports and tool calls), shared by cards and panel.
+	const room = useRoom(team?.team.session_id ?? null);
 
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
 		agentId,
@@ -798,7 +827,9 @@ export function ChatViewport({
 			: undefined;
 
 	return (
-		<>
+		<TicketViewContext.Provider value={ticketView}>
+		<TeamRosterContext.Provider value={roster}>
+		<RoomContext.Provider value={room}>
 			<SessionWorkspace snapshot={office}>
 				<main className="flex size-full">
 					<ResizablePanelGroup orientation="horizontal">
@@ -879,6 +910,7 @@ export function ChatViewport({
 											disabled={!sessionId || configPending}
 											onChange={handlePermissionModeChange}
 										/>
+
 										{/* Quick toggles for the two panels used most —
 									    team (who is working) and plan (what they are
 									    doing) — then the full list behind the menu. An
@@ -987,6 +1019,7 @@ export function ChatViewport({
 										cwd={view?.session.config.cwd ?? null}
 										onCwdChange={handleCwdChange}
 										git={workspaceStatus?.git ?? null}
+										mentions={mentions}
 										onRefreshGit={refetchWorkspaceStatus}
 										phase={phase}
 										disabled={selectedModel === null}
@@ -1091,6 +1124,8 @@ export function ChatViewport({
 				onOpenChange={setCredentialOpen}
 				onCreated={() => setCredentialRefetchTrigger((n) => n + 1)}
 			/>
-		</>
+		</RoomContext.Provider>
+		</TeamRosterContext.Provider>
+		</TicketViewContext.Provider>
 	);
 }

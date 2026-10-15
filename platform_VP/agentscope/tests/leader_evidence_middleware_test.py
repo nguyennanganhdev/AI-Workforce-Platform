@@ -39,7 +39,7 @@ class _SharedContext:
     async def pending_user_question(self, *args):
         return None
 
-    async def collaboration_review(self, *args):
+    async def collaboration_review(self, *args, **_kwargs):
         return []
 
     async def unsupported_customer_reply_claims(self, *args):

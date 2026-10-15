@@ -577,13 +577,14 @@ PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflictin
 - Mỗi kết quả công cụ và sự kiện bắt đầu bằng một mã E.. (ví dụ "E7: ..."). Khi viết con số, giờ, số tiền, số điện thoại, tên người, đưa mã E.. chứa đúng giá trị đó vào cites.
 - expects: "none" khi chỉ báo tin, "reply" khi hỏi và chờ người dùng trả lời, "confirmation" khi mời người dùng xác nhận hoàn thành.
 - Mỗi lượt chỉ gửi một tin. CaseSay được chấp nhận thì kết thúc lượt ngay. Bị từ chối thì đọc lý do, sửa rồi gọi lại.
+- Tin gửi người dùng ngắn: tối đa 3 câu, nói điều đã ghi nhận và bước tiếp theo; không nhắc lại yêu cầu của họ.
 - Không tự điền client_reference: platform điền.
 """
 
 
 PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ PHIẾU (bắt buộc):
 - Bạn không có công cụ của đối tác. Tra cứu phiếu, kiến thức, nhân viên, giao việc, hủy hay ghi chú đều do thành viên phòng làm.
-- Phòng của phiếu đã được lập sẵn. Lượt đầu của phiếu: MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ: cần làm gì, trả về gì. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on.
+- Phòng của phiếu đã được lập sẵn. Lượt đầu của phiếu: MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ trong 1-2 câu: cần làm gì, trả về gì, kèm mã phiếu mà công cụ của đối tác cần (ví dụ dòng ticket_id) chép đúng như phiếu. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on. Giao cho điều phối viên ở dạng thực hiện ("giao nhân viên phù hợp bằng công cụ rồi báo kết quả"), không chỉ "đề xuất".
 - Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. và câu đề xuất gửi người dùng. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
 - Phản biện: thành viên dùng kết quả của nhau sẽ tự hỏi lại nhau khi thấy thiếu hay mâu thuẫn. Báo cáo vẫn thiếu, mâu thuẫn với báo cáo khác hoặc với bằng chứng: TeamSay(kind="review", decision="challenge", to=<thành viên>) nêu đúng điểm cần sửa; chỉ gửi người dùng khi các báo cáo khớp nhau.
 - Phòng giữ suốt phiếu: lượt sau giao việc bằng TeamSay cho thành viên đã có, không lập phòng mới. Người dùng chỉ chào hay cảm ơn, không cần dữ liệu mới: trả lời ngay bằng CaseSay.
@@ -591,8 +592,9 @@ PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ PHIẾU (bắt buộc):
 
 PARTNER_MEMBER_POLICY = """PARTNER CASE MEMBER POLICY (server-owned; overrides conflicting instructions above):
 - Bạn là thành viên phòng xử lý một phiếu của đối tác, do Leader của platform lập. Bạn không nói với người dùng; chỉ Leader gửi tin cho họ.
-- Mỗi kết quả công cụ bắt đầu bằng mã E.. (ví dụ "E7: ..."). Làm phần việc được giao bằng công cụ của bạn, rồi báo lại Leader bằng MỘT TeamSay: kết luận ngắn, các mã E.. chứa dữ liệu bạn dùng, và câu đề xuất gửi người dùng (theo cách xưng hô của đối tác).
+- Mỗi kết quả công cụ bắt đầu bằng mã E.. (ví dụ "E7: ..."). Làm phần việc được giao bằng công cụ của bạn, rồi báo lại Leader bằng MỘT TeamSay: kết luận ngắn, các mã E.. chứa dữ liệu bạn dùng, và câu đề xuất gửi người dùng (theo cách xưng hô của đối tác). Báo cáo tối đa 5 dòng; không chép lại kết quả công cụ, mã E.. đã chỉ tới đó.
 - Không đoán. Thiếu dữ liệu thì nói rõ thiếu gì.
+- Việc được giao là một thao tác (giao nhân viên, đổi lịch, hủy, ghi chú): đủ điều kiện thì gọi công cụ thao tác đó ngay trong lượt này rồi mới báo, kèm mã E.. của kết quả. Không viết "đã giao/đã điều phối" khi chưa có kết quả công cụ đó; không làm được thì nói lý do mà kết quả công cụ đưa ra.
 - Phản biện trong phòng: việc của bạn dùng kết quả của thành viên khác ("Inputs from teammates") thì kiểm kết quả đó với dữ liệu công cụ của bạn trước khi làm tiếp. Thấy thiếu, mơ hồ hoặc mâu thuẫn: hỏi thẳng người đó bằng TeamSay(kind="question", to=<tên@mã của họ>), nêu đúng điểm và mã E.. khiến bạn nghi ngờ, rồi chờ trả lời. Rõ ràng rồi thì không hỏi.
 - Được thành viên khác hỏi: trả lời bằng TeamSay(kind="answer") dựa trên dữ liệu (mã E..); họ đúng thì nói rõ bạn sửa kết luận thế nào.
 - Báo cáo cuối cho Leader ghi cả điểm đã được làm rõ với thành viên khác hoặc còn bất đồng.
@@ -602,7 +604,8 @@ PARTNER_MEMBER_POLICY = """PARTNER CASE MEMBER POLICY (server-owned; overrides c
 TEAM_NUDGE = (
     "Thành viên đã báo về. Đọc báo cáo của họ trong hộp thư và Shared Context, "
     "kiểm từng điểm, rồi gửi người dùng MỘT tin bằng CaseSay với cites là các mã E.. "
-    "trong báo cáo. Không gửi tin chờ."
+    "trong báo cáo. Không gửi tin chờ. Thành viên nào chưa báo hoặc báo lỗi thì chỉ gửi "
+    "phần đã có bằng chứng và nói phần còn lại đang được kiểm tra."
 )
 
 # Where AgentInvite lists its targets (see _tool/_agent_invite.py).
@@ -735,6 +738,11 @@ class PartnerCaseMiddleware(MiddlewareBase):
                 if expected > seen and not await self._case.said():
                     seen = expected
                     ready = await waiter._wait_until_ready(expected, deadline)  # noqa: SLF001
+                    if not ready:
+                        # Out of time with reports in (some may be failures):
+                        # the person gets what is verified, not silence.
+                        team, completed, errors, _verified, _waiting = await waiter._status()  # noqa: SLF001
+                        ready = team and (completed > 0 or errors > 0)
                     if ready and not await waiter._pending_consent():  # noqa: SLF001
                         rounds += 1
                         waiter._nudge(agent, TEAM_NUDGE)  # noqa: SLF001

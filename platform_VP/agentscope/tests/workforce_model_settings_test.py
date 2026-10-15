@@ -92,3 +92,25 @@ class BackgroundTierTest(TestCase):
         with self.assertRaises(ValueError):
             asyncio.run(wrapped.generate_structured_output(messages=[]))
         self.assertEqual(1, model.calls)
+
+
+class ResponsesApiTest(TestCase):
+    def test_openai_uses_the_responses_api_unless_told_otherwise(self) -> None:
+        from agentscope.model import OpenAIResponseModel
+
+        with patch.dict(os.environ, {"OPENAI_CHAT_API": ""}):
+            self.assertIs(OpenAIResponseModel, OpenAICredential.get_chat_model_class())
+        with patch.dict(os.environ, {"OPENAI_CHAT_API": "chat_completions"}):
+            self.assertIs(OpenAIChatModel, OpenAICredential.get_chat_model_class())
+
+    def test_the_effort_reaches_reasoning_models_on_the_responses_api(self) -> None:
+        from agentscope.model import OpenAIResponseModel
+
+        credential = OpenAICredential(api_key="k")
+        leader = OpenAIResponseModel(credential=credential, model="gpt-5.4-mini")
+        old = OpenAIResponseModel(credential=credential, model="gpt-4o")
+        with patch.dict(os.environ, {"WORKFORCE_REASONING_EFFORT_LEADER": "low"}):
+            _apply_reasoning_effort(leader, "leader")
+            _apply_reasoning_effort(old, "leader")
+        self.assertEqual((True, "low"), (leader.parameters.thinking_enable, leader.parameters.reasoning_effort))
+        self.assertEqual((False, None), (old.parameters.thinking_enable, old.parameters.reasoning_effort))

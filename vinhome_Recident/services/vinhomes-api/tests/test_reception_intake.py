@@ -21,8 +21,8 @@ def test_a_room_and_a_symptom_are_not_enough_and_the_photo_is_kept():
 
 
 def test_two_items_keep_verified_details_across_short_answers_without_restarting():
-    messages = said("Nhà tôi rò nước và đèn chập chờn", files=["f1"])
-    first = assess(messages, claims(symptom="rò nước và đèn chập chờn"), source_message_id="m1")
+    messages = said("Nhà tôi rò nước và mất điện", files=["f1"])
+    first = assess(messages, claims(symptom="rò nước và mất điện"), source_message_id="m1")
     messages[0]["intake_facts"] = first["facts"]
     messages += said("Cả hai ở phòng bếp")
     messages[-1]["id"] = "m2"
@@ -32,7 +32,7 @@ def test_two_items_keep_verified_details_across_short_answers_without_restarting
     messages.append({"id": "m3", "text": "Chân vòi lavabo, bóng đèn trên bàn bếp", "file_ids": []})
     third = assess(messages, claims(item="Chân vòi lavabo"), source_message_id="m3")
     assert third["ready"] and third["question"] is None
-    assert third["description"] == "Nhà tôi rò nước và đèn chập chờn\nCả hai ở phòng bếp\nChân vòi lavabo, bóng đèn trên bàn bếp"
+    assert third["description"] == "Nhà tôi rò nước và mất điện\nCả hai ở phòng bếp\nChân vòi lavabo, bóng đèn trên bàn bếp"
     assert third["file_ids"] == ["f1"]
 
 
@@ -43,7 +43,8 @@ def test_later_denial_invalidates_a_cached_detail_and_invented_detail_is_not_cac
     for fact in messages[0]["intake_facts"]:
         fact["source_message_id"] = "m1"
     missing = assess(messages, [], source_message_id="m2")
-    assert missing["missing"] == "item" and "item" in missing["rejected"]
+    assert missing["ready"] and "item" in missing["rejected"]
+    assert next(fact["value"] for fact in missing["facts"] if fact["key"] == "item") in messages[1]["text"]
     corrected = assess(messages, claims(item="chân vòi lavabo", since="từ sáng"), source_message_id="m2")
     assert corrected["ready"]
     assert next(fact["value"] for fact in corrected["facts"] if fact["key"] == "item") == "chân vòi lavabo"
@@ -100,7 +101,8 @@ def test_after_two_questions_the_report_goes_to_a_person_as_it_is():
 def test_a_denied_cause_is_not_a_reported_one():
     messages = said("Không phải ống vỡ, nước rò ở chân vòi")
     result = assess(messages, claims(symptom="nước rò", item="ống vỡ"), source_message_id="m1")
-    assert "item" in result["rejected"] and not result["ready"]
+    assert "item" in result["rejected"] and result["ready"]
+    assert next(fact["value"] for fact in result["facts"] if fact["key"] == "item") == "chân vòi"
     right = assess(messages, claims(symptom="nước rò", item="chân vòi"), source_message_id="m1")
     assert right["ready"] and right["description"] == "Không phải ống vỡ, nước rò ở chân vòi"
     assert not found("mùi khét", "Máy nước nóng không nóng, không có mùi khét")
@@ -119,7 +121,8 @@ def test_a_fact_must_be_in_the_message_it_cites():
              {"key": "item", "value": "chân vòi lavabo", "source_message_id": "m1"},
              {"key": "area", "value": "Nhà tắm", "source_message_id": "another-chat"}]
     result = assess(messages, cited, source_message_id="m2")
-    assert sorted(result["rejected"]) == ["area", "item"] and not result["ready"]
+    assert sorted(result["rejected"]) == ["area", "item"] and result["ready"]
+    assert next(fact["source_message_id"] for fact in result["facts"] if fact["key"] == "item") == "m2"
 
 
 def test_an_emergency_is_not_held_back_and_gains_no_detail():

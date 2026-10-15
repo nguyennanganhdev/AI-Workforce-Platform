@@ -140,6 +140,8 @@ export const workforceApi = {
 		),
 	listBuilderConversations: () =>
 		client.get<BuilderConversationSummary[]>('/workforce/console/builder/conversations'),
+	deleteBuilderConversation: (conversationId: string) =>
+		client.delete(`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}`),
 	getBuilderConversation: (conversationId: string) =>
 		client.get<BuilderConversation>(
 			`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}`,

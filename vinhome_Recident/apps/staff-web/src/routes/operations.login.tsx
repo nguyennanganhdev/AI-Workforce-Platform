@@ -5,7 +5,8 @@ import { loginUrl } from "@/features/vinhomes-operations/auth/login-url";
 export const Route = createFileRoute("/operations/login")({
   // Everyone signs in on the same page. This one is kept only for the UI preview.
   beforeLoad: () => {
-    if (import.meta.env.VITE_ENABLE_UI_PREVIEW !== "true") throw redirect({ href: loginUrl() });
+    // /login belongs to the resident app: same origin still requires a new document.
+    if (import.meta.env.VITE_ENABLE_UI_PREVIEW !== "true") throw redirect({ href: loginUrl(), reloadDocument: true });
   },
   component: StaffLoginPage,
 });

@@ -7,7 +7,7 @@ import {
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
 import { GitBranch, TriangleAlert } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
 import { DiffStats } from './tool-renderers/_shared';
@@ -16,7 +16,8 @@ import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
 import { ChoiceCard } from '@/components/chat/ChoiceCard';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
 import { FlipCard } from '@/components/chat/FlipCard.tsx';
-import { TextInput } from '@/components/chat/TextInput.tsx';
+import { TicketViewContext } from '@/components/chat/team-roster';
+import { type MentionOption, TextInput } from '@/components/chat/TextInput.tsx';
 import { WorkingDirectoryDialog } from '@/components/dialog/WorkingDirectoryDialog';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert.tsx';
 import { Bubble, BubbleContent } from '@/components/ui/bubble';
@@ -87,6 +88,8 @@ interface ChatContentProps {
 		rules?: ToolCallBlock['suggested_rules'],
 	) => Promise<void>;
 	autoComplete?: (input: string) => string | null;
+	/** @see TextInputProps.mentions */
+	mentions?: MentionOption[];
 	className?: string;
 	/** Called when the user clicks the stop button. */
 	onInterrupt?: () => void;
@@ -128,6 +131,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	onSend,
 	onUserConfirm,
 	autoComplete,
+	mentions,
 	className,
 	onInterrupt,
 	footerSlot,
@@ -142,6 +146,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	agentName,
 }) => {
 	const { t, i18n } = useTranslation();
+	const ticketView = useContext(TicketViewContext);
 	// Only a session that finished loading with nothing in it is empty.
 	// Treating "no messages yet" as empty would flash the greeting over
 	// every session that does have history.
@@ -194,6 +199,10 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 			{loading ? (
 				<div className="flex flex-1 w-full items-center justify-center">
 					{showSpinner ? <Spinner className="size-5 text-muted-foreground" /> : null}
+				</div>
+			) : isEmpty && ticketView ? (
+				<div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+					Session này chưa nhận ticket nào.
 				</div>
 			) : isEmpty ? (
 				// Cue's onboarding: the agent speaks first — a personal greeting,
@@ -332,6 +341,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 						onSend={onSend}
 						disabled={disabled}
 						autoComplete={autoComplete}
+						mentions={mentions}
 						allowedInputTypes={allowedInputTypes}
 						fileProcessor={fileProcessor}
 						phase={phase}

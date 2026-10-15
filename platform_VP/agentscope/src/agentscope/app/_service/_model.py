@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Model service: builds a ChatModelBase from stored credential + config."""
+import os
+
 from ._access import ResourceAccessService
 from ..storage import ChatModelConfig
 from ...credential import CredentialFactory
-from ...model import ChatModelBase
+from ...model import ChatModelBase, OpenAIChatModel, OpenAIResponseModel
 from ..._logging import logger
 
 
@@ -46,6 +48,14 @@ async def get_model(
 
     credential = CredentialFactory.from_dict(credential_record.data)
     model_cls = credential.get_chat_model_class()
+    if (
+        model_cls is OpenAIResponseModel
+        and getattr(credential, "base_url", None)
+        and os.getenv("OPENAI_CHAT_API", "").strip().lower() != "responses"
+    ):
+        # An OpenAI-compatible gateway (or the scripted test model) speaks
+        # Chat Completions; OPENAI_CHAT_API=responses says it speaks both.
+        model_cls = OpenAIChatModel
     parameters = (
         model_cls.Parameters(**config.parameters)
         if config.parameters

@@ -25,8 +25,8 @@ _SCALED_RE = re.compile(
     re.IGNORECASE,
 )
 _CURRENCY_RE = re.compile(
-    r"(?<![\d/:])(\d{1,3}(?:[\s.,]\d{3})+|\d+(?:[.,]\d+)?)"
-    r"\s*(?:đ|₫|vnd|usd|eur)",
+    r"(?<![\w/:])(\d{1,3}(?:[\s.,]\d{3})+|\d+(?:[.,]\d+)?)"
+    r"\s*(?:đồng|đ|₫|vnd|usd|eur)(?!\w)",
     re.IGNORECASE,
 )
 _COUNT_RE = re.compile(
@@ -39,6 +39,12 @@ _LARGE_NUMBER_RE = re.compile(
 _ITINERARY_CODE_RE = re.compile(
     r"(?<!\w)\d+\s*[Nn]\s*\d+\s*[\u0110\u0111Dd](?!\w)",
 )
+# Evidence citations ("E1, E2, E3") name events; they are not amounts.
+_EVIDENCE_CODE_RE = re.compile(r"(?<!\w)E\d+(?!\w)")
+# Identifiers (a ticket "cleaning--3cb7ea0", a unit "S1.01-1201", a job
+# "WO-1001"): letters and digits joined by - . _ . Their digits are not
+# amounts; the identifier as a whole must be in the evidence.
+_IDENTIFIER_RE = re.compile(r"(?<![\w.-])[A-Za-z0-9]+(?:(?:--?|[._])[A-Za-z0-9]+)+(?![\w-])")
 
 _CONNECTORS = {
     "&",
@@ -144,7 +150,9 @@ def _proper_name_anchors(text: str) -> set[str]:
     text = _ITINERARY_CODE_RE.sub(" ", text)
     for quoted in _QUOTED_RE.findall(text):
         normalized = _normalize(quoted)
-        if len(normalized) >= 3 and not normalized.isdigit():
+        # A quoted name is a few words; a quoted sentence (a proposed reply
+        # to the user) is not a name, its own words are checked below.
+        if len(normalized) >= 3 and not normalized.isdigit() and len(normalized.split()) <= 6:
             anchors.add(normalized)
 
     # A number ends a name: "Hotel A 1200000 VND" must not become the name
@@ -247,9 +255,16 @@ def _json_number_anchors(text: str) -> set[str]:
     return anchors
 
 
+def _identifier(token: str) -> bool:
+    return any(char.isalpha() for char in token) and any(char.isdigit() for char in token)
+
+
 def _numeric_anchors(text: str) -> set[str]:
-    text = _ITINERARY_CODE_RE.sub(" ", text)
-    anchors = {
+    text = _EVIDENCE_CODE_RE.sub(" ", _ITINERARY_CODE_RE.sub(" ", text))
+    identifiers = {token for token in _IDENTIFIER_RE.findall(text) if _identifier(token)}
+    text = _IDENTIFIER_RE.sub(lambda match: " " if _identifier(match.group(0)) else match.group(0), text)
+    anchors = {f"id:{token.casefold()}" for token in identifiers}
+    anchors |= {
         f"time:{int(match.group(1))}:{match.group(0).rsplit(':', 1)[1]}"
         for match in _TIME_RE.finditer(text)
     }

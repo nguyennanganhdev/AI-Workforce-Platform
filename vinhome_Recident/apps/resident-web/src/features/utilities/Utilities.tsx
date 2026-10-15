@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   IconArrowUpRight,
   IconBell,
@@ -23,6 +24,7 @@ import type {
 } from "../../services/types";
 import type { Profile as ResidentProfile } from "../../services/resident-api";
 import { exitResidentPreview } from "../auth/demo-access";
+import { signOutResident } from "../auth/auth-service";
 
 export type UtilityPage =
   | "utilities"
@@ -238,6 +240,18 @@ export function Profile({
   connected?: boolean;
   connectedProfile?: ResidentProfile;
 }) {
+  const [signingOut, setSigningOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+  async function logout() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setLogoutError("");
+    try { await signOutResident(); }
+    catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Chưa đăng xuất được. Bạn thử lại nhé.");
+      setSigningOut(false);
+    }
+  }
   if (connected)
     return (
       <div className="page-section stack">
@@ -269,9 +283,10 @@ export function Profile({
             <p>Chưa có căn hộ đã xác minh. Liên hệ Ban quản lý để liên kết.</p>
           )}
         </section>
-        <a className="secondary-button full" href="/login">
-          Quản lý đăng nhập
-        </a>
+        {logoutError && <p role="alert">{logoutError}</p>}
+        <button className="secondary-button full" disabled={signingOut} onClick={() => void logout()}>
+          {signingOut ? "Đang đăng xuất…" : "Đăng xuất"}
+        </button>
       </div>
     );
   return (

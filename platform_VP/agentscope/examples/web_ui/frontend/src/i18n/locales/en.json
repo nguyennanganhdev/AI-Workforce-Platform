@@ -215,10 +215,8 @@
 	},
 	"shell": {
 		"backToChat": "Back to chat",
-		"collapseSidebar": "Collapse sidebar",
-		"expandSidebar": "Expand sidebar",
 		"groupWorkforce": "Workforce",
-		"leader": "Leader and tickets",
+		"leader": "Leader",
 		"builder": "Builder",
 		"agentStudio": "Agent management",
 		"groupOperations": "Operations",
@@ -860,13 +858,13 @@
 		},
 		"loading": "Loading…",
 		"team": {
-			"membersHeading": "Members",
-			"noMembers": "No members yet — the leader can invite published agents when needed.",
+			"noMembers": "The Leader invites the right agents when the ticket needs them.",
 			"emptyTitle": "No team",
-			"emptyDescription": "This session is not part of a team. The agent forms one with TeamCreate.",
+			"emptyDescription": "This session has no room yet. The Leader opens one when a ticket needs several agents.",
 			"running": "Running",
 			"idle": "Idle",
-			"missingSession": "(no session)"
+			"missingSession": "(no session)",
+			"member": "Room member"
 		}
 	},
 	"channel": {

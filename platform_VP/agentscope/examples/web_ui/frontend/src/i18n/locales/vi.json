@@ -212,10 +212,8 @@
 	},
 	"shell": {
 		"backToChat": "Quay lại trò chuyện",
-		"collapseSidebar": "Thu gọn thanh bên",
-		"expandSidebar": "Mở rộng thanh bên",
 		"groupWorkforce": "Workforce",
-		"leader": "Leader và ticket",
+		"leader": "Leader",
 		"builder": "Builder",
 		"agentStudio": "Quản lý agent",
 		"groupOperations": "Vận hành",
@@ -857,13 +855,13 @@
 		},
 		"loading": "Đang tải…",
 		"team": {
-			"membersHeading": "Thành viên",
-			"noMembers": "Chưa có thành viên — yêu cầu trưởng nhóm tạo bằng AgentCreate.",
+			"noMembers": "Leader mời agent phù hợp khi ticket cần.",
 			"emptyTitle": "Chưa có nhóm",
-			"emptyDescription": "Phiên này chưa thuộc nhóm nào. Tác nhân tạo nhóm bằng TeamCreate.",
+			"emptyDescription": "Session này chưa có phòng. Leader lập phòng khi ticket cần nhiều agent.",
 			"running": "Đang chạy",
 			"idle": "Đang chờ",
-			"missingSession": "(chưa có phiên)"
+			"missingSession": "(chưa có phiên)",
+			"member": "Thành viên phòng"
 		}
 	},
 	"channel": {
