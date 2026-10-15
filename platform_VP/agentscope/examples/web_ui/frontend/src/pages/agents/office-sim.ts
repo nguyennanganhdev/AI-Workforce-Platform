@@ -6,9 +6,9 @@ import type { SessionOfficeSnapshot } from '@/features/workforce/session-office/
  * isometric office who walk to a meeting, back to their desks, and over to
  * each other's desks to work something out.
  *
- * Everything here is a DEMO SCRIPT. The backend does not report meetings or
- * handoffs yet, so what the agents do is a fixed scenario on a loop; the canvas
- * says so in its own chrome.
+ * A live session drives it (see `applySession`): while the session's room
+ * works, its agents walk to the meeting table and the last one to speak shows
+ * a bubble; when the room is done they walk back to their desks.
  *
  * Coordinates are floor tiles: `x` runs down-right on screen, `y` down-left.
  */
@@ -262,11 +262,54 @@ export class OfficeSim {
 				? { text: participant.message, until: Infinity }
 				: null;
 		}
+		this.gather(snapshot, layout);
 		this.phase = snapshot.phase;
 		this.log = snapshot.activity
 			.slice(-6)
 			.map((entry, index) => ({ id: index, time: 0, text: entry.text }));
 		this.publish();
+	}
+
+	/** Who is at the meeting table now, and the seat they walked to. */
+	private seated = new Map<string, Seat>();
+
+	/**
+	 * Walk the room's agents to the meeting table while it works (the host to
+	 * its head), and back to their desks once it is done. Under reduced motion
+	 * they are placed, not walked.
+	 */
+	private gather(snapshot: SessionOfficeSnapshot, layout: Layout) {
+		const still =
+			typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+		const move = (actor: Actor, path: Point[]) => {
+			if (path.length === 0) return;
+			if (still) {
+				actor.pos = { ...path[path.length - 1] };
+				actor.path = [];
+			} else {
+				actor.path = path;
+			}
+		};
+		if (snapshot.meeting && this.seated.size === 0) {
+			const host = snapshot.hostId;
+			let next = 0;
+			for (const participant of snapshot.participants) {
+				const actor = this.actors.get(participant.id);
+				const desk = layout.desks.get(participant.id);
+				if (!actor || !desk) continue;
+				const seat = participant.id === host ? layout.head : layout.seats[next++];
+				if (!seat) continue;
+				this.seated.set(participant.id, seat);
+				move(actor, route(desk.chain, seat.chain));
+			}
+		} else if (!snapshot.meeting && this.seated.size > 0) {
+			for (const [id, seat] of this.seated) {
+				const actor = this.actors.get(id);
+				const desk = layout.desks.get(id);
+				if (actor && desk) move(actor, route(seat.chain, desk.chain));
+			}
+			this.seated.clear();
+		}
 	}
 
 	actors = new Map<string, Actor>();

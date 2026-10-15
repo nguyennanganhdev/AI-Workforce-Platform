@@ -11,6 +11,7 @@ import json
 import os
 import re
 import tarfile
+import unicodedata
 from collections import defaultdict
 from collections.abc import AsyncIterator
 from typing import Literal
@@ -290,7 +291,10 @@ def _fixed_config() -> dict:
 
 
 def _slug(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    # Vietnamese letters keep their base letter ("tư vấn" -> "tu-van"), not a gap.
+    plain = unicodedata.normalize("NFKD", value.lower().replace("đ", "d"))
+    plain = "".join(char for char in plain if not unicodedata.combining(char))
+    slug = re.sub(r"[^a-z0-9]+", "-", plain).strip("-")
     return (slug or "generated-skill")[:64]
 
 
@@ -1154,10 +1158,13 @@ async def _persist_builder_turn(
         conversation_id,
         UserMsg(name="area_manager", content=user_text),
     )
+    # A clarification-only proposal carries the question in both fields.
     reply = "\n".join(
-        part
-        for part in (proposal.assistant_message, proposal.clarification_question)
-        if part
+        dict.fromkeys(
+            part.strip()
+            for part in (proposal.assistant_message, proposal.clarification_question)
+            if part and part.strip()
+        )
     )
     await storage.upsert_message(
         user_id,
@@ -1190,6 +1197,24 @@ async def list_builder_conversations(
         )
         for session in sessions
     ]
+
+
+@workforce_console_router.delete(
+    "/builder/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_builder_conversation(
+    conversation_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> None:
+    """Remove a Builder conversation; agents it published stay."""
+
+    if not await storage.delete_session(user_id, _BUILDER_AGENT_ID, conversation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy hội thoại Agent Builder.",
+        )
 
 
 @workforce_console_router.get(

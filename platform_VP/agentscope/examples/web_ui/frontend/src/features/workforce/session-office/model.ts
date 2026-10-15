@@ -13,5 +13,9 @@ export interface SessionOfficeSnapshot {
 		message?: string;
 	}[];
 	phase: 'idle' | 'work' | 'approval' | 'done';
+	/** The room is at work: its agents sit round the meeting table, the host at its head. */
+	meeting: boolean;
+	/** Who leads the room (the session's owner). */
+	hostId: string | null;
 	activity: { id: string; text: string }[];
 }

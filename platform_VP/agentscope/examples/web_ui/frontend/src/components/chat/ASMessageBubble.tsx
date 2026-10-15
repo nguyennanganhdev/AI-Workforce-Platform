@@ -24,7 +24,7 @@ import {
 import mime from 'mime';
 import { memo, useEffect, useRef, useState } from 'react';
 
-import { DialogToolCard, HandoverCard, TeamMessageCard } from './TeamDialog';
+import { DialogToolCard, HandoverCard, TeamMessageCard, TicketCard } from './TeamDialog';
 import { DIALOG_TOOLS, parseHandover, teamHintSource } from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
 import { DiffStats } from './tool-renderers/_shared';
@@ -430,6 +430,11 @@ interface MessageBubbleProps {
 function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
+	// A partner handover reads as the card reception confirmed (see the
+	// route's ticket_input); the lines the Leader reads stay in the message.
+	const ticket = isUser
+		? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
+		: undefined;
 
 	const isRunning = !message.finished_at;
 	const hasUsage =
@@ -469,8 +474,9 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
+				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
 				{blocks
-					.filter((block) => block.type !== 'data')
+					.filter((block) => block.type !== 'data' && !(ticket?.request && block.type === 'text'))
 					.map((block, index) => (
 						// Only the agent's prose gets a bubble. Thinking, hints and
 						// tool runs stay bare one-line disclosures — bubbling each
@@ -702,7 +708,9 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			// Another agent's message in the room: a conversation card.
 			const team = teamHintSource(block.source);
 			if (team && typeof block.hint === 'string') {
-				return <TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} />;
+				return (
+					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} at={block.created_at} />
+				);
 			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;

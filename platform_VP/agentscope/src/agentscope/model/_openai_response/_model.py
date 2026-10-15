@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """The OpenAI Responses API chat model implementation."""
 
+import re
 from collections import OrderedDict
 from datetime import datetime
 from typing import Literal, Any, AsyncGenerator, List, TYPE_CHECKING, Type
@@ -8,6 +9,7 @@ from typing import Literal, Any, AsyncGenerator, List, TYPE_CHECKING, Type
 import openai
 from pydantic import BaseModel, Field
 
+from ..._logging import logger
 from ..._utils._common import _generate_id
 from .._base import ChatModelBase, _TOOL_CHOICE_LITERAL_MODES
 from .._model_response import ChatResponse
@@ -32,6 +34,10 @@ else:
 
 # kwargs accepted by Chat Completions but NOT by the Responses API.
 _RESPONSES_UNSUPPORTED_KWARGS = frozenset({"modalities", "audio"})
+
+# Models that reason (and so can summarise their reasoning). Others (gpt-4o,
+# gpt-4.1) reject the ``reasoning`` parameter.
+_REASONING_MODEL = re.compile(r"^(o\d|gpt-5|gpt-6)", re.IGNORECASE)
 
 
 def _dump_reasoning_item(item: Any) -> dict[str, Any]:
@@ -105,8 +111,20 @@ class OpenAIResponseModel(ChatModelBase):
             le=2,
         )
 
+        reasoning_summary: Literal["auto", "concise", "detailed"] | None = Field(
+            default="auto",
+            title="Reasoning Summary",
+            description=(
+                "Ask a reasoning model for a summary of its reasoning, shown "
+                "as the reply's thinking. None turns it off."
+            ),
+        )
+
     type: Literal["openai_response"] = "openai_response"
     """The type of the chat model."""
+
+    _summary_refused: bool = False
+    """Set once the provider refused reasoning summaries in this process."""
 
     def _count_text_tokens(self, text: str) -> int:
         return count_openai_text(self.model, text)
@@ -131,6 +149,7 @@ class OpenAIResponseModel(ChatModelBase):
         context_size: int = 200000,
         formatter: FormatterBase | None = None,
         client_kwargs: dict[str, Any] | None = None,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         """Initialize the OpenAI Responses API chat model.
 
@@ -158,6 +177,9 @@ class OpenAIResponseModel(ChatModelBase):
             client_kwargs (`dict[str, Any] | None`, defaults to `None`):
                 Extra keyword arguments forwarded to ``openai.AsyncClient``
                 (e.g. ``timeout``, ``default_headers``, ``http_client``).
+            extra_body (`dict[str, Any] | None`, defaults to `None`):
+                Extra request body fields, e.g. ``prompt_cache_key`` or
+                ``service_tier``.
         """
         super().__init__(
             credential=credential,
@@ -170,6 +192,7 @@ class OpenAIResponseModel(ChatModelBase):
         )
         self.formatter = formatter or OpenAIResponseFormatter()
         self.client_kwargs = client_kwargs or {}
+        self.extra_body = dict(extra_body) if extra_body is not None else None
 
         self.client: openai.AsyncClient = openai.AsyncClient(
             api_key=self.credential.api_key.get_secret_value(),
@@ -235,10 +258,19 @@ class OpenAIResponseModel(ChatModelBase):
         if self.parameters.temperature is not None:
             api_kwargs["temperature"] = self.parameters.temperature
 
+        reasoning: dict[str, Any] = {}
         if self.parameters.thinking_enable and self.parameters.reasoning_effort:
-            api_kwargs["reasoning"] = {
-                "effort": self.parameters.reasoning_effort,
-            }
+            reasoning["effort"] = self.parameters.reasoning_effort
+        if (
+            self.parameters.reasoning_summary
+            and _REASONING_MODEL.match(model_name)
+            and not OpenAIResponseModel._summary_refused
+        ):
+            reasoning["summary"] = self.parameters.reasoning_summary
+        if reasoning:
+            api_kwargs["reasoning"] = reasoning
+        if self.extra_body is not None:
+            api_kwargs["extra_body"] = dict(self.extra_body)
 
         # The Responses API does not yet support audio output
         # (modalities / audio params).  Strip them so callers that
@@ -260,7 +292,22 @@ class OpenAIResponseModel(ChatModelBase):
             api_kwargs["tool_choice"] = fmt_tool_choice
 
         start_datetime = datetime.now()
-        response = await self.client.responses.create(**api_kwargs)
+        try:
+            response = await self.client.responses.create(**api_kwargs)
+        except openai.BadRequestError as exc:
+            asked = (api_kwargs.get("reasoning") or {}).get("summary")
+            if not asked or "summar" not in str(exc).lower():
+                raise
+            # An organization may not be allowed reasoning summaries: answer
+            # without them from now on rather than fail every reply.
+            logger.warning("Reasoning summaries refused (%s); continuing without them.", exc)
+            OpenAIResponseModel._summary_refused = True
+            rest = {k: v for k, v in api_kwargs["reasoning"].items() if k != "summary"}
+            if rest:
+                api_kwargs["reasoning"] = rest
+            else:
+                api_kwargs.pop("reasoning")
+            response = await self.client.responses.create(**api_kwargs)
 
         if self.stream:
             return self._parse_stream_response(start_datetime, response)

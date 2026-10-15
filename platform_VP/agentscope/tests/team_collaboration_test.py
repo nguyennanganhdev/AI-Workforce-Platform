@@ -356,6 +356,14 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             ),
         )
         self.assertEqual("review", self.branch("worker").status)
+        # It waits for the Leader's decision, not for the worker: it must not
+        # keep the Leader from being woken to make that decision.
+        self.assertEqual(
+            [],
+            await self.service.collaboration_review(
+                "u", "ticket-1", "leader-session", working_only=True
+            ),
+        )
 
     async def test_delivered_worker_error_stops_branch_without_blocking_leader(self):
         report = await self.say(

@@ -58,7 +58,7 @@ class WatchTest(IsolatedAsyncioTestCase):
             async def team_evidence_status(self, *_a, **_k):
                 return (1, 0, 0, False) if state["ready"] else (0, 0, 0, False)
 
-            async def collaboration_review(self, *_a):
+            async def collaboration_review(self, *_a, **_k):
                 return [] if state["ready"] else ["worker"]
 
             async def pending_user_question(self, *_a):
@@ -84,6 +84,28 @@ class WatchTest(IsolatedAsyncioTestCase):
 
         self.assertTrue(ready)
         self.assertLess(time.monotonic() - started, 2.0)
+
+    async def test_the_leader_waits_for_every_dispatched_member(self) -> None:
+        reported = {"members": 1}
+
+        class Shared:
+            async def team_evidence_status(self, *_a, **_k):
+                return (reported["members"], 0, 0, False)
+
+            async def collaboration_review(self, *_a, **_k):
+                return []
+
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(),  # type: ignore[arg-type]
+            Shared(),  # type: ignore[arg-type]
+            "u",
+            "leader",
+            "leader-session",
+        )
+        # Two dispatched, one reported: the other is queued behind it.
+        self.assertFalse(await middleware._ready(2))
+        reported["members"] = 2
+        self.assertTrue(await middleware._ready(2))
 
 
 async def _false() -> bool:

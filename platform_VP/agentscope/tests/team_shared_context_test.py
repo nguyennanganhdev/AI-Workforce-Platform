@@ -330,6 +330,21 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         other_task = {**items[0], "task_id": "different"}
         self.assertEqual(len(self.service._compact_tool_facts([*items, other_task])), 2)
 
+    def test_claim_gate_reads_a_quoted_reply_as_words_not_as_a_name(self):
+        support = ('E3: {"staff": [{"name": "Trần Bình", "skills": ["plumbing"]}]}',)
+        proposal = (
+            'Câu đề xuất: "Bạn vui lòng giữ khu vực dưới bồn rửa khô ráo và chờ '
+            'kỹ thuật tới kiểm tra." Người phù hợp: Trần Bình.'
+        )
+        self.assertEqual((), unsupported_claim_anchors(proposal, support))
+        # Citing the evidence codes is not a claim of the number 3.
+        self.assertEqual((), unsupported_claim_anchors("E1, E2, E3 đã đủ để kết luận.", support))
+        # A short quoted name still has to be in the evidence.
+        self.assertEqual(
+            ("name:nhà hàng sen",),
+            unsupported_claim_anchors('Đặt bàn ở "Nhà hàng Sen".', support),
+        )
+
     def test_claim_gate_understands_vietnamese_amounts_and_budget_arithmetic(self):
         support = (
             "Ngân sách 4 triệu, cần để dư 500 nghìn.",
