@@ -44,7 +44,7 @@ Phần cố định của Leader (tool + system ≈ 4,5k) được cache nếu p
 | G4 | Tool schema của Leader 2,5k token (AgentInvite mô tả mọi agent, TeamDelete không cần) | Log `tools=2461` | Mỗi lần gọi Leader |
 | G5 | Học kinh nghiệm chạy khi Leader MỜI xác nhận, không phải khi cư dân XÁC NHẬN; không học từ "Chưa đạt"/mở lại | `_runner._case_turn`: `_learn_from_room` ở `AWAITING_CONFIRMATION` | Học cả phiếu cư dân sau đó chê; bỏ phí tín hiệu thật |
 | G6 | Bộ nhớ không có quên/giảm dần, không ghi ký ức nào được dùng và có giúp không | `_agent_memory.py` không có trường dùng/hiệu quả | Bộ nhớ phình, ký ức sai sống mãi |
-| G7 | Biến `MEMORY_EMBEDDING_*` có trong `.env` nhưng code không dùng | grep | Cấu hình gây hiểu nhầm |
+| G7 | (Sửa 15/10: nhận định sai.) `MEMORY_EMBEDDING_*` được `examples/agent_service/main.py` dùng cho embedding bộ nhớ của `BusinessService` (không đặt thì lấy `OPENAI_API_KEY`); chỉ bộ nhớ agent Workforce (`_agent_memory.py`, BM25) không dùng embedding | `main.py` | Giữ biến; không cần sửa |
 | G8 | Chưa có chỉ số chất lượng theo phiếu: tỉ lệ CaseSay bị từ chối, phiếu `needs_attention`, cư dân xác nhận lần đầu, mở lại, token/phiếu thành công | Chỉ có token | Không biết thay đổi nào làm tốt hơn |
 | G9 | Chưa có bộ đánh giá cho cả phòng nhiều agent (chỉ chấm từng agent) | Studio tests | Không bắt được lỗi phối hợp |
 | G10 | Phiếu lỗi lượt (`needs_attention`) không tự chạy lại | — | Đã ghi ở kế hoạch trước |
