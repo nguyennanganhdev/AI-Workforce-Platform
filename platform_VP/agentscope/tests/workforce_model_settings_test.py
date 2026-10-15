@@ -14,14 +14,16 @@ def _model() -> OpenAIChatModel:
 
 
 class ReasoningEffortTest(TestCase):
-    def test_each_role_gets_its_configured_effort(self) -> None:
-        env = {"WORKFORCE_REASONING_EFFORT_LEADER": "medium", "WORKFORCE_REASONING_EFFORT_AGENT": "low"}
+    def test_chat_completions_models_never_get_an_effort(self) -> None:
+        # OpenAI: "Function tools with reasoning_effort are not supported for
+        # gpt-5.5 in /v1/chat/completions"; every agent here has tools.
+        env = {"WORKFORCE_REASONING_EFFORT_LEADER": "low", "WORKFORCE_REASONING_EFFORT_AGENT": "low"}
         with patch.dict(os.environ, env):
             leader, member = _model(), _model()
             _apply_reasoning_effort(leader, "leader")
             _apply_reasoning_effort(member, "business")
-        self.assertEqual((True, "medium"), (leader.parameters.thinking_enable, leader.parameters.reasoning_effort))
-        self.assertEqual((True, "low"), (member.parameters.thinking_enable, member.parameters.reasoning_effort))
+        for model in (leader, member):
+            self.assertEqual((False, None), (model.parameters.thinking_enable, model.parameters.reasoning_effort))
 
     def test_unset_keeps_the_provider_default(self) -> None:
         with patch.dict(os.environ, {"WORKFORCE_REASONING_EFFORT_AGENT": ""}):
