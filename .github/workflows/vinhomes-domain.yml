@@ -63,6 +63,9 @@ jobs:
   reception-cskh:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      OPENAI_API_KEY: ''
+      RECEPTION_E2E_BACKEND_URL: ''
     defaults:
       run:
         working-directory: vinhome_Recident/agents/reception
@@ -72,8 +75,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements-test.txt
-      - name: Offline model adapter and CSKH contracts only
-        run: python -m pytest -q tests/runtime/test_model_endpoint.py tests/runtime/test_cskh_contract.py
+      - name: Full offline Reception regression suite (no live model or Platform)
+        run: python -m pytest -q
       - name: Reception source checks
         run: python -m ruff check src --select F401,F811,F821,F841
   frontend:

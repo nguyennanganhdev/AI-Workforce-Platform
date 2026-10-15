@@ -58,6 +58,11 @@ export const residentAuthService: ResidentAuthService = {
   },
 };
 
+export async function signOutResident(): Promise<void> {
+  await authRequest("/auth/logout", {});
+  location.replace("/login");
+}
+
 export type AuthMode = "login" | "register" | "forgot-password";
 export type AuthValues = {
   fullName: string;

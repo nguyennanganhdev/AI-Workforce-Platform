@@ -2,6 +2,8 @@
 
 Một lệnh dựng cả hệ thống trên một máy có Docker: dữ liệu nằm trong PostgreSQL, ảnh và tệp nằm trong MinIO (chuẩn S3). Người dùng chỉ biết **một địa chỉ**, của `gateway`.
 
+Trạng thái dữ liệu và tài khoản Docker chính/VPS ngày 16/10/2026: xem [nghiệm thu chuẩn hóa](../docs/domain/OPERATING_DATA_NORMALIZATION_ACCEPTANCE_20261016.md). Các tài khoản `mock-*` trong mục thế giới mẫu bên dưới chỉ dành cho database phát triển riêng. Danh sách hiện tại ở `deploy/runtime-access-20261015/clean-data/`, được Git ignore. Xem [luồng đăng nhập và nghiệp vụ](../docs/resident-web/07-connected-runtime.md) để phân biệt kiểm thử Domain offline với nghiệm thu tích hợp Platform thật.
+
 ## Chạy
 
 Từ thư mục `vinhome_Recident`:
