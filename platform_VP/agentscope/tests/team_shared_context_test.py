@@ -337,6 +337,17 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             'kỹ thuật tới kiểm tra." Người phù hợp: Trần Bình.'
         )
         self.assertEqual((), unsupported_claim_anchors(proposal, support))
+        # Identifiers are matched whole: a ticket id or a unit is not an amount,
+        # and "…ea0 đang" is not "0 đồng"; an invented job id is still caught.
+        ticket = ('E1: {"ticket_id": "cleaning--3cb7ea0", "status": "open"}', "Căn: S1.01-1201")
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Phiếu cleaning--3cb7ea0 đang mở, căn S1.01-1201 cần vệ sinh hành lang.", ticket
+            ),
+        )
+        self.assertEqual(("id:wo-9999",), unsupported_claim_anchors("Đã giao việc WO-9999.", ticket))
+        self.assertEqual(("number:500000",), unsupported_claim_anchors("Phí 500.000 đồng.", ticket))
         # Citing the evidence codes is not a claim of the number 3.
         self.assertEqual((), unsupported_claim_anchors("E1, E2, E3 đã đủ để kết luận.", support))
         # A short quoted name still has to be in the evidence.

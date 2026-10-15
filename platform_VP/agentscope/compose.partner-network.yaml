@@ -3,6 +3,7 @@
 #   docker compose -f compose.yaml -f compose.partner-network.yaml up -d
 #
 # The partner's containers then reach the platform at http://awp-platform:8000
+# (PARTNER_PLATFORM_ALIAS)
 # and the platform reaches the partner's services by their service names
 # (e.g. Vinhomes' MCP at http://api:8000/mcp), without exposing either side.
 services:
@@ -10,7 +11,7 @@ services:
     networks:
       default: {}
       partner:
-        aliases: [awp-platform]
+        aliases: ["${PARTNER_PLATFORM_ALIAS:-awp-platform}"]
 
 networks:
   partner:
