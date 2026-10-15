@@ -514,7 +514,7 @@ field: Vietnamese for a Vietnamese request and English for an English request.
 Write naturally and clearly, as a helpful human collaborator would.
 """
     try:
-        async with asyncio.timeout(60):
+        async with asyncio.timeout(_builder_timeout()):
             (
                 response,
                 prompt_tokens,
@@ -543,6 +543,13 @@ Write naturally and clearly, as a helpful human collaborator would.
         _raise_builder_model_error(exc, config)
 
 
+def _builder_timeout() -> float:
+    """Seconds one Builder model call may take. Composing a whole team with a
+    reasoning model regularly needs more than a minute."""
+
+    return float(os.getenv("WORKFORCE_BUILDER_TIMEOUT_SECONDS", "180"))
+
+
 def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
     logger.exception(
         "Workforce Builder model call failed (provider=%s, model=%s)",
@@ -552,7 +559,7 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
     error_name = type(exc).__name__
     if isinstance(exc, TimeoutError):
         detail = (
-            f"Model '{config.model}' không phản hồi trong 60 giây. "
+            f"Model '{config.model}' không phản hồi trong {_builder_timeout():.0f} giây. "
             "Hãy thử lại hoặc chọn model khác trên Agent Builder."
         )
     elif error_name in {"AuthenticationError", "PermissionDeniedError"}:
@@ -629,7 +636,7 @@ LANGUAGE AND VOICE:
         else "\nThe required language for this build is English."
     )
     try:
-        async with asyncio.timeout(60):
+        async with asyncio.timeout(_builder_timeout()):
             (
                 response,
                 prompt_tokens,
