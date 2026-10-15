@@ -1,0 +1,5 @@
+# Keep HTTP working while Certbot validates the domain; combine with compose.yml.
+services:
+  gateway:
+    volumes:
+      - ${ACME_WEBROOT:-/srv/vinhomes-acme}:/var/www/acme:ro

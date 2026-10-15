@@ -1,0 +1,99 @@
+name: Vinhomes domain business checks
+on:
+  pull_request:
+    paths: ['vinhome_Recident/**', '.github/workflows/vinhomes-domain.yml']
+  push:
+    branches: [dev_Vinhome]
+    paths: ['vinhome_Recident/**', '.github/workflows/vinhomes-domain.yml']
+permissions:
+  contents: read
+jobs:
+  business-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test_owner
+          POSTGRES_PASSWORD: isolated-ci-owner
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test_owner -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      RESIDENT_TEST_ADMIN_URL: postgresql://test_owner:isolated-ci-owner@127.0.0.1:5432/postgres
+      RESIDENT_TEST_RUNTIME_URL: postgresql://test_runtime:isolated-ci-runtime@127.0.0.1:5432/postgres
+      PGPASSWORD: isolated-ci-owner
+      VINHOMES_API_RECEPTION_URL: ''
+      VINHOMES_API_PLATFORM_URL: ''
+      VINHOMES_API_EMBEDDING_API_KEY: ''
+      VINHOMES_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      VINHOMES_TEST_S3_ACCESS_KEY: isolated-ci-owner
+      VINHOMES_TEST_S3_SECRET_KEY: isolated-ci-storage-password
+    defaults:
+      run:
+        working-directory: vinhome_Recident/services/vinhomes-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[test]'
+      - name: Create restricted test role
+        run: psql -h 127.0.0.1 -U test_owner -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE test_runtime LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'isolated-ci-runtime'"
+      - name: Start isolated object storage
+        run: |
+          docker run -d --name vinhomes-test-minio -p 127.0.0.1:9000:9000 \
+            -e MINIO_ROOT_USER="$VINHOMES_TEST_S3_ACCESS_KEY" \
+            -e MINIO_ROOT_PASSWORD="$VINHOMES_TEST_S3_SECRET_KEY" \
+            cgr.dev/chainguard/minio:latest server /data
+          for attempt in $(seq 1 30); do
+            curl --fail --silent "$VINHOMES_TEST_S3_ENDPOINT/minio/health/live" && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Domain checks only (no Agent/model calls)
+        run: python -m pytest -q
+      - name: Unused imports and undefined names
+        run: python -m ruff check src --select F401,F811,F821,F841
+      - name: Actual HTTP business closure and rework
+        run: python tests/run_business_http.py
+  reception-cskh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: vinhome_Recident/agents/reception
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-test.txt
+      - name: Offline model adapter and CSKH contracts only
+        run: python -m pytest -q tests/runtime/test_model_endpoint.py tests/runtime/test_cskh_contract.py
+      - name: Reception source checks
+        run: python -m ruff check src --select F401,F811,F821,F841
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: vinhome_Recident
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: vinhome_Recident/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Resident and staff UI tests in isolated processes
+        run: npm test
+      - run: npm run build
+        env:
+          VITE_ALLOW_DEMO_BACKEND: 'false'
+          VITE_ENABLE_UI_PREVIEW: 'false'

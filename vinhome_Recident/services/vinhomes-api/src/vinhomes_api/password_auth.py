@@ -1,0 +1,540 @@
+"""PostgreSQL password identities for the resident and staff apps.
+
+The existing accounts/sessions tables use dedicated provider/token namespaces.
+Only hashes of passwords and opaque session tokens are stored in PostgreSQL.
+"""
+import asyncio
+import hashlib
+import hmac
+import os
+import re
+import secrets
+from uuid import UUID, uuid4
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
+from . import account_onboarding as onboarding
+
+router = APIRouter(prefix="/auth", tags=["Password authentication"])
+COOKIE = "vinhomes_session"
+# One sign-in per front door. A browser keeps cookies per host, not per port, so on one host the web
+# apps would replace each other's sign-in. Each front door names itself in this header; the browser's
+# own value never reaches here, because the door overwrites it.
+SURFACE = "x-vinhomes-surface"
+COOKIES = {"": COOKIE, "operations": COOKIE, "field": "vinhomes_staff_session", "resident": "vinhomes_resident_session"}
+PROVIDER = "vinhomes-password-v1"
+TTL = 8 * 60 * 60
+_hash_slots = asyncio.Semaphore(2)
+
+
+def password_hash(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=131072, r=8, p=1, maxmem=256*1024*1024)
+    return "scrypt-v1$" + salt.hex() + "$" + digest.hex()
+
+
+def check_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, salt, expected = encoded.split("$")
+        if algorithm != "scrypt-v1" or len(salt) != 32 or len(expected) != 128:
+            return False
+        actual = hashlib.scrypt(password.encode("utf-8"), salt=bytes.fromhex(salt), n=131072, r=8, p=1, maxmem=256*1024*1024)
+        return hmac.compare_digest(actual.hex(), expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def sign_in_name(typed: str) -> str:
+    """What a typed sign-in name is compared with: an email as it is, a Vietnamese mobile number as stored
+    (+84...), however it was typed (leading 0, spaces, dots)."""
+    name = typed.strip().lower()
+    digits = re.sub(r"[\s.\-]", "", name)
+    if re.fullmatch(r"0\d{9}", digits):
+        return "+84" + digits[1:]
+    return digits if re.fullmatch(r"\+84\d{9}", digits) else name
+
+
+def session_hash(token: str) -> str:
+    return "vinhomes-v1:" + hashlib.sha256(token.encode()).hexdigest()
+
+
+def enabled(request: Request):
+    if not request.app.state.settings.password_auth:
+        raise HTTPException(404, "Password authentication is not enabled")
+    if request.app.state.engine is None:
+        raise HTTPException(503, "Database is not configured")
+    return request.app.state.engine
+
+
+def caller_address(request: Request) -> str:
+    """The address a sign-in try is counted under. Each of our proxies adds the address it was called from at the
+    end of X-Forwarded-For, so the caller is that many places from the end; whatever the caller wrote there itself
+    stands further left and is never read. Fewer entries than proxies (a call that came past them): the socket."""
+    hops = request.app.state.settings.trusted_proxy_hops
+    chain = [part.strip() for part in ",".join(request.headers.getlist("x-forwarded-for")).split(",") if part.strip()]
+    if 0 < hops <= len(chain):
+        return chain[-hops]
+    return request.client.host if request.client else "unknown"
+
+
+async def rate_limit(request: Request, identifier: str):
+    # Counted in PostgreSQL: one budget for every copy of the API, and a restart does not hand out a new one.
+    limited = False
+    async with request.app.state.engine.begin() as db:
+        await db.execute(text("delete from sign_in_attempts where at<now()-interval '5 minutes'"))
+        for name, limit in [("ip:" + caller_address(request), 60), ("account:" + identifier, 10)]:
+            # Stored as a digest: the table never holds an address or a sign-in name.
+            key = hashlib.sha256(name.encode()).hexdigest()
+            await db.execute(text("select pg_advisory_xact_lock(hashtextextended(:key,0))"), {"key": "sign-in:" + key})
+            recent = (await db.execute(text("select count(*) from sign_in_attempts where key=:key and at>=now()-interval '5 minutes'"), {"key": key})).scalar_one()
+            if recent >= limit:
+                limited = True
+                break
+            await db.execute(text("insert into sign_in_attempts(key) values(:key)"), {"key": key})
+    if limited:
+        raise HTTPException(429, "Thử đăng nhập quá nhiều lần. Vui lòng chờ 5 phút.", headers={"Retry-After":"300"})
+
+
+def surface(request: Request) -> str:
+    name = request.headers.get(SURFACE, "")
+    if name not in COOKIES:
+        raise HTTPException(400, "Cổng truy cập không hợp lệ.")
+    return name
+
+
+def cookie(request: Request) -> str:
+    namespace = os.getenv('VINHOMES_API_SESSION_NAMESPACE','').strip()
+    if namespace and not re.fullmatch(r'[a-z0-9_-]{1,32}',namespace):
+        raise HTTPException(503,'Invalid session namespace configuration')
+    return COOKIES[surface(request)] + ('_'+namespace if namespace else '')
+
+
+async def context(db, request: Request, actor: str = ""):
+    await db.execute(text("select set_config('app.tenant_id',:tenant,true),set_config('app.user_id',:actor,true)"),
+                     {"tenant":str(request.app.state.settings.tenant_id),"actor":actor})
+
+
+async def require_domain_account(db, request: Request, user_id: str):
+    """Historical BQL identities belong in Platform; they confer no Domain login rights.
+
+    A person who also has an explicit resident/staff grant keeps that separate Domain access.
+    Pending resident registration remains available. Never upgrade a former manager to admin.
+    """
+    blocked = (await db.execute(text("""
+        select exists(select 1 from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id
+                      where m.user_id=:user and r.tenant_id=cast(:tenant as uuid) and r.role_code='management')
+          and not exists(select 1 from platform_admins where user_id=:user)
+          and not exists(select 1 from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id
+                         where m.user_id=:user and m.status='active' and r.tenant_id=cast(:tenant as uuid)
+                           and r.role_code in ('customer','staff') and r.valid_from<=now()
+                           and (r.valid_to is null or r.valid_to>now()))
+    """), {"user":user_id,"tenant":str(request.app.state.settings.tenant_id)})).scalar_one()
+    if blocked:
+        raise HTTPException(403, "Vai trò Ban quản lý đã chuyển sang Platform. Vui lòng dùng tài khoản Platform do đơn vị vận hành cấp.")
+
+
+async def authenticated_user(request: Request) -> dict:
+    engine = enabled(request)
+    token = request.cookies.get(cookie(request), "")
+    if not 32 <= len(token) <= 128:
+        raise HTTPException(401, "Vui lòng đăng nhập.")
+    async with engine.begin() as db:
+        user = (await db.execute(text("""
+            select u.id,u.name,u.email,u.phone_e164 from sessions s join users u on u.id=s.user_id
+            where s.token=:token and s.expires_at>now() and u.status='active'
+        """), {"token":session_hash(token)})).mappings().first()
+        if not user:
+            raise HTTPException(401, "Phiên đăng nhập đã hết hạn hoặc tài khoản bị khóa.")
+        await context(db,request,user["id"])
+        membership = (await db.execute(text("select status from tenant_memberships where user_id=:id and tenant_id=cast(:tenant as uuid)"),
+                                      {"id":user["id"],"tenant":str(request.app.state.settings.tenant_id)})).scalar_one_or_none()
+        if membership not in {"active","pending"}:
+            raise HTTPException(403, "Tài khoản không còn thuộc phạm vi hệ thống.")
+        await require_domain_account(db,request,user["id"])
+        return dict(user)
+
+
+class Credentials(BaseModel):
+    identifier: str = Field(min_length=3,max_length=254)
+    password: str = Field(min_length=1,max_length=128)
+
+
+class Registration(BaseModel):
+    name: str = Field(min_length=2,max_length=100)
+    email: str = Field(min_length=5,max_length=254)
+    password: str = Field(min_length=12,max_length=128)
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1,max_length=128)
+    new_password: str = Field(min_length=12,max_length=128)
+
+
+@router.get("/config")
+async def config(request: Request):
+    return {"password":request.app.state.settings.password_auth,"surface":surface(request)}
+
+
+@router.post("/login")
+async def login(body: Credentials, request: Request, response: Response):
+    engine = enabled(request)
+    identifier = sign_in_name(body.identifier)
+    await rate_limit(request,identifier)
+    async with engine.begin() as db:
+        await context(db,request)
+        user = (await db.execute(text("""
+            select u.id,u.name,u.email,a.password from users u join accounts a on a.user_id=u.id
+            join tenant_memberships m on m.user_id=u.id
+            where (lower(u.email)=:identifier or u.phone_e164=:identifier)
+              and a.provider_id=:provider and u.status='active'
+              and m.tenant_id=cast(:tenant as uuid) and m.status in ('active','pending')
+            for update of a
+        """), {"identifier":identifier,"provider":PROVIDER,"tenant":str(request.app.state.settings.tenant_id)})).mappings().first()
+        # Same expensive check for nonexistent identities, without storing a default password.
+        encoded = user["password"] if user else "scrypt-v1$" + "00"*16 + "$" + "00"*64
+        async with _hash_slots:
+            valid = await asyncio.to_thread(check_password,body.password,encoded)
+        if not user or not valid:
+            raise HTTPException(401, "Tên đăng nhập hoặc mật khẩu không đúng.")
+        await require_domain_account(db,request,user["id"])
+        token = secrets.token_urlsafe(32)
+        old = request.cookies.get(cookie(request), "")
+        if old:
+            await db.execute(text("delete from sessions where token=:token"), {"token":session_hash(old)})
+        await db.execute(text("insert into sessions(id,user_id,token,expires_at) values(:id,:user,:token,now()+interval '8 hours')"),
+                         {"id":str(uuid4()),"user":user["id"],"token":session_hash(token)})
+    response.set_cookie(cookie(request),token,max_age=TTL,httponly=True,secure=request.url.scheme=="https" or os.getenv("VINHOMES_API_SECURE_COOKIES")=="1",samesite="lax",path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return {"user":{"id":user["id"],"name":user["name"],"email":user["email"]}}
+
+
+@router.get("/session")
+async def session(request: Request, response: Response):
+    user = await authenticated_user(request)
+    async with enabled(request).begin() as db:
+        await context(db, request, user["id"])
+        membership_status = (await db.execute(text("select status from tenant_memberships where user_id=:id and tenant_id=cast(:tenant as uuid)"), {"id":user["id"], "tenant":str(request.app.state.settings.tenant_id)})).scalar_one()
+        is_admin = bool((await db.execute(text("select exists(select 1 from platform_admins where user_id=:id)"), {"id":user["id"]})).scalar_one())
+        roles = set((await db.execute(text("""
+            select r.role_code from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id and m.tenant_id=r.tenant_id
+            where m.user_id=:id and m.status='active' and r.tenant_id=cast(:tenant as uuid)
+              and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())
+        """), {"id":user["id"], "tenant":str(request.app.state.settings.tenant_id)})).scalars())
+    # One sign-in page serves everyone; this says which app each person goes on to. Someone with no role yet
+    # (just registered, waiting to be linked to a home) belongs to the resident app.
+    operations_role = "admin" if is_admin else "staff" if "staff" in roles else None
+    audiences = (["resident"] if "customer" in roles or operations_role is None else []) + (["operations"] if operations_role else [])
+    response.headers["Cache-Control"] = "no-store"
+    return {"user":user, "membershipStatus":membership_status, "administrator":is_admin,
+            "operationsRole":operations_role, "audiences":audiences}
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response):
+    engine = enabled(request)
+    async with engine.begin() as db:
+        await db.execute(text("delete from sessions where token=:token"), {"token":session_hash(request.cookies.get(cookie(request),""))})
+    response.delete_cookie(cookie(request),path="/")
+    return {"ok":True}
+
+
+async def administrator(request: Request):
+    user = await authenticated_user(request)
+    async with enabled(request).begin() as db:
+        if not (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user["id"]})).first():
+            raise HTTPException(403,"Chỉ quản trị viên được quản lý tài khoản và cấp quyền.")
+    return user
+
+
+class AccountCreate(Registration):
+    role: Literal["customer","staff"]
+    management_unit_id: UUID | None = None
+    residency: onboarding.Residency | None = None
+    staff_profile: onboarding.StaffProfile | None = None
+
+
+class AccountAccess(BaseModel):
+    role: Literal["customer","staff"]
+    status: Literal["active","suspended"]
+    # A management account works within one unit: its tickets, its room and its agents.
+    # Without a unit it keeps the whole tenant, as before.
+    management_unit_id: UUID | None = None
+    residency: onboarding.Residency | None = None
+    staff_profile: onboarding.StaffProfile | None = None
+
+
+async def grant_access(db,request:Request,user_id:str,actor:str,role:str,status:str,unit:UUID|None=None,record_review:bool=False):
+    if role not in {"customer", "staff"}:
+        raise HTTPException(422,"Domain chỉ cấp vai trò cư dân hoặc nhân viên. Ban quản lý sử dụng Platform.")
+    if unit is not None and role != "staff":
+        raise HTTPException(422,"Chỉ nhân viên được gắn với đơn vị quản lý tại Domain.")
+    await context(db,request,actor)
+    tenant = str(request.app.state.settings.tenant_id)
+    member = (await db.execute(text("select id from tenant_memberships where user_id=:user and tenant_id=cast(:tenant as uuid) for update"),{"user":user_id,"tenant":tenant})).scalar_one_or_none()
+    if not member:
+        raise HTTPException(404,"Tài khoản không thuộc tenant này.")
+    before=(await db.execute(text("select status from tenant_memberships where id=:id"),{"id":member})).scalar_one()
+    await db.execute(text("update tenant_memberships set status=:status,joined_at=coalesce(joined_at,now()),updated_at=now() where id=:id"),{"id":member,"status":status})
+    await db.execute(text("update scoped_user_roles set valid_to=now() where membership_id=:member and (valid_to is null or valid_to>now())"),{"member":member})
+    if not (status == "active" and role == "management" and unit is None):
+        # A tenant-wide manager keeps the rooms they are in. Anyone else leaves every management room
+        # here and, when placed in a unit, joins that unit's rooms below.
+        await db.execute(text("""delete from channel_memberships cm using channels c
+            where c.id=cm.channel_id and c.tenant_id=cm.tenant_id and c.kind='management'
+              and cm.user_id=:user and cm.tenant_id=cast(:tenant as uuid)"""),{"user":user_id,"tenant":tenant})
+    if status == "active" and unit is not None:
+        scope = (await db.execute(text("select id from access_scopes where tenant_id=cast(:tenant as uuid) and kind='management' and management_unit_id=:unit limit 1"),{"tenant":tenant,"unit":unit})).scalar_one_or_none()
+        if scope is None:
+            raise HTTPException(404,"Đơn vị quản lý không tồn tại hoặc chưa được cấp phạm vi truy cập.")
+        if role == "management":
+            await db.execute(text("""insert into channel_memberships(tenant_id,channel_id,user_id)
+            select c.tenant_id,c.id,:user from channels c join workspaces w on w.id=c.workspace_id and w.tenant_id=c.tenant_id
+            where c.tenant_id=cast(:tenant as uuid) and c.kind='management' and c.deleted_at is null
+              and w.status='active' and w.management_unit_id=:unit on conflict do nothing"""),{"user":user_id,"tenant":tenant,"unit":unit})
+    elif status == "active":
+        scope = (await db.execute(text("select id from access_scopes where tenant_id=cast(:tenant as uuid) and kind='tenant' limit 1"),{"tenant":tenant})).scalar_one_or_none()
+        if scope is None:
+            scope = (await db.execute(text("insert into access_scopes(tenant_id,kind) values(cast(:tenant as uuid),'tenant') returning id"),{"tenant":tenant})).scalar_one()
+    if status == "active":
+        await db.execute(text("insert into scoped_user_roles(tenant_id,membership_id,scope_id,role_code,granted_by,valid_from) values(cast(:tenant as uuid),:member,:scope,:role,:actor,now())"),{"tenant":tenant,"member":member,"scope":scope,"role":role,"actor":actor})
+    await db.execute(text("delete from sessions where user_id=:id and token like 'vinhomes-v1:%'"),{"id":user_id})
+    from .v3_audit import audit
+    await audit(db,actor,"account.access_changed","user",user_id,{"role":role,"status":status,"management_unit_id":str(unit) if unit else None})
+    if record_review and before != status:
+        await db.execute(text("""insert into account_reviews(tenant_id,user_id,action,from_status,to_status,reason,reviewer_user_id,decided_at)
+            values(cast(:tenant as uuid),:user,:action,:before,:after,:reason,:actor,now())"""),
+            {"tenant":tenant,"user":user_id,"action":"approve" if status=="active" else "suspend",
+             "before":before,"after":status,"reason":"Quản trị viên cập nhật quyền truy cập","actor":actor})
+
+
+@router.get("/accounts")
+async def list_accounts(request:Request, limit:int=Query(50,ge=1,le=200), offset:int=Query(0,ge=0),
+                        search:str=Query("",max_length=254), role:Literal["customer","staff","management","admin"]|None=None,
+                        status:Literal["pending","active","suspended","ended"]|None=None,
+                        management_unit_id:UUID|None=None):
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        query = """
+            with accounts_view as (
+            select u.id,u.name,u.email,m.status,u.created_at,
+              greatest((select max(a.created_at) from audit_events a where a.actor_user_id=u.id),
+                       (select max(s.updated_at) from sessions s where s.user_id=u.id)) as last_activity_at,
+              (select string_agg('Căn '||ap.code||coalesce(', tòa '||b.code,''),'; ' order by ap.code)
+                from unit_residents ur join units ap on ap.id=ur.unit_id and ap.tenant_id=ur.tenant_id
+                left join buildings b on b.id=ap.building_id and b.tenant_id=ap.tenant_id
+                where ur.user_id=u.id and ur.tenant_id=m.tenant_id and ur.verification_status='verified'
+                  and ur.valid_from<=now() and (ur.valid_to is null or ur.valid_to>now())) as apartment_scope,
+              exists(select 1 from platform_admins pa where pa.user_id=u.id) as administrator,
+              exists(select 1 from accounts a where a.user_id=u.id and a.provider_id=:provider) as has_password,
+              exists(select 1 from staff_profiles sp where sp.user_id=u.id and sp.tenant_id=m.tenant_id and sp.active) as has_staff_profile,
+              coalesce((select r.role_code from scoped_user_roles r where r.membership_id=m.id
+                and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now()) order by r.valid_from desc limit 1),'customer') as role,
+              (select s.management_unit_id from scoped_user_roles r join access_scopes s on s.id=r.scope_id and s.tenant_id=r.tenant_id
+                where r.membership_id=m.id and r.role_code in ('management','staff') and s.kind='management'
+                  and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now()) order by r.valid_from desc limit 1) as management_unit_id
+            from users u join tenant_memberships m on m.user_id=u.id
+            where m.tenant_id=cast(:tenant as uuid))
+        """
+        filters = """ where (:search='' or position(lower(:search) in lower(coalesce(name,'')||' '||coalesce(email,'')))>0)
+            and (cast(:status as text) is null or status=:status)
+            and (cast(:role as text) is null or (:role='admin' and administrator) or (not administrator and role=:role))
+            and (cast(:unit as uuid) is null or management_unit_id=cast(:unit as uuid))"""
+        params={"tenant":str(request.app.state.settings.tenant_id),"provider":PROVIDER,"search":search.strip(),
+                "role":role,"status":status,"unit":management_unit_id,"limit":limit,"offset":offset}
+        total=(await db.execute(text(query+"select count(*) from accounts_view"+filters),params)).scalar_one()
+        result=await db.execute(text(query+"select * from accounts_view"+filters+" order by created_at desc,id limit :limit offset :offset"),params)
+        items=[dict(r) for r in result.mappings()]
+        return {"items":items,"total":total,"limit":limit,"offset":offset,"nextOffset":offset+len(items) if offset+len(items)<total else None}
+
+
+@router.post("/accounts",status_code=201)
+async def create_account(body:AccountCreate,request:Request):
+    actor=await administrator(request)
+    email=body.email.strip().lower()
+    if "@" not in email or any(c.isspace() for c in email):
+        raise HTTPException(422,"Email không hợp lệ.")
+    async with _hash_slots:
+        hashed=await asyncio.to_thread(password_hash,body.password)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        await db.execute(text("select pg_advisory_xact_lock(hashtext(:email))"),{"email":email})
+        if (await db.execute(text("select 1 from users where lower(email)=:email"),{"email":email})).first():
+            raise HTTPException(409,"Email đã được sử dụng.")
+        user=str(uuid4())
+        await db.execute(text("insert into users(id,email,name,status) values(:id,:email,:name,'active')"),{"id":user,"email":email,"name":body.name.strip()})
+        await db.execute(text("insert into accounts(id,account_id,provider_id,user_id,password) values(:id,:user,:provider,:user,:password)"),{"id":str(uuid4()),"user":user,"provider":PROVIDER,"password":hashed})
+        await db.execute(text("insert into tenant_memberships(tenant_id,user_id,status) values(cast(:tenant as uuid),:user,'pending')"),{"tenant":str(request.app.state.settings.tenant_id),"user":user})
+        unit = body.staff_profile.management_unit_id if body.staff_profile else body.management_unit_id
+        await grant_access(db,request,user,actor["id"],body.role,"active",unit)
+        await onboarding.complete(db,str(request.app.state.settings.tenant_id),actor["id"],user,body.role,"active",body.residency,body.staff_profile)
+    return {"id":user}
+
+
+@router.get("/management-units")
+async def management_units(request:Request):
+    """The units an administrator can place a management account in."""
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        result=await db.execute(text("""select mu.id,mu.name from management_units mu
+            where mu.tenant_id=cast(:tenant as uuid) and mu.status='active' order by mu.name"""),{"tenant":str(request.app.state.settings.tenant_id)})
+        return {"items":[dict(r) for r in result.mappings()]}
+
+
+@router.patch("/accounts/{user_id}")
+async def change_access(user_id:str,body:AccountAccess,request:Request):
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
+            raise HTTPException(409,"Không thể sửa quyền tài khoản quản trị qua màn hình này.")
+        unit = body.staff_profile.management_unit_id if body.staff_profile else body.management_unit_id
+        await grant_access(db,request,user_id,actor["id"],body.role,body.status,unit,record_review=True)
+        await onboarding.complete(db,str(request.app.state.settings.tenant_id),actor["id"],user_id,body.role,body.status,body.residency,body.staff_profile)
+    return {"ok":True}
+
+
+@router.get("/onboarding-options")
+async def onboarding_options(request:Request, search:str=Query("",max_length=100)):
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        params={"tenant":str(request.app.state.settings.tenant_id),"search":search.strip().lower()}
+        units=(await db.execute(text("""select u.id,u.code,b.code as building_code,b.name as building_name
+            from units u left join buildings b on b.id=u.building_id and b.tenant_id=u.tenant_id
+            where u.tenant_id=cast(:tenant as uuid) and u.status='active'
+              and (:search='' or position(:search in lower(u.code||' '||coalesce(b.code,'')||' '||coalesce(b.name,'')))>0)
+            order by b.code,u.code,u.id limit 100"""),params)).mappings().all()
+        categories=(await db.execute(text("select id,name from service_categories where tenant_id=cast(:tenant as uuid) and enabled order by name"),params)).mappings().all()
+        return {"units":[dict(u) for u in units],"categories":[dict(c) for c in categories]}
+
+
+@router.get("/accounts/{user_id}/onboarding")
+async def account_onboarding(user_id:str,request:Request):
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        tenant=str(request.app.state.settings.tenant_id)
+        if not (await db.execute(text("select 1 from tenant_memberships where tenant_id=cast(:tenant as uuid) and user_id=:user"),{"tenant":tenant,"user":user_id})).first():
+            raise HTTPException(404,"Tài khoản không thuộc tenant này.")
+        return await onboarding.detail(db,tenant,user_id)
+
+
+@router.delete("/accounts/{user_id}/residencies/{residency_id}")
+async def revoke_residency(user_id:str,residency_id:UUID,request:Request):
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        params={"tenant":str(request.app.state.settings.tenant_id),"user":user_id,"id":residency_id}
+        row=(await db.execute(text("""select id from unit_residents where tenant_id=cast(:tenant as uuid)
+            and user_id=:user and id=:id for update"""),params)).first()
+        if not row:
+            raise HTTPException(404,"Quan hệ cư trú không tồn tại trong phạm vi này.")
+        await db.execute(text("""update unit_residents set valid_to=least(coalesce(valid_to,now()),now()),
+            verification_status='expired',updated_at=now() where id=:id and tenant_id=cast(:tenant as uuid)"""),params)
+        await db.execute(text("delete from sessions where user_id=:user and token like 'vinhomes-v1:%'"),params)
+        from .v3_audit import audit
+        await audit(db,actor["id"],"account.residency_revoked","user",user_id,{"residency_id":str(residency_id)})
+    return {"ok":True}
+
+
+class PasswordReset(BaseModel):
+    new_password: str = Field(min_length=12,max_length=128)
+
+
+@router.post("/accounts/{user_id}/password")
+async def reset_password(user_id:str,body:PasswordReset,request:Request):
+    """The administrator sets a new password for someone who lost theirs; every sign-in of that person ends."""
+    actor=await administrator(request)
+    async with _hash_slots:
+        hashed=await asyncio.to_thread(password_hash,body.new_password)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
+            raise HTTPException(409,"Không thể đặt lại mật khẩu tài khoản quản trị qua màn hình này.")
+        if not (await db.execute(text("select 1 from tenant_memberships where user_id=:id and tenant_id=cast(:tenant as uuid)"),
+                                 {"id":user_id,"tenant":str(request.app.state.settings.tenant_id)})).first():
+            raise HTTPException(404,"Tài khoản không thuộc tenant này.")
+        changed=(await db.execute(text("update accounts set password=:password,updated_at=now() where user_id=:id and provider_id=:provider returning id"),
+                                  {"id":user_id,"provider":PROVIDER,"password":hashed})).first()
+        if not changed:
+            raise HTTPException(409,"Tài khoản này không đăng nhập bằng mật khẩu.")
+        await db.execute(text("delete from sessions where user_id=:id and token like 'vinhomes-v1:%'"),{"id":user_id})
+        await db.execute(text("update password_reset_tokens set used_at=now() where user_id=:id and used_at is null"),{"id":user_id})
+        from .v3_audit import audit
+        await audit(db,actor["id"],"account.password_reset","user",user_id,{})
+    return {"ok":True}
+
+
+@router.delete("/accounts/{user_id}")
+async def delete_account(user_id:str,request:Request):
+    """Removes an account that has no history, one made by mistake or twice. The database refuses the delete
+    as soon as anything refers to the person (a request, a message, a job, a role they granted), and such an
+    account is suspended instead, so what it did keeps its author."""
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
+            raise HTTPException(409,"Không thể xóa tài khoản quản trị qua màn hình này.")
+        email=(await db.execute(text("""select u.email from users u join tenant_memberships m on m.user_id=u.id
+            where u.id=:id and m.tenant_id=cast(:tenant as uuid)"""),{"id":user_id,"tenant":str(request.app.state.settings.tenant_id)})).scalar_one_or_none()
+        if email is None:
+            raise HTTPException(404,"Tài khoản không thuộc tenant này.")
+        try:
+            async with db.begin_nested():
+                for statement in ("delete from sessions where user_id=:id","delete from channel_memberships where user_id=:id",
+                                  "delete from workspace_members where user_id=:id",
+                                  "delete from scoped_user_roles where membership_id in (select id from tenant_memberships where user_id=:id)",
+                                  "delete from tenant_memberships where user_id=:id","delete from accounts where user_id=:id",
+                                  "delete from users where id=:id"):
+                    await db.execute(text(statement),{"id":user_id})
+        except IntegrityError:
+            raise HTTPException(409,"Tài khoản đã có lịch sử trên hệ thống (yêu cầu, tin nhắn hoặc công việc). Dùng Khóa truy cập để giữ lịch sử.") from None
+        from .v3_audit import audit
+        await audit(db,actor["id"],"account.deleted","user",user_id,{"email":email})
+    return {"ok":True}
+
+
+@router.post("/register",status_code=201)
+async def register(body: Registration,request: Request):
+    engine = enabled(request)
+    email = body.email.strip().lower()
+    if "@" not in email or any(c.isspace() for c in email):
+        raise HTTPException(422,"Email không hợp lệ.")
+    await rate_limit(request,email)
+    async with _hash_slots:
+        hashed = await asyncio.to_thread(password_hash,body.password)
+    async with engine.begin() as db:
+        await context(db,request)
+        await db.execute(text("select pg_advisory_xact_lock(hashtext(:email))"),{"email":email})
+        exists = (await db.execute(text("select 1 from users where lower(email)=:email"),{"email":email})).first()
+        if exists:
+            raise HTTPException(409,"Không thể đăng ký thông tin này. Hãy đăng nhập hoặc liên hệ quản trị viên.")
+        user = str(uuid4())
+        await db.execute(text("insert into users(id,email,name,status) values(:id,:email,:name,'active')"),{"id":user,"email":email,"name":body.name.strip()})
+        await db.execute(text("insert into accounts(id,account_id,provider_id,user_id,password) values(:id,:user,:provider,:user,:password)"),{"id":str(uuid4()),"user":user,"provider":PROVIDER,"password":hashed})
+        await db.execute(text("insert into tenant_memberships(tenant_id,user_id,status) values(cast(:tenant as uuid),:user,'pending')"),{"tenant":str(request.app.state.settings.tenant_id),"user":user})
+    return {"nextStep":"membership-pending"}
+
+
+@router.post("/change-password")
+async def change_password(body: PasswordChange,request: Request,response: Response):
+    user = await authenticated_user(request)
+    await rate_limit(request,user["id"])
+    async with enabled(request).begin() as db:
+        row = (await db.execute(text("select id,password from accounts where user_id=:id and provider_id=:provider for update"),{"id":user["id"],"provider":PROVIDER})).mappings().one()
+        async with _hash_slots:
+            if not await asyncio.to_thread(check_password,body.current_password,row["password"]):
+                raise HTTPException(401,"Mật khẩu hiện tại không đúng.")
+            hashed = await asyncio.to_thread(password_hash,body.new_password)
+        await db.execute(text("update accounts set password=:password,updated_at=now() where id=:id"),{"id":row["id"],"password":hashed})
+        await db.execute(text("delete from sessions where user_id=:id and token like 'vinhomes-v1:%'"),{"id":user["id"]})
+        await context(db,request,user["id"])
+        await db.execute(text("update password_reset_tokens set used_at=now() where user_id=:id and used_at is null"),{"id":user["id"]})
+    # Every door's sign-in of this person ended above; the other doors' cookies are simply refused.
+    response.delete_cookie(cookie(request),path="/")
+    return {"ok":True}
