@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { OfficeSim, buildLayout, populate, runDemo } from '../src/pages/agents/office-sim.ts';
+import { OfficeSim, buildLayout, populate } from '../src/pages/agents/office-sim.ts';
 
 const agent = { id: 'planner', name: 'Planner', role: '', invitable: true, real: null };
 const layout = buildLayout([agent]);
@@ -45,25 +45,4 @@ test('leader can join after the first event and subscriptions are cleaned up', (
 	assert.equal(notifications, 1);
 	unsubscribe(); sim.publish();
 	assert.equal(notifications, 1);
-});
-
-
-test('original office choreography moves actors, pauses and stops on cleanup', async () => {
-	const sim = office();
-	void runDemo(sim, layout, [agent]);
-	sim.tick(1000);
-	await new Promise(resolve => setImmediate(resolve));
-	const resident = [...sim.actors.values()].find(actor => actor.kind === 'resident');
-	assert.ok(resident, 'original reception scenario should start');
-	const start = { ...resident.pos };
-	sim.tick(100);
-	assert.notDeepEqual(resident.pos, start);
-	sim.togglePlaying();
-	const paused = { ...resident.pos };
-	sim.tick(100);
-	assert.deepEqual(resident.pos, paused);
-	sim.togglePlaying();
-	sim.abort();
-	sim.tick(100);
-	assert.deepEqual(resident.pos, paused);
 });

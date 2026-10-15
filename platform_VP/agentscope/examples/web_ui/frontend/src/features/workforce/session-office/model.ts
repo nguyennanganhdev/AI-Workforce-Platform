@@ -4,7 +4,7 @@ export interface SessionOfficeSnapshot {
 	source: 'mock' | 'preview' | 'live';
 	statusLabel?: string;
 	/** Demo preserves the original office choreography; events applies backend-derived positions/status later. */
-	motion: 'demo' | 'events';
+	motion: 'events';
 	participants: {
 		id: string;
 		name: string;

@@ -2,10 +2,7 @@ import {
 	FileText,
 	Mail,
 	MessageCircle,
-	Pause,
 	Pencil,
-	Play,
-	RotateCcw,
 	User,
 	Users,
 	X,
@@ -33,7 +30,6 @@ import {
 	type Projection,
 	populate,
 	projection,
-	runDemo,
 	WALL_H,
 } from './office-sim';
 import type { AgentView } from '@/api';
@@ -612,9 +608,7 @@ const FLOAT =
 
 function useOffice(
 	agents: GraphAgent[],
-	resetKey: number,
 	sessionId?: string,
-	motion: 'demo' | 'events' = 'demo',
 ) {
 	const layout = useMemo(() => buildLayout(agents), [agents]);
 	const [sim, setSim] = useState<OfficeSim | null>(null);
@@ -623,10 +617,9 @@ function useOffice(
 		const next = new OfficeSim();
 		populate(next, layout, agents);
 		setSim(next);
-		if (motion === 'demo') void runDemo(next, layout, agents);
 
 		return () => next.abort();
-	}, [layout, agents, resetKey, sessionId, motion]);
+	}, [layout, agents, sessionId]);
 
 	return { layout, sim };
 }
@@ -662,7 +655,7 @@ export function AgentOffice({
 	onChat: (agent: AgentView) => void;
 	onEdit: (agent: AgentView) => void;
 }) {
-	const { agents: catalog, sample } = useMemo(() => toGraphAgents(apiAgents), [apiAgents]);
+	const { agents: catalog } = useMemo(() => toGraphAgents(apiAgents), [apiAgents]);
 	// Roster metadata stays stable while statuses/messages change, so the map is not rebuilt.
 	const rosterKey = session
 		? JSON.stringify(
@@ -680,8 +673,7 @@ export function AgentOffice({
 					),
 		[catalog, rosterKey],
 	);
-	const [resetKey, setResetKey] = useState(0);
-	const { layout, sim } = useOffice(agents, resetKey, session?.id, session?.motion);
+	const { layout, sim } = useOffice(agents, session?.id);
 	const P = useMemo(() => projection(layout.depth), [layout.depth]);
 	const pieces = useMemo(() => buildPieces(P, layout), [P, layout]);
 	const [fitRef, fit] = useFit(P.width, P.height);
@@ -720,12 +712,10 @@ export function AgentOffice({
 					session={session}
 					sim={sim}
 					agents={agents}
-					sample={sample}
 					selectedId={selectedId}
 					setSelectedId={setSelectedId}
 					onChat={onChat}
 					onEdit={onEdit}
-					onRestart={() => setResetKey((key) => key + 1)}
 				/>
 			)}
 		</div>
@@ -833,22 +823,18 @@ function OfficeChrome({
 	session,
 	sim,
 	agents,
-	sample,
 	selectedId,
 	setSelectedId,
 	onChat,
 	onEdit,
-	onRestart,
 }: {
 	session?: SessionOfficeSnapshot;
 	sim: OfficeSim;
 	agents: GraphAgent[];
-	sample: boolean;
 	selectedId: string | null;
 	setSelectedId: (id: string | null) => void;
 	onChat: (agent: AgentView) => void;
 	onEdit: (agent: AgentView) => void;
-	onRestart: () => void;
 }) {
 	const { t } = useTranslation();
 	// Primitive snapshot stays equal during movement; only visible UI changes trigger a render.
@@ -873,25 +859,13 @@ function OfficeChrome({
 		const el = logRef.current;
 		if (el) el.scrollTop = el.scrollHeight;
 	}, [lastLogId]);
-	const toggle = () => {
-		sim.togglePlaying();
-		sim.publish();
-	};
-	const cycleSpeed = () => {
-		sim.cycleSpeed();
-		sim.publish();
-	};
 	return (
 		<>
 			{/* Chrome. */}
 			<div className="absolute top-3 right-4 left-4 flex flex-wrap items-center gap-2">
 				<span className="flex h-8 items-center gap-2 rounded-full bg-[#fff4dc] px-3 text-[12px] font-medium text-[#8a5a00]">
 					<span className="size-1.5 rounded-full bg-[#d99a00]" />
-					{session
-						? session.motion === 'demo'
-							? 'Chuyển động văn phòng mô phỏng'
-							: 'Hoạt động của phiên'
-						: t(sample ? 'agents.office.sampleAll' : 'agents.office.sample')}
+					{t('agents.office.live')}
 				</span>
 				<span
 					className={cn(
@@ -907,41 +881,6 @@ function OfficeChrome({
 					/>
 					{session?.statusLabel ?? t(`agents.office.phase.${sim.phase}`)}
 				</span>
-				{session?.motion !== 'events' && (
-					<div className={cn(FLOAT, 'ml-auto flex items-center gap-0.5 p-0.5')}>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							className="rounded-full"
-							tooltip={t(sim.playing ? 'agents.office.pause' : 'agents.office.play')}
-							aria-label={t(
-								sim.playing ? 'agents.office.pause' : 'agents.office.play',
-							)}
-							onClick={toggle}
-						>
-							{sim.playing ? <Pause /> : <Play />}
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-7 rounded-full px-2 text-[12px] tabular-nums"
-							tooltip={t('agents.office.speed')}
-							onClick={cycleSpeed}
-						>
-							{sim.speed}×
-						</Button>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							className="rounded-full"
-							tooltip={t('agents.office.restart')}
-							aria-label={t('agents.office.restart')}
-							onClick={onRestart}
-						>
-							<RotateCcw />
-						</Button>
-					</div>
-				)}
 			</div>
 
 			{/* What just happened, newest last. */}

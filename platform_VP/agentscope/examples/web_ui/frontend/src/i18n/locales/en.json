@@ -300,8 +300,6 @@
 			}
 		},
 		"office": {
-			"sample": "The office runs a demo script, not live session data yet",
-			"sampleAll": "The agents and activity in the office are sample data",
 			"phase": {
 				"idle": "Everyone at their desks",
 				"request": "New request",
@@ -313,10 +311,6 @@
 				"approval": "Waiting for your approval",
 				"done": "Done"
 			},
-			"play": "Resume",
-			"pause": "Pause",
-			"speed": "Speed",
-			"restart": "Restart",
 			"log": "Activity",
 			"rooms": {
 				"meeting": "Meeting room",
@@ -329,7 +323,8 @@
 				"working": "Working on a task",
 				"off": "Not invitable, skips meetings",
 				"walking": "Walking"
-			}
+			},
+			"live": "Session activity"
 		}
 	},
 	"dialog-agent-create": {

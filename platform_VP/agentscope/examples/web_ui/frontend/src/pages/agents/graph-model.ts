@@ -66,9 +66,8 @@ export type FlowEdge = Edge<FlowEdgeData, 'flow'>;
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-export function toGraphAgents(agents: AgentView[]): { agents: GraphAgent[]; sample: boolean } {
+export function toGraphAgents(agents: AgentView[]): { agents: GraphAgent[] } {
 	return {
-		sample: false,
 		agents: agents.map((agent) => ({
 			id: agent.id,
 			name: agent.data.name,

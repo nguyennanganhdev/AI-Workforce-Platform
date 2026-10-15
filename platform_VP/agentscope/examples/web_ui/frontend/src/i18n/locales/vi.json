@@ -297,8 +297,6 @@
 			}
 		},
 		"office": {
-			"sample": "Văn phòng chạy theo kịch bản demo, chưa nối dữ liệu phiên thật",
-			"sampleAll": "Agent và hoạt động trong văn phòng là dữ liệu mẫu",
 			"phase": {
 				"idle": "Mọi người đang ở vị trí",
 				"request": "Có yêu cầu mới",
@@ -310,10 +308,6 @@
 				"approval": "Chờ bạn duyệt",
 				"done": "Hoàn tất"
 			},
-			"play": "Chạy tiếp",
-			"pause": "Tạm dừng",
-			"speed": "Tốc độ",
-			"restart": "Chạy lại từ đầu",
 			"log": "Diễn biến",
 			"rooms": {
 				"meeting": "Phòng họp",
@@ -326,7 +320,8 @@
 				"working": "Đang xử lý việc",
 				"off": "Chưa bật được mời, không tham gia họp",
 				"walking": "Đang di chuyển"
-			}
+			},
+			"live": "Hoạt động của phiên"
 		}
 	},
 	"dialog-agent-create": {

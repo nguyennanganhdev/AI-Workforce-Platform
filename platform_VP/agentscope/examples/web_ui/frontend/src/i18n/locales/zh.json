@@ -298,8 +298,6 @@
 			}
 		},
 		"office": {
-			"sample": "办公室按演示脚本运行，尚未接入真实会话数据",
-			"sampleAll": "办公室中的智能体和活动均为示例数据",
 			"phase": {
 				"idle": "大家都在工位",
 				"request": "新请求",
@@ -311,10 +309,6 @@
 				"approval": "等待你审批",
 				"done": "已完成"
 			},
-			"play": "继续",
-			"pause": "暂停",
-			"speed": "速度",
-			"restart": "重新开始",
 			"log": "动态",
 			"rooms": {
 				"meeting": "会议室",
@@ -327,7 +321,8 @@
 				"working": "正在处理任务",
 				"off": "未开启可被邀请，不参加会议",
 				"walking": "走动中"
-			}
+			},
+			"live": "会话动态"
 		}
 	},
 	"dialog-agent-create": {
