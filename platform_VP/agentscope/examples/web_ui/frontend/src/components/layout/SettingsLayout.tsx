@@ -21,10 +21,15 @@ export function SettingsLayout() {
 	return (
 		<SidebarProvider
 			className="h-screen min-h-0 bg-canvas"
+			// Always the icon rail on desktop: the pages need the width, the
+			// labels live in the tooltips. Mobile keeps its drawer.
+			open={false}
 			style={
 				{
 					// Narrower than the chat's 320px: this is a list of seven short labels.
 					'--sidebar-width': '16rem',
+					// A 40px icon button inside an 8px gutter on each side.
+					'--sidebar-width-icon': '3.5rem',
 				} as CSSProperties
 			}
 		>

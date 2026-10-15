@@ -21,12 +21,12 @@ function Speaker({ name }: { name: string }) {
 	const id = useAgentId(name);
 	if (PEOPLE.has(name.toLocaleLowerCase())) {
 		return (
-			<span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+			<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
 				<UserRound className="size-3.5" />
 			</span>
 		);
 	}
-	return <ClayAvatar id={id} label={name} size={24} />;
+	return <ClayAvatar id={id} label={name} size={28} />;
 }
 
 function Entry({ entry }: { entry: RoomEntry }) {

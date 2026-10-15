@@ -16,6 +16,14 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -250,7 +258,7 @@ function AdminSidebar({
 }) {
 	const { isMobile, setOpenMobile } = useSidebar();
 	return (
-		<Sidebar collapsible={isMobile ? 'offcanvas' : 'none'} className="cue-column border-r border-sidebar-border">
+		<Sidebar collapsible={isMobile ? 'offcanvas' : 'icon'} className="cue-column border-r border-sidebar-border">
 			<SidebarHeader className="h-12 shrink-0 justify-center px-4 py-0 group-data-[collapsible=icon]:px-2">
 				<p className="truncate text-[15px]/5 font-semibold group-data-[collapsible=icon]:sr-only">{title}</p>
 			</SidebarHeader>
@@ -280,28 +288,29 @@ function AdminSidebar({
 				</SidebarGroup>
 			</SidebarContent>
 			<SidebarFooter className="border-t border-sidebar-border p-2">
-				<SidebarMenu>
-					<SidebarMenuItem>
-						<div className="flex h-12 items-center gap-3 px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+				<DropdownMenu>
+					<DropdownMenuTrigger asChild>
+						<button
+							type="button"
+							title={user.username}
+							className="flex h-12 w-full items-center gap-3 rounded-xl px-2 hover:bg-[var(--cue-bg-hover,var(--accent))] group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+						>
 							<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cue-avatar-user,#e5484d)] text-[15px] font-medium text-white">
 								{user.username.charAt(0).toUpperCase()}
 							</span>
-							<span className="min-w-0 flex-1 truncate text-[15px]/5 group-data-[collapsible=icon]:hidden">
+							<span className="min-w-0 flex-1 truncate text-left text-[15px]/5 group-data-[collapsible=icon]:hidden">
 								{user.username}
 							</span>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								className="group-data-[collapsible=icon]:hidden"
-								aria-label="Đăng xuất"
-								title="Đăng xuất"
-								onClick={onLogout}
-							>
-								<LogOut />
-							</Button>
-						</div>
-					</SidebarMenuItem>
-				</SidebarMenu>
+						</button>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent side="right" align="end" className="w-auto min-w-48">
+						<DropdownMenuLabel className="font-normal text-muted-foreground">{user.username}</DropdownMenuLabel>
+						<DropdownMenuSeparator />
+						<DropdownMenuItem variant="destructive" onClick={onLogout}>
+							<LogOut /> Đăng xuất
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</SidebarFooter>
 		</Sidebar>
 	);
@@ -617,6 +626,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 	return (
 		<SidebarProvider
 			className="h-screen min-h-0 bg-canvas"
+			open={false}
 			style={{ '--sidebar-width': '16rem', '--sidebar-width-icon': '3.5rem' } as CSSProperties}
 		>
 			<AdminSidebar

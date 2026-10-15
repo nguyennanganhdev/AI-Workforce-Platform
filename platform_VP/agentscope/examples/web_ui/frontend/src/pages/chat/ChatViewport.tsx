@@ -23,7 +23,7 @@ import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
-import { CompactViewContext, TeamRosterContext } from '@/components/chat/team-roster';
+import { TeamRosterContext, TicketViewContext } from '@/components/chat/team-roster';
 import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
@@ -97,11 +97,8 @@ interface ChatViewportProps {
 	 * session's name instead.
 	 */
 	headerSlot?: ReactNode;
-	/**
-	 * A ticket read by a manager (the Leader page): the handover as a card,
-	 * no run timings or token counts, no model, permission or folder controls.
-	 */
-	compact?: boolean;
+	/** A partner ticket of the Leader page: an empty session says so. */
+	ticketView?: boolean;
 }
 
 /** Maximum number of panels stacked in a single dock column. */
@@ -201,7 +198,7 @@ export function ChatViewport({
 	agentName,
 	onOpenAgentSettings,
 	headerSlot,
-	compact = false,
+	ticketView = false,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
@@ -827,7 +824,7 @@ export function ChatViewport({
 			: undefined;
 
 	return (
-		<CompactViewContext.Provider value={compact}>
+		<TicketViewContext.Provider value={ticketView}>
 		<TeamRosterContext.Provider value={roster}>
 			<SessionWorkspace snapshot={office}>
 				<main className="flex size-full">
@@ -881,8 +878,6 @@ export function ChatViewport({
 									{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
 									<div className="flex shrink-0 flex-row items-center gap-x-1">
-										{!compact && (
-										<>
 										<LlmSelect
 											id="tour-llm-select"
 											variant="ghost"
@@ -911,8 +906,7 @@ export function ChatViewport({
 											disabled={!sessionId || configPending}
 											onChange={handlePermissionModeChange}
 										/>
-										</>
-										)}
+
 										{/* Quick toggles for the two panels used most —
 									    team (who is working) and plan (what they are
 									    doing) — then the full list behind the menu. An
@@ -1020,8 +1014,7 @@ export function ChatViewport({
 										sessionId={sessionId}
 										cwd={view?.session.config.cwd ?? null}
 										onCwdChange={handleCwdChange}
-										showWorkspace={!compact}
-										git={compact ? null : (workspaceStatus?.git ?? null)}
+										git={workspaceStatus?.git ?? null}
 										mentions={mentions}
 										onRefreshGit={refetchWorkspaceStatus}
 										phase={phase}
@@ -1128,6 +1121,6 @@ export function ChatViewport({
 				onCreated={() => setCredentialRefetchTrigger((n) => n + 1)}
 			/>
 		</TeamRosterContext.Provider>
-		</CompactViewContext.Provider>
+		</TicketViewContext.Provider>
 	);
 }

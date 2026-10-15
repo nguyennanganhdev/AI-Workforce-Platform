@@ -11,5 +11,5 @@ export function useAgentId(name: string): string {
 	return useContext(TeamRosterContext).get(name.toLocaleLowerCase()) ?? name;
 }
 
-/** Whether the open session is a ticket shown in its short form (the Leader page). */
-export const CompactViewContext = createContext(false);
+/** Whether the open session is a partner ticket of the Leader page. */
+export const TicketViewContext = createContext(false);

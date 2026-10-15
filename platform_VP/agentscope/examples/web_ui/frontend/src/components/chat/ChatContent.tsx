@@ -16,7 +16,7 @@ import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
 import { ChoiceCard } from '@/components/chat/ChoiceCard';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
 import { FlipCard } from '@/components/chat/FlipCard.tsx';
-import { CompactViewContext } from '@/components/chat/team-roster';
+import { TicketViewContext } from '@/components/chat/team-roster';
 import { type MentionOption, TextInput } from '@/components/chat/TextInput.tsx';
 import { WorkingDirectoryDialog } from '@/components/dialog/WorkingDirectoryDialog';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert.tsx';
@@ -146,7 +146,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	agentName,
 }) => {
 	const { t, i18n } = useTranslation();
-	const compact = useContext(CompactViewContext);
+	const ticketView = useContext(TicketViewContext);
 	// Only a session that finished loading with nothing in it is empty.
 	// Treating "no messages yet" as empty would flash the greeting over
 	// every session that does have history.
@@ -200,7 +200,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				<div className="flex flex-1 w-full items-center justify-center">
 					{showSpinner ? <Spinner className="size-5 text-muted-foreground" /> : null}
 				</div>
-			) : isEmpty && compact ? (
+			) : isEmpty && ticketView ? (
 				<div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
 					Session này chưa nhận ticket nào.
 				</div>
@@ -241,9 +241,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 											key={message.id}
 											messageId={message.id}
 										>
-											{!compact &&
-												at.getTime() - previousAt.getTime() >
-													TIME_MARKER_GAP_MS && (
+											{at.getTime() - previousAt.getTime() >
+												TIME_MARKER_GAP_MS && (
 												<Marker
 													variant="separator"
 													className="mb-6 font-mono text-xs"

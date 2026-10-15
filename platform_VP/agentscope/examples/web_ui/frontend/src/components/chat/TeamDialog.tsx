@@ -58,12 +58,12 @@ function Face({ name, person = false }: { name: string; person?: boolean }) {
 	const id = useAgentId(name);
 	if (person) {
 		return (
-			<span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+			<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
 				<UserRound className="size-3.5" />
 			</span>
 		);
 	}
-	return <ClayAvatar id={id} label={name} size={22} />;
+	return <ClayAvatar id={id} label={name} size={28} />;
 }
 
 export function DialogCard({

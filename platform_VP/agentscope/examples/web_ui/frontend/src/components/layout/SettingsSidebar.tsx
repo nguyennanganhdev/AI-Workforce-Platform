@@ -95,7 +95,7 @@ export function SettingsSidebar() {
 		// Desktop folds down to an icon rail (labels move into tooltips); mobile
 		// turns it into the off-canvas drawer the layout's menu button opens.
 		<Sidebar
-			collapsible={isMobile ? 'offcanvas' : 'none'}
+			collapsible={isMobile ? 'offcanvas' : 'icon'}
 			className="cue-column border-r border-sidebar-border"
 		>
 			<SidebarHeader className="h-12 shrink-0 justify-center px-2 py-0">

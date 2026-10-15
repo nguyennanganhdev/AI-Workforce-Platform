@@ -22,9 +22,8 @@ import {
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
-import { memo, useContext, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 
-import { CompactViewContext } from './team-roster';
 import { DialogToolCard, HandoverCard, TeamMessageCard, TicketCard } from './TeamDialog';
 import { DIALOG_TOOLS, parseHandover, teamHintSource } from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
@@ -431,13 +430,11 @@ interface MessageBubbleProps {
 function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
-	// The Leader page reads a ticket, not a run: no timings, no token counts,
-	// and the handover as the card reception confirmed.
-	const compact = useContext(CompactViewContext);
-	const ticket =
-		compact && isUser
-			? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
-			: undefined;
+	// A partner handover reads as the card reception confirmed (see the
+	// route's ticket_input); the lines the Leader reads stay in the message.
+	const ticket = isUser
+		? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
+		: undefined;
 
 	const isRunning = !message.finished_at;
 	const hasUsage =
@@ -523,13 +520,7 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 							<ASBlock block={block} key={index} />
 						))}
 				</AttachmentGroup>
-				{compact ? (
-					isRunning && !isUser ? (
-						<MessageFooter>
-							<Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label={t('messageBubble.running')} />
-						</MessageFooter>
-					) : null
-				) : message.role === 'user' ? (
+				{message.role === 'user' ? (
 					plainText && (
 						<MessageFooter>
 							<CopyButton text={plainText} />
@@ -639,7 +630,6 @@ interface ASBlockProps {
 
 export function ASBlock({ block, ...props }: ASBlockProps) {
 	const { t } = useTranslation();
-	const compact = useContext(CompactViewContext);
 
 	switch (block.type) {
 		case 'text': {
@@ -720,8 +710,6 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			if (team && typeof block.hint === 'string') {
 				return <TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} />;
 			}
-			// Runtime notices are for whoever debugs the run, not for the ticket's reader.
-			if (compact) return null;
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;
 			let hintSublabel: string | null = null;
