@@ -6,6 +6,8 @@ Hiện có **12 dòng đề xuất**: 1 phân khu, 1 tòa, 1 tuyến chưa gán 
 
 Mở [missing-data.csv](missing-data.csv) để đối soát **108 trường/hạng mục còn thiếu**; [candidate-summary.json](candidate-summary.json) lưu số lượng và hash nguồn. Bộ này **phải trả `valid=false`**, không được nhập staging/publish thành vận hành khi chưa bổ sung hồ sơ. [Nghiên cứu nguồn](../../../docs/domain/RESEARCH_DOMAIN_DATA_COMPLETION_20261015.md) phân biệt dữ kiện công khai và phần cần owner xác nhận.
 
+[input-requirements.json](input-requirements.json) mô tả nguồn cần cung cấp, trường dữ liệu và ràng buộc của đủ 10 dataset. Trong 108 mục có 36 trường xác nhận/hiệu lực lặp lại, 67 trường chính sách/phân công và 5 dataset chưa có hồ sơ; không có nghĩa phải cung cấp 108 tài liệu riêng. Đây là hợp đồng thu thập dữ liệu, không phải bản ghi vận hành hay phê duyệt. Mức tối thiểu validator và mục tiêu 3 dịch vụ/6 SOP của candidate được ghi riêng.
+
 Đã bổ sung tiếp [6 reference hỗ trợ/hoạt động theo khu](../../reference-data/resident-support-public-20261015.json) vào kho tri thức VPS, không sửa các CSV owner của pilot. Tin tuyển dụng và nội dung quảng bá không thay xác nhận nhân sự, dịch vụ, SOP/SLA, phí hoặc giờ; 108 mục còn thiếu không tự giảm theo số lượng reference. Xem [nghiên cứu vòng 2](../../../docs/domain/RESEARCH_DOMAIN_REFERENCE_EXPANSION_20261015.md).
 
 [Hồ sơ lịch sử đúng cụm B3-CT02](../../reference-data/op1-legal-technical-public-20261015.json) bổ sung đối chiếu S1.01/L27M-2, S1.02/L27M-1, S1.03/Z28 và hồ sơ nghiệm thu năm 2020; không tạo căn hoặc xác nhận hiện trạng vận hành. Ba bản mẫu lô thương mại trong cùng gói được cách ly khỏi retrieval cư dân vì khác loại bất động sản. Các trường `approved_by`, ngày hiệu lực, operator và địa chỉ hiện tại trong CSV vẫn cần hồ sơ thật; không dùng ngày nghiệm thu lịch sử để điền thay.
@@ -81,6 +83,10 @@ Phải migrate database trước khi apply. Importer ghi trọn bộ vào `owner
 3. Khi có master thật, đối soát và publish có kiểm soát; cấp tài khoản qua luồng tài khoản hiện có. Kiểm tra cư dân chỉ thấy căn mình, nhân viên chỉ thấy việc được giao, SOP/giá chỉ đúng khu/tòa/thời hạn.
 4. Nối Platform: ticket → grant → giao việc → nhận/ETA → di chuyển/đến nơi → phương án/chi phí → cư dân đồng ý → bằng chứng → Platform cập nhật → cư dân nghiệm thu/xử lý lại. Kiểm thử hai backend thật riêng; không coi staging hoặc kiểm thử giả là luồng thật.
 5. Chỉ sau nghiệm thu mới mở thêm dịch vụ/tòa/OP2/3; mỗi phạm vi mới phải có bộ dữ liệu và tuyến/nhân sự riêng.
+
+## Sandbox mô phỏng riêng
+
+Theo lựa chọn ngày 15/10/2026, bộ mô phỏng đầy đủ được tạo riêng bằng `prepare-owner-sandbox.py`/`start-owner-sandbox.py`, không điền đè các CSV `owner_candidate` tại đây. Xem [SANDBOX.md](SANDBOX.md) về dữ liệu, database riêng, tài khoản, kiểm thử và giới hạn. Publisher sandbox chỉ hoạt động với DB local có tên và marker riêng; không thay importer staging của dữ liệu thật.
 
 ## Dữ liệu được cung cấp cho Platform
 
