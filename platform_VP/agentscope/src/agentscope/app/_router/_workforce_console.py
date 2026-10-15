@@ -372,8 +372,27 @@ def _select_model_name(
     return model_names[0] if model_names else ""
 
 
+PLATFORM_CREDENTIAL_NAME = "Model của platform"
+
+
+async def _platform_credential(storage: StorageBase, user_id: str) -> list:
+    """A management account without a credential of its own uses the
+    platform's model key (``WORKFORCE_PLATFORM_OPENAI_API_KEY``), stored once
+    as its credential; the account may still add its own instead."""
+
+    key = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
+    if not key:
+        return []
+    data = {"type": "openai_credential", "name": PLATFORM_CREDENTIAL_NAME, "api_key": key}
+    base_url = os.getenv("WORKFORCE_PLATFORM_OPENAI_BASE_URL", "").strip()
+    if base_url:
+        data["base_url"] = base_url
+    await storage.upsert_credential(user_id, CredentialFactory.from_dict(data))
+    return await storage.list_credentials(user_id)
+
+
 async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
-    credentials = await storage.list_credentials(user_id)
+    credentials = await storage.list_credentials(user_id) or await _platform_credential(storage, user_id)
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
