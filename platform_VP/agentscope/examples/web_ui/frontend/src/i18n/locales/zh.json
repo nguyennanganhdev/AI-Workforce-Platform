@@ -1093,32 +1093,34 @@
 		"gitTooltip": "{{staged}} 已暂存 · {{unstaged}} 已修改 · {{untracked}} 未跟踪\n行数不含未跟踪文件"
 	},
 	"quickAgent": {
-		"title": "新建智能体",
-		"description": "起个名字并说明它做什么，其余使用默认设置。",
-		"templates": "快速开始",
-		"name": "名称",
-		"namePlaceholder": "例如：Mia",
-		"role": "这个智能体帮你做什么？",
-		"rolePlaceholder": "告诉智能体如何工作、优先什么、避免什么。",
-		"advanced": "高级设置",
-		"create": "创建智能体",
-		"creating": "创建中…",
+		"title": "用 Agent Builder 快速创建智能体",
+		"description": "描述智能体要做什么。Agent Builder 生成草稿（指令、工具、知识、测试用例），你在智能体管理中调整并发布。",
+		"templates": "从模板开始",
+		"role": "这个智能体做什么？",
+		"rolePlaceholder": "例如：接收住户的保洁请求，问清位置和程度，再分派给值班保洁员。",
+		"team": "允许拆分为多个智能体组成的团队",
+		"teamHint": "工作涉及不同专业时由 Builder 决定。",
+		"waiting": "Agent Builder 正在生成草稿，可能需要一到几分钟。",
+		"nothing": "Agent Builder 未能根据此描述创建智能体。",
+		"advanced": "打开 Agent Builder",
+		"create": "用 Builder 生成",
+		"creating": "生成中…",
 		"presets": {
-			"assistant": {
-				"name": "个人助理",
-				"prompt": "你是一位友好的个人助理。帮助用户安排日程、总结信息、规划待办。回答简洁，信息不足时先提问。"
-			},
 			"reception": {
 				"name": "前台",
-				"prompt": "你是物业管理处的前台。接收住户的请求，收集完整信息（房号、问题、时间）并转给对应部门。始终礼貌、清晰。"
+				"prompt": "物业前台：接收住户请求，问清房号、问题和时间，转给对应部门。礼貌、清楚。"
 			},
 			"technician": {
-				"name": "技术员",
-				"prompt": "你是水电技术员。根据住户描述诊断问题，给出安全的临时处理建议，必要时创建维修单。"
+				"name": "技术",
+				"prompt": "水电技术员：根据住户的描述和照片评估问题，说明紧急程度，给出安全的临时处理方法并建议派哪类师傅。"
 			},
-			"planner": {
-				"name": "规划师",
-				"prompt": "你帮助规划旅行和活动：询问预算、人数和时间，然后给出带费用估算的具体方案。"
+			"cleaning": {
+				"name": "保洁",
+				"prompt": "保洁调度：接收公共区域清洁请求，确认位置和程度，分派值班保洁员并告知预计时间。"
+			},
+			"report": {
+				"name": "工单报告",
+				"prompt": "为物业出报告：按区域汇总工单（进行中、逾期、待住户确认），指出需要关注的工单及原因。"
 			}
 		}
 	},

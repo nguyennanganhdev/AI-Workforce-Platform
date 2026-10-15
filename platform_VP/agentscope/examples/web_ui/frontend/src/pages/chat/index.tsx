@@ -24,7 +24,6 @@ import { NewChatMenu } from '@/components/chat/NewChatMenu';
 import { SearchPalette } from '@/components/chat/SearchPalette';
 import { sessionTime, sessionTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
-import { AgentDialog } from '@/components/dialog/AgentDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { GroupChatDialog } from '@/components/dialog/GroupChatDialog';
@@ -126,7 +125,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	const [sessionToDelete, setSessionToDelete] = useState<SessionRecord | null>(null);
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [quickAgentOpen, setQuickAgentOpen] = useState(false);
-	const [fullAgentOpen, setFullAgentOpen] = useState(false);
 	const [groupOpen, setGroupOpen] = useState(false);
 	const [groupToDelete, setGroupToDelete] = useState<GroupChat | null>(null);
 	const groupChats = useGroupChats();
@@ -229,10 +227,10 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [urlAgentId, selectedAgent, sessionsLoading, sessions.length]);
 
-	const handleAgentCreated = async (agentId: string) => {
+	// The Builder's draft opens in agent management; the list here just refreshes.
+	const handleAgentCreated = async () => {
 		await refetchAgents();
 		onAgentsChanged();
-		navigate(`/chat/${agentId}`);
 		setOpenMobile(false);
 	};
 
@@ -593,15 +591,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				open={quickAgentOpen}
 				onOpenChange={setQuickAgentOpen}
 				onCreated={handleAgentCreated}
-				onAdvanced={() => setFullAgentOpen(true)}
-			/>
-			<AgentDialog
-				open={fullAgentOpen}
-				onOpenChange={setFullAgentOpen}
-				onCreated={async () => {
-					await refetchAgents();
-					onAgentsChanged();
-				}}
 			/>
 			<ChatTourController
 				sessionsCount={sessions.length}
@@ -666,8 +655,7 @@ export const ChatPage = () => {
 				<QuickAgentDialog
 					open={quickAgentOpen}
 					onOpenChange={setQuickAgentOpen}
-					onCreated={async (agentId) => {
-						navigate(`/chat/${agentId}`);
+					onCreated={async () => {
 						await refetch();
 					}}
 				/>

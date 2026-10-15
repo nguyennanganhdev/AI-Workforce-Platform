@@ -1095,32 +1095,34 @@
 		"gitTooltip": "{{staged}} staged · {{unstaged}} modified · {{untracked}} untracked\nLine counts exclude untracked files"
 	},
 	"quickAgent": {
-		"title": "New agent",
-		"description": "Name it and say what it does. Everything else uses defaults.",
-		"templates": "Quick start",
-		"name": "Name",
-		"namePlaceholder": "e.g. Mia",
-		"role": "What does this agent help with?",
-		"rolePlaceholder": "Tell the agent how to work, what to prioritize, and what to avoid.",
-		"advanced": "Advanced settings",
-		"create": "Create agent",
-		"creating": "Creating…",
+		"title": "Quick agent with the Agent Builder",
+		"description": "Describe what the agent should do. The Agent Builder drafts it (instructions, tools, knowledge, test cases); you adjust and publish it in agent management.",
+		"templates": "Start from a template",
+		"role": "What does this agent do?",
+		"rolePlaceholder": "E.g. take residents' cleaning requests, ask for the place and how bad it is, then assign the cleaner on duty.",
+		"team": "Allow splitting into a team of agents",
+		"teamHint": "The Builder decides when the work needs different specialities.",
+		"waiting": "The Agent Builder is drafting; this can take a minute or more.",
+		"nothing": "The Agent Builder made no agent from this description.",
+		"advanced": "Open the Agent Builder",
+		"create": "Build it",
+		"creating": "Building…",
 		"presets": {
-			"assistant": {
-				"name": "Personal assistant",
-				"prompt": "You are a friendly personal assistant. Help the user organise their schedule, summarise information and plan to-dos. Keep answers short and ask when information is missing."
-			},
 			"reception": {
-				"name": "Receptionist",
-				"prompt": "You are the building management receptionist. Take residents’ requests, collect the details (unit, issue, time) and route them to the right team. Always be polite and clear."
+				"name": "Reception",
+				"prompt": "Front desk of the management board: take residents' requests, ask for the apartment, problem and time, and route them to the right team. Polite and clear."
 			},
 			"technician": {
 				"name": "Technician",
-				"prompt": "You are a plumbing and electrical technician. Diagnose issues from residents’ descriptions, give safe interim guidance and file a repair request when needed."
+				"prompt": "Electrical and plumbing specialist: assess an issue from the resident's description and photos, state the urgency, give safe interim steps and propose which technician to send."
 			},
-			"planner": {
-				"name": "Planner",
-				"prompt": "You help plan trips and events: ask for budget, headcount and dates, then propose a concrete plan with estimated costs."
+			"cleaning": {
+				"name": "Cleaning",
+				"prompt": "Cleaning coordinator: take requests to clean common areas, pin down the place and extent, assign the cleaner on duty and report the expected time."
+			},
+			"report": {
+				"name": "Ticket report",
+				"prompt": "Reporting for the management board: summarise tickets by area (open, overdue, waiting for the resident's confirmation) and point out the ones that need attention and why."
 			}
 		}
 	},

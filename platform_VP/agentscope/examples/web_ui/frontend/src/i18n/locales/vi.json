@@ -1092,32 +1092,34 @@
 		"gitTooltip": "{{staged}} đã stage · {{unstaged}} đã sửa · {{untracked}} chưa theo dõi\nSố dòng không bao gồm tệp chưa được theo dõi"
 	},
 	"quickAgent": {
-		"title": "Agent mới",
-		"description": "Đặt tên và mô tả việc agent sẽ làm. Mọi thiết lập khác dùng mặc định.",
-		"templates": "Bắt đầu nhanh",
-		"name": "Tên",
-		"namePlaceholder": "Ví dụ: Mia",
-		"role": "Agent này giúp gì?",
-		"rolePlaceholder": "Nói cho agent biết cách làm việc, ưu tiên điều gì và cần tránh điều gì.",
-		"advanced": "Tùy chỉnh nâng cao",
-		"create": "Tạo agent",
-		"creating": "Đang tạo…",
+		"title": "Tạo agent nhanh với Agent Builder",
+		"description": "Mô tả agent cần làm gì. Agent Builder dựng bản nháp (lời dặn, công cụ, kiến thức, kịch bản kiểm thử); bạn chỉnh và phát hành ở trang Quản lý agent.",
+		"templates": "Bắt đầu từ mẫu",
+		"role": "Agent này làm gì?",
+		"rolePlaceholder": "Ví dụ: tiếp nhận yêu cầu vệ sinh của cư dân, hỏi đủ vị trí và mức độ, rồi giao cho nhân viên vệ sinh đang trực.",
+		"team": "Cho phép tách thành một đội nhiều agent",
+		"teamHint": "Builder tự quyết khi việc gồm nhiều chuyên môn khác nhau.",
+		"waiting": "Agent Builder đang dựng bản nháp, có thể mất một đến vài phút.",
+		"nothing": "Agent Builder chưa tạo được agent nào từ mô tả này.",
+		"advanced": "Mở Agent Builder",
+		"create": "Dựng bằng Builder",
+		"creating": "Đang dựng…",
 		"presets": {
-			"assistant": {
-				"name": "Trợ lý cá nhân",
-				"prompt": "Bạn là trợ lý cá nhân thân thiện. Giúp người dùng sắp xếp lịch, tóm tắt thông tin và lên kế hoạch việc cần làm. Trả lời ngắn gọn, hỏi lại khi thiếu thông tin."
-			},
 			"reception": {
 				"name": "Lễ tân",
-				"prompt": "Bạn là lễ tân của ban quản lý toà nhà. Tiếp nhận yêu cầu của cư dân, hỏi đủ thông tin (căn hộ, sự cố, thời gian) và chuyển đúng bộ phận. Luôn lịch sự, rõ ràng."
+				"prompt": "Lễ tân của ban quản lý: tiếp nhận yêu cầu của cư dân, hỏi đủ căn hộ, sự cố, thời gian và chuyển đúng bộ phận. Lịch sự, rõ ràng, gọi cư dân là bạn."
 			},
 			"technician": {
 				"name": "Kỹ thuật",
-				"prompt": "Bạn là nhân viên kỹ thuật điện nước. Chẩn đoán sự cố từ mô tả của cư dân, hướng dẫn xử lý tạm thời an toàn và tạo yêu cầu sửa chữa khi cần."
+				"prompt": "Chuyên viên kỹ thuật điện nước: đánh giá sự cố từ mô tả và ảnh của cư dân, nêu mức khẩn cấp, hướng dẫn xử lý tạm thời an toàn và đề xuất loại thợ cần cử."
 			},
-			"planner": {
-				"name": "Lập kế hoạch",
-				"prompt": "Bạn giúp lập kế hoạch chuyến đi và sự kiện: hỏi ngân sách, số người, thời gian, rồi đề xuất phương án cụ thể kèm chi phí ước tính."
+			"cleaning": {
+				"name": "Vệ sinh",
+				"prompt": "Điều phối vệ sinh: nhận yêu cầu dọn dẹp khu chung, xác định vị trí và mức độ, giao cho nhân viên vệ sinh đang trực và báo lại thời gian dự kiến."
+			},
+			"report": {
+				"name": "Báo cáo phiếu",
+				"prompt": "Báo cáo cho ban quản lý: tổng hợp tình trạng các phiếu (đang mở, quá hạn, chờ cư dân xác nhận) theo khu, nêu phiếu cần chú ý và lý do."
 			}
 		}
 	},
