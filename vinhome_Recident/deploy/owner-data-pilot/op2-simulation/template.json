@@ -1,0 +1,3519 @@
+{
+  "data_mode": "synthetic_test",
+  "source_site": "66666666-6666-5666-a666-666666666666",
+  "source_admin": "sim-sandbox-admin",
+  "source_sha256": "6fe76f10fe47bc5d3a9161e7529821517539a471fb0f34f62ded553123ca8a71",
+  "anchor": "2026-10-15T06:47:44.254834+00:00",
+  "shared_ids": [
+    "11111111-1111-5111-a111-111111111111",
+    "22222222-2222-5222-a222-222222222222",
+    "66666666-6666-5666-a666-666666666666",
+    "5cf395dd-7dfe-54c7-ac27-8916bc4d8e2e",
+    "14ed0ea2-3940-52c8-9f2a-ca95753edfb4",
+    "33333333-3333-5333-a333-333333333333",
+    "33333333-3333-5333-a333-333333333334",
+    "b185e81a-888c-51d2-b981-220fa656e374",
+    "2bf5fffa-39ed-58c6-8cd0-0715767a8e14",
+    "fa39e9e8-090c-5aee-be23-c441a5d81206",
+    "6fab542c-b1d8-526d-9117-ba4390094503",
+    "f51894b3-4e0f-5d55-95d7-7293f14a68f8",
+    "ceb2f456-ff79-5d05-813d-3552b8734758",
+    "4bb8e9f2-e0ce-5751-8a60-d8c8b648932f"
+  ],
+  "tables": {
+    "management_units": [
+      {
+        "id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "code": "SIM-TECH-OPERATOR",
+        "name": "[MÔ PHỎNG] Đơn vị kỹ thuật OP1",
+        "status": "active",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "contact_email": null,
+        "contact_phone": null
+      }
+    ],
+    "zones": [
+      {
+        "id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "code": "SIM-OP1-ZONE",
+        "name": "[MÔ PHỎNG] Phân khu nghiệm thu OP1",
+        "status": "active",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "backup_pairs": {
+            "sim-desk-1": "sim-desk-2",
+            "sim-security-1": "sim-security-2",
+            "sim-sanitation-1": "sim-sanitation-2"
+          },
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "business_profile": "op1-business-simulation-v1",
+          "business_data_mode": "synthetic_test",
+          "business_created_at": "2026-10-15T06:47:46.215338+00:00",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:48.504344+00:00"
+      }
+    ],
+    "buildings": [
+      {
+        "id": "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2",
+        "code": "SIM-OP1-TOWER",
+        "name": "[MÔ PHỎNG] Tòa nghiệm thu kỹ thuật",
+        "status": "active",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00"
+      }
+    ],
+    "access_scopes": [
+      {
+        "id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "kind": "building",
+        "site_id": null,
+        "zone_id": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "building_id": "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2",
+        "management_unit_id": null
+      }
+    ],
+    "zone_settings": [
+      {
+        "id": "c4b29bb1-e346-434e-b02c-b49205804abe",
+        "note": "MÔ PHỎNG: chính sách sandbox, không phải quy định Vinhomes",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "visit_max_hours": 12,
+        "visit_max_waiting": 5,
+        "card_limit_vehicle": 2,
+        "card_limit_resident": 4,
+        "visit_early_minutes": null,
+        "visit_max_days_ahead": 7,
+        "visit_auto_approve_purposes": [
+          "family_visit",
+          "delivery"
+        ],
+        "amenity_payment_hold_minutes": 15,
+        "visit_auto_approve_max_guests": 5
+      }
+    ],
+    "users": [
+      {
+        "id": "sim-resident-1",
+        "name": "[MÔ PHỎNG] Cư dân 1",
+        "email": "resident1@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "deleted_at": null,
+        "phone_e164": "+12025550101",
+        "updated_at": "2026-10-15T06:47:45.069364+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": "2026-10-15T06:47:44.254834+00:00",
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-resident-2",
+        "name": "[MÔ PHỎNG] Cư dân 2",
+        "email": "resident2@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "deleted_at": null,
+        "phone_e164": "+12025550102",
+        "updated_at": "2026-10-15T06:47:45.453759+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": "2026-10-15T06:47:44.254834+00:00",
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-tech-1",
+        "name": "[MÔ PHỎNG] Kỹ thuật viên 1",
+        "email": "technician1@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-tech-2",
+        "name": "[MÔ PHỎNG] Kỹ thuật viên 2",
+        "email": "technician2@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-security-1",
+        "name": "[MÔ PHỎNG] security 1",
+        "email": "security1@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-security-2",
+        "name": "[MÔ PHỎNG] security 2",
+        "email": "security2@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-sanitation-1",
+        "name": "[MÔ PHỎNG] sanitation 1",
+        "email": "sanitation1@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-sanitation-2",
+        "name": "[MÔ PHỎNG] sanitation 2",
+        "email": "sanitation2@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-desk-1",
+        "name": "[MÔ PHỎNG] desk 1",
+        "email": "desk1@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      },
+      {
+        "id": "sim-desk-2",
+        "name": "[MÔ PHỎNG] desk 2",
+        "email": "desk2@op1-sandbox.test",
+        "image": null,
+        "groups": [],
+        "status": "active",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "deleted_at": null,
+        "phone_e164": null,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "disabled_at": null,
+        "email_verified": true,
+        "onboarding_step": 0,
+        "last_signed_in_at": null,
+        "phone_verified_at": null,
+        "onboarding_completed_at": null
+      }
+    ],
+    "accounts": [
+      {
+        "id": "6d3b17bf-ca4f-517b-9d41-5c8e7a6eae6a",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-resident-1",
+        "account_id": "sim-resident-1",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "914220fd-d1e9-5d3a-a3b8-032427f1dec4",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-resident-2",
+        "account_id": "sim-resident-2",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "0b1b8bef-7182-54e4-b23e-1659dc10b3e9",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-tech-1",
+        "account_id": "sim-tech-1",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "5eebdb87-d7ea-5cb5-8546-1e6672bb7ead",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-tech-2",
+        "account_id": "sim-tech-2",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "d6cfaebb-0be9-5ba8-b4dd-472c5018e9f3",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-security-1",
+        "account_id": "sim-security-1",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "050c2d8e-302b-59b5-9229-d8de56349dcd",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-security-2",
+        "account_id": "sim-security-2",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "cf2ca90a-29ab-5783-95c7-2d486cc705b7",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-sanitation-1",
+        "account_id": "sim-sanitation-1",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "a0f57bc2-c0dd-573a-a8f3-18e420855490",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-sanitation-2",
+        "account_id": "sim-sanitation-2",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "ef23491e-d239-56d5-940f-5762e48013af",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-desk-1",
+        "account_id": "sim-desk-1",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      },
+      {
+        "id": "19563856-1633-5bbe-8323-41d932d344dc",
+        "scope": null,
+        "issuer": null,
+        "user_id": "sim-desk-2",
+        "account_id": "sim-desk-2",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "provider_id": "vinhomes-password-v1",
+        "access_token_expires_at": null,
+        "refresh_token_expires_at": null
+      }
+    ],
+    "tenant_memberships": [
+      {
+        "id": "4a4134f1-7dc0-538a-bee7-40233834d2c4",
+        "status": "active",
+        "user_id": "sim-resident-1",
+        "ended_at": null,
+        "joined_at": "2026-10-15T06:47:44.254834+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00"
+      },
+      {
+        "id": "7c016408-7a6d-5616-8241-c11800f2f5ec",
+        "status": "active",
+        "user_id": "sim-resident-2",
+        "ended_at": null,
+        "joined_at": "2026-10-15T06:47:44.254834+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00"
+      },
+      {
+        "id": "07d81ed7-d46d-52d9-8620-f65c06cb4f64",
+        "status": "active",
+        "user_id": "sim-tech-1",
+        "ended_at": null,
+        "joined_at": "2026-10-15T06:47:44.254834+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00"
+      },
+      {
+        "id": "6b893101-3589-5e23-81ff-a09154ad5fa6",
+        "status": "active",
+        "user_id": "sim-tech-2",
+        "ended_at": null,
+        "joined_at": "2026-10-15T06:47:44.254834+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00"
+      },
+      {
+        "id": "0c2403e8-4ca0-58c7-a426-62d8427862d2",
+        "status": "active",
+        "user_id": "sim-security-1",
+        "ended_at": null,
+        "joined_at": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00"
+      },
+      {
+        "id": "c4ec91df-e1ab-51b6-8c98-4766ed01af2d",
+        "status": "active",
+        "user_id": "sim-security-2",
+        "ended_at": null,
+        "joined_at": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00"
+      },
+      {
+        "id": "73bdc7b8-62d6-5b31-9445-d64974cdfcde",
+        "status": "active",
+        "user_id": "sim-sanitation-1",
+        "ended_at": null,
+        "joined_at": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00"
+      },
+      {
+        "id": "dc74d763-37da-5b21-ad7c-c640081854e9",
+        "status": "active",
+        "user_id": "sim-sanitation-2",
+        "ended_at": null,
+        "joined_at": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00"
+      },
+      {
+        "id": "75ce2ba2-c800-561b-a100-773d4427c712",
+        "status": "active",
+        "user_id": "sim-desk-1",
+        "ended_at": null,
+        "joined_at": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00"
+      },
+      {
+        "id": "b902673c-2471-52e7-878c-2f27441708bd",
+        "status": "active",
+        "user_id": "sim-desk-2",
+        "ended_at": null,
+        "joined_at": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00"
+      }
+    ],
+    "units": [
+      {
+        "id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "code": "SIM-UNIT-001",
+        "floor": null,
+        "status": "active",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "unit_kind": "apartment",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "building_id": "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+      },
+      {
+        "id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "code": "SIM-UNIT-002",
+        "floor": null,
+        "status": "active",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "unit_kind": "apartment",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "building_id": "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+      }
+    ],
+    "scoped_user_roles": [
+      {
+        "id": "1cfe46a3-f93f-5d4a-9b11-9e0b057f644a",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": "2026-11-14T06:47:43+00:00",
+        "role_code": "customer",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "valid_from": "2026-10-14T06:47:43+00:00",
+        "membership_id": "4a4134f1-7dc0-538a-bee7-40233834d2c4"
+      },
+      {
+        "id": "6d174808-27ee-5929-b8f1-2288eaa06b34",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": "2026-11-14T06:47:43+00:00",
+        "role_code": "customer",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "valid_from": "2026-10-14T06:47:43+00:00",
+        "membership_id": "7c016408-7a6d-5616-8241-c11800f2f5ec"
+      },
+      {
+        "id": "651bc0ce-6899-51ac-8e52-310424ddade6",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": "2026-11-14T06:47:43+00:00",
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "valid_from": "2026-10-14T06:47:43+00:00",
+        "membership_id": "07d81ed7-d46d-52d9-8620-f65c06cb4f64"
+      },
+      {
+        "id": "aa2e8d70-5691-5888-8bb0-f5aab4fce6e4",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": "2026-11-14T06:47:43+00:00",
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "valid_from": "2026-10-14T06:47:43+00:00",
+        "membership_id": "6b893101-3589-5e23-81ff-a09154ad5fa6"
+      },
+      {
+        "id": "1dc4afd1-e333-582a-8895-b76e046ae06a",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "membership_id": "0c2403e8-4ca0-58c7-a426-62d8427862d2"
+      },
+      {
+        "id": "789181a5-c379-5629-8705-d56dc9b387fb",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "membership_id": "c4ec91df-e1ab-51b6-8c98-4766ed01af2d"
+      },
+      {
+        "id": "8d1e7fbc-084b-50e5-a0ed-12c98dcafa3a",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "membership_id": "73bdc7b8-62d6-5b31-9445-d64974cdfcde"
+      },
+      {
+        "id": "dd7215e2-c7e5-5d4f-a404-f1d82cbccdd5",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "membership_id": "dc74d763-37da-5b21-ad7c-c640081854e9"
+      },
+      {
+        "id": "be7aa935-4987-5810-b29e-4550a47d6c91",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "membership_id": "75ce2ba2-c800-561b-a100-773d4427c712"
+      },
+      {
+        "id": "166bc2bc-0d10-5255-a560-895df5d74d2a",
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "role_code": "staff",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "granted_by": "sim-sandbox-admin",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "membership_id": "b902673c-2471-52e7-878c-2f27441708bd"
+      }
+    ],
+    "unit_residents": [
+      {
+        "id": "7e5f9add-cefc-54e4-acc5-95888a8de1d0",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "user_id": "sim-resident-1",
+        "relation": "owner",
+        "valid_to": "2026-11-14T06:47:43+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "valid_from": "2026-10-14T06:47:43+00:00",
+        "verified_at": "2026-10-14T06:47:43+00:00",
+        "verified_by": "sim-sandbox-admin",
+        "verification_status": "verified"
+      },
+      {
+        "id": "9f0781aa-fa29-516c-a4f9-3d642abdd903",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "user_id": "sim-resident-2",
+        "relation": "tenant",
+        "valid_to": "2026-11-14T06:47:43+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "valid_from": "2026-10-14T06:47:43+00:00",
+        "verified_at": "2026-10-14T06:47:43+00:00",
+        "verified_by": "sim-sandbox-admin",
+        "verification_status": "verified"
+      }
+    ],
+    "staff_profiles": [
+      {
+        "id": "94a901d1-a6c7-54fa-99dd-6da883179d06",
+        "active": true,
+        "user_id": "sim-tech-1",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "availability": "available",
+        "employee_code": "SIM-TECH-1",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      },
+      {
+        "id": "ef85674d-9ca5-5bef-b5b2-72a0e9405fc1",
+        "active": true,
+        "user_id": "sim-tech-2",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "availability": "available",
+        "employee_code": "SIM-TECH-2",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      },
+      {
+        "id": "506f0723-f147-5ec2-a951-a60b3f4bf433",
+        "active": true,
+        "user_id": "sim-security-1",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "availability": "available",
+        "employee_code": "SIM-SECURITY-1",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      },
+      {
+        "id": "ba525220-3be9-5efe-aeb8-17c13709c742",
+        "active": true,
+        "user_id": "sim-security-2",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "availability": "available",
+        "employee_code": "SIM-SECURITY-2",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      },
+      {
+        "id": "03604de2-dff6-5993-9081-b6b8a4cfafc5",
+        "active": true,
+        "user_id": "sim-sanitation-1",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "availability": "available",
+        "employee_code": "SIM-SANITATION-1",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      },
+      {
+        "id": "f2d66613-56a2-57cc-84e8-ae8ef57ce8f2",
+        "active": true,
+        "user_id": "sim-sanitation-2",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "availability": "available",
+        "employee_code": "SIM-SANITATION-2",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      },
+      {
+        "id": "7e640c99-55c1-5408-b2c1-0592c4206842",
+        "active": true,
+        "user_id": "sim-desk-1",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "availability": "available",
+        "employee_code": "SIM-DESK-1",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      },
+      {
+        "id": "233a2d97-8f28-52b2-a059-d92b5c372f8b",
+        "active": true,
+        "user_id": "sim-desk-2",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "availability": "available",
+        "employee_code": "SIM-DESK-2",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "max_concurrent_jobs": 1
+      }
+    ],
+    "staff_specialties": [
+      {
+        "active": true,
+        "staff_id": "94a901d1-a6c7-54fa-99dd-6da883179d06",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "category_id": "33333333-3333-5333-a333-333333333333",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "ef85674d-9ca5-5bef-b5b2-72a0e9405fc1",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "category_id": "33333333-3333-5333-a333-333333333333",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "33333333-3333-5333-a333-333333333334",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "2bf5fffa-39ed-58c6-8cd0-0715767a8e14",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "fa39e9e8-090c-5aee-be23-c441a5d81206",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "ba525220-3be9-5efe-aeb8-17c13709c742",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "33333333-3333-5333-a333-333333333334",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "ba525220-3be9-5efe-aeb8-17c13709c742",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "2bf5fffa-39ed-58c6-8cd0-0715767a8e14",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "ba525220-3be9-5efe-aeb8-17c13709c742",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "fa39e9e8-090c-5aee-be23-c441a5d81206",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "03604de2-dff6-5993-9081-b6b8a4cfafc5",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "b185e81a-888c-51d2-b981-220fa656e374",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "f2d66613-56a2-57cc-84e8-ae8ef57ce8f2",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "b185e81a-888c-51d2-b981-220fa656e374",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "7e640c99-55c1-5408-b2c1-0592c4206842",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "6fab542c-b1d8-526d-9117-ba4390094503",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "7e640c99-55c1-5408-b2c1-0592c4206842",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "f51894b3-4e0f-5d55-95d7-7293f14a68f8",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "7e640c99-55c1-5408-b2c1-0592c4206842",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "ceb2f456-ff79-5d05-813d-3552b8734758",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "233a2d97-8f28-52b2-a059-d92b5c372f8b",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "6fab542c-b1d8-526d-9117-ba4390094503",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "233a2d97-8f28-52b2-a059-d92b5c372f8b",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "f51894b3-4e0f-5d55-95d7-7293f14a68f8",
+        "proficiency": "standard"
+      },
+      {
+        "active": true,
+        "staff_id": "233a2d97-8f28-52b2-a059-d92b5c372f8b",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "category_id": "ceb2f456-ff79-5d05-813d-3552b8734758",
+        "proficiency": "standard"
+      }
+    ],
+    "staff_shifts": [],
+    "management_coverage": [
+      {
+        "id": "5c678c5b-a406-5d2e-91c2-07a0d26b4719",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": "2026-11-14T06:47:43+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "valid_from": "2026-10-14T06:47:43+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "33333333-3333-5333-a333-333333333333"
+      },
+      {
+        "id": "f18f4da0-8b43-54f8-b5f3-bd79cfeb91f2",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "33333333-3333-5333-a333-333333333334"
+      },
+      {
+        "id": "f87f6085-51c7-50cb-8960-a7b9ab0307f4",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "b185e81a-888c-51d2-b981-220fa656e374"
+      },
+      {
+        "id": "e6a919d7-44f0-513f-a78b-99a63d1f75a5",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "2bf5fffa-39ed-58c6-8cd0-0715767a8e14"
+      },
+      {
+        "id": "9e1205ca-7cab-502b-aa2e-68148abc11f3",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "fa39e9e8-090c-5aee-be23-c441a5d81206"
+      },
+      {
+        "id": "3da3ed2b-b58f-539d-99de-6610d6fa4747",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "6fab542c-b1d8-526d-9117-ba4390094503"
+      },
+      {
+        "id": "63b9ff13-52b5-5b1d-9178-1e323cd0bbc5",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "f51894b3-4e0f-5d55-95d7-7293f14a68f8"
+      },
+      {
+        "id": "18a55d4c-a535-5094-a4c1-5b503e5487c5",
+        "priority": 0,
+        "scope_id": "8dd7bc61-182d-5489-bb97-d39221654867",
+        "valid_to": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "valid_from": "2026-10-14T06:47:46.215338+00:00",
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "service_category_id": "ceb2f456-ff79-5d05-813d-3552b8734758"
+      }
+    ],
+    "sla_policies": [
+      {
+        "id": "7085b7f5-d1b4-5b01-9786-5a1866edca1e",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "version_no": 1,
+        "category_id": "33333333-3333-5333-a333-333333333333",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": "2026-11-14T06:47:43+00:00",
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:43+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "3656c4ab-b0f5-526c-a1db-463792b335a9",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "33333333-3333-5333-a333-333333333334",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "incident",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "823c51b4-815b-5be7-bef5-85eb12e78a9b",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "33333333-3333-5333-a333-333333333334",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "7393398e-c0c7-5111-b64a-69e6d3940852",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "b185e81a-888c-51d2-b981-220fa656e374",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "incident",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "504428e4-ba74-5699-8a0f-d5bdc7e0d129",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "b185e81a-888c-51d2-b981-220fa656e374",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "40a52651-4b9f-5dc3-af84-198d07a13bfe",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "2bf5fffa-39ed-58c6-8cd0-0715767a8e14",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "incident",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "ad28d452-fab1-57de-8603-d91340382900",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "2bf5fffa-39ed-58c6-8cd0-0715767a8e14",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "92d75a6d-ddfd-51f0-91ac-ea1e350ea5b8",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "fa39e9e8-090c-5aee-be23-c441a5d81206",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "incident",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "20e4ee80-0977-5401-909c-4ec8b7df0190",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "fa39e9e8-090c-5aee-be23-c441a5d81206",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "bd024796-af1c-5f12-9807-853f6512a3f3",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "6fab542c-b1d8-526d-9117-ba4390094503",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "incident",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "7215f600-fc73-5754-9bd8-1ff76de219df",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "6fab542c-b1d8-526d-9117-ba4390094503",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "22811e17-eb11-5740-8d64-af16c0807b1f",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "f51894b3-4e0f-5d55-95d7-7293f14a68f8",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "incident",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "fd885252-0e63-5e30-858b-de33b0323b2e",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "f51894b3-4e0f-5d55-95d7-7293f14a68f8",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "823a8672-091d-5bb2-940d-1963a49c992a",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "ceb2f456-ff79-5d05-813d-3552b8734758",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "incident",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      },
+      {
+        "id": "a68dbfe4-cdb8-5a38-94fa-449a9c17a4e6",
+        "priority": "normal",
+        "domain_id": "22222222-2222-5222-a222-222222222222",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_no": 1,
+        "category_id": "ceb2f456-ff79-5d05-813d-3552b8734758",
+        "clock_basis": "elapsed_24x7",
+        "effective_to": null,
+        "request_kind": "service_request",
+        "effective_from": "2026-10-14T06:47:46.215338+00:00",
+        "response_minutes": 30,
+        "management_unit_id": "e747a537-d367-52ed-a257-14c5ca9e7804",
+        "resolution_minutes": 240
+      }
+    ],
+    "owner_data_records": [
+      {
+        "id": "e6027fd7-f007-5713-a89b-60c167e5045d",
+        "title": "[MÔ PHỎNG] Kiểm tra đèn/ổ điện",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "title": "[MÔ PHỎNG] Kiểm tra đèn/ổ điện",
+          "_label": "services:2",
+          "currency": "VND",
+          "fee_unit": "lượt kiểm tra mô phỏng",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: giá thử nghiệm đã gồm VAT giả định 10%; không phải hóa đơn/thuế thực",
+          "approved_at": "2026-10-14T06:47:43+00:00",
+          "approved_by": "SIMULATION-REVIEWER-NOT-OPERATOR",
+          "eligibility": "Chỉ hai căn SIM đã xác minh giả lập; không nhận việc thực",
+          "service_code": "SIM-ELECTRIC",
+          "building_code": "SIM-OP1-TOWER",
+          "category_code": "technical",
+          "operator_code": "SIM-TECH-OPERATOR",
+          "booking_policy": "Cư dân chọn lịch; Platform phân công người đang có ca và còn năng lực",
+          "effective_from": "2026-10-14T06:47:43+00:00",
+          "effective_until": "2026-11-14T06:47:43+00:00",
+          "operating_hours": "Theo ca sandbox 8 giờ/ngày trong shifts.csv, 3 ngày từ lúc sinh dữ liệu",
+          "warranty_policy": "MÔ PHỎNG: 3 tháng cho phần thay thế đã được cư dân đồng ý",
+          "contact_reference": "SIM-HELPDESK: chỉ hộp thư nội bộ sandbox",
+          "document_reference": "SIMULATION-NOT-OWNER-APPROVAL",
+          "cancellation_policy": "Hủy trước nhận việc không phí giả lập; sau nhận phải xác nhận qua Platform"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "source_hash": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+        "proposal_code": "SIM-ELECTRIC",
+        "project_approval": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "6792a945-3ba3-55bf-b82c-922cdb2bd5c8",
+        "title": "[MÔ PHỎNG] Kiểm tra rò nước",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "title": "[MÔ PHỎNG] Kiểm tra rò nước",
+          "_label": "services:3",
+          "currency": "VND",
+          "fee_unit": "lượt kiểm tra mô phỏng",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "100000",
+          "fee_policy": "fixed",
+          "vat_policy": "MÔ PHỎNG: giá thử nghiệm đã gồm VAT giả định 10%; không phải hóa đơn/thuế thực",
+          "approved_at": "2026-10-14T06:47:43+00:00",
+          "approved_by": "SIMULATION-REVIEWER-NOT-OPERATOR",
+          "eligibility": "Chỉ hai căn SIM đã xác minh giả lập; không nhận việc thực",
+          "service_code": "SIM-WATER",
+          "building_code": "SIM-OP1-TOWER",
+          "category_code": "technical",
+          "operator_code": "SIM-TECH-OPERATOR",
+          "booking_policy": "Cư dân chọn lịch; Platform phân công người đang có ca và còn năng lực",
+          "effective_from": "2026-10-14T06:47:43+00:00",
+          "effective_until": "2026-11-14T06:47:43+00:00",
+          "operating_hours": "Theo ca sandbox 8 giờ/ngày trong shifts.csv, 3 ngày từ lúc sinh dữ liệu",
+          "warranty_policy": "MÔ PHỎNG: 3 tháng cho phần thay thế đã được cư dân đồng ý",
+          "contact_reference": "SIM-HELPDESK: chỉ hộp thư nội bộ sandbox",
+          "document_reference": "SIMULATION-NOT-OWNER-APPROVAL",
+          "cancellation_policy": "Hủy trước nhận việc không phí giả lập; sau nhận phải xác nhận qua Platform"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "source_hash": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+        "proposal_code": "SIM-WATER",
+        "project_approval": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "f969ca9f-99bb-544c-80b6-b07c9a989a63",
+        "title": "[MÔ PHỎNG] Kiểm tra điều hòa",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "title": "[MÔ PHỎNG] Kiểm tra điều hòa",
+          "_label": "services:4",
+          "currency": "VND",
+          "fee_unit": "lượt kiểm tra mô phỏng",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "0",
+          "fee_policy": "free",
+          "vat_policy": "MÔ PHỎNG: giá thử nghiệm đã gồm VAT giả định 10%; không phải hóa đơn/thuế thực",
+          "approved_at": "2026-10-14T06:47:43+00:00",
+          "approved_by": "SIMULATION-REVIEWER-NOT-OPERATOR",
+          "eligibility": "Chỉ hai căn SIM đã xác minh giả lập; không nhận việc thực",
+          "service_code": "SIM-HVAC",
+          "building_code": "SIM-OP1-TOWER",
+          "category_code": "technical",
+          "operator_code": "SIM-TECH-OPERATOR",
+          "booking_policy": "Cư dân chọn lịch; Platform phân công người đang có ca và còn năng lực",
+          "effective_from": "2026-10-14T06:47:43+00:00",
+          "effective_until": "2026-11-14T06:47:43+00:00",
+          "operating_hours": "Theo ca sandbox 8 giờ/ngày trong shifts.csv, 3 ngày từ lúc sinh dữ liệu",
+          "warranty_policy": "MÔ PHỎNG: 3 tháng cho phần thay thế đã được cư dân đồng ý",
+          "contact_reference": "SIM-HELPDESK: chỉ hộp thư nội bộ sandbox",
+          "document_reference": "SIMULATION-NOT-OWNER-APPROVAL",
+          "cancellation_policy": "Hủy trước nhận việc không phí giả lập; sau nhận phải xác nhận qua Platform"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "source_hash": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+        "proposal_code": "SIM-HVAC",
+        "project_approval": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "15fc0ef4-04a2-5688-abec-9b53f89c855d",
+        "title": "[MÔ PHỎNG] security",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-SECURITY",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "source_hash": "0e1f807c13c091851480359d633d5297c3640699887c47ea996897b606c8efdb",
+        "proposal_code": "SIM-SECURITY",
+        "project_approval": {
+          "data_mode": "synthetic_test",
+          "operator_approval": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "6ed178e6-51ca-57ac-8d70-8b151cabb5a4",
+        "title": "[MÔ PHỎNG] sanitation",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-SANITATION",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "source_hash": "fdc75107efcf3bf0e75af07787d5d7d957a2c1d2d93ce498b8feaac4ef6983e9",
+        "proposal_code": "SIM-SANITATION",
+        "project_approval": {
+          "data_mode": "synthetic_test",
+          "operator_approval": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "22f85b9d-5ddb-5300-91cc-0cd254524ea4",
+        "title": "[MÔ PHỎNG] access",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-ACCESS",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "source_hash": "a1f5b627c39873958c093bbdb8707d3ee717e10901b7f65929f6990b6effa9ce",
+        "proposal_code": "SIM-ACCESS",
+        "project_approval": {
+          "data_mode": "synthetic_test",
+          "operator_approval": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "9a0ff768-d609-5ea4-9ddb-84d64e6265a5",
+        "title": "[MÔ PHỎNG] visitors",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-VISITORS",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "source_hash": "f0c301a97955803c2268fe5cc1b8feec829ce38e4034c72903b8c024e76abc7b",
+        "proposal_code": "SIM-VISITORS",
+        "project_approval": {
+          "data_mode": "synthetic_test",
+          "operator_approval": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "d4eb67bc-7028-5246-a845-86f0cc35ad85",
+        "title": "[MÔ PHỎNG] billing",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-BILLING",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "source_hash": "aa3013e0d09b08bcfaf5cb01d09ebb42d9e429f838114230bed909f35f4a6bd3",
+        "proposal_code": "SIM-BILLING",
+        "project_approval": {
+          "data_mode": "synthetic_test",
+          "operator_approval": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "ebe0602e-b6e7-5edb-9912-862211ea57ac",
+        "title": "[MÔ PHỎNG] amenities",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-AMENITIES",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "source_hash": "9a4be09c8b671cfac321d718a2e7d015b12565bb70d1a2f7d906fa0a2c3e705e",
+        "proposal_code": "SIM-AMENITIES",
+        "project_approval": {
+          "data_mode": "synthetic_test",
+          "operator_approval": false
+        },
+        "operational_verified": false
+      },
+      {
+        "id": "591badb9-9876-5a66-8f6f-501544137a64",
+        "title": "[MÔ PHỎNG] renovation",
+        "dataset": "services",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "proposal": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-RENOVATION",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "source_hash": "eb980bb26f8fad4afa889754b75e917d84265065b500a849599bc5dd9bda62c5",
+        "proposal_code": "SIM-RENOVATION",
+        "project_approval": {
+          "data_mode": "synthetic_test",
+          "operator_approval": false
+        },
+        "operational_verified": false
+      }
+    ],
+    "domain_service_catalog": [
+      {
+        "id": "e6027fd7-f007-5713-a89b-60c167e5045d",
+        "title": "[MÔ PHỎNG] Kiểm tra đèn/ổ điện",
+        "policy": {
+          "title": "[MÔ PHỎNG] Kiểm tra đèn/ổ điện",
+          "_label": "services:2",
+          "currency": "VND",
+          "fee_unit": "lượt kiểm tra mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: giá thử nghiệm đã gồm VAT giả định 10%; không phải hóa đơn/thuế thực",
+          "approved_at": "2026-10-14T06:47:43+00:00",
+          "approved_by": "SIMULATION-REVIEWER-NOT-OPERATOR",
+          "eligibility": "Chỉ hai căn SIM đã xác minh giả lập; không nhận việc thực",
+          "service_code": "SIM-ELECTRIC",
+          "building_code": "SIM-OP1-TOWER",
+          "category_code": "technical",
+          "operator_code": "SIM-TECH-OPERATOR",
+          "booking_policy": "Cư dân chọn lịch; Platform phân công người đang có ca và còn năng lực",
+          "effective_from": "2026-10-14T06:47:43+00:00",
+          "effective_until": "2026-11-14T06:47:43+00:00",
+          "operating_hours": "Theo ca sandbox 8 giờ/ngày trong shifts.csv, 3 ngày từ lúc sinh dữ liệu",
+          "warranty_policy": "MÔ PHỎNG: 3 tháng cho phần thay thế đã được cư dân đồng ý",
+          "contact_reference": "SIM-HELPDESK: chỉ hộp thư nội bộ sandbox",
+          "document_reference": "SIMULATION-NOT-OWNER-APPROVAL",
+          "cancellation_policy": "Hủy trước nhận việc không phí giả lập; sau nhận phải xác nhận qua Platform"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "technical",
+        "operational_enabled": true
+      },
+      {
+        "id": "6792a945-3ba3-55bf-b82c-922cdb2bd5c8",
+        "title": "[MÔ PHỎNG] Kiểm tra rò nước",
+        "policy": {
+          "title": "[MÔ PHỎNG] Kiểm tra rò nước",
+          "_label": "services:3",
+          "currency": "VND",
+          "fee_unit": "lượt kiểm tra mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "100000",
+          "fee_policy": "fixed",
+          "vat_policy": "MÔ PHỎNG: giá thử nghiệm đã gồm VAT giả định 10%; không phải hóa đơn/thuế thực",
+          "approved_at": "2026-10-14T06:47:43+00:00",
+          "approved_by": "SIMULATION-REVIEWER-NOT-OPERATOR",
+          "eligibility": "Chỉ hai căn SIM đã xác minh giả lập; không nhận việc thực",
+          "service_code": "SIM-WATER",
+          "building_code": "SIM-OP1-TOWER",
+          "category_code": "technical",
+          "operator_code": "SIM-TECH-OPERATOR",
+          "booking_policy": "Cư dân chọn lịch; Platform phân công người đang có ca và còn năng lực",
+          "effective_from": "2026-10-14T06:47:43+00:00",
+          "effective_until": "2026-11-14T06:47:43+00:00",
+          "operating_hours": "Theo ca sandbox 8 giờ/ngày trong shifts.csv, 3 ngày từ lúc sinh dữ liệu",
+          "warranty_policy": "MÔ PHỎNG: 3 tháng cho phần thay thế đã được cư dân đồng ý",
+          "contact_reference": "SIM-HELPDESK: chỉ hộp thư nội bộ sandbox",
+          "document_reference": "SIMULATION-NOT-OWNER-APPROVAL",
+          "cancellation_policy": "Hủy trước nhận việc không phí giả lập; sau nhận phải xác nhận qua Platform"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "technical",
+        "operational_enabled": true
+      },
+      {
+        "id": "f969ca9f-99bb-544c-80b6-b07c9a989a63",
+        "title": "[MÔ PHỎNG] Kiểm tra điều hòa",
+        "policy": {
+          "title": "[MÔ PHỎNG] Kiểm tra điều hòa",
+          "_label": "services:4",
+          "currency": "VND",
+          "fee_unit": "lượt kiểm tra mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "0",
+          "fee_policy": "free",
+          "vat_policy": "MÔ PHỎNG: giá thử nghiệm đã gồm VAT giả định 10%; không phải hóa đơn/thuế thực",
+          "approved_at": "2026-10-14T06:47:43+00:00",
+          "approved_by": "SIMULATION-REVIEWER-NOT-OPERATOR",
+          "eligibility": "Chỉ hai căn SIM đã xác minh giả lập; không nhận việc thực",
+          "service_code": "SIM-HVAC",
+          "building_code": "SIM-OP1-TOWER",
+          "category_code": "technical",
+          "operator_code": "SIM-TECH-OPERATOR",
+          "booking_policy": "Cư dân chọn lịch; Platform phân công người đang có ca và còn năng lực",
+          "effective_from": "2026-10-14T06:47:43+00:00",
+          "effective_until": "2026-11-14T06:47:43+00:00",
+          "operating_hours": "Theo ca sandbox 8 giờ/ngày trong shifts.csv, 3 ngày từ lúc sinh dữ liệu",
+          "warranty_policy": "MÔ PHỎNG: 3 tháng cho phần thay thế đã được cư dân đồng ý",
+          "contact_reference": "SIM-HELPDESK: chỉ hộp thư nội bộ sandbox",
+          "document_reference": "SIMULATION-NOT-OWNER-APPROVAL",
+          "cancellation_policy": "Hủy trước nhận việc không phí giả lập; sau nhận phải xác nhận qua Platform"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "technical",
+        "operational_enabled": true
+      },
+      {
+        "id": "15fc0ef4-04a2-5688-abec-9b53f89c855d",
+        "title": "[MÔ PHỎNG] security",
+        "policy": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-SECURITY",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "security",
+        "operational_enabled": true
+      },
+      {
+        "id": "6ed178e6-51ca-57ac-8d70-8b151cabb5a4",
+        "title": "[MÔ PHỎNG] sanitation",
+        "policy": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-SANITATION",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "sanitation",
+        "operational_enabled": true
+      },
+      {
+        "id": "22f85b9d-5ddb-5300-91cc-0cd254524ea4",
+        "title": "[MÔ PHỎNG] access",
+        "policy": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-ACCESS",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "access",
+        "operational_enabled": true
+      },
+      {
+        "id": "9a0ff768-d609-5ea4-9ddb-84d64e6265a5",
+        "title": "[MÔ PHỎNG] visitors",
+        "policy": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-VISITORS",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "visitors",
+        "operational_enabled": true
+      },
+      {
+        "id": "d4eb67bc-7028-5246-a845-86f0cc35ad85",
+        "title": "[MÔ PHỎNG] billing",
+        "policy": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-BILLING",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "billing",
+        "operational_enabled": true
+      },
+      {
+        "id": "ebe0602e-b6e7-5edb-9912-862211ea57ac",
+        "title": "[MÔ PHỎNG] amenities",
+        "policy": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-AMENITIES",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "amenities",
+        "operational_enabled": true
+      },
+      {
+        "id": "591badb9-9876-5a66-8f6f-501544137a64",
+        "title": "[MÔ PHỎNG] renovation",
+        "policy": {
+          "currency": "VND",
+          "fee_unit": "lượt mô phỏng",
+          "data_mode": "synthetic_test",
+          "site_code": "ocean-park-1",
+          "zone_code": "SIM-OP1-ZONE",
+          "fee_amount": "",
+          "fee_policy": "quote",
+          "vat_policy": "MÔ PHỎNG: báo rõ trước khi cư dân đồng ý; không hóa đơn thật",
+          "eligibility": "Chỉ hai căn sandbox có cư trú hiệu lực",
+          "service_code": "SIM-RENOVATION",
+          "building_code": "SIM-OP1-TOWER",
+          "booking_policy": "Theo slot/capacity hiện tại; tra cứu không giữ chỗ",
+          "operating_hours": "Theo ca sandbox; tiện ích theo giờ trong amenities",
+          "warranty_policy": "Theo phương án được đồng ý; không cam kết bảo hành thật",
+          "cancellation_policy": "Theo quy định sandbox và trạng thái công việc, không tự thu/hoàn tiền"
+        },
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "category_code": "renovation",
+        "operational_enabled": true
+      }
+    ],
+    "vehicles": [
+      {
+        "id": "8df3a21c-2748-54db-bb17-bab6931a3ffe",
+        "kind": "motorbike",
+        "brand": null,
+        "color": null,
+        "model": null,
+        "status": "active",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "plate_no": "SIM-PLATE-1",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "owner_name": "[MÔ PHỎNG] Cư dân 1",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "owner_user_id": "sim-resident-1",
+        "registered_at": "2026-10-15T06:47:46.218678+00:00"
+      },
+      {
+        "id": "0c03022d-548a-5024-b451-1649b89790e7",
+        "kind": "motorbike",
+        "brand": null,
+        "color": null,
+        "model": null,
+        "status": "active",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "plate_no": "SIM-PLATE-2",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "owner_name": "[MÔ PHỎNG] Cư dân 2",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "owner_user_id": "sim-resident-2",
+        "registered_at": "2026-10-15T06:47:46.218678+00:00"
+      }
+    ],
+    "access_cards": [
+      {
+        "id": "cfe6781c-923f-540a-9051-603e8c7a139c",
+        "kind": "resident",
+        "status": "active",
+        "card_no": "SIM-RESIDENT-0001",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "valid_to": "2026-11-14",
+        "issued_at": "2026-10-15T06:47:46.218678+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:48.471565+00:00",
+        "valid_from": "2026-10-15",
+        "vehicle_id": null,
+        "holder_name": "[MÔ PHỎNG] Cư dân 1",
+        "monthly_fee": 0,
+        "holder_user_id": "sim-resident-1",
+        "issued_by_staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433"
+      },
+      {
+        "id": "ace29baa-282a-5d08-bcd3-d9c2f8d50684",
+        "kind": "vehicle",
+        "status": "active",
+        "card_no": "SIM-VEHICLE-0001",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "valid_to": "2026-11-14",
+        "issued_at": "2026-10-15T06:47:46.218678+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:48.47169+00:00",
+        "valid_from": "2026-10-15",
+        "vehicle_id": "8df3a21c-2748-54db-bb17-bab6931a3ffe",
+        "holder_name": "[MÔ PHỎNG] Cư dân 1",
+        "monthly_fee": 0,
+        "holder_user_id": "sim-resident-1",
+        "issued_by_staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433"
+      },
+      {
+        "id": "1557d27b-2092-513b-b80e-c480af0d0d58",
+        "kind": "resident",
+        "status": "active",
+        "card_no": "SIM-RESIDENT-0002",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "valid_to": "2026-11-14",
+        "issued_at": "2026-10-15T06:47:46.218678+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:48.471732+00:00",
+        "valid_from": "2026-10-15",
+        "vehicle_id": null,
+        "holder_name": "[MÔ PHỎNG] Cư dân 2",
+        "monthly_fee": 0,
+        "holder_user_id": "sim-resident-2",
+        "issued_by_staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433"
+      },
+      {
+        "id": "29f5a36a-4414-51ee-b404-4e7b0476c73d",
+        "kind": "vehicle",
+        "status": "active",
+        "card_no": "SIM-VEHICLE-0002",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "valid_to": "2026-11-14",
+        "issued_at": "2026-10-15T06:47:46.218678+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:48.471763+00:00",
+        "valid_from": "2026-10-15",
+        "vehicle_id": "0c03022d-548a-5024-b451-1649b89790e7",
+        "holder_name": "[MÔ PHỎNG] Cư dân 2",
+        "monthly_fee": 0,
+        "holder_user_id": "sim-resident-2",
+        "issued_by_staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433"
+      }
+    ],
+    "visitor_passes": [
+      {
+        "id": "6325ba5b-04cf-513e-b7b1-92ecf4a31cf5",
+        "code": "SIM-VISIT-1",
+        "status": "approved",
+        "purpose": "family_visit",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "qr_token": "sim-6325ba5b-04cf-513e-b7b1-92ecf4a31cf5",
+        "visit_to": "2026-10-15T10:47:46.215338+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "guest_name": "[MÔ PHỎNG] Khách của căn 1",
+        "updated_at": "2026-10-15T06:47:48.472569+00:00",
+        "visit_from": "2026-10-15T08:47:46.215338+00:00",
+        "guest_count": 1,
+        "guest_phone": null,
+        "host_user_id": "sim-resident-1",
+        "idempotency_key": null,
+        "vehicle_plate_no": null,
+        "approved_by_staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433",
+        "created_by_client_id": null
+      },
+      {
+        "id": "5a8b5a8e-8788-5a40-87d3-7d538af6898c",
+        "code": "SIM-VISIT-2",
+        "status": "approved",
+        "purpose": "family_visit",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "qr_token": "sim-5a8b5a8e-8788-5a40-87d3-7d538af6898c",
+        "visit_to": "2026-10-15T10:47:46.215338+00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "guest_name": "[MÔ PHỎNG] Khách của căn 2",
+        "updated_at": "2026-10-15T06:47:48.472782+00:00",
+        "visit_from": "2026-10-15T08:47:46.215338+00:00",
+        "guest_count": 1,
+        "guest_phone": null,
+        "host_user_id": "sim-resident-2",
+        "idempotency_key": null,
+        "vehicle_plate_no": null,
+        "approved_by_staff_id": "506f0723-f147-5ec2-a951-a60b3f4bf433",
+        "created_by_client_id": null
+      }
+    ],
+    "debit_notes": [
+      {
+        "id": "56845ddb-a999-5029-b794-4a056472726b",
+        "kind": "monthly",
+        "note": "MÔ PHỎNG: không thu tiền, không hóa đơn thật",
+        "doc_no": "SIM-DEBT-1-monthly",
+        "status": "issued",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "due_date": "2026-10-22",
+        "subtotal": 100000,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "issue_date": "2026-10-15",
+        "updated_at": "2026-10-15T06:47:48.473987+00:00",
+        "vat_amount": 10000,
+        "paid_amount": 0,
+        "period_month": "2026-10-01",
+        "total_amount": 110000,
+        "payer_user_id": "sim-resident-1"
+      },
+      {
+        "id": "270b1389-1425-57bf-8f51-0e8e74dd4d13",
+        "kind": "adhoc",
+        "note": "MÔ PHỎNG: không thu tiền, không hóa đơn thật",
+        "doc_no": "SIM-DEBT-1-adhoc",
+        "status": "issued",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "due_date": "2026-10-22",
+        "subtotal": 50000,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "issue_date": "2026-10-15",
+        "updated_at": "2026-10-15T06:47:48.474372+00:00",
+        "vat_amount": 0,
+        "paid_amount": 0,
+        "period_month": "2026-10-01",
+        "total_amount": 50000,
+        "payer_user_id": "sim-resident-1"
+      },
+      {
+        "id": "6a363c3e-2f18-51f6-92c4-faf6a18bb06e",
+        "kind": "monthly",
+        "note": "MÔ PHỎNG: không thu tiền, không hóa đơn thật",
+        "doc_no": "SIM-DEBT-2-monthly",
+        "status": "issued",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "due_date": "2026-10-22",
+        "subtotal": 200000,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "issue_date": "2026-10-15",
+        "updated_at": "2026-10-15T06:47:48.474498+00:00",
+        "vat_amount": 20000,
+        "paid_amount": 0,
+        "period_month": "2026-10-01",
+        "total_amount": 220000,
+        "payer_user_id": "sim-resident-2"
+      },
+      {
+        "id": "a00e5d0c-3311-5c6b-bde6-da5e8a39bf2f",
+        "kind": "adhoc",
+        "note": "MÔ PHỎNG: không thu tiền, không hóa đơn thật",
+        "doc_no": "SIM-DEBT-2-adhoc",
+        "status": "issued",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "due_date": "2026-10-22",
+        "subtotal": 50000,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "issue_date": "2026-10-15",
+        "updated_at": "2026-10-15T06:47:48.474612+00:00",
+        "vat_amount": 0,
+        "paid_amount": 0,
+        "period_month": "2026-10-01",
+        "total_amount": 50000,
+        "payer_user_id": "sim-resident-2"
+      }
+    ],
+    "debit_note_lines": [
+      {
+        "id": "90a2a53b-b0a3-46cd-a95a-702908e541ed",
+        "amount": 100000,
+        "line_no": 1,
+        "fee_kind": "service",
+        "quantity": 1.0,
+        "vat_rate": 10.0,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "service_to": null,
+        "unit_price": 100000,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "description": "MÔ PHỎNG: phí thử nghiệm",
+        "service_from": null,
+        "debit_note_id": "56845ddb-a999-5029-b794-4a056472726b"
+      },
+      {
+        "id": "2f0abbf7-11da-41a6-965e-6edbf293eab7",
+        "amount": 50000,
+        "line_no": 1,
+        "fee_kind": "service",
+        "quantity": 1.0,
+        "vat_rate": 0.0,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "service_to": null,
+        "unit_price": 50000,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "description": "MÔ PHỎNG: phí thử nghiệm",
+        "service_from": null,
+        "debit_note_id": "270b1389-1425-57bf-8f51-0e8e74dd4d13"
+      },
+      {
+        "id": "7287e74d-7323-402f-81d6-93f980cbe197",
+        "amount": 200000,
+        "line_no": 1,
+        "fee_kind": "service",
+        "quantity": 1.0,
+        "vat_rate": 10.0,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "service_to": null,
+        "unit_price": 200000,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "description": "MÔ PHỎNG: phí thử nghiệm",
+        "service_from": null,
+        "debit_note_id": "6a363c3e-2f18-51f6-92c4-faf6a18bb06e"
+      },
+      {
+        "id": "7b8a8f00-6545-429d-98b5-03815659f3bc",
+        "amount": 50000,
+        "line_no": 1,
+        "fee_kind": "service",
+        "quantity": 1.0,
+        "vat_rate": 0.0,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "service_to": null,
+        "unit_price": 50000,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "description": "MÔ PHỎNG: phí thử nghiệm",
+        "service_from": null,
+        "debit_note_id": "a00e5d0c-3311-5c6b-bde6-da5e8a39bf2f"
+      }
+    ],
+    "amenities": [
+      {
+        "id": "d73c0a35-df7d-569d-819f-ee961d46d559",
+        "code": "SIM-AMENITY-1",
+        "name": "[MÔ PHỎNG] community_room",
+        "areas": [
+          "main"
+        ],
+        "price": 0,
+        "status": "active",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "category": "community_room",
+        "open_time": "08:00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "close_time": "21:00:00",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "max_guests": 8,
+        "rules_note": "MÔ PHỎNG: lịch/giá/quy định chỉ dùng sandbox",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "booking_mode": "time_slot",
+        "slot_minutes": 60,
+        "open_weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "max_advance_days": 7,
+        "cancel_before_hours": 2,
+        "weekly_quota_per_unit": null
+      },
+      {
+        "id": "d3be6907-fbfc-57e4-91de-71690bd8e78a",
+        "code": "SIM-AMENITY-2",
+        "name": "[MÔ PHỎNG] bbq",
+        "areas": [
+          "main"
+        ],
+        "price": 50000,
+        "status": "active",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "category": "bbq",
+        "open_time": "08:00:00",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "close_time": "21:00:00",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "max_guests": 8,
+        "rules_note": "MÔ PHỎNG: lịch/giá/quy định chỉ dùng sandbox",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "booking_mode": "time_slot",
+        "slot_minutes": 60,
+        "open_weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "max_advance_days": 7,
+        "cancel_before_hours": 2,
+        "weekly_quota_per_unit": null
+      }
+    ],
+    "amenity_bookings": [
+      {
+        "id": "22d642d7-403b-592e-8922-db6e9520489d",
+        "code": "SIM-BOOKING-1",
+        "end_at": "2026-10-16T04:00:00+00:00",
+        "guests": 2,
+        "status": "confirmed",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "qr_token": null,
+        "start_at": "2026-10-16T03:00:00+00:00",
+        "area_code": "main",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "amenity_id": "d73c0a35-df7d-569d-819f-ee961d46d559",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "cancelled_at": null,
+        "cancelled_by": null,
+        "total_amount": 0,
+        "cancel_reason": null,
+        "idempotency_key": null,
+        "booked_by_user_id": "sim-resident-1",
+        "created_by_client_id": null
+      },
+      {
+        "id": "4638bc1e-d493-57e0-988e-f9ec02d8cc7c",
+        "code": "SIM-BOOKING-2",
+        "end_at": "2026-10-17T04:00:00+00:00",
+        "guests": 2,
+        "status": "confirmed",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "qr_token": null,
+        "start_at": "2026-10-17T03:00:00+00:00",
+        "area_code": "main",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "amenity_id": "d73c0a35-df7d-569d-819f-ee961d46d559",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "cancelled_at": null,
+        "cancelled_by": null,
+        "total_amount": 0,
+        "cancel_reason": null,
+        "idempotency_key": null,
+        "booked_by_user_id": "sim-resident-2",
+        "created_by_client_id": null
+      }
+    ],
+    "construction_policies": [
+      {
+        "id": "4fcb406a-2950-461f-8e24-bd923b6209f5",
+        "note": "MÔ PHỎNG: không phải giấy phép/quy định thi công thật",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "max_workers": 4,
+        "work_time_to": "17:00:00",
+        "noisy_time_to": "16:00:00",
+        "deposit_amount": 1000000,
+        "effective_from": "2026-10-15",
+        "work_time_from": "08:00:00",
+        "noisy_time_from": "09:00:00",
+        "no_work_weekdays": [
+          7
+        ],
+        "max_duration_days": 14,
+        "applies_to_unit_kind": "apartment",
+        "overtime_fee_per_hour": 0
+      }
+    ],
+    "construction_permits": [
+      {
+        "id": "8bc79c9e-5e37-5742-819f-74009024c6f7",
+        "code": "SIM-PERMIT-1",
+        "status": "submitted",
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "category": "minor_repair",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "actual_end": null,
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:48.476051+00:00",
+        "approved_at": null,
+        "planned_end": "2026-10-19",
+        "actual_start": null,
+        "appraised_at": null,
+        "submitted_at": "2026-10-15T06:47:46.215338+00:00",
+        "planned_start": "2026-10-17",
+        "reject_reason": null,
+        "deposit_amount": 0,
+        "deposit_status": "none",
+        "self_performed": false,
+        "contractor_name": "MÔ PHỎNG: đội thi công",
+        "requester_user_id": "sim-resident-1",
+        "scope_description": "MÔ PHỎNG: sơn sửa nội thất, không tác động kết cấu"
+      },
+      {
+        "id": "afbbb6a7-d745-5312-a467-a5b14d668967",
+        "code": "SIM-PERMIT-2",
+        "status": "submitted",
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "category": "minor_repair",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "actual_end": null,
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "updated_at": "2026-10-15T06:47:48.476147+00:00",
+        "approved_at": null,
+        "planned_end": "2026-10-19",
+        "actual_start": null,
+        "appraised_at": null,
+        "submitted_at": "2026-10-15T06:47:46.215338+00:00",
+        "planned_start": "2026-10-17",
+        "reject_reason": null,
+        "deposit_amount": 0,
+        "deposit_status": "none",
+        "self_performed": false,
+        "contractor_name": "MÔ PHỎNG: đội thi công",
+        "requester_user_id": "sim-resident-2",
+        "scope_description": "MÔ PHỎNG: sơn sửa nội thất, không tác động kết cấu"
+      }
+    ],
+    "service_requests": [
+      {
+        "id": "fc4d9558-54e1-5082-a46c-79dcc7b4c868",
+        "code": "SIM-REQUEST-1",
+        "kind": "card_reissue",
+        "rating": null,
+        "status": "submitted",
+        "channel": "app",
+        "details": {
+          "note": "MÔ PHỎNG: yêu cầu cấp lại thẻ",
+          "simulation": true
+        },
+        "unit_id": "23a86f70-9c27-55ff-9a9d-8fcfc41d38ec",
+        "priority": "normal",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "decided_at": null,
+        "fee_amount": 0,
+        "sla_due_at": "2026-10-15T10:47:46.215338+00:00",
+        "updated_at": "2026-10-15T06:47:48.475298+00:00",
+        "cancelled_at": null,
+        "fulfilled_at": null,
+        "submitted_at": "2026-10-15T06:47:46.215338+00:00",
+        "cancel_reason": null,
+        "debit_note_id": null,
+        "decision_note": null,
+        "rating_comment": null,
+        "idempotency_key": null,
+        "assigned_staff_id": null,
+        "requester_user_id": "sim-resident-1",
+        "decided_by_staff_id": null,
+        "created_by_client_id": null
+      },
+      {
+        "id": "3216fc6c-866d-55e5-9289-5fbb9433bf19",
+        "code": "SIM-REQUEST-2",
+        "kind": "card_reissue",
+        "rating": null,
+        "status": "submitted",
+        "channel": "app",
+        "details": {
+          "note": "MÔ PHỎNG: yêu cầu cấp lại thẻ",
+          "simulation": true
+        },
+        "unit_id": "a78192a0-1976-5eaf-a54f-afb1373ab852",
+        "priority": "normal",
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "decided_at": null,
+        "fee_amount": 0,
+        "sla_due_at": "2026-10-15T10:47:46.215338+00:00",
+        "updated_at": "2026-10-15T06:47:48.475522+00:00",
+        "cancelled_at": null,
+        "fulfilled_at": null,
+        "submitted_at": "2026-10-15T06:47:46.215338+00:00",
+        "cancel_reason": null,
+        "debit_note_id": null,
+        "decision_note": null,
+        "rating_comment": null,
+        "idempotency_key": null,
+        "assigned_staff_id": null,
+        "requester_user_id": "sim-resident-2",
+        "decided_by_staff_id": null,
+        "created_by_client_id": null
+      }
+    ],
+    "vh_knowledge_documents": [
+      {
+        "id": "ef3a8003-ad4d-58f3-bd97-bf0f53d90814",
+        "code": "SIM-ELECTRIC-resident",
+        "title": "[MÔ PHỎNG] SOP Kiểm tra đèn/ổ điện — resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-sop",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "version_id": "e6ec7fd8-8c19-5736-9255-199684d52b20",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "a21d6864-5803-558f-b8f2-c21b2d114003",
+        "code": "SIM-ELECTRIC-staff",
+        "title": "[MÔ PHỎNG] SOP Kiểm tra đèn/ổ điện — staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-sop",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "version_id": "01e1ba0b-3c17-55f3-889f-38fb976e4270",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "78e410e6-fba3-593e-9e5c-64185da5e62a",
+        "code": "SIM-WATER-resident",
+        "title": "[MÔ PHỎNG] SOP Kiểm tra rò nước — resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-sop",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "version_id": "f9fdbd28-a231-5acd-837e-51833cfc57c6",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "b34e82d9-c56b-5aef-98f1-1d2351603743",
+        "code": "SIM-WATER-staff",
+        "title": "[MÔ PHỎNG] SOP Kiểm tra rò nước — staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-sop",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "version_id": "334954b9-fc71-54d9-ba48-8705555918b1",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "c959169b-0277-53b3-badc-c046a2cd20eb",
+        "code": "SIM-HVAC-resident",
+        "title": "[MÔ PHỎNG] SOP Kiểm tra điều hòa — resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-sop",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "version_id": "24ed92c9-f866-534c-a098-80c238c49b15",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "f69b6bde-1aef-5340-8e6a-4ecad993cd93",
+        "code": "SIM-HVAC-staff",
+        "title": "[MÔ PHỎNG] SOP Kiểm tra điều hòa — staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-sop",
+        "metadata": {
+          "manifest": {
+            "pilot": {
+              "site_code": "ocean-park-1",
+              "zone_code": "SIM-OP1-ZONE",
+              "building_code": "SIM-OP1-TOWER",
+              "category_codes": [
+                "technical"
+              ]
+            },
+            "version": "20261015T064743Z",
+            "data_mode": "synthetic_test",
+            "data_owner": "SIMULATION-NOT-OPERATOR",
+            "site_codes": [
+              "ocean-park-1"
+            ],
+            "bundle_code": "op1-technical-simulation",
+            "exported_at": "2026-10-15T06:47:43+00:00",
+            "schema_version": 2,
+            "source_documents": [
+              {
+                "file": "evidence/simulation.txt",
+                "sha256": "b058620c0925c9a6961646f2512a3348bcd7c39a0e66e3a816097aa62168cacd",
+                "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+              }
+            ],
+            "document_reference": "SIMULATION-NOT-OWNER-APPROVAL"
+          },
+          "data_mode": "synthetic_test",
+          "snapshot_sha256": "397bdbb40f8f0e2f2368c728ceb4c72de5f296fff57cffffd1b0690395dc31c4",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "version_id": "f92359bd-b0c9-5150-af51-c66ef4e63247",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "ee89f863-9c9f-55b5-858a-030d6fca6800",
+        "code": "security-resident",
+        "title": "[MÔ PHỎNG] security SOP resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "fbc6a801-4ee7-5180-8ed4-e3078196e0a0",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "f0c0f2ad-30fa-5b4f-8310-f974191e14fa",
+        "code": "security-staff",
+        "title": "[MÔ PHỎNG] security SOP staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "9826184e-ed89-50f9-a485-8be378dda833",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "68e24339-8b4e-52e7-b0d5-1adf4682ad7a",
+        "code": "sanitation-resident",
+        "title": "[MÔ PHỎNG] sanitation SOP resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "8b1ef30a-a4cb-5a04-b375-388c2e671e5e",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "29af6ccf-6eb3-5752-b84a-35820021fba6",
+        "code": "sanitation-staff",
+        "title": "[MÔ PHỎNG] sanitation SOP staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "ba06b762-fa81-5b40-a577-51422bdf9d8c",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "8d9f8d40-3d6c-5e93-85df-b509bb4878fb",
+        "code": "access-resident",
+        "title": "[MÔ PHỎNG] access SOP resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "ebabd8a2-ae0d-58b1-8813-6092091199f7",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "e3a9c0db-3ef1-550b-9370-71b22086fdfb",
+        "code": "access-staff",
+        "title": "[MÔ PHỎNG] access SOP staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "7476ba37-6207-54af-852d-55a17a234bfd",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "e4ea161d-1aff-5f63-997d-6587eff027e2",
+        "code": "visitors-resident",
+        "title": "[MÔ PHỎNG] visitors SOP resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "844a8fe7-8b1f-5240-9f46-8d36ceb41644",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "752df1f5-f00f-555c-a72a-b73bf024b736",
+        "code": "visitors-staff",
+        "title": "[MÔ PHỎNG] visitors SOP staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "bee1fbea-81fa-5df4-ad29-922a9bd162b6",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "09acbf63-a3a1-5829-be11-134819642d73",
+        "code": "billing-resident",
+        "title": "[MÔ PHỎNG] billing SOP resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "8d1ccd30-d812-510f-beaa-badf59d7fcee",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "b98c5cb2-20c4-5a02-92c9-356b222e4af1",
+        "code": "billing-staff",
+        "title": "[MÔ PHỎNG] billing SOP staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "3a28fa20-e78c-5df5-b25c-b09d5c91129b",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "343c53d4-d20a-51b3-8d27-cf203b424b92",
+        "code": "amenities-resident",
+        "title": "[MÔ PHỎNG] amenities SOP resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "57192ec5-a372-5c1f-9f95-27cbef60f020",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "3ba7c76c-12d4-57c3-b0fc-154b3b7f368b",
+        "code": "amenities-staff",
+        "title": "[MÔ PHỎNG] amenities SOP staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "53bfcb36-2177-5a2f-9133-a5cb069efab9",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "3afd64c4-7302-50d1-b36a-508b94e8d17f",
+        "code": "renovation-resident",
+        "title": "[MÔ PHỎNG] renovation SOP resident",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "resident",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "28dc7620-e08d-535e-acb5-3e1aca19ebdf",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      },
+      {
+        "id": "8266f798-60b4-5e99-bb97-dd200caea40d",
+        "code": "renovation-staff",
+        "title": "[MÔ PHỎNG] renovation SOP staff",
+        "site_id": "66666666-6666-5666-a666-666666666666",
+        "zone_id": "f49103fa-c1ec-594a-92e8-7fb94c1bf666",
+        "audience": "staff",
+        "category": "synthetic-business-sop",
+        "metadata": {
+          "data_mode": "synthetic_test",
+          "operational_verified": false
+        },
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "unverified": true,
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "version_id": "3b68932d-9617-5db2-bd10-cd2d86ed682e",
+        "building_ids": [
+          "23616a9b-ba73-56f7-a3c9-fe4718c5f7b2"
+        ]
+      }
+    ],
+    "vh_knowledge_chunks": [
+      {
+        "id": "43ee36cf-0ff3-524a-b190-2aac9a98325d",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "10497fc0cd136791435e481f90a1c512e4bee8f5254c99387bcabb1b2f31847d",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "search_tsv": "'+00':239,249,259 '-10':234,244 '-11':254 '-14':235,245,255 '/ca':110 '/r':85 '/sau':205 '00':240,250,260 '1':6 '2026':233,243,253 '240':53 '30':50 '43':238,248,258 '47':237,247,257 'acceptance':148 'and':174 'approval':170,223 'approved':224,231 'at':232 'audience':40 'building':13 'by':225 'báo':114,151,195,207 'bị':62 'chi':143 'chuyển':98,192 'cháy':90 'chối':187 'chứng':64 'clock':54 'code':2,8,14,20,26 'completion':175 'criteria':149 'cung':75 'có':69,108,188 'cơ':89 'cư':157,197,210 'cấp':76,100 'cầu':163 'di':191 'do':169,190 'document':217 'dân':158,198,211 'dừng':93 'dự':120 'effective':241,251 'elapsed':56 'electric':23,29 'escalation':105 'eta/t':185 'evidence':129 'from':242 'giá':196 'giật':92 'giữ':70 'gán':124 'gắn':135 'hiểm':104 'hiện':202 'hoặc':111,161 'hạng':72 'hợp':156 'intake':57 'không':79,101,107,122 'khẩn':99 'kind':43 'kiểm':34 'kết':139,152,208 'lý':95,165,168,189,215 'lại':166,216 'minutes':49,52 'mô':31 'mọi':71 'mời':181 'mục':73 'nghiệm':212 'ngoài':126 'nguy':88,103 'nguồn':83 'người':109,119,125 'nhận':160,178,183 'normal':47 'not':221,229 'nơi':194 'nước':87 'nếu':68 'ocean':4 'ocean-park':3 'op1':11,17 'operator':230 'order':138 'owner':222 'park':5 'phí':144 'phòng':121 'phạm':127 'phỏng':32 'phối':118 'platform':115,116,154,180,206 'policy':55,78,106,171 'priority':46 'quote':173 'quá':112 'quả':140,153,209 'reference':218 'request':42,45 'requirements':58,130 'resident':24,39,41,172 'resolution':51 'response':48 'reviewer':228 'safety':77 'sau':134 'service':25,44 'sim':10,16,22,28 'sim-electric':27 'sim-electric-resident':21 'sim-op1-tower':15 'sim-op1-zone':9 'simulation':220,227 'simulation-not-owner-approval':219 'simulation-reviewer-not-operator':226 'site':1 'sla':113 'sop':19,33 'staff':150,182 'steps':176 't06':236,246,256 'thao':81 'thiết':61 'thu/x':213 'thường':96 'thời':65,146 'thử':102 'thực':201 'ticket':179 'ticket/work':137 'title':30 'tiếp':177 'tower':18 'tra':35 'triệu':63 'trí':60 'trước':132,204 'tác':82 'tư':142 'tổng':155 'tự':80,123 'until':252 'vi':128 'và':97,133,145 'vật':141 'vị':59 'với':167,184 'xác':159 'xử':94,164 'yêu':162 'zone':7,12 'ò':86 'ý':200 'điều':117 'điểm':66,147 'điện':38,84,91 'đã':74 'đèn':36 'đúng':136 'đến':193 'đồng':199 'ảnh':67,131,203 'ổ':37 'ừ':186 'ử':214",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "document_id": "ef3a8003-ad4d-58f3-bd97-bf0f53d90814",
+        "token_count": 198,
+        "heading_path": "[MÔ PHỎNG] SOP Kiểm tra đèn/ổ điện — resident",
+        "text_content": "site_code: ocean-park-1\nzone_code: SIM-OP1-ZONE\nbuilding_code: SIM-OP1-TOWER\nsop_code: SIM-ELECTRIC-resident\nservice_code: SIM-ELECTRIC\ntitle: [MÔ PHỎNG] SOP Kiểm tra đèn/ổ điện — resident\naudience: resident\nrequest_kind: service_request\npriority: normal\nresponse_minutes: 30\nresolution_minutes: 240\nclock_policy: elapsed\nintake_requirements: Vị trí, thiết bị, triệu chứng, thời điểm, ảnh nếu có; giữ mọi hạng mục đã cung cấp\nsafety_policy: Không tự thao tác nguồn điện/rò nước. Nguy cơ cháy/điện giật: dừng xử lý thường và chuyển khẩn cấp; không thử nguy hiểm\nescalation_policy: Không có người/ca hoặc quá SLA: báo Platform; Platform điều phối người dự phòng, không tự gán người ngoài phạm vi\nevidence_requirements: Ảnh trước và sau gắn đúng ticket/work order; kết quả, vật tư, chi phí và thời điểm\nacceptance_criteria: Staff báo kết quả; Platform tổng hợp; cư dân xác nhận hoặc yêu cầu xử lý lại với lý do\napproval_policy: resident_quote_and_completion\nsteps: Tiếp nhận → ticket → Platform → mời staff → nhận với ETA/từ chối có lý do → di chuyển → đến nơi → báo giá → cư dân đồng ý → thực hiện → ảnh trước/sau → Platform báo kết quả → cư dân nghiệm thu/xử lý lại\ndocument_reference: SIMULATION-NOT-OWNER-APPROVAL\napproved_by: SIMULATION-REVIEWER-NOT-OPERATOR\napproved_at: 2026-10-14T06:47:43+00:00\neffective_from: 2026-10-14T06:47:43+00:00\neffective_until: 2026-11-14T06:47:43+00:00"
+      },
+      {
+        "id": "061246ab-9c37-5b97-b639-cff931a60d1c",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "caa15eefd1769dd2022ce3c7636a9d21cd7ad3e9e1b4516f2c00870fce05cedd",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "search_tsv": "'+00':238,248,258 '-10':233,243 '-11':253 '-14':234,244,254 '/ca':109 '/r':84 '/sau':204 '00':239,249,259 '1':6 '2026':232,242,252 '240':52 '30':49 '43':237,247,257 '47':236,246,256 'acceptance':147 'and':173 'approval':169,222 'approved':223,230 'at':231 'audience':39 'building':13 'by':224 'báo':113,150,194,206 'bị':61 'chi':142 'chuyển':97,191 'cháy':89 'chối':186 'chứng':63 'clock':53 'code':2,8,14,20,26 'completion':174 'criteria':148 'cung':74 'có':68,107,187 'cơ':88 'cư':156,196,209 'cấp':75,99 'cầu':162 'di':190 'do':168,189 'document':216 'dân':157,197,210 'dừng':92 'dự':119 'effective':240,250 'elapsed':55 'escalation':104 'eta/t':184 'evidence':128 'from':241 'giá':195 'giật':91 'giữ':69 'gán':123 'gắn':134 'hiểm':103 'hiện':201 'hoặc':110,160 'hvac':23,29 'hòa':37 'hạng':71 'hợp':155 'intake':56 'không':78,100,106,121 'khẩn':98 'kind':42 'kiểm':34 'kết':138,151,207 'lý':94,164,167,188,214 'lại':165,215 'minutes':48,51 'mô':31 'mọi':70 'mời':180 'mục':72 'nghiệm':211 'ngoài':125 'nguy':87,102 'nguồn':82 'người':108,118,124 'nhận':159,177,182 'normal':46 'not':220,228 'nơi':193 'nước':86 'nếu':67 'ocean':4 'ocean-park':3 'op1':11,17 'operator':229 'order':137 'owner':221 'park':5 'phí':143 'phòng':120 'phạm':126 'phỏng':32 'phối':117 'platform':114,115,153,179,205 'policy':54,77,105,170 'priority':45 'quote':172 'quá':111 'quả':139,152,208 'reference':217 'request':41,44 'requirements':57,129 'resident':171 'resolution':50 'response':47 'reviewer':227 'safety':76 'sau':133 'service':25,43 'sim':10,16,22,28 'sim-hvac':27 'sim-hvac-staff':21 'sim-op1-tower':15 'sim-op1-zone':9 'simulation':219,226 'simulation-not-owner-approval':218 'simulation-reviewer-not-operator':225 'site':1 'sla':112 'sop':19,33 'staff':24,38,40,149,181 'steps':175 't06':235,245,255 'thao':80 'thiết':60 'thu/x':212 'thường':95 'thời':64,145 'thử':101 'thực':200 'ticket':178 'ticket/work':136 'title':30 'tiếp':176 'tower':18 'tra':35 'triệu':62 'trí':59 'trước':131,203 'tác':81 'tư':141 'tổng':154 'tự':79,122 'until':251 'vi':127 'và':96,132,144 'vật':140 'vị':58 'với':166,183 'xác':158 'xử':93,163 'yêu':161 'zone':7,12 'ò':85 'ý':199 'điều':36,116 'điểm':65,146 'điện':83,90 'đã':73 'đúng':135 'đến':192 'đồng':198 'ảnh':66,130,202 'ừ':185 'ử':213",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "document_id": "f69b6bde-1aef-5340-8e6a-4ecad993cd93",
+        "token_count": 198,
+        "heading_path": "[MÔ PHỎNG] SOP Kiểm tra điều hòa — staff",
+        "text_content": "site_code: ocean-park-1\nzone_code: SIM-OP1-ZONE\nbuilding_code: SIM-OP1-TOWER\nsop_code: SIM-HVAC-staff\nservice_code: SIM-HVAC\ntitle: [MÔ PHỎNG] SOP Kiểm tra điều hòa — staff\naudience: staff\nrequest_kind: service_request\npriority: normal\nresponse_minutes: 30\nresolution_minutes: 240\nclock_policy: elapsed\nintake_requirements: Vị trí, thiết bị, triệu chứng, thời điểm, ảnh nếu có; giữ mọi hạng mục đã cung cấp\nsafety_policy: Không tự thao tác nguồn điện/rò nước. Nguy cơ cháy/điện giật: dừng xử lý thường và chuyển khẩn cấp; không thử nguy hiểm\nescalation_policy: Không có người/ca hoặc quá SLA: báo Platform; Platform điều phối người dự phòng, không tự gán người ngoài phạm vi\nevidence_requirements: Ảnh trước và sau gắn đúng ticket/work order; kết quả, vật tư, chi phí và thời điểm\nacceptance_criteria: Staff báo kết quả; Platform tổng hợp; cư dân xác nhận hoặc yêu cầu xử lý lại với lý do\napproval_policy: resident_quote_and_completion\nsteps: Tiếp nhận → ticket → Platform → mời staff → nhận với ETA/từ chối có lý do → di chuyển → đến nơi → báo giá → cư dân đồng ý → thực hiện → ảnh trước/sau → Platform báo kết quả → cư dân nghiệm thu/xử lý lại\ndocument_reference: SIMULATION-NOT-OWNER-APPROVAL\napproved_by: SIMULATION-REVIEWER-NOT-OPERATOR\napproved_at: 2026-10-14T06:47:43+00:00\neffective_from: 2026-10-14T06:47:43+00:00\neffective_until: 2026-11-14T06:47:43+00:00"
+      },
+      {
+        "id": "ae708e13-4358-5185-afd7-b709c35893d0",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "80a88525616d212d141efbb4502222af22fdd4e92e440366abef049c8ca7e430",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "search_tsv": "'+00':239,249,259 '-10':234,244 '-11':254 '-14':235,245,255 '/ca':110 '/r':85 '/sau':205 '00':240,250,260 '1':6 '2026':233,243,253 '240':53 '30':50 '43':238,248,258 '47':237,247,257 'acceptance':148 'and':174 'approval':170,223 'approved':224,231 'at':232 'audience':40 'building':13 'by':225 'báo':114,151,195,207 'bị':62 'chi':143 'chuyển':98,192 'cháy':90 'chối':187 'chứng':64 'clock':54 'code':2,8,14,20,26 'completion':175 'criteria':149 'cung':75 'có':69,108,188 'cơ':89 'cư':157,197,210 'cấp':76,100 'cầu':163 'di':191 'do':169,190 'document':217 'dân':158,198,211 'dừng':93 'dự':120 'effective':241,251 'elapsed':56 'electric':23,29 'escalation':105 'eta/t':185 'evidence':129 'from':242 'giá':196 'giật':92 'giữ':70 'gán':124 'gắn':135 'hiểm':104 'hiện':202 'hoặc':111,161 'hạng':72 'hợp':156 'intake':57 'không':79,101,107,122 'khẩn':99 'kind':43 'kiểm':34 'kết':139,152,208 'lý':95,165,168,189,215 'lại':166,216 'minutes':49,52 'mô':31 'mọi':71 'mời':181 'mục':73 'nghiệm':212 'ngoài':126 'nguy':88,103 'nguồn':83 'người':109,119,125 'nhận':160,178,183 'normal':47 'not':221,229 'nơi':194 'nước':87 'nếu':68 'ocean':4 'ocean-park':3 'op1':11,17 'operator':230 'order':138 'owner':222 'park':5 'phí':144 'phòng':121 'phạm':127 'phỏng':32 'phối':118 'platform':115,116,154,180,206 'policy':55,78,106,171 'priority':46 'quote':173 'quá':112 'quả':140,153,209 'reference':218 'request':42,45 'requirements':58,130 'resident':172 'resolution':51 'response':48 'reviewer':228 'safety':77 'sau':134 'service':25,44 'sim':10,16,22,28 'sim-electric':27 'sim-electric-staff':21 'sim-op1-tower':15 'sim-op1-zone':9 'simulation':220,227 'simulation-not-owner-approval':219 'simulation-reviewer-not-operator':226 'site':1 'sla':113 'sop':19,33 'staff':24,39,41,150,182 'steps':176 't06':236,246,256 'thao':81 'thiết':61 'thu/x':213 'thường':96 'thời':65,146 'thử':102 'thực':201 'ticket':179 'ticket/work':137 'title':30 'tiếp':177 'tower':18 'tra':35 'triệu':63 'trí':60 'trước':132,204 'tác':82 'tư':142 'tổng':155 'tự':80,123 'until':252 'vi':128 'và':97,133,145 'vật':141 'vị':59 'với':167,184 'xác':159 'xử':94,164 'yêu':162 'zone':7,12 'ò':86 'ý':200 'điều':117 'điểm':66,147 'điện':38,84,91 'đã':74 'đèn':36 'đúng':136 'đến':193 'đồng':199 'ảnh':67,131,203 'ổ':37 'ừ':186 'ử':214",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "document_id": "a21d6864-5803-558f-b8f2-c21b2d114003",
+        "token_count": 198,
+        "heading_path": "[MÔ PHỎNG] SOP Kiểm tra đèn/ổ điện — staff",
+        "text_content": "site_code: ocean-park-1\nzone_code: SIM-OP1-ZONE\nbuilding_code: SIM-OP1-TOWER\nsop_code: SIM-ELECTRIC-staff\nservice_code: SIM-ELECTRIC\ntitle: [MÔ PHỎNG] SOP Kiểm tra đèn/ổ điện — staff\naudience: staff\nrequest_kind: service_request\npriority: normal\nresponse_minutes: 30\nresolution_minutes: 240\nclock_policy: elapsed\nintake_requirements: Vị trí, thiết bị, triệu chứng, thời điểm, ảnh nếu có; giữ mọi hạng mục đã cung cấp\nsafety_policy: Không tự thao tác nguồn điện/rò nước. Nguy cơ cháy/điện giật: dừng xử lý thường và chuyển khẩn cấp; không thử nguy hiểm\nescalation_policy: Không có người/ca hoặc quá SLA: báo Platform; Platform điều phối người dự phòng, không tự gán người ngoài phạm vi\nevidence_requirements: Ảnh trước và sau gắn đúng ticket/work order; kết quả, vật tư, chi phí và thời điểm\nacceptance_criteria: Staff báo kết quả; Platform tổng hợp; cư dân xác nhận hoặc yêu cầu xử lý lại với lý do\napproval_policy: resident_quote_and_completion\nsteps: Tiếp nhận → ticket → Platform → mời staff → nhận với ETA/từ chối có lý do → di chuyển → đến nơi → báo giá → cư dân đồng ý → thực hiện → ảnh trước/sau → Platform báo kết quả → cư dân nghiệm thu/xử lý lại\ndocument_reference: SIMULATION-NOT-OWNER-APPROVAL\napproved_by: SIMULATION-REVIEWER-NOT-OPERATOR\napproved_at: 2026-10-14T06:47:43+00:00\neffective_from: 2026-10-14T06:47:43+00:00\neffective_until: 2026-11-14T06:47:43+00:00"
+      },
+      {
+        "id": "4875fb04-b78d-568c-8857-6ad7167699ad",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "afcd3dedf8ed24d05c4f5f86b428018794e92f0242c499f246929bc965f72a0e",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "search_tsv": "'+00':238,248,258 '-10':233,243 '-11':253 '-14':234,244,254 '/ca':109 '/r':84 '/sau':204 '00':239,249,259 '1':6 '2026':232,242,252 '240':52 '30':49 '43':237,247,257 '47':236,246,256 'acceptance':147 'and':173 'approval':169,222 'approved':223,230 'at':231 'audience':39 'building':13 'by':224 'báo':113,150,194,206 'bị':61 'chi':142 'chuyển':97,191 'cháy':89 'chối':186 'chứng':63 'clock':53 'code':2,8,14,20,26 'completion':174 'criteria':148 'cung':74 'có':68,107,187 'cơ':88 'cư':156,196,209 'cấp':75,99 'cầu':162 'di':190 'do':168,189 'document':216 'dân':157,197,210 'dừng':92 'dự':119 'effective':240,250 'elapsed':55 'escalation':104 'eta/t':184 'evidence':128 'from':241 'giá':195 'giật':91 'giữ':69 'gán':123 'gắn':134 'hiểm':103 'hiện':201 'hoặc':110,160 'hạng':71 'hợp':155 'intake':56 'không':78,100,106,121 'khẩn':98 'kind':42 'kiểm':34 'kết':138,151,207 'lý':94,164,167,188,214 'lại':165,215 'minutes':48,51 'mô':31 'mọi':70 'mời':180 'mục':72 'nghiệm':211 'ngoài':125 'nguy':87,102 'nguồn':82 'người':108,118,124 'nhận':159,177,182 'normal':46 'not':220,228 'nơi':193 'nước':37,86 'nếu':67 'ocean':4 'ocean-park':3 'op1':11,17 'operator':229 'order':137 'owner':221 'park':5 'phí':143 'phòng':120 'phạm':126 'phỏng':32 'phối':117 'platform':114,115,153,179,205 'policy':54,77,105,170 'priority':45 'quote':172 'quá':111 'quả':139,152,208 'reference':217 'request':41,44 'requirements':57,129 'resident':24,38,40,171 'resolution':50 'response':47 'reviewer':227 'rò':36 'safety':76 'sau':133 'service':25,43 'sim':10,16,22,28 'sim-op1-tower':15 'sim-op1-zone':9 'sim-water':27 'sim-water-resident':21 'simulation':219,226 'simulation-not-owner-approval':218 'simulation-reviewer-not-operator':225 'site':1 'sla':112 'sop':19,33 'staff':149,181 'steps':175 't06':235,245,255 'thao':80 'thiết':60 'thu/x':212 'thường':95 'thời':64,145 'thử':101 'thực':200 'ticket':178 'ticket/work':136 'title':30 'tiếp':176 'tower':18 'tra':35 'triệu':62 'trí':59 'trước':131,203 'tác':81 'tư':141 'tổng':154 'tự':79,122 'until':251 'vi':127 'và':96,132,144 'vật':140 'vị':58 'với':166,183 'water':23,29 'xác':158 'xử':93,163 'yêu':161 'zone':7,12 'ò':85 'ý':199 'điều':116 'điểm':65,146 'điện':83,90 'đã':73 'đúng':135 'đến':192 'đồng':198 'ảnh':66,130,202 'ừ':185 'ử':213",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "document_id": "78e410e6-fba3-593e-9e5c-64185da5e62a",
+        "token_count": 198,
+        "heading_path": "[MÔ PHỎNG] SOP Kiểm tra rò nước — resident",
+        "text_content": "site_code: ocean-park-1\nzone_code: SIM-OP1-ZONE\nbuilding_code: SIM-OP1-TOWER\nsop_code: SIM-WATER-resident\nservice_code: SIM-WATER\ntitle: [MÔ PHỎNG] SOP Kiểm tra rò nước — resident\naudience: resident\nrequest_kind: service_request\npriority: normal\nresponse_minutes: 30\nresolution_minutes: 240\nclock_policy: elapsed\nintake_requirements: Vị trí, thiết bị, triệu chứng, thời điểm, ảnh nếu có; giữ mọi hạng mục đã cung cấp\nsafety_policy: Không tự thao tác nguồn điện/rò nước. Nguy cơ cháy/điện giật: dừng xử lý thường và chuyển khẩn cấp; không thử nguy hiểm\nescalation_policy: Không có người/ca hoặc quá SLA: báo Platform; Platform điều phối người dự phòng, không tự gán người ngoài phạm vi\nevidence_requirements: Ảnh trước và sau gắn đúng ticket/work order; kết quả, vật tư, chi phí và thời điểm\nacceptance_criteria: Staff báo kết quả; Platform tổng hợp; cư dân xác nhận hoặc yêu cầu xử lý lại với lý do\napproval_policy: resident_quote_and_completion\nsteps: Tiếp nhận → ticket → Platform → mời staff → nhận với ETA/từ chối có lý do → di chuyển → đến nơi → báo giá → cư dân đồng ý → thực hiện → ảnh trước/sau → Platform báo kết quả → cư dân nghiệm thu/xử lý lại\ndocument_reference: SIMULATION-NOT-OWNER-APPROVAL\napproved_by: SIMULATION-REVIEWER-NOT-OPERATOR\napproved_at: 2026-10-14T06:47:43+00:00\neffective_from: 2026-10-14T06:47:43+00:00\neffective_until: 2026-11-14T06:47:43+00:00"
+      },
+      {
+        "id": "9c0804bf-6a8c-5f77-aa50-a093820b5b5d",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "d2be3753980c5fd0e146cba9d8737a0a45bd8cfb87d4b12c064aec515a498a73",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "search_tsv": "'+00':238,248,258 '-10':233,243 '-11':253 '-14':234,244,254 '/ca':109 '/r':84 '/sau':204 '00':239,249,259 '1':6 '2026':232,242,252 '240':52 '30':49 '43':237,247,257 '47':236,246,256 'acceptance':147 'and':173 'approval':169,222 'approved':223,230 'at':231 'audience':39 'building':13 'by':224 'báo':113,150,194,206 'bị':61 'chi':142 'chuyển':97,191 'cháy':89 'chối':186 'chứng':63 'clock':53 'code':2,8,14,20,26 'completion':174 'criteria':148 'cung':74 'có':68,107,187 'cơ':88 'cư':156,196,209 'cấp':75,99 'cầu':162 'di':190 'do':168,189 'document':216 'dân':157,197,210 'dừng':92 'dự':119 'effective':240,250 'elapsed':55 'escalation':104 'eta/t':184 'evidence':128 'from':241 'giá':195 'giật':91 'giữ':69 'gán':123 'gắn':134 'hiểm':103 'hiện':201 'hoặc':110,160 'hạng':71 'hợp':155 'intake':56 'không':78,100,106,121 'khẩn':98 'kind':42 'kiểm':34 'kết':138,151,207 'lý':94,164,167,188,214 'lại':165,215 'minutes':48,51 'mô':31 'mọi':70 'mời':180 'mục':72 'nghiệm':211 'ngoài':125 'nguy':87,102 'nguồn':82 'người':108,118,124 'nhận':159,177,182 'normal':46 'not':220,228 'nơi':193 'nước':37,86 'nếu':67 'ocean':4 'ocean-park':3 'op1':11,17 'operator':229 'order':137 'owner':221 'park':5 'phí':143 'phòng':120 'phạm':126 'phỏng':32 'phối':117 'platform':114,115,153,179,205 'policy':54,77,105,170 'priority':45 'quote':172 'quá':111 'quả':139,152,208 'reference':217 'request':41,44 'requirements':57,129 'resident':171 'resolution':50 'response':47 'reviewer':227 'rò':36 'safety':76 'sau':133 'service':25,43 'sim':10,16,22,28 'sim-op1-tower':15 'sim-op1-zone':9 'sim-water':27 'sim-water-staff':21 'simulation':219,226 'simulation-not-owner-approval':218 'simulation-reviewer-not-operator':225 'site':1 'sla':112 'sop':19,33 'staff':24,38,40,149,181 'steps':175 't06':235,245,255 'thao':80 'thiết':60 'thu/x':212 'thường':95 'thời':64,145 'thử':101 'thực':200 'ticket':178 'ticket/work':136 'title':30 'tiếp':176 'tower':18 'tra':35 'triệu':62 'trí':59 'trước':131,203 'tác':81 'tư':141 'tổng':154 'tự':79,122 'until':251 'vi':127 'và':96,132,144 'vật':140 'vị':58 'với':166,183 'water':23,29 'xác':158 'xử':93,163 'yêu':161 'zone':7,12 'ò':85 'ý':199 'điều':116 'điểm':65,146 'điện':83,90 'đã':73 'đúng':135 'đến':192 'đồng':198 'ảnh':66,130,202 'ừ':185 'ử':213",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "document_id": "b34e82d9-c56b-5aef-98f1-1d2351603743",
+        "token_count": 198,
+        "heading_path": "[MÔ PHỎNG] SOP Kiểm tra rò nước — staff",
+        "text_content": "site_code: ocean-park-1\nzone_code: SIM-OP1-ZONE\nbuilding_code: SIM-OP1-TOWER\nsop_code: SIM-WATER-staff\nservice_code: SIM-WATER\ntitle: [MÔ PHỎNG] SOP Kiểm tra rò nước — staff\naudience: staff\nrequest_kind: service_request\npriority: normal\nresponse_minutes: 30\nresolution_minutes: 240\nclock_policy: elapsed\nintake_requirements: Vị trí, thiết bị, triệu chứng, thời điểm, ảnh nếu có; giữ mọi hạng mục đã cung cấp\nsafety_policy: Không tự thao tác nguồn điện/rò nước. Nguy cơ cháy/điện giật: dừng xử lý thường và chuyển khẩn cấp; không thử nguy hiểm\nescalation_policy: Không có người/ca hoặc quá SLA: báo Platform; Platform điều phối người dự phòng, không tự gán người ngoài phạm vi\nevidence_requirements: Ảnh trước và sau gắn đúng ticket/work order; kết quả, vật tư, chi phí và thời điểm\nacceptance_criteria: Staff báo kết quả; Platform tổng hợp; cư dân xác nhận hoặc yêu cầu xử lý lại với lý do\napproval_policy: resident_quote_and_completion\nsteps: Tiếp nhận → ticket → Platform → mời staff → nhận với ETA/từ chối có lý do → di chuyển → đến nơi → báo giá → cư dân đồng ý → thực hiện → ảnh trước/sau → Platform báo kết quả → cư dân nghiệm thu/xử lý lại\ndocument_reference: SIMULATION-NOT-OWNER-APPROVAL\napproved_by: SIMULATION-REVIEWER-NOT-OPERATOR\napproved_at: 2026-10-14T06:47:43+00:00\neffective_from: 2026-10-14T06:47:43+00:00\neffective_until: 2026-11-14T06:47:43+00:00"
+      },
+      {
+        "id": "26f09e4d-d16f-5983-a76a-5a4da079575a",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "ffbb9eb64516124b355025e54400b9986df29f41c9fc584dbf461624b2624b93",
+        "created_at": "2026-10-15T06:47:44.254834+00:00",
+        "search_tsv": "'+00':238,248,258 '-10':233,243 '-11':253 '-14':234,244,254 '/ca':109 '/r':84 '/sau':204 '00':239,249,259 '1':6 '2026':232,242,252 '240':52 '30':49 '43':237,247,257 '47':236,246,256 'acceptance':147 'and':173 'approval':169,222 'approved':223,230 'at':231 'audience':39 'building':13 'by':224 'báo':113,150,194,206 'bị':61 'chi':142 'chuyển':97,191 'cháy':89 'chối':186 'chứng':63 'clock':53 'code':2,8,14,20,26 'completion':174 'criteria':148 'cung':74 'có':68,107,187 'cơ':88 'cư':156,196,209 'cấp':75,99 'cầu':162 'di':190 'do':168,189 'document':216 'dân':157,197,210 'dừng':92 'dự':119 'effective':240,250 'elapsed':55 'escalation':104 'eta/t':184 'evidence':128 'from':241 'giá':195 'giật':91 'giữ':69 'gán':123 'gắn':134 'hiểm':103 'hiện':201 'hoặc':110,160 'hvac':23,29 'hòa':37 'hạng':71 'hợp':155 'intake':56 'không':78,100,106,121 'khẩn':98 'kind':42 'kiểm':34 'kết':138,151,207 'lý':94,164,167,188,214 'lại':165,215 'minutes':48,51 'mô':31 'mọi':70 'mời':180 'mục':72 'nghiệm':211 'ngoài':125 'nguy':87,102 'nguồn':82 'người':108,118,124 'nhận':159,177,182 'normal':46 'not':220,228 'nơi':193 'nước':86 'nếu':67 'ocean':4 'ocean-park':3 'op1':11,17 'operator':229 'order':137 'owner':221 'park':5 'phí':143 'phòng':120 'phạm':126 'phỏng':32 'phối':117 'platform':114,115,153,179,205 'policy':54,77,105,170 'priority':45 'quote':172 'quá':111 'quả':139,152,208 'reference':217 'request':41,44 'requirements':57,129 'resident':24,38,40,171 'resolution':50 'response':47 'reviewer':227 'safety':76 'sau':133 'service':25,43 'sim':10,16,22,28 'sim-hvac':27 'sim-hvac-resident':21 'sim-op1-tower':15 'sim-op1-zone':9 'simulation':219,226 'simulation-not-owner-approval':218 'simulation-reviewer-not-operator':225 'site':1 'sla':112 'sop':19,33 'staff':149,181 'steps':175 't06':235,245,255 'thao':80 'thiết':60 'thu/x':212 'thường':95 'thời':64,145 'thử':101 'thực':200 'ticket':178 'ticket/work':136 'title':30 'tiếp':176 'tower':18 'tra':35 'triệu':62 'trí':59 'trước':131,203 'tác':81 'tư':141 'tổng':154 'tự':79,122 'until':251 'vi':127 'và':96,132,144 'vật':140 'vị':58 'với':166,183 'xác':158 'xử':93,163 'yêu':161 'zone':7,12 'ò':85 'ý':199 'điều':36,116 'điểm':65,146 'điện':83,90 'đã':73 'đúng':135 'đến':192 'đồng':198 'ảnh':66,130,202 'ừ':185 'ử':213",
+        "updated_at": "2026-10-15T06:47:44.254834+00:00",
+        "document_id": "c959169b-0277-53b3-badc-c046a2cd20eb",
+        "token_count": 198,
+        "heading_path": "[MÔ PHỎNG] SOP Kiểm tra điều hòa — resident",
+        "text_content": "site_code: ocean-park-1\nzone_code: SIM-OP1-ZONE\nbuilding_code: SIM-OP1-TOWER\nsop_code: SIM-HVAC-resident\nservice_code: SIM-HVAC\ntitle: [MÔ PHỎNG] SOP Kiểm tra điều hòa — resident\naudience: resident\nrequest_kind: service_request\npriority: normal\nresponse_minutes: 30\nresolution_minutes: 240\nclock_policy: elapsed\nintake_requirements: Vị trí, thiết bị, triệu chứng, thời điểm, ảnh nếu có; giữ mọi hạng mục đã cung cấp\nsafety_policy: Không tự thao tác nguồn điện/rò nước. Nguy cơ cháy/điện giật: dừng xử lý thường và chuyển khẩn cấp; không thử nguy hiểm\nescalation_policy: Không có người/ca hoặc quá SLA: báo Platform; Platform điều phối người dự phòng, không tự gán người ngoài phạm vi\nevidence_requirements: Ảnh trước và sau gắn đúng ticket/work order; kết quả, vật tư, chi phí và thời điểm\nacceptance_criteria: Staff báo kết quả; Platform tổng hợp; cư dân xác nhận hoặc yêu cầu xử lý lại với lý do\napproval_policy: resident_quote_and_completion\nsteps: Tiếp nhận → ticket → Platform → mời staff → nhận với ETA/từ chối có lý do → di chuyển → đến nơi → báo giá → cư dân đồng ý → thực hiện → ảnh trước/sau → Platform báo kết quả → cư dân nghiệm thu/xử lý lại\ndocument_reference: SIMULATION-NOT-OWNER-APPROVAL\napproved_by: SIMULATION-REVIEWER-NOT-OPERATOR\napproved_at: 2026-10-14T06:47:43+00:00\neffective_from: 2026-10-14T06:47:43+00:00\neffective_until: 2026-11-14T06:47:43+00:00"
+      },
+      {
+        "id": "43010ff1-7f76-5916-b711-fafe924d0d73",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "95afca217c5c95f5604af459ae68baf5c4b5b78d95f9df7a6554405ab6f1fe91",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'resident':4 'security':3 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "ee89f863-9c9f-55b5-858a-030d6fca6800",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] security",
+        "text_content": "MÔ PHỎNG — security — resident. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "1373c2c5-7c6a-578c-818a-f8033e9dd58e",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "673bc1c912103a4d681cd9ebf9b22d7dadcfddd9e26aa187d4c25640deedbb87",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'security':3 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':4,27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "f0c0f2ad-30fa-5b4f-8310-f974191e14fa",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] security",
+        "text_content": "MÔ PHỎNG — security — staff. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "52298f05-6289-5fbd-9d18-4977ecb2e6c1",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "39346c12e9073eac0a151ea6f06683f92d67dae3738d214e54c6aaa7e39c158e",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'resident':4 'sanitation':3 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "68e24339-8b4e-52e7-b0d5-1adf4682ad7a",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] sanitation",
+        "text_content": "MÔ PHỎNG — sanitation — resident. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "63952783-1f50-5522-a76b-969c6b708b3c",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "59c94b485d98238157a55461671d12a3e72b9c2ada947a0129fd1dfd61aa2c11",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'sanitation':3 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':4,27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "29af6ccf-6eb3-5752-b84a-35820021fba6",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] sanitation",
+        "text_content": "MÔ PHỎNG — sanitation — staff. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "2795ebf1-dff3-571b-bf71-eba4b92bf040",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "14eacc4dffa6f1dcc0437cf3ed76364b9789bf8ad46dac19ce3257c8d0e4d414",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'access':3 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'resident':4 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "8d9f8d40-3d6c-5e93-85df-b509bb4878fb",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] access",
+        "text_content": "MÔ PHỎNG — access — resident. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "3d59d399-a55a-5b42-861a-b569751bb973",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "fda5ebd91be7e0dfa58db99fe0050dd684b8000b3364b35fe64184d17583a979",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'access':3 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':4,27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "e3a9c0db-3ef1-550b-9370-71b22086fdfb",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] access",
+        "text_content": "MÔ PHỎNG — access — staff. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "a8570f52-fd00-5661-bab0-4ec5f0477bb0",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "9f22d50fb7a1a6314c66a6e70984fad0624f2e5306aadc8d43b5d1e4ff24a98d",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'resident':4 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'visitors':3 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "e4ea161d-1aff-5f63-997d-6587eff027e2",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] visitors",
+        "text_content": "MÔ PHỎNG — visitors — resident. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "e3fcb3d7-70bf-5c85-bc35-bcd729af1f59",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "9a837dd5e088fb859f582eb61f6ad8916b3cc42f7909162f03b353f3290acb39",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':4,27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'visitors':3 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "752df1f5-f00f-555c-a72a-b73bf024b736",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] visitors",
+        "text_content": "MÔ PHỎNG — visitors — staff. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "448460ec-4ecc-585d-a7de-abee8a940d91",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "6e9d9afc3bbeda74f350f00a004ab22ce255811bc2610f0dc0b449a51981f965",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'billing':3 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'resident':4 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "09acbf63-a3a1-5829-be11-134819642d73",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] billing",
+        "text_content": "MÔ PHỎNG — billing — resident. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "f3675c70-8855-5078-8c86-8056f023170b",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "9c8c2df32f67d8f89d3a0f1666bce54fae278f93c1bf91b1255b525a44cd113b",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'billing':3 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':4,27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "b98c5cb2-20c4-5a02-92c9-356b222e4af1",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] billing",
+        "text_content": "MÔ PHỎNG — billing — staff. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "4086d1b0-dfa8-5e12-9e6b-8bebc34ee252",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "64c2ebc7dad3aecdc140575b49d769583044c15e0ade389a490cff92532f7c60",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'amenities':3 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'resident':4 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "343c53d4-d20a-51b3-8d27-cf203b424b92",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] amenities",
+        "text_content": "MÔ PHỎNG — amenities — resident. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "3eb71623-af18-568a-a3ce-3424d16ddc41",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "6b40ea72835cbab513ac916a693e9baf1fe9ebf9c4f8509948340363aa6ed21d",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'amenities':3 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':4,27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "3ba7c76c-12d4-57c3-b0fc-154b3b7f368b",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] amenities",
+        "text_content": "MÔ PHỎNG — amenities — staff. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "02b82ce4-c61c-59ac-9a0c-e18d3c155f9e",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "a48f55a48d22453b9a33d6fd158614c7663df2f7511427e6d6ead8ceb0de9ae9",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'renovation':3 'resident':4 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "3afd64c4-7302-50d1-b36a-508b94e8d17f",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] renovation",
+        "text_content": "MÔ PHỎNG — renovation — resident. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      },
+      {
+        "id": "c6aa6488-1106-5616-bba8-68200ec58680",
+        "ordinal": 0,
+        "embedding": null,
+        "tenant_id": "11111111-1111-5111-a111-111111111111",
+        "text_hash": "8381f023ee3115e7e13a042900ffa778319b84a3349c21286e4f9da96b9f893b",
+        "created_at": "2026-10-15T06:47:46.218678+00:00",
+        "search_tsv": "'/booking/c':99 '/ca':26 '/kh':97 '/ng':122 '/ph':46 '30/240':73 'an':81 'api':103 'báo':37 'bằng':41 'cho':43 'chuyên':24 'chuyển':86 'chưa':75 'chỉ':5,119 'chối':33 'chủ':120 'chứng':42 'coi':107 'có':34 'công':22,117 'cơ':80 'cư':50,60 'cấp':95 'cần':49,59 'cầu':66 'cứu':110 'do':36 'dân':51,61 'dùng':102 'dừng':84 'eta':30 'giấy':136 'hiện':116 'hoặc':31,64,133 'hành':135 'hộ':121 'không':90,106,127 'khẩn':94 'kết':57 'là':111 'lý':18,35,68,93 'lại':69 'mô':1 'môn':25 'nghiệm':72 'nguy':79 'người':87 'nhận':13,28,63 'nợ':118,132 'op1':10 'phát':134 'phân':21 'phép':137 'phí':45 'phút':74 'phạm':6 'phải':76,83 'phỏng':2 'phối':89 'platform':16,44 'quyền':105 'quả':58 'quản':17 'renovation':3 'session':19 'sim':9 'sim-op1-tower':8 'sla':70,77 'staff':4,27 'thanh':129 'thao':112 'theo':14 'thi':56 'thuê':124 'thật':78 'thẻ':96 'thử':71 'thực':55,115 'ticket':15 'tiến':38 'tiếp':12 'tool':108 'tower':11 'toàn':82 'toán':130 'tra':109 'trước':54 'tác':113 'tạo':101 'từ':32 'tự':91,128 'vi':7 'và':20,40,85 'với':29 'xác':62 'xóa':131 'xử':67,92 'yêu':65 'ách':98 'án':48 'ý':53 'điều':88 'đã':114 'đúng':23,104 'được':125 'đọc':126 'đồng':52 'độ':39 'ương':47 'ười':123 'ải':100",
+        "updated_at": "2026-10-15T06:47:46.218678+00:00",
+        "document_id": "8266f798-60b4-5e99-bb97-dd200caea40d",
+        "token_count": 127,
+        "heading_path": "[MÔ PHỎNG] renovation",
+        "text_content": "MÔ PHỎNG — renovation — staff. Chỉ phạm vi SIM-OP1-TOWER. Tiếp nhận theo ticket, Platform quản lý session và phân công đúng chuyên môn/ca. Staff nhận với ETA hoặc từ chối có lý do, báo tiến độ và bằng chứng cho Platform. Phí/phương án cần cư dân đồng ý trước thực thi; kết quả cần cư dân xác nhận hoặc yêu cầu xử lý lại. SLA thử nghiệm 30/240 phút, chưa phải SLA thật. Nguy cơ an toàn phải dừng và chuyển người điều phối; không tự xử lý khẩn cấp. Thẻ/khách/booking/cải tạo dùng API đúng quyền, không coi tool tra cứu là thao tác đã thực hiện. Công nợ chỉ chủ hộ/người thuê được đọc; không tự thanh toán, xóa nợ hoặc phát hành giấy phép."
+      }
+    ]
+  },
+  "category_codes": {
+    "33333333-3333-5333-a333-333333333333": "technical",
+    "33333333-3333-5333-a333-333333333334": "security",
+    "b185e81a-888c-51d2-b981-220fa656e374": "sanitation",
+    "2bf5fffa-39ed-58c6-8cd0-0715767a8e14": "access",
+    "fa39e9e8-090c-5aee-be23-c441a5d81206": "visitors",
+    "6fab542c-b1d8-526d-9117-ba4390094503": "billing",
+    "f51894b3-4e0f-5d55-95d7-7293f14a68f8": "amenities",
+    "ceb2f456-ff79-5d05-813d-3552b8734758": "renovation",
+    "4bb8e9f2-e0ce-5751-8a60-d8c8b648932f": "travel"
+  }
+}
