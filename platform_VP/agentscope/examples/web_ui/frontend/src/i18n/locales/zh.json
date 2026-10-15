@@ -213,6 +213,8 @@
 	},
 	"shell": {
 		"backToChat": "返回对话",
+		"collapseSidebar": "收起侧边栏",
+		"expandSidebar": "展开侧边栏",
 		"groupOperations": "运行",
 		"groupCapabilities": "智能体可用的能力",
 		"account": "账户"
@@ -742,6 +744,22 @@
 		"heroTitle": "为您的区域构建和运营智能体",
 		"heroDescription": "创建区域管理员账户，管理智能体，并接收正确路由到所属业务域和区域的请求。",
 		"securityHint": "短期访问令牌和自动轮换的安全会话",
+		"showcase": {
+			"live": "实时",
+			"caption": "示意：住户的请求由 Leader 路由到合适的智能体并完成处理",
+			"statusIdle": "等待请求",
+			"statusBusy": "处理中",
+			"statusDone": "已完成",
+			"resident": "住户",
+			"routed": "已路由：Ocean Park 1 · 水电",
+			"request": "我家水管爆了，请帮忙叫维修师傅。",
+			"reply": "已预约师傅今天 14:00 上门，工单号 SC-1042。",
+			"agents": {
+				"reception": "前台",
+				"technical": "技术",
+				"hotel": "酒店"
+			}
+		},
 		"loginTitle": "欢迎回来",
 		"loginDescription": "使用邮箱或用户名登录。",
 		"registerTitle": "创建账户",
@@ -761,7 +779,7 @@
 		"createAccount": "创建账户",
 		"connectedTo": "服务地址：",
 		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。",
-		"brand": "AgentScope Platform",
+		"brand": "VAgents Platform",
 		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
 		"errors": {
 			"invalidCredentials": "invalid credentials",

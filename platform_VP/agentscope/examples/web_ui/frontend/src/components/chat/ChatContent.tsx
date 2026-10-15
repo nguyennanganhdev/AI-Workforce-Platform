@@ -183,6 +183,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 			.filter((tc) => tc.state === 'asking')
 			.map((tc) => ({ replyId: lastMsg.id, toolCall: tc }));
 	}, [msgs]);
+	const cardVisible = toConfirmedToolCalls.length > 0 || footerSlot != null;
 
 	// Left-aligned with a 16px gutter, Cue-style: no centred reading column.
 	// The composer always sits at the foot, empty session or not.
@@ -295,9 +296,11 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 
 			{loading ? null : (
 				<div className="relative w-full px-4 pb-4">
+					{/* In flow, not overlaid: the transcript shrinks to make room, so the
+					    card never hides the message it answers. */}
 					<FlipCard
-						visible={toConfirmedToolCalls.length > 0 || footerSlot !== null}
-						className="absolute bottom-full left-4 right-4 mb-2 z-50"
+						visible={cardVisible}
+						className={cn(cardVisible && 'mb-2 max-h-[50vh] overflow-y-auto')}
 					>
 						{toConfirmedToolCalls.length > 0 ? (
 							<ConfirmCard

@@ -1,0 +1,16 @@
+# Local override: minio/minio images are no longer pullable from Docker Hub/quay,
+# so run without MinIO. S3 blob store is disabled (file/RAG uploads unavailable).
+# Delete this file once a MinIO (or other S3) image is available again.
+services:
+  app:
+    environment:
+      S3_ENABLED: "false"
+    depends_on: !reset
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+  minio:
+    profiles: ["minio"]
+  minio-init:
+    profiles: ["minio"]

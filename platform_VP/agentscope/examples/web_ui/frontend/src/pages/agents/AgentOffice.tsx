@@ -866,6 +866,13 @@ function OfficeChrome({
 	const selected =
 		selectedId === LEADER_ID ? null : agents.find((agent) => agent.id === selectedId);
 	const selectedActor = selectedId ? sim.actors.get(selectedId) : undefined;
+	// Keep the newest entry in view once the capped log starts scrolling.
+	const logRef = useRef<HTMLOListElement>(null);
+	const lastLogId = sim.log.at(-1)?.id;
+	useEffect(() => {
+		const el = logRef.current;
+		if (el) el.scrollTop = el.scrollHeight;
+	}, [lastLogId]);
 	const toggle = () => {
 		sim.togglePlaying();
 		sim.publish();
@@ -941,7 +948,8 @@ function OfficeChrome({
 			<section
 				aria-label={t('agents.office.log')}
 				className={cn(
-					'absolute right-4 bottom-4 w-[280px] rounded-[18px] border border-[var(--cue-border,#e8e8e8)] bg-white/92 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur',
+					// Top-right, below the status chips, so it never covers the office floor.
+					'absolute top-14 right-4 flex max-h-[min(40%,320px)] w-[280px] flex-col rounded-[18px] border border-[var(--cue-border,#e8e8e8)] bg-white/92 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur',
 					// The adjacent session transcript already shows this activity on small screens.
 					session && 'max-md:hidden',
 				)}
@@ -949,7 +957,11 @@ function OfficeChrome({
 				<h2 className="mb-2 text-[12px] font-semibold text-muted-foreground">
 					{t('agents.office.log')}
 				</h2>
-				<ol className="flex flex-col gap-1.5" aria-live="polite">
+				<ol
+					ref={logRef}
+					className="flex min-h-0 flex-col gap-1.5 overflow-y-auto"
+					aria-live="polite"
+				>
 					{sim.log.map((entry, index) => (
 						<li
 							key={entry.id}

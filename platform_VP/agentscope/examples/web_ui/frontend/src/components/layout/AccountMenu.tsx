@@ -16,7 +16,9 @@ import { useCurrentUser } from '@/context/CurrentUserContext';
 import i18n from '@/i18n';
 import { useTranslation } from '@/i18n/useI18n';
 
-const ROW = 'h-12 w-full justify-start gap-3 rounded-xl px-2 text-[15px]/5 font-normal';
+// In a sidebar folded to icons (`collapsible="icon"`) only the 32px circle is left.
+const ROW =
+	'h-12 w-full justify-start gap-3 rounded-xl px-2 text-[15px]/5 font-normal group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:[&>*:not(:first-child)]:hidden';
 
 /**
  * The foot of a sidebar, after Cue's two-line footer: a 48px row into

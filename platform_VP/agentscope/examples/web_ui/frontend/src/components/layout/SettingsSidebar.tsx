@@ -1,4 +1,14 @@
-import { ArrowLeft, BookText, Bot, Cable, Calendars, KeyRound, LibraryBig } from 'lucide-react';
+import {
+	ArrowLeft,
+	BookText,
+	Bot,
+	Cable,
+	Calendars,
+	KeyRound,
+	LibraryBig,
+	PanelLeftClose,
+	PanelLeftOpen,
+} from 'lucide-react';
 import type { ComponentType } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -15,9 +25,11 @@ import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
+	SidebarRail,
 	useSidebar,
 } from '@/components/ui/sidebar';
 import { useTranslation } from '@/i18n/useI18n';
+import { cn } from '@/lib/utils';
 
 interface SettingsItem {
 	/** i18n key of the label. */
@@ -54,8 +66,12 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	},
 ];
 
-/** A Cue nav row: 40px, 15px text, 12px corners, 20px thin icons. */
-const ITEM = 'h-10 gap-3 rounded-xl px-3 text-[15px]/5 [&_svg]:size-[18px]';
+/**
+ * A Cue nav row: 40px, 15px text, 12px corners, 20px thin icons. Folded to
+ * icons it stays a 40px square, the icon centred, the label left to the tooltip.
+ */
+const ITEM =
+	'h-10 gap-3 rounded-xl px-3 text-[15px]/5 [&_svg]:size-[18px] group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! group-data-[collapsible=icon]:[&>span]:sr-only';
 
 /**
  * The settings shell's navigation: the way back to the chat on top, the
@@ -65,7 +81,7 @@ export function SettingsSidebar() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const { t } = useTranslation();
-	const { isMobile, setOpenMobile } = useSidebar();
+	const { isMobile, setOpenMobile, open, toggleSidebar } = useSidebar();
 
 	const go = (path: string) => {
 		navigate(path);
@@ -73,16 +89,20 @@ export function SettingsSidebar() {
 	};
 
 	return (
-		// Desktop keeps the panel in normal flow; mobile turns it into the
-		// off-canvas drawer the layout's menu button opens.
+		// Desktop folds down to an icon rail (labels move into tooltips); mobile
+		// turns it into the off-canvas drawer the layout's menu button opens.
 		<Sidebar
-			collapsible={isMobile ? 'offcanvas' : 'none'}
+			collapsible={isMobile ? 'offcanvas' : 'icon'}
 			className="cue-column border-r border-sidebar-border"
 		>
 			<SidebarHeader className="h-12 shrink-0 justify-center px-2 py-0">
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<SidebarMenuButton className={ITEM} onClick={() => go('/chat')}>
+						<SidebarMenuButton
+							className={ITEM}
+							tooltip={t('shell.backToChat')}
+							onClick={() => go('/chat')}
+						>
 							<ArrowLeft />
 							<span>{t('shell.backToChat')}</span>
 						</SidebarMenuButton>
@@ -93,7 +113,11 @@ export function SettingsSidebar() {
 				{GROUPS.map((group) => (
 					<SidebarGroup key={group.label ?? group.items[0].path} className="px-2 py-1">
 						{group.label && (
-							<SidebarGroupLabel className="h-7 px-3 text-[13px]/[18px] font-normal text-[var(--cue-text-secondary,var(--muted-foreground))]">
+							<SidebarGroupLabel
+								// Folded, the label fades out over the row above it;
+								// it must not catch that row's clicks.
+								className="h-7 px-3 text-[13px]/[18px] font-normal text-[var(--cue-text-secondary,var(--muted-foreground))] group-data-[collapsible=icon]:pointer-events-none"
+							>
 								{t(group.label)}
 							</SidebarGroupLabel>
 						)}
@@ -108,6 +132,7 @@ export function SettingsSidebar() {
 													? location.pathname.startsWith(item.path)
 													: location.pathname === item.path
 											}
+											tooltip={t(item.label)}
 											onClick={() => go(item.path)}
 										>
 											<item.icon />
@@ -121,8 +146,29 @@ export function SettingsSidebar() {
 				))}
 			</SidebarContent>
 			<SidebarFooter className="border-t border-sidebar-border p-2">
+				{!isMobile && (
+					<SidebarMenu>
+						<SidebarMenuItem>
+							<SidebarMenuButton
+								className={cn(
+									ITEM,
+									'text-[var(--cue-text-secondary,var(--muted-foreground))]',
+								)}
+								tooltip={t('shell.expandSidebar')}
+								aria-expanded={open}
+								onClick={toggleSidebar}
+							>
+								{open ? <PanelLeftClose /> : <PanelLeftOpen />}
+								<span>
+									{t(open ? 'shell.collapseSidebar' : 'shell.expandSidebar')}
+								</span>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+					</SidebarMenu>
+				)}
 				<AccountMenu />
 			</SidebarFooter>
+			<SidebarRail />
 		</Sidebar>
 	);
 }

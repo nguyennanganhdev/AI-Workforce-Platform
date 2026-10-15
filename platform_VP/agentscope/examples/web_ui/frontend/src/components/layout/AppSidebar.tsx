@@ -13,8 +13,8 @@ import { useOnborda } from 'onborda';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { authApi } from '@/api';
-import AgentScope from '@/assets/images/agentscope_mono.svg?react';
 import MCPSvg from '@/assets/images/mcp.svg?react';
+import { BrandMark } from '@/components/layout/Brand';
 import { CHAT_TOUR_NAME } from '@/components/tour/chatTourSteps';
 import {
 	Sidebar,
@@ -67,9 +67,7 @@ export function AppSidebar() {
 			className="clay-rail w-[calc(var(--sidebar-width-icon)+3px)]! bg-transparent"
 		>
 			<SidebarHeader>
-				<div className="flex items-center justify-center size-8 mt-2 rounded-full bg-primary">
-					<AgentScope className="size-5 items-center justify-center rounded-lg text-primary-foreground" />
-				</div>
+				<BrandMark className="mt-2 size-8" />
 			</SidebarHeader>
 			<SidebarContent>
 				<SidebarGroup>

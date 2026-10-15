@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { authApi } from '@/api';
 import type { AreaOption, AuthUser, DomainOption } from '@/api';
 import { ApiError, getBaseUrl } from '@/api/client';
-import AgentScope from '@/assets/images/agentscope_mono.svg?react';
+import { AuthShowcase } from './AuthShowcase';
+import { BRAND_NAME, BrandMark } from '@/components/layout/Brand';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -130,22 +131,22 @@ export function AuthPage({ onAuthenticated }: Props) {
 
 	return (
 		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-10">
-			<div className="relative grid w-full max-w-4xl gap-8 lg:grid-cols-[1fr_420px] lg:items-center">
-				<div className="hidden space-y-5 lg:block">
-					<div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-						<AgentScope className="size-7" />
+			<div className="relative grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_400px] lg:items-center lg:gap-14">
+				<div className="hidden space-y-6 lg:block">
+					<div className="flex items-center gap-3">
+						<BrandMark className="size-10" />
+						<p className="text-[15px]/5 font-semibold">{t('auth.brand')}</p>
 					</div>
-					<div className="space-y-3">
-						<p className="text-[13px]/[18px] font-medium text-muted-foreground">
-							{t('auth.brand')}
-						</p>
-						<h1 className="max-w-xl text-[34px]/[42px] font-semibold tracking-tight">
+					<div className="space-y-2">
+						<h1 className="max-w-xl text-[30px]/[38px] font-semibold tracking-tight">
 							{t('auth.heroTitle')}
 						</h1>
 						<p className="max-w-lg text-[15px]/[22px] text-muted-foreground">
 							{t('auth.heroDescription')}
 						</p>
 					</div>
+					{/* What the platform does, played out by its own agents. */}
+					<AuthShowcase />
 					<div className="flex items-center gap-2 text-sm text-muted-foreground">
 						<ShieldCheck className="size-4 text-[var(--cue-success,currentColor)]" />
 						{t('auth.securityHint')}
@@ -155,10 +156,8 @@ export function AuthPage({ onAuthenticated }: Props) {
 				<Card className="rounded-3xl border border-[var(--cue-border,var(--border))] bg-background p-2 shadow-[var(--cue-shadow-float,none)] ring-0">
 					<CardHeader className="space-y-4">
 						<div className="flex items-center gap-3 lg:hidden">
-							<div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-								<AgentScope className="size-5" />
-							</div>
-							<span className="font-semibold">AgentScope</span>
+							<BrandMark className="size-9" />
+							<span className="font-semibold">{BRAND_NAME}</span>
 						</div>
 						<div>
 							<CardTitle className="text-[17px]/6 font-semibold">

@@ -213,6 +213,8 @@
 	},
 	"shell": {
 		"backToChat": "Quay lại trò chuyện",
+		"collapseSidebar": "Thu gọn thanh bên",
+		"expandSidebar": "Mở rộng thanh bên",
 		"groupOperations": "Vận hành",
 		"groupCapabilities": "Năng lực của agent",
 		"account": "Tài khoản"
@@ -742,6 +744,22 @@
 		"heroTitle": "Xây dựng và vận hành tác nhân AI cho khu vực của bạn",
 		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý tác nhân AI và nhận yêu cầu được định tuyến đúng lĩnh vực, đúng khu vực.",
 		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
+		"showcase": {
+			"live": "Đang hoạt động",
+			"caption": "Minh hoạ: yêu cầu của cư dân được Leader định tuyến tới đúng agent và được xử lý",
+			"statusIdle": "Chờ yêu cầu",
+			"statusBusy": "Đang xử lý",
+			"statusDone": "Hoàn tất",
+			"resident": "Cư dân",
+			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
+			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
+			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
+			"agents": {
+				"reception": "Lễ tân",
+				"technical": "Kỹ thuật",
+				"hotel": "Khách sạn"
+			}
+		},
 		"loginTitle": "Chào mừng bạn quay lại",
 		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",
 		"registerTitle": "Tạo tài khoản",
@@ -761,7 +779,7 @@
 		"createAccount": "Tạo tài khoản",
 		"connectedTo": "Máy chủ:",
 		"authenticationDisabled": "Máy chủ chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại.",
-		"brand": "Nền tảng AgentScope",
+		"brand": "Nền tảng VAgents",
 		"usernameHint": "3–64 ký tự: chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
 		"errors": {
 			"invalidCredentials": "Email, tên đăng nhập hoặc mật khẩu không đúng.",

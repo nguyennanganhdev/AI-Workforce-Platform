@@ -213,6 +213,8 @@
 	},
 	"shell": {
 		"backToChat": "Back to chat",
+		"collapseSidebar": "Collapse sidebar",
+		"expandSidebar": "Expand sidebar",
 		"groupOperations": "Operations",
 		"groupCapabilities": "What agents can use",
 		"account": "Account"
@@ -742,6 +744,22 @@
 		"heroTitle": "Build and operate agents for your area",
 		"heroDescription": "Create an Area Manager account, manage your agents, and receive requests routed to the correct domain and area.",
 		"securityHint": "Short-lived access tokens and rotating secure sessions",
+		"showcase": {
+			"live": "Live",
+			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
+			"statusIdle": "Waiting",
+			"statusBusy": "In progress",
+			"statusDone": "Done",
+			"resident": "Resident",
+			"routed": "Routed: Ocean Park 1 · Plumbing",
+			"request": "A pipe burst in my flat, please send a plumber.",
+			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
+			"agents": {
+				"reception": "Reception",
+				"technical": "Technical",
+				"hotel": "Hotel"
+			}
+		},
 		"loginTitle": "Welcome back",
 		"loginDescription": "Sign in with your email address or username.",
 		"registerTitle": "Create your account",
@@ -761,7 +779,7 @@
 		"createAccount": "Create account",
 		"connectedTo": "Service:",
 		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it.",
-		"brand": "AgentScope Platform",
+		"brand": "VAgents Platform",
 		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
 		"errors": {
 			"invalidCredentials": "invalid credentials",

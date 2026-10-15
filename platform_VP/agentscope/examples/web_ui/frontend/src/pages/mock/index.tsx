@@ -1,5 +1,14 @@
 import type { ContentBlock } from '@agentscope-ai/agentscope/message';
-import { Pin, RadioTower, RotateCcw, Search } from 'lucide-react';
+import {
+	PanelLeftClose,
+	PanelLeftOpen,
+	PanelRightClose,
+	PanelRightOpen,
+	Pin,
+	RadioTower,
+	RotateCcw,
+	Search,
+} from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 
 import {
@@ -135,7 +144,7 @@ function Gate({
 
 	if (gate.action === 'approval') {
 		return (
-			<div className="max-w-[480px] rounded-[20px] border border-[var(--cue-border,var(--border))] bg-background">
+			<div className="w-full rounded-[20px] border border-[var(--cue-border,var(--border))] bg-background">
 				<WorkforceApprovalCard
 					approval={{ ...gate.approval, expires_at: expiresAt }}
 					canDecide
@@ -153,6 +162,8 @@ function Gate({
 	if (gate.action === 'reply') {
 		return (
 			<ChoiceCard
+				// Spans the composer's width, so the card reads as part of the chat column.
+				className="w-full"
 				question="Bạn muốn trả lời thế nào?"
 				options={[gate.label]}
 				hint="Không có lựa chọn phù hợp? Cứ gõ câu trả lời của bạn."
@@ -163,7 +174,7 @@ function Gate({
 	}
 
 	return (
-		<div className="flex w-[384px] max-w-full flex-col items-start gap-3 rounded-[20px] border border-[var(--cue-border,var(--border))] p-4">
+		<div className="flex w-full flex-col items-start gap-3 rounded-[20px] border border-[var(--cue-border,var(--border))] p-4">
 			<span className="text-[13px]/[18px] text-muted-foreground">
 				Phiên đang nghỉ chờ nhà cung cấp. Mô phỏng sự kiện tiếp theo:
 			</span>
@@ -209,6 +220,9 @@ export function MockChat({
 	const [pickedId, setActiveId] = useState(MOCK_CONVERSATIONS[0].id);
 	const activeId = conversationId ?? pickedId;
 	const [search, setSearch] = useState('');
+	/** Folding either side column away gives the session (and its office) the room. */
+	const [rosterOpen, setRosterOpen] = useState(true);
+	const [railOpen, setRailOpen] = useState(true);
 	const [playback, setPlayback] = useState<Record<string, Playback>>({});
 	/** What was typed into the composer in place of a scripted reply, by event id. */
 	const [typed, setTyped] = useState<Record<string, string>>({});
@@ -305,7 +319,7 @@ export function MockChat({
 			<aside
 				className={cn(
 					'cue-column flex w-[320px] shrink-0 flex-col gap-2 border-r border-sidebar-border px-2 pb-2 text-sidebar-foreground max-md:hidden',
-					hideSidebar && 'hidden',
+					(hideSidebar || !rosterOpen) && 'hidden',
 				)}
 			>
 				<div className="flex h-12 shrink-0 items-center justify-between gap-2 pl-2">
@@ -358,6 +372,19 @@ export function MockChat({
 
 			<main className="flex min-w-0 flex-1 flex-col">
 				<header className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1">
+					{!hideSidebar && (
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							className="max-md:hidden"
+							tooltip={rosterOpen ? 'Thu gọn danh sách' : 'Mở danh sách'}
+							aria-label={rosterOpen ? 'Thu gọn danh sách' : 'Mở danh sách'}
+							aria-expanded={rosterOpen}
+							onClick={() => setRosterOpen((open) => !open)}
+						>
+							{rosterOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+						</Button>
+					)}
 					<ClayAvatar id={active.id} label={active.name} size={20} />
 					<div className="flex min-w-0 flex-1 items-baseline gap-2">
 						<h1 className="truncate text-[17px]/6 font-medium">{active.name}</h1>
@@ -376,7 +403,10 @@ export function MockChat({
 					{participants.length > 0 && (
 						<ul
 							aria-label="Agent đang tham gia phiên"
-							className="flex items-center -space-x-1.5 lg:hidden"
+							className={cn(
+								'flex items-center -space-x-1.5',
+								railOpen && 'lg:hidden',
+							)}
 						>
 							{participants.map((agent) => (
 								// Overlapping tiles; the one at work lifts above the rest.
@@ -426,6 +456,17 @@ export function MockChat({
 						<RotateCcw />
 						Phát lại
 					</Button>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						className="max-lg:hidden"
+						tooltip={railOpen ? 'Thu gọn người tham gia' : 'Mở người tham gia'}
+						aria-label={railOpen ? 'Thu gọn người tham gia' : 'Mở người tham gia'}
+						aria-expanded={railOpen}
+						onClick={() => setRailOpen((open) => !open)}
+					>
+						{railOpen ? <PanelRightClose /> : <PanelRightOpen />}
+					</Button>
 				</header>
 
 				<SessionWorkspace snapshot={officeFromSession(presentation)}>
@@ -472,11 +513,13 @@ export function MockChat({
 				</SessionWorkspace>
 			</main>
 
-			<Participants
-				requester={active.requester}
-				agents={participants}
-				activeAgent={activeAgent}
-			/>
+			{railOpen && (
+				<Participants
+					requester={active.requester}
+					agents={participants}
+					activeAgent={activeAgent}
+				/>
+			)}
 		</div>
 	);
 }

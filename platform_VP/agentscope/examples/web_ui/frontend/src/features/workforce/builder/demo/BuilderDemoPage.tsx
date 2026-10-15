@@ -1,6 +1,7 @@
 import {
 	ArrowLeft,
 	ArrowRight,
+	ArrowUp,
 	BookOpen,
 	Bot,
 	Check,
@@ -10,8 +11,9 @@ import {
 	FlaskConical,
 	Loader2,
 	MessageSquare,
+	PanelRightClose,
+	PanelRightOpen,
 	Plus,
-	Send,
 	Settings2,
 	Sparkles,
 	Wrench,
@@ -21,6 +23,9 @@ import { useEffect, useRef, useState } from 'react';
 import { canCreate, knowledgeOptions, scenarios, toolOptions } from './model';
 import type { DemoAgent, Scenario } from './model';
 import { useBuilderDemo } from './useBuilderDemo';
+import { Bubble, BubbleContent } from '@/components/ui/bubble';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
+import { useCueTheme } from '@/hooks/useCueTheme';
 
 import './builder-demo.css';
 
@@ -117,12 +122,20 @@ function AgentEditor({
 }
 
 export function BuilderDemoPage() {
+	// Mounted outside the app shell, so it switches the Cue layer on itself.
+	useCueTheme();
 	const demo = useBuilderDemo();
 	const { state, busy } = demo;
 	const [draft, setDraft] = useState('');
 	const [scenario, setScenario] = useState<Scenario>(state.scenario);
 	const [selectedId, setSelectedId] = useState('');
 	const [mobileTab, setMobileTab] = useState<'chat' | 'proposal'>('chat');
+	/** Desktop only: folding the proposal away gives the conversation the full width. */
+	const [proposalOpen, setProposalOpen] = useState(true);
+	const showProposal = () => {
+		setProposalOpen(true);
+		setMobileTab('proposal');
+	};
 	const end = useRef<HTMLDivElement>(null);
 	const agent = state.agents.find((a) => a.id === selectedId) ?? state.agents[0];
 	const phase = { start: 0, clarify: 0, outline: 1, configure: 2, done: 3 }[state.stage];
@@ -148,14 +161,12 @@ export function BuilderDemoPage() {
 					<a href="/agents" aria-label="Về quản lý agent" className="bd-back">
 						<ArrowLeft size={18} />
 					</a>
-					<span className="bd-logo">
-						<Sparkles size={20} />
-					</span>
+					<ClayAvatar id="builder" label="Builder" size={32} />
 					<div>
 						<strong>Agent Builder</strong>
 						<small>Biến ý tưởng thành trợ lý của bạn</small>
 					</div>
-					<span className="bd-badge">DEMO</span>
+					<span className="bd-badge">Demo</span>
 				</div>
 				<button className="bd-button bd-secondary" onClick={reset}>
 					<Plus size={16} /> Bắt đầu lại
@@ -204,7 +215,7 @@ export function BuilderDemoPage() {
 					{state.agents.length > 0 && `(${state.agents.length})`}
 				</button>
 			</div>
-			<main className="bd-workspace">
+			<main className={`bd-workspace ${proposalOpen ? '' : 'bd-proposal-collapsed'}`}>
 				<section
 					className={`bd-conversation ${mobileTab !== 'chat' ? 'bd-mobile-hidden' : ''}`}
 					aria-label="Hội thoại với Builder"
@@ -213,15 +224,36 @@ export function BuilderDemoPage() {
 						<span>
 							<span className="bd-live-dot" /> Builder Assistant
 						</span>
-						<small>Kịch bản tương tác mẫu</small>
+						<span className="bd-title-actions">
+							<small>Kịch bản tương tác mẫu</small>
+							{!proposalOpen && (
+								<button
+									className="bd-collapse"
+									aria-label="Mở phần Đề xuất"
+									title="Mở phần Đề xuất"
+									aria-expanded={false}
+									onClick={() => setProposalOpen(true)}
+								>
+									<PanelRightOpen size={16} />
+									{state.agents.length > 0 && (
+										<span className="bd-collapse-count">
+											{state.agents.length}
+										</span>
+									)}
+								</button>
+							)}
+						</span>
 					</div>
 					<div className="bd-chat-scroll">
 						{state.stage === 'start' && (
 							<div className="bd-welcome">
-								<span className="bd-welcome-icon">
-									<Sparkles size={28} />
-								</span>
-								<p className="bd-eyebrow">BẮT ĐẦU TỪ MỘT Ý TƯỞNG</p>
+								<ClayAvatar
+									id="builder"
+									label="Builder"
+									size={48}
+									className="bd-welcome-icon"
+								/>
+								<p className="bd-eyebrow">Bắt đầu từ một ý tưởng</p>
 								<h1>
 									Bạn muốn agent
 									<br />
@@ -253,16 +285,16 @@ export function BuilderDemoPage() {
 							</div>
 						)}
 						{state.messages.map((message) => (
+							// The chat's own bubbles: grey, the person's on the right, no avatars.
 							<div className={`bd-message ${message.role}`} key={message.id}>
-								{message.role === 'builder' && (
-									<span className="bd-message-avatar">
-										<Sparkles size={16} />
-									</span>
-								)}
-								<div>
-									<small>{message.role === 'builder' ? 'Builder' : 'Bạn'}</small>
-									<p>{message.text}</p>
-								</div>
+								<Bubble
+									variant={message.role === 'builder' ? 'agent' : 'question'}
+									align={message.role === 'builder' ? 'start' : 'end'}
+								>
+									<BubbleContent className="whitespace-pre-wrap">
+										{message.text}
+									</BubbleContent>
+								</Bubble>
 							</div>
 						))}
 						{state.stage === 'clarify' && !busy && (
@@ -325,7 +357,7 @@ export function BuilderDemoPage() {
 										aria-label="Gửi yêu cầu"
 										disabled={busy || !draft.trim()}
 									>
-										<Send size={17} />
+										<ArrowUp size={17} />
 									</button>
 								</div>
 							</form>
@@ -337,7 +369,7 @@ export function BuilderDemoPage() {
 										? 'Phiên tạo agent đã hoàn tất.'
 										: 'Tiếp tục với phương án ở phần Đề xuất.'}
 								</span>
-								<button onClick={() => setMobileTab('proposal')}>
+								<button onClick={showProposal}>
 									Xem đề xuất <ArrowRight size={14} />
 								</button>
 							</div>
@@ -373,9 +405,22 @@ export function BuilderDemoPage() {
 						<span>
 							<Settings2 size={16} /> Đề xuất của bạn
 						</span>
-						<small>
-							{state.agents.length ? `${state.agents.length} agent` : 'Chưa có agent'}
-						</small>
+						<span className="bd-title-actions">
+							<small>
+								{state.agents.length
+									? `${state.agents.length} agent`
+									: 'Chưa có agent'}
+							</small>
+							<button
+								className="bd-collapse"
+								aria-label="Thu gọn phần Đề xuất"
+								title="Thu gọn phần Đề xuất"
+								aria-expanded
+								onClick={() => setProposalOpen(false)}
+							>
+								<PanelRightClose size={16} />
+							</button>
+						</span>
 					</div>
 					{!state.agents.length ? (
 						<div className="bd-empty">
@@ -430,13 +475,19 @@ export function BuilderDemoPage() {
 											onClick={() => setSelectedId(item.id)}
 											aria-pressed={agent?.id === item.id}
 										>
-											<span className={`bd-agent-icon color-${index % 2}`}>
-												<Bot size={22} />
-											</span>
+											<ClayAvatar
+												id={item.id}
+												label={item.name || `Agent ${index + 1}`}
+												size={36}
+											/>
 											<span>
 												<small>
-													AGENT 0{index + 1}{' '}
-													<i>
+													Agent {index + 1}
+													<i
+														className={
+															item.blocker ? 'warn' : undefined
+														}
+													>
 														{item.blocker
 															? 'Cần bổ sung'
 															: state.stage === 'done'
@@ -527,9 +578,7 @@ export function BuilderDemoPage() {
 										<Loader2 size={16} className="animate-spin" />
 									) : state.stage === 'done' ? (
 										<Plus size={16} />
-									) : (
-										<Sparkles size={16} />
-									)}
+									) : null}
 									{state.stage === 'done'
 										? 'Tạo một đội ngũ mới'
 										: state.stage === 'outline'

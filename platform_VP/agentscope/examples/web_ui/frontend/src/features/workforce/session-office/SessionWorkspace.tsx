@@ -35,10 +35,11 @@ function Workspace({
 	const panelId = useId();
 	const storageKey = `session-workspace:view:${snapshot.id}`;
 	const [view, setView] = useState<View>(() => {
+		// Office by default; only a session the viewer switched to Chat stays on Chat.
 		try {
-			return localStorage.getItem(storageKey) === 'office' ? 'office' : 'chat';
+			return localStorage.getItem(storageKey) === 'chat' ? 'chat' : 'office';
 		} catch {
-			return 'chat';
+			return 'office';
 		}
 	});
 	const select = (value: string) => {
