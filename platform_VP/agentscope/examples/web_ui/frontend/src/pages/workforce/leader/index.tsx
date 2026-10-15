@@ -1,8 +1,10 @@
-import { Bot, MessageSquareText, Plus, Users } from 'lucide-react';
+import { Bot, Plus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { workforceApi } from '@/api';
 import type { LeaderSession } from '@/api';
+import { sessionTime, useSessionPreview } from '@/components/chat/session-row-utils';
+import { ChatRow } from '@/components/chat/SessionRow';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Spinner } from '@/components/ui/spinner';
@@ -10,11 +12,18 @@ import { AudioProvider } from '@/context/AudioContext';
 import { useSessions } from '@/hooks/useSessions';
 import { ChatViewport } from '@/pages/chat/ChatViewport';
 
+/**
+ * The management board's Leader: one row per ticket, the ticket's chat (and
+ * its room) beside it. Same column and rows as the chat page, so a ticket
+ * reads like any other conversation.
+ */
 function LeaderPageInner() {
 	const [leader, setLeader] = useState<LeaderSession | null>(null);
 	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [creating, setCreating] = useState(false);
 	const { sessions, refetch } = useSessions(leader?.agent_id ?? null);
+	const preview = useSessionPreview();
 
 	useEffect(() => {
 		let active = true;
@@ -34,10 +43,15 @@ function LeaderPageInner() {
 	}, []);
 
 	const createTicket = async () => {
-		const value = await workforceApi.createTicket();
-		setLeader(value);
-		setSelectedSessionId(value.session_id);
-		await refetch();
+		setCreating(true);
+		try {
+			const value = await workforceApi.createTicket();
+			setLeader(value);
+			setSelectedSessionId(value.session_id);
+			await refetch();
+		} finally {
+			setCreating(false);
+		}
 	};
 
 	if (loading) {
@@ -52,7 +66,9 @@ function LeaderPageInner() {
 		return (
 			<Empty className="size-full border-none">
 				<EmptyHeader>
-					<EmptyMedia variant="icon"><Bot /></EmptyMedia>
+					<EmptyMedia variant="icon">
+						<Bot />
+					</EmptyMedia>
 					<EmptyTitle>Leader chưa thể khởi tạo</EmptyTitle>
 					<EmptyDescription>Hãy kiểm tra model credential rồi tải lại trang.</EmptyDescription>
 				</EmptyHeader>
@@ -61,57 +77,48 @@ function LeaderPageInner() {
 	}
 
 	return (
-		<div className="flex size-full min-h-0 gap-2 p-2">
-			<aside className="flex w-72 shrink-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
-				<header className="border-b p-5">
-					<div className="flex items-center gap-3">
-						<div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-							<Users className="size-4" />
-						</div>
-						<div>
-							<h1 className="font-medium">Leader</h1>
-							<p className="text-xs text-muted-foreground">Mỗi cuộc chat là một ticket riêng</p>
-						</div>
+		<div className="flex size-full min-h-0">
+			<aside className="cue-column flex w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar max-md:hidden">
+				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
+					<div className="min-w-0">
+						<h1 className="truncate text-[15px]/5 font-semibold">Ticket của Leader</h1>
 					</div>
-					<Button className="mt-4 w-full" size="sm" onClick={createTicket}>
-						<Plus /> Tạo ticket thử nghiệm
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Tạo ticket thử nghiệm"
+						title="Tạo ticket thử nghiệm"
+						disabled={creating}
+						onClick={createTicket}
+					>
+						{creating ? <Spinner className="size-4" /> : <Plus className="size-5" />}
 					</Button>
 				</header>
-				<div className="min-h-0 flex-1 overflow-y-auto p-2">
-					<p className="px-2 py-2 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-						Ticket đang có
-					</p>
-					<div className="space-y-1">
-						{sessions.map(({ session }) => (
-							<button
-								key={session.id}
-								type="button"
-								onClick={() => setSelectedSessionId(session.id)}
-								className={`flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left transition-colors ${
-									selectedSessionId === session.id
-										? 'bg-primary text-primary-foreground'
-										: 'hover:bg-muted'
-								}`}
-							>
-								<MessageSquareText className="mt-0.5 size-4 shrink-0" />
-								<span className="min-w-0">
-									<span className="block truncate text-sm font-medium">{session.config.name}</span>
-									<span className="block truncate text-[10px] opacity-65">
-										{new Date(session.updated_at ?? session.created_at).toLocaleString('vi-VN')}
-									</span>
-								</span>
-							</button>
-						))}
-					</div>
+				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+					{sessions.length === 0 ? (
+						<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
+							Chưa có ticket. Ticket của đối tác hiện ở đây; bấm + để thử một ticket.
+						</p>
+					) : (
+						sessions.map((view) => (
+							<ChatRow
+								key={view.session.id}
+								avatarId="leader"
+								avatarLabel="Leader"
+								title={view.session.config.name || 'Ticket'}
+								time={sessionTime(view.session.updated_at ?? view.session.created_at)}
+								preview={preview(view, 'Leader')}
+								status={view.status}
+								active={selectedSessionId === view.session.id}
+								onSelect={() => setSelectedSessionId(view.session.id)}
+							/>
+						))
+					)}
 				</div>
 			</aside>
 
-			<main className="flex min-w-0 flex-1 overflow-hidden rounded-[22px] bg-card shadow-panel">
-				<ChatViewport
-					agentId={leader.agent_id}
-					sessionId={selectedSessionId}
-					onSessionsChanged={refetch}
-				/>
+			<main className="flex min-w-0 flex-1 overflow-hidden">
+				<ChatViewport agentId={leader.agent_id} sessionId={selectedSessionId} onSessionsChanged={refetch} />
 			</main>
 		</div>
 	);
