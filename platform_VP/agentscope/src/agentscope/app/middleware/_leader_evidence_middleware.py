@@ -129,11 +129,13 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         return True, completed, errors, verified, waiting
 
     async def _ready(self, expected: int) -> bool:
-        del expected
-        team_exists, completed, errors, _verified, waiting = await self._status()
+        team_exists, completed, _errors, _verified, waiting = await self._status()
         pending = await self._review() if team_exists and not waiting else []
+        # ``completed`` counts the members that reported or failed. Every
+        # dispatched member must have: one queued behind another's report has
+        # not run yet, and answering without it drops its part of the work.
         return team_exists and not pending and (
-            waiting or completed > 0 or errors > 0
+            waiting or completed >= max(expected, 1)
         )
 
     async def _review(self) -> list[str]:

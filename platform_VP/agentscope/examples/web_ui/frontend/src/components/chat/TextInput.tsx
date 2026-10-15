@@ -12,6 +12,7 @@ import React, {
 } from 'react';
 
 import { Button } from '../ui/button';
+import { ClayAvatar } from '../ui/clay-avatar';
 import { Kbd } from '../ui/kbd';
 import {
 	Attachment,
@@ -45,6 +46,11 @@ interface TextInputProps {
 	onSend: (blocks: ContentBlock[]) => void;
 	placeholder?: string;
 	autoComplete?: (input: string) => string | null;
+	/**
+	 * Agents a leading `@` can address. Typing `@` lists them; picking one
+	 * writes its handle, and the message goes to that agent.
+	 */
+	mentions?: MentionOption[];
 	disabled?: boolean;
 	className?: string;
 	/**
@@ -91,6 +97,13 @@ interface TextInputProps {
 	headerSlot?: React.ReactNode;
 }
 
+export interface MentionOption {
+	id: string;
+	name: string;
+	/** What the message starts with to reach this agent, e.g. `@KyThuat `. */
+	insert: string;
+}
+
 export interface TextInputRef {
 	focus: () => void;
 }
@@ -126,6 +139,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			onSend,
 			placeholder,
 			autoComplete,
+			mentions,
 			disabled = false,
 			className,
 			allowedInputTypes,
@@ -195,7 +209,41 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			return '';
 		}, [value, autoComplete, isFocused]);
 
+		// A leading `@` still being typed lists the agents it may address.
+		const [mentionIndex, setMentionIndex] = useState(0);
+		const [mentionClosed, setMentionClosed] = useState(false);
+		const mentionMatches = useMemo(() => {
+			const typed = /^@([^\s@]*)$/.exec(value);
+			if (!typed || !mentions?.length || mentionClosed) return [];
+			const query = typed[1].toLocaleLowerCase();
+			return mentions.filter((option) => option.name.toLocaleLowerCase().includes(query));
+		}, [value, mentions, mentionClosed]);
+		const pickMention = (option: MentionOption) => {
+			setValue(option.insert);
+			setMentionIndex(0);
+			textareaRef.current?.focus();
+		};
+
 		const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+			if (mentionMatches.length > 0) {
+				const index = Math.min(mentionIndex, mentionMatches.length - 1);
+				if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+					e.preventDefault();
+					const step = e.key === 'ArrowDown' ? 1 : -1;
+					setMentionIndex((index + step + mentionMatches.length) % mentionMatches.length);
+					return;
+				}
+				if ((e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) {
+					e.preventDefault();
+					pickMention(mentionMatches[index]);
+					return;
+				}
+				if (e.key === 'Escape') {
+					e.preventDefault();
+					setMentionClosed(true);
+					return;
+				}
+			}
 			// Tab key to select autocomplete
 			if (e.key === 'Tab' && suggestion) {
 				e.preventDefault();
@@ -320,7 +368,32 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		};
 
 		return (
-			<div className={cn('flex flex-col', className)}>
+			<div className={cn('relative flex flex-col', className)}>
+				{mentionMatches.length > 0 && isFocused && (
+					<div
+						role="listbox"
+						aria-label={t('textInput.mentionList', { defaultValue: 'Gọi agent' })}
+						className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-64 overflow-y-auto rounded-2xl border border-[var(--cue-border,var(--border))] bg-popover p-1.5 shadow-lg"
+					>
+						{mentionMatches.map((option, index) => (
+							<button
+								key={option.id}
+								type="button"
+								role="option"
+								aria-selected={index === Math.min(mentionIndex, mentionMatches.length - 1)}
+								// Before the textarea's blur closes the list.
+								onMouseDown={(event) => {
+									event.preventDefault();
+									pickMention(option);
+								}}
+								className="flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-sm aria-selected:bg-[var(--cue-bg-subtle,var(--accent))] hover:bg-[var(--cue-bg-hover,var(--accent))]"
+							>
+								<ClayAvatar id={option.id} label={option.name} size={24} />
+								<span className="truncate">{option.name}</span>
+							</button>
+						))}
+					</div>
+				)}
 				{headerSlot}
 				<div
 					id="tour-chat-input"
@@ -431,7 +504,11 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							<textarea
 								ref={textareaRef}
 								value={value}
-								onChange={(e) => setValue(e.target.value)}
+								onChange={(e) => {
+									setValue(e.target.value);
+									setMentionClosed(false);
+									setMentionIndex(0);
+								}}
 								onKeyDown={handleKeyDown}
 								onFocus={() => setIsFocused(true)}
 								onBlur={() => setIsFocused(false)}

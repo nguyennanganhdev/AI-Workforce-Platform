@@ -213,10 +213,8 @@
 	},
 	"shell": {
 		"backToChat": "返回对话",
-		"collapseSidebar": "收起侧边栏",
-		"expandSidebar": "展开侧边栏",
 		"groupWorkforce": "Workforce",
-		"leader": "Leader 与工单",
+		"leader": "Leader",
 		"builder": "Builder",
 		"agentStudio": "智能体管理",
 		"groupOperations": "运行",
@@ -858,13 +856,13 @@
 		},
 		"loading": "加载中…",
 		"team": {
-			"membersHeading": "成员",
-			"noMembers": "还没有成员——队长会在需要时邀请已发布的智能体。",
+			"noMembers": "工单需要时，Leader 会邀请合适的智能体。",
 			"emptyTitle": "没有团队",
-			"emptyDescription": "当前会话不属于任何团队。agent 会用 TeamCreate 建立团队。",
+			"emptyDescription": "此会话还没有房间。工单需要多个智能体时，Leader 会建立房间。",
 			"running": "运行中",
 			"idle": "空闲",
-			"missingSession": "（无会话）"
+			"missingSession": "（无会话）",
+			"member": "房间成员"
 		}
 	},
 	"channel": {

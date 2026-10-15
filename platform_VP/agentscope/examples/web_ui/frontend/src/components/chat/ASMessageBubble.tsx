@@ -22,9 +22,10 @@ import {
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useRef, useState } from 'react';
 
-import { DialogToolCard, HandoverCard, TeamMessageCard } from './TeamDialog';
+import { CompactViewContext } from './team-roster';
+import { DialogToolCard, HandoverCard, TeamMessageCard, TicketCard } from './TeamDialog';
 import { DIALOG_TOOLS, parseHandover, teamHintSource } from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
 import { DiffStats } from './tool-renderers/_shared';
@@ -430,6 +431,13 @@ interface MessageBubbleProps {
 function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
+	// The Leader page reads a ticket, not a run: no timings, no token counts,
+	// and the handover as the card reception confirmed.
+	const compact = useContext(CompactViewContext);
+	const ticket =
+		compact && isUser
+			? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
+			: undefined;
 
 	const isRunning = !message.finished_at;
 	const hasUsage =
@@ -469,8 +477,9 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
+				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
 				{blocks
-					.filter((block) => block.type !== 'data')
+					.filter((block) => block.type !== 'data' && !(ticket?.request && block.type === 'text'))
 					.map((block, index) => (
 						// Only the agent's prose gets a bubble. Thinking, hints and
 						// tool runs stay bare one-line disclosures — bubbling each
@@ -514,7 +523,13 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 							<ASBlock block={block} key={index} />
 						))}
 				</AttachmentGroup>
-				{message.role === 'user' ? (
+				{compact ? (
+					isRunning && !isUser ? (
+						<MessageFooter>
+							<Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label={t('messageBubble.running')} />
+						</MessageFooter>
+					) : null
+				) : message.role === 'user' ? (
 					plainText && (
 						<MessageFooter>
 							<CopyButton text={plainText} />
@@ -624,6 +639,7 @@ interface ASBlockProps {
 
 export function ASBlock({ block, ...props }: ASBlockProps) {
 	const { t } = useTranslation();
+	const compact = useContext(CompactViewContext);
 
 	switch (block.type) {
 		case 'text': {
@@ -704,6 +720,8 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			if (team && typeof block.hint === 'string') {
 				return <TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} />;
 			}
+			// Runtime notices are for whoever debugs the run, not for the ticket's reader.
+			if (compact) return null;
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;
 			let hintSublabel: string | null = null;

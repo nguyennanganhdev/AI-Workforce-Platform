@@ -1,8 +1,11 @@
 import {
+	BookText,
 	Bot,
 	CheckCircle2,
+	ChevronRight,
 	CircleAlert,
 	Hammer,
+	LibraryBig,
 	Plus,
 	Power,
 	PowerOff,
@@ -21,15 +24,15 @@ import type {
 	ChatModelConfig,
 	WorkforceAgent,
 } from '@/api';
-import { sessionTime } from '@/components/chat/session-row-utils';
-import { ChatRow } from '@/components/chat/SessionRow';
+import { ListRow } from '@/components/chat/ListRow';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
+import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { Markdown } from '@/components/markdown';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
-import { Progress } from '@/components/ui/progress';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
@@ -46,92 +49,96 @@ function prefersVietnamese(text: string) {
 	);
 }
 
+/** What each Builder evaluation check means, for the checks that failed. */
+const CHECK_LABEL: Record<string, string> = {
+	system_prompt: 'prompt quá ngắn',
+	registered_tools: 'chọn tool không có trong MCP',
+	exclusive_tool_assignment: 'tool trùng với agent khác trong đội',
+	capability_has_tools: 'chưa có tool cho việc của mình',
+	registered_library: 'kho tri thức hoặc skill không có thật',
+	skill: 'chưa có skill',
+};
+
 function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][number] }) {
 	const passed = proposal.evaluation.passed === true;
 	const reused = proposal.reuse_agent_id !== null;
+	const failed = Object.entries((proposal.evaluation.checks ?? {}) as Record<string, boolean>)
+		.filter(([, ok]) => !ok)
+		.map(([check]) => CHECK_LABEL[check] ?? check);
 
 	return (
-		<Card className="overflow-hidden border-border/70 shadow-none">
-			<CardHeader className="border-b bg-muted/25 pb-4">
-				<div className="flex flex-wrap items-start justify-between gap-3">
-					<div>
-						<CardTitle className="text-base">{proposal.name}</CardTitle>
-						<p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-							{proposal.objective}
-						</p>
+		<article className="rounded-2xl border border-border/70 bg-background p-4">
+			<header className="flex items-start gap-3">
+				<ClayAvatar id={proposal.reuse_agent_id ?? proposal.name} label={proposal.name} size={40} />
+				<div className="min-w-0 flex-1">
+					<div className="flex flex-wrap items-center gap-2">
+						<h3 className="text-[15px]/5 font-semibold">{proposal.name}</h3>
+						<Badge variant={passed ? 'secondary' : 'destructive'}>
+							{passed ? <CheckCircle2 /> : <CircleAlert />}
+							{passed ? 'Eval đạt' : 'Eval chưa đạt'}
+						</Badge>
 					</div>
-					<Badge variant={passed ? 'default' : 'destructive'}>
-						{passed ? 'Eval đạt' : 'Eval chưa đạt'}
-					</Badge>
+					<p className="mt-1 text-sm text-muted-foreground">{proposal.objective}</p>
+					{failed.length > 0 && <p className="mt-1 text-xs text-destructive">Chưa đạt: {failed.join('; ')}.</p>}
 				</div>
-				<Progress value={(proposal.evaluation.score ?? 0) * 100} className="mt-3 h-1.5" />
-			</CardHeader>
-			<CardContent className="grid gap-5 p-5 xl:grid-cols-2">
-				<section>
-					<div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-						<Bot className="size-3.5" /> System prompt do Builder sinh
-					</div>
-					<pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border bg-background p-3 text-xs leading-5">
+			</header>
+
+			<div className="mt-3 flex flex-wrap gap-1.5 text-xs">
+				{proposal.selected_tools.map((tool) => (
+					<span
+						key={tool.id}
+						title={tool.description ?? undefined}
+						className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono"
+					>
+						<Wrench className="size-3" /> {tool.tool_name}
+					</span>
+				))}
+				{proposal.knowledge?.map((kb) => (
+					<span key={kb.kb_id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+						<LibraryBig className="size-3" /> {kb.name}
+					</span>
+				))}
+				{proposal.library_skills?.map((skill) => (
+					<span key={skill.skill_id} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+						<BookText className="size-3" /> {skill.name}
+					</span>
+				))}
+				{proposal.selected_tools.length === 0 && (
+					<span className="text-muted-foreground">
+						{proposal.evaluation.checks?.capability_has_tools
+							? 'Điều phối đồng đội, không cần tool riêng.'
+							: 'Chưa có tool phù hợp trong MCP đã đăng ký.'}
+					</span>
+				)}
+			</div>
+
+			{reused && (
+				<p className="mt-3 flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
+					<CircleAlert className="mt-0.5 size-4 shrink-0" />
+					<span>
+						Trùng nghiệp vụ với <strong>{proposal.reuse_agent_name}</strong>; khi phát hành, platform dùng lại
+						agent đó thay vì tạo bản sao.
+					</span>
+				</p>
+			)}
+
+			<Collapsible className="mt-3">
+				<CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+					Prompt{proposal.skill_markdown ? ' và skill' : ''} do Builder viết
+					<ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
+				</CollapsibleTrigger>
+				<CollapsibleContent className="mt-2 space-y-2">
+					<pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/60 p-3 text-xs leading-5">
 						{proposal.system_prompt}
 					</pre>
-				</section>
-				<section>
-					<div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-						<Wrench className="size-3.5" /> Tool đã chọn
-					</div>
-					<div className="space-y-2">
-						{proposal.selected_tools.map((tool) => (
-							<div key={tool.id} className="rounded-lg border bg-background px-3 py-2">
-								<div className="font-mono text-xs font-medium">
-									{tool.mcp_name} / {tool.tool_name}
-								</div>
-								{tool.description && (
-									<p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>
-								)}
-							</div>
-						))}
-						{proposal.selected_tools.length === 0 && (
-							<p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-								{proposal.evaluation.checks?.capability_has_tools
-									? 'Điều phối đồng đội qua TeamSay, không cần tool riêng.'
-									: 'Chưa có tool phù hợp trong MCP đã đăng ký.'}
-							</p>
-						)}
-					</div>
-				</section>
-				{(proposal.knowledge?.length ?? 0) + (proposal.library_skills?.length ?? 0) > 0 && (
-					<section className="xl:col-span-2 flex flex-wrap items-center gap-2 text-xs">
-						{proposal.knowledge?.map((kb) => (
-							<Badge key={kb.kb_id} variant="secondary">
-								Kho tri thức: {kb.name}
-							</Badge>
-						))}
-						{proposal.library_skills?.map((skill) => (
-							<Badge key={skill.skill_id} variant="secondary">
-								Dùng lại skill: {skill.name}
-							</Badge>
-						))}
-					</section>
-				)}
-				{proposal.skill_markdown && (
-					<details className="xl:col-span-2 rounded-lg border bg-background p-3">
-						<summary className="cursor-pointer text-sm font-medium">Skill: {proposal.skill_name}</summary>
-						<pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+					{proposal.skill_markdown && (
+						<pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/60 p-3 text-xs leading-5 text-muted-foreground">
 							{proposal.skill_markdown}
 						</pre>
-					</details>
-				)}
-				{reused && (
-					<div className="xl:col-span-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-						<CircleAlert className="mt-0.5 size-4 text-amber-600" />
-						<span>
-							Nghiệp vụ trùng với <strong>{proposal.reuse_agent_name}</strong>. Khi phát hành,
-							 platform sẽ tái sử dụng agent cũ thay vì tạo bản sao.
-						</span>
-					</div>
-				)}
-			</CardContent>
-		</Card>
+					)}
+				</CollapsibleContent>
+			</Collapsible>
+		</article>
 	);
 }
 
@@ -150,6 +157,7 @@ export function AgentBuilderPage() {
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
 	const [agentsOpen, setAgentsOpen] = useState(false);
+	const [deleting, setDeleting] = useState<BuilderConversationSummary | null>(null);
 
 	const loadAgents = useCallback(async () => {
 		setAgents(await workforceApi.listAgents());
@@ -281,27 +289,24 @@ export function AgentBuilderPage() {
 						<Plus className="size-5" />
 					</Button>
 				</header>
-				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+				<ul className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-2">
 					{conversations.length === 0 ? (
-						<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
+						<li className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
 							Chưa có hội thoại. Mô tả agent bạn cần ở khung bên phải.
-						</p>
+						</li>
 					) : (
 						conversations.map((item) => (
-							<ChatRow
+							<ListRow
 								key={item.conversation_id}
-								avatarId="agent-builder"
-								avatarLabel="Builder"
 								title={item.title}
-								time={sessionTime(item.updated_at)}
-								preview={`ID ${item.conversation_id.slice(0, 8)}`}
 								active={item.conversation_id === conversationId}
-								onSelect={() => void openConversation(item.conversation_id)}
 								disabled={working}
+								onSelect={() => void openConversation(item.conversation_id)}
+								onDelete={() => setDeleting(item)}
 							/>
 						))
 					)}
-				</div>
+				</ul>
 			</aside>
 
 			<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
@@ -346,18 +351,23 @@ export function AgentBuilderPage() {
 								</p>
 							</div>
 						)}
-						{conversation.map((item, index) => (
-							<div
-								key={`${item.role}:${index}`}
-								className={`w-fit max-w-[84%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm ${
-									item.role === 'user'
-										? 'ml-auto bg-[var(--cue-bg-subtle,var(--muted))]'
-										: 'border bg-background'
-								}`}
-							>
-								{item.text}
-							</div>
-						))}
+						{conversation.map((item, index) =>
+							item.role === 'user' ? (
+								<div
+									key={`user:${index}`}
+									className="ml-auto w-fit max-w-[84%] whitespace-pre-wrap rounded-2xl bg-[var(--cue-bg-subtle,var(--muted))] px-3.5 py-2 text-[15px]/6"
+								>
+									{item.text}
+								</div>
+							) : (
+								<div key={`builder:${index}`} className="flex gap-3">
+									<span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
+										<Hammer className="size-3.5 text-muted-foreground" />
+									</span>
+									<Markdown className="min-w-0 flex-1 text-[15px]/6">{item.text}</Markdown>
+								</div>
+							),
+						)}
 						{working && (
 							<p className="flex items-center gap-2 text-[13px]/[18px] text-muted-foreground">
 								<Spinner /> Builder đang soạn, có thể mất vài phút với một đội nhiều agent.
@@ -488,6 +498,19 @@ export function AgentBuilderPage() {
 				</div>
 			</SheetContent>
 		</Sheet>
+		<DeleteDialog
+			open={deleting !== null}
+			onOpenChange={(open) => !open && setDeleting(null)}
+			title={`Xoá hội thoại "${deleting?.title ?? ''}"?`}
+			description="Hội thoại và đề xuất của nó bị xoá. Agent đã phát hành từ hội thoại này vẫn giữ nguyên."
+			confirmLabel="Xoá hội thoại"
+			onConfirm={async () => {
+				if (!deleting) return;
+				await workforceApi.deleteBuilderConversation(deleting.conversation_id);
+				if (deleting.conversation_id === conversationId) newConversation();
+				await loadConversations();
+			}}
+		/>
 		<CreateCredentialDialog
 			open={credentialOpen}
 			onOpenChange={setCredentialOpen}

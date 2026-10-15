@@ -73,6 +73,59 @@ def ticket_title(text: str | None, fields: list[str]) -> str:
     return title if len(title) <= 80 else title[:79].rstrip() + "…"
 
 
+# Values a handover writes when it has nothing to say; the Leader need not read them.
+EMPTY_VALUES = {"", "unknown", "none", "null", "n/a"}
+
+
+def _handover_fields(text: str) -> dict[str, tuple[str, str]]:
+    """``field: value`` lines by casefolded field, first one wins."""
+
+    fields: dict[str, tuple[str, str]] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip():
+            fields.setdefault(key.strip().casefold(), (key.strip(), value.strip()))
+    return fields
+
+
+def ticket_brief(text: str | None, spec: dict | None) -> tuple[str | None, dict | None]:
+    """What the Leader reads of a handover, and what the room shows of it.
+
+    The route declares ``ticket_input``: ``fields`` (what the Leader reads,
+    in that order), ``request`` (what the person asked, shown on the
+    ticket card) and ``facts`` (a few short values shown beside it).
+    Lines it does not list, and fields with an empty value, are left out:
+    standing rules belong in the route's ``leader_brief``, which is cached.
+    Without a declaration the handover passes through unchanged.
+    """
+
+    if not text or not spec or not spec.get("fields"):
+        return text, None
+    fields = _handover_fields(text)
+    empty = EMPTY_VALUES | {str(value).casefold() for value in spec.get("empty_values") or []}
+
+    def value(name: str) -> str | None:
+        found = fields.get(name.casefold())
+        return found[1] if found and found[1].casefold() not in empty else None
+
+    lines = [f"{fields[name.casefold()][0]}: {value(name)}" for name in spec["fields"] if value(name)]
+    if not lines:
+        # A later message of the person, not a handover.
+        return text, None
+    request: list[str] = []
+    for name in spec.get("request") or []:
+        part = value(name)
+        if not part or any(part in seen for seen in request):
+            continue
+        # A description that repeats the title replaces it.
+        request = [seen for seen in request if seen not in part] + [part]
+    card = {
+        "request": "\n".join(request),
+        "facts": [part for name in spec.get("facts") or [] if (part := value(name))],
+    }
+    return "\n".join(lines), card
+
+
 def _text_of(message: Any) -> str:
     if message.role != "assistant":
         return ""
@@ -481,7 +534,7 @@ class ChatLeaderTurnRunner:
         Leader): the ticket shows on the Leader page with its room."""
 
         from ...._router._workforce_console import _leader
-        from ....storage import SessionConfig, TeamData, TeamRecord
+        from ....storage import SessionConfig, SessionNaming, TeamData, TeamRecord
         from ._case import _members
 
         state = self._state()
@@ -496,6 +549,8 @@ class ChatLeaderTurnRunner:
                 config=SessionConfig(
                     workspace_id=session_ref,
                     name=ticket_title(text, fields) or "Phiếu đối tác",
+                    # The first turn's model names it in a few words.
+                    naming=SessionNaming(auto=True),
                     chat_model_config=primary.config.chat_model_config,
                 ),
                 session_id=session_ref,
@@ -602,14 +657,17 @@ class ChatLeaderTurnRunner:
                     "(Hệ thống) Sự kiện mới của việc đang theo dõi:\n"
                     + "\n".join(f"E{item['seq']}: {item['text']}" for item in heard),
                 )
-            if text:
-                parts.append(text)
+            brief, card = ticket_brief(text, (route.get("config") or {}).get("ticket_input"))
+            if brief:
+                parts.append(brief)
             images = await self._new_images(workflow.workflow_id)
             if images:
                 parts.append(f"(Hệ thống) Người dùng gửi kèm {len(images)} ảnh bên dưới.")
             if parts:
                 message = UserMsg(
                     id=f"{trigger_id}:input", name="customer", content=[TextBlock(text="\n\n".join(parts)), *images],
+                    # The room shows the ticket as a card, not the lines the Leader reads.
+                    metadata={"ticket": card} if card else None,
                 )
                 await state.chat_service.run(user_id, session.id, agent_id, message)
                 ran = True

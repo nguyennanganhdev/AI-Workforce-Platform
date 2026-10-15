@@ -32,7 +32,6 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
-	SidebarRail,
 	SidebarTrigger,
 	useSidebar,
 } from '@/components/ui/sidebar';
@@ -251,7 +250,7 @@ function AdminSidebar({
 }) {
 	const { isMobile, setOpenMobile } = useSidebar();
 	return (
-		<Sidebar collapsible={isMobile ? 'offcanvas' : 'icon'} className="cue-column border-r border-sidebar-border">
+		<Sidebar collapsible={isMobile ? 'offcanvas' : 'none'} className="cue-column border-r border-sidebar-border">
 			<SidebarHeader className="h-12 shrink-0 justify-center px-4 py-0 group-data-[collapsible=icon]:px-2">
 				<p className="truncate text-[15px]/5 font-semibold group-data-[collapsible=icon]:sr-only">{title}</p>
 			</SidebarHeader>
@@ -304,7 +303,6 @@ function AdminSidebar({
 					</SidebarMenuItem>
 				</SidebarMenu>
 			</SidebarFooter>
-			<SidebarRail />
 		</Sidebar>
 	);
 }

@@ -23,6 +23,8 @@ import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
+import { CompactViewContext, TeamRosterContext } from '@/components/chat/team-roster';
+import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
 import { McpPanel } from '@/components/panel/McpPanel';
@@ -95,6 +97,11 @@ interface ChatViewportProps {
 	 * session's name instead.
 	 */
 	headerSlot?: ReactNode;
+	/**
+	 * A ticket read by a manager (the Leader page): the handover as a card,
+	 * no run timings or token counts, no model, permission or folder controls.
+	 */
+	compact?: boolean;
 }
 
 /** Maximum number of panels stacked in a single dock column. */
@@ -194,6 +201,7 @@ export function ChatViewport({
 	agentName,
 	onOpenAgentSettings,
 	headerSlot,
+	compact = false,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
@@ -401,6 +409,27 @@ export function ChatViewport({
 				);
 			return candidate ? input + candidate.slice(input.length) : null;
 		},
+		[team],
+	);
+
+	// The room's agents: a leading `@name` sends the message to that agent.
+	const mentions = useMemo(
+		() =>
+			(team?.members ?? []).map(({ agent }) => ({
+				id: agent.id,
+				name: cleanName(agent.data.name),
+				insert: `${completeTeamMention(`@${agent.data.name}`) ?? `@${agent.data.name} `}`,
+			})),
+		[team, completeTeamMention],
+	);
+	// Names to portraits, for the room's message cards.
+	const roster = useMemo(
+		() =>
+			new Map(
+				[...(team?.leader_agent ? [team.leader_agent] : []), ...(team?.members.map(({ agent }) => agent) ?? [])].map(
+					(agent) => [cleanName(agent.data.name).toLocaleLowerCase(), agent.id] as const,
+				),
+			),
 		[team],
 	);
 
@@ -798,7 +827,8 @@ export function ChatViewport({
 			: undefined;
 
 	return (
-		<>
+		<CompactViewContext.Provider value={compact}>
+		<TeamRosterContext.Provider value={roster}>
 			<SessionWorkspace snapshot={office}>
 				<main className="flex size-full">
 					<ResizablePanelGroup orientation="horizontal">
@@ -851,6 +881,8 @@ export function ChatViewport({
 									{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
 									<div className="flex shrink-0 flex-row items-center gap-x-1">
+										{!compact && (
+										<>
 										<LlmSelect
 											id="tour-llm-select"
 											variant="ghost"
@@ -879,6 +911,8 @@ export function ChatViewport({
 											disabled={!sessionId || configPending}
 											onChange={handlePermissionModeChange}
 										/>
+										</>
+										)}
 										{/* Quick toggles for the two panels used most —
 									    team (who is working) and plan (what they are
 									    doing) — then the full list behind the menu. An
@@ -986,7 +1020,9 @@ export function ChatViewport({
 										sessionId={sessionId}
 										cwd={view?.session.config.cwd ?? null}
 										onCwdChange={handleCwdChange}
-										git={workspaceStatus?.git ?? null}
+										showWorkspace={!compact}
+										git={compact ? null : (workspaceStatus?.git ?? null)}
+										mentions={mentions}
 										onRefreshGit={refetchWorkspaceStatus}
 										phase={phase}
 										disabled={selectedModel === null}
@@ -1091,6 +1127,7 @@ export function ChatViewport({
 				onOpenChange={setCredentialOpen}
 				onCreated={() => setCredentialRefetchTrigger((n) => n + 1)}
 			/>
-		</>
+		</TeamRosterContext.Provider>
+		</CompactViewContext.Provider>
 	);
 }

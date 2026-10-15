@@ -276,8 +276,8 @@ class _SessionTitle(BaseModel):
     title: str = Field(
         description=(
             "A short title for the conversation, written in the same "
-            "language as the user's message, at most eight words, with "
-            "no quotes and no trailing punctuation."
+            "language as the user's message, two to four words naming what "
+            "is asked, with no ids, no quotes and no trailing punctuation."
         ),
     )
 

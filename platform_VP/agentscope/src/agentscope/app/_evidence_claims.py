@@ -39,6 +39,8 @@ _LARGE_NUMBER_RE = re.compile(
 _ITINERARY_CODE_RE = re.compile(
     r"(?<!\w)\d+\s*[Nn]\s*\d+\s*[\u0110\u0111Dd](?!\w)",
 )
+# Evidence citations ("E1, E2, E3") name events; they are not amounts.
+_EVIDENCE_CODE_RE = re.compile(r"(?<!\w)E\d+(?!\w)")
 
 _CONNECTORS = {
     "&",
@@ -144,7 +146,9 @@ def _proper_name_anchors(text: str) -> set[str]:
     text = _ITINERARY_CODE_RE.sub(" ", text)
     for quoted in _QUOTED_RE.findall(text):
         normalized = _normalize(quoted)
-        if len(normalized) >= 3 and not normalized.isdigit():
+        # A quoted name is a few words; a quoted sentence (a proposed reply
+        # to the user) is not a name, its own words are checked below.
+        if len(normalized) >= 3 and not normalized.isdigit() and len(normalized.split()) <= 6:
             anchors.add(normalized)
 
     # A number ends a name: "Hotel A 1200000 VND" must not become the name
@@ -248,7 +252,7 @@ def _json_number_anchors(text: str) -> set[str]:
 
 
 def _numeric_anchors(text: str) -> set[str]:
-    text = _ITINERARY_CODE_RE.sub(" ", text)
+    text = _EVIDENCE_CODE_RE.sub(" ", _ITINERARY_CODE_RE.sub(" ", text))
     anchors = {
         f"time:{int(match.group(1))}:{match.group(0).rsplit(':', 1)[1]}"
         for match in _TIME_RE.finditer(text)
