@@ -23,7 +23,8 @@ from .platform import TENANT
 TOOLS=('vh_ticket_get','vh_knowledge_search','vh_staff_available','vh_work_order_dispatch',
        'vh_work_order_reschedule','vh_ticket_cancel','vh_ticket_add_note',
        'vh_travel_catalog','vh_travel_search','vh_travel_details','vh_travel_availability',
-       'vh_travel_prepare','vh_travel_commit','vh_travel_bookings')
+       'vh_travel_prepare','vh_travel_commit','vh_travel_bookings',
+       'vh_service_context','vh_amenity_availability')
 ACCESS: ContextVar[dict | None] = ContextVar('vinhomes_mcp_access',default=None)
 router=APIRouter(tags=['Platform control-plane'])
 

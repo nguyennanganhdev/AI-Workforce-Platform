@@ -16,7 +16,7 @@ from collections import OrderedDict, deque
 from uuid import uuid4
 from urllib.parse import urlsplit
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -145,6 +145,22 @@ def build(app) -> FastMCP:
         """Passages of the documents that apply to the resident's zone and building (rules, fees, opening hours,
         phone numbers), each with the name of its document. Returns passages, not an answer."""
         return await run(False,'vh_knowledge_search',work.knowledge_search,ticket_id,query)
+
+    @mcp.tool(annotations=READ)
+    async def vh_service_context(ticket_id: Ticket, section: Literal['cards','visitors','billing','amenities','renovation','service_requests','services']) -> ToolReply:
+        """Read only the service context of this ticket's home, with the resident's current rights.
+        Cards are masked; visitor phones and QR tokens are omitted. Billing is owner/tenant only.
+        Does not create tickets, resolve resident identity, book, pay, approve or issue permits/cards.
+        Synthetic data stays labelled; published service policies are scoped to the ticket's building.
+        """
+        return await run(False,'vh_service_context',work.service_context,ticket_id,section)
+
+    @mcp.tool(annotations=READ)
+    async def vh_amenity_availability(ticket_id: Ticket, amenity_ref: str, date: str) -> ToolReply:
+        """Read free slots for an amenity returned by vh_service_context(section=amenities).
+        YYYY-MM-DD; this does not reserve a slot. Only the zone of this ticket is allowed.
+        """
+        return await run(False,'vh_amenity_availability',work.amenity_slots,ticket_id,amenity_ref,date)
 
     @mcp.tool(annotations=READ)
     async def vh_staff_available(ticket_id: Ticket,appointment_at: str | None=None) -> ToolReply:

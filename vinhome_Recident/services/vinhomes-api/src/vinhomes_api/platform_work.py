@@ -81,7 +81,7 @@ async def _ticket(db, ticket_id, lock: bool = False) -> dict:
         raise Refused(UNKNOWN) from None
     row = (await db.execute(text(f"""
         select t.id,t.status,t.version,t.last_event_seq,t.requester_user_id,t.unit_id,t.building_id,t.zone_id,t.site_id,t.management_unit_id,
-          t.category_id,c.code as category_code,c.name as category
+          t.category_id,t.is_emergency,c.code as category_code,c.name as category
         from tickets t join platform_links l on l.ticket_id=t.id and l.tenant_id=t.tenant_id
         left join service_categories c on c.id=t.category_id and c.tenant_id=t.tenant_id
         where t.id=:id and t.tenant_id={TENANT} and l.status in {ACTIVE} {"for update of t" if lock else ""}
@@ -191,9 +191,9 @@ async def action_policy(db,ticket) -> dict:
         where w.ticket_id=:id and w.tenant_id={TENANT} and w.status not in ('cancelled','rejected')"""),{'id':ticket['id']})).mappings().all()
     active=ticket['status'] in ('open','triaging','assigned','in_progress')
     blockers={
-        'vh_work_order_dispatch': 'TICKET_FINAL' if not active else 'PLAN_REQUIRED' if planned else 'SECURITY_MANAGEMENT_ONLY' if ticket['category_code']=='security' else 'CATEGORY_REQUIRED' if ticket['category_id'] is None else 'WORK_ALREADY_ACTIVE' if any(w['status']!='completed' or w['qc']!='pass' for w in orders) else None,
+        'vh_work_order_dispatch': 'TICKET_FINAL' if not active else 'EMERGENCY_REQUIRES_ESCALATION' if ticket['is_emergency'] and ticket['category_code']=='security' else 'PLAN_REQUIRED' if planned else 'CATEGORY_REQUIRED' if ticket['category_id'] is None else 'WORK_ALREADY_ACTIVE' if any(w['status']!='completed' or w['qc']!='pass' for w in orders) else None,
         'vh_work_order_reschedule': None if active and any(w['status'] in ('queued','offered','accepted') for w in orders) else 'NO_RESCHEDULABLE_WORK',
-        'vh_ticket_cancel': 'TICKET_FINAL' if not active else 'SECURITY_MANAGEMENT_ONLY' if any(w['category']=='security' for w in orders) else 'WORK_ALREADY_ON_SITE' if any(w['status'] in ('arrived','in_progress','completed') for w in orders) else None,
+        'vh_ticket_cancel': 'TICKET_FINAL' if not active else 'WORK_ALREADY_ON_SITE' if any(w['status'] in ('arrived','in_progress','completed') for w in orders) else None,
         'vh_ticket_add_note':None if active or ticket['status']=='resolved' else 'TICKET_FINAL'}
     if ticket['category_code']=='travel':
         blockers['vh_work_order_dispatch']='TRAVEL_USE_BOOKING_TOOLS'
@@ -201,7 +201,7 @@ async def action_policy(db,ticket) -> dict:
         if (await db.execute(text(f"select 1 from travel_mock_bookings where tenant_id={TENANT} and ticket_id=:id and status='confirmed' limit 1"),{'id':ticket['id']})).first():
             blockers['vh_ticket_cancel']='TRAVEL_CANCEL_BOOKINGS_FIRST'
     return {'version':'ticket-policy-v1','requires_plan':planned,'actions':{k:{'allowed':v is None,'blocked_reason':v} for k,v in blockers.items()},
-        'resident_approval_required_for':['quote','completion'],'security_dispatch':'management_only'}
+        'resident_approval_required_for':['quote','completion'],'security_dispatch':'ticket_grant_non_emergency'}
 
 
 async def resident_context(db, ticket_id) -> dict:
@@ -311,6 +311,48 @@ async def desk_requests(db, ticket_id) -> dict:
                           "submitted_at": _at(r["submitted_at"]), "due_at": _at(r["sla_due_at"]), "fulfilled_at": _at(r["fulfilled_at"]),
                           "decision_note": r["decision_note"], "fee": int(r["fee_amount"]) if r["fee_amount"] is not None else None}
                          for r in found["items"]]}
+
+
+async def service_context(db, ticket_id, section: str) -> dict:
+    """Bounded reads as the ticket resident, never bulk personal-data export."""
+    readers = {'cards': access_cards, 'visitors': visitors, 'amenities': amenity_list,
+               'renovation': renovation}
+    if section in readers:
+        result = await readers[section](db, ticket_id)
+    elif section == 'billing':
+        result = await debts(db, ticket_id, 'balance')
+        result = {**result, 'outstanding':int(result['outstanding']), 'overdue':int(result['overdue'])}
+    elif section == 'service_requests':
+        result = await desk_requests(db, ticket_id)
+        # Arbitrary form details/decision notes can contain identity documents or contact data.
+        result = {'requests': [{k:r[k] for k in ('kind','request_status','created_at','due_at','fee')}
+                               for r in result['requests']]}
+    elif section == 'services':
+        ticket = await _ticket(db, ticket_id)
+        values = (await db.execute(text(f"""select c.title,c.category_code,c.policy
+            from domain_service_catalog c join buildings b on b.id=:building and b.tenant_id=c.tenant_id
+            join zones z on z.id=b.zone_id and z.tenant_id=b.tenant_id
+            where c.tenant_id={TENANT} and c.site_id=:site and c.operational_enabled
+              and c.policy->>'zone_code'=z.code and c.policy->>'building_code'=b.code
+            order by c.title limit 30"""), {'building':ticket['building_id'],'site':ticket['site_id']})).mappings()
+        fields = ('service_code','eligibility','fee_policy','fee_amount','currency','fee_unit','vat_policy',
+                  'operating_hours','warranty_policy','booking_policy','cancellation_policy','data_mode')
+        result = {'services': [{'title':r['title'],'category':r['category_code'],
+                                **{k:r['policy'].get(k) for k in fields}} for r in values]}
+    else:
+        raise Refused('Unsupported service context section.','SERVICE_SECTION_INVALID')
+    # Sandbox marker is a database-level assertion, not a user-provided tool argument.
+    synthetic = (await db.execute(text("select shobj_description(oid,'pg_database') from pg_database where datname=current_database()"))).scalar_one_or_none() == 'vinhomes-synthetic-sandbox-v1'
+    return {'section':section,'data_mode':'synthetic_test' if synthetic else 'operational',
+            'read_only':True, **result}
+
+
+async def amenity_slots(db, ticket_id, amenity_ref, date: str) -> dict:
+    allowed = await service_context(db, ticket_id, 'amenities')
+    if str(amenity_ref) not in {p['amenity_ref'] for p in allowed['amenities']}:
+        raise Refused('Tiện ích ngoài phạm vi ticket.','AMENITY_SCOPE_FORBIDDEN')
+    return {'data_mode':allowed['data_mode'],'read_only':True,
+            **(await amenity_free(db, ticket_id, amenity_ref, date))}
 
 
 async def renovation(db, ticket_id) -> dict:
@@ -464,8 +506,8 @@ async def dispatch(db, ticket_id, description: str, staff_id: str | None, appoin
             raise Refused("Yêu cầu này đi theo phương án do Ban quản lý duyệt; trợ lý không tự giao việc.")
         if ticket["category_id"] is None:
             raise Refused("Yêu cầu chưa được phân loại nên chưa giao việc được.")
-        if ticket["category_code"] == "security":
-            raise Refused("Việc an ninh do Ban quản lý điều động; trợ lý không tự giao.")
+        if ticket['is_emergency'] and ticket['category_code']=='security':
+            raise Refused('Tình huống khẩn cấp cần chuyển cấp tới người điều phối, không tự giao việc thường.','EMERGENCY_REQUIRES_ESCALATION')
         # One job at a time: work that waits for staff, is being done, or is done but not yet accepted.
         open_ = (await db.execute(text(f"""
             select w.status from work_orders w where w.ticket_id=:ticket and w.tenant_id={TENANT} and w.status not in ('cancelled','rejected')
@@ -579,8 +621,6 @@ async def cancel(db, ticket_id, reason: str | None, client_reference, expected_v
         # done there is not thrown away by a word in the chat either: what happens to it is for people to settle.
         if any(w["status"] in ("arrived", "in_progress", "completed") for w in orders):
             raise Refused("Nhân viên đã đến nơi, đã bắt đầu làm hoặc đã làm xong nên không hủy được yêu cầu. Việc này cần Ban quản lý xử lý.")
-        if any(w["category"] == "security" for w in orders):
-            raise Refused("Việc an ninh chỉ Ban quản lý hủy được.")
         for work in orders:
             await db.execute(text("update work_orders set status='cancelled',version=version+1,updated_at=now() where id=:id"), {"id": work["id"]})
             await db.execute(text("""

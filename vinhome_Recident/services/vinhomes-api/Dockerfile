@@ -2,8 +2,10 @@
 FROM python:3.12-slim
 WORKDIR /opt/vinhomes-api
 COPY pyproject.toml ./
+RUN python -c "import tomllib; from pathlib import Path; Path('/tmp/requirements.txt').write_text('\n'.join(tomllib.loads(Path('pyproject.toml').read_text())['project']['dependencies']))" \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
 COPY src ./src
-RUN pip install --no-cache-dir . && useradd --uid 10001 --create-home app \
+RUN pip install --no-cache-dir --no-deps . && useradd --uid 10001 --create-home app \
     && mkdir -p /var/lib/vinhomes/files && chown app /var/lib/vinhomes/files
 USER app
 # Uploaded photos live here; the deployment mounts a volume over it.

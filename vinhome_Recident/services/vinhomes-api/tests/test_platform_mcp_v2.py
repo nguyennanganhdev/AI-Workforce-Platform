@@ -201,13 +201,13 @@ def test_sla_risk_is_deduplicated_and_uses_existing_text_contract(database,hande
     assert any(r['kind']=='workflow_reply' and 'sla:breached:' in json.loads(r['body'])['domain_notice_key'] for r in notices)
 
 
-def test_security_incident_is_handed_over_once_without_granting_dispatch(database,monkeypatch):
+def test_security_emergency_is_handed_over_once_without_granting_dispatch(database,monkeypatch):
     from vinhomes_api.platform import link_ticket
     monkeypatch.setenv('VINHOMES_API_PLATFORM_URL','http://platform.invalid')
     monkeypatch.setenv('VINHOMES_API_PLATFORM_MCP_TOKEN',BOOTSTRAP)
     monkeypatch.setenv('VINHOMES_API_MCP_ALLOWED_HOSTS','testserver')
     ticket=sql(database,"select id from tickets where tenant_id=$1 and status in ('open','triaging') order by created_at limit 1",TENANT)[0]['id']
-    sql(database,"""update tickets set request_kind='incident',is_emergency=false,category_id=(
+    sql(database,"""update tickets set request_kind='incident',is_emergency=true,priority='critical',severity='critical',category_id=(
         select id from service_categories where tenant_id=$2 and code='security') where id=$1""",ticket,TENANT)
     async def hand_over(db):
         await link_ticket(db,ticket)
@@ -224,10 +224,10 @@ def test_security_incident_is_handed_over_once_without_granting_dispatch(databas
         token=response.json()['bearer_token']
         snapshot=call(client,token,'vh_ticket_get',{'ticket_id':str(ticket)})
         policy=snapshot['policy']['actions']['vh_work_order_dispatch']
-        assert policy['allowed'] is False and policy['blocked_reason']=='SECURITY_MANAGEMENT_ONLY'
+        assert policy['allowed'] is False and policy['blocked_reason']=='EMERGENCY_REQUIRES_ESCALATION'
         result=call(client,token,'vh_work_order_dispatch',{'ticket_id':str(ticket),'client_reference':str(uuid4()),
             'description':'Điều động bảo vệ kiểm thử.','expected_ticket_version':snapshot['ticket_version']},True)
-        assert result['error']['code']=='BUSINESS_RULE_REFUSED'
+        assert result['error']['code']=='EMERGENCY_REQUIRES_ESCALATION'
     assert sql(database,'select count(*) as n from work_orders where ticket_id=$1',ticket)[0]['n']==0
 
 

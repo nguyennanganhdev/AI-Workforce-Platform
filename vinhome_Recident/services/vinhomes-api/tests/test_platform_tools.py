@@ -614,7 +614,7 @@ def test_an_emergency_is_handed_over_with_its_level_and_guard_work_is_still_not_
     [start] = commands(database, guard)
     assert "Mức khẩn cấp do Lễ tân đánh giá: KHẨN CẤP; mức độ nghiêm trọng: nghiêm trọng" in start["body"]["text"].splitlines()
     refused = call(database, work.dispatch, guard, "Cử bảo vệ lên kiểm tra", None, None, ref())
-    assert refused["status"] == "failed" and "an ninh" in refused["reason"]
+    assert refused["status"] == "failed" and refused['code']=='EMERGENCY_REQUIRES_ESCALATION'
     assert sql(database, "select count(*) as n from work_orders where ticket_id=$1", UUID(guard)) == [{"n": 0}]
 
 
@@ -833,16 +833,16 @@ def test_reschedule_note_and_cancel_do_their_work_once_and_refuse_once_staff_is_
     assert sent[1]["data"] == {"reason": "Yêu cầu được hủy theo đề nghị của cư dân"} and sent[1]["client_reference"] == dispatch
 
 
-def test_dispatch_is_refused_for_plan_tickets_and_for_guard_work(database, on, monkeypatch):
+def test_dispatch_is_refused_for_plan_tickets_and_for_guard_emergencies(database, on, monkeypatch):
     on_shift(database, HOA)
     with person(database, AN) as c:
         _, planned = hand_over(c, plan=True)
         _, guard = hand_over(c)
-    sql(database, "update tickets set category_id=$2 where id=$1 returning id", UUID(guard), CAT_SEC)
+    sql(database, "update tickets set category_id=$2,is_emergency=true,priority='critical',severity='critical' where id=$1 returning id", UUID(guard), CAT_SEC)
     plan = call(database, work.dispatch, planned, "Thay bóng đèn", None, None, ref())
     assert plan["status"] == "failed" and "phương án" in plan["reason"]
     security = call(database, work.dispatch, guard, "Cử bảo vệ kiểm tra", None, None, ref())
-    assert security["status"] == "failed" and "an ninh" in security["reason"]
+    assert security["status"] == "failed" and security['code']=='EMERGENCY_REQUIRES_ESCALATION'
     assert sql(database, "select count(*) as n from work_orders where ticket_id=any($1::uuid[])", [UUID(planned), UUID(guard)]) == [{"n": 0}]
     assert sql(database, "select status from tickets where id=$1", UUID(planned))[0]["status"] in ("open", "triaging")
 
@@ -913,8 +913,9 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
         assert "mcp-session-id" not in direct.headers   # stateless
 
         tools = {tool.name: tool for tool in asyncio.run(session(lambda client: client.list_tools())).tools}
-        looks = {"vh_ticket_get", "vh_knowledge_search", "vh_staff_available"}
-        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note"}
+        from vinhomes_api.platform_access import TOOLS
+        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note", "vh_travel_prepare", "vh_travel_commit"}
+        looks = set(TOOLS) - acts
         # Nothing records an answer to a quote: that is the resident's own tap on the card.
         assert set(tools) == looks | acts
         for name, tool in tools.items():

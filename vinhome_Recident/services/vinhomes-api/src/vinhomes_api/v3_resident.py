@@ -244,7 +244,7 @@ async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate, reques
     # The resident app sends an Idempotency-Key header and gets the stored receipt back;
     # agent callers use body.idempotency_key and get the AgentBusinessResponse snapshot.
     return await create_resident_ticket(channel_id, body, scope,
-                                        receipt_key=request.headers.get("Idempotency-Key"))
+                                        receipt_key=request.headers.get("Idempotency-Key"), requires_plan=False)
 
 
 async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
@@ -446,6 +446,8 @@ async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
             insert into ticket_files(tenant_id,ticket_id,file_id,purpose,uploaded_by)
             values(nullif(current_setting('app.tenant_id',true),'')::uuid,:ticket,:file,'issue',:actor)
         """), {"ticket": ticket_id, "file": file_id, "actor": actor_id})
+    from .platform import link_ticket
+    await link_ticket(db, ticket_id)
     if receipt_key is not None:
         created["version"] = 1
         return created

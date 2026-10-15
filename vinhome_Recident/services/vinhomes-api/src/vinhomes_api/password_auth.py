@@ -107,7 +107,10 @@ def surface(request: Request) -> str:
 
 
 def cookie(request: Request) -> str:
-    return COOKIES[surface(request)]
+    namespace = os.getenv('VINHOMES_API_SESSION_NAMESPACE','').strip()
+    if namespace and not re.fullmatch(r'[a-z0-9_-]{1,32}',namespace):
+        raise HTTPException(503,'Invalid session namespace configuration')
+    return COOKIES[surface(request)] + ('_'+namespace if namespace else '')
 
 
 async def context(db, request: Request, actor: str = ""):
