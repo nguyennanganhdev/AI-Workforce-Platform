@@ -219,36 +219,15 @@
 		"leader": "Leader 与工单",
 		"builder": "Builder",
 		"agentStudio": "智能体管理",
-		"agentMap": "智能体图",
 		"groupOperations": "运行",
 		"groupCapabilities": "智能体可用的能力",
 		"account": "账户"
 	},
 	"agents": {
-		"title": "智能体",
-		"create": "创建智能体",
-		"view": {
-			"graph": "拓扑图",
-			"office": "办公室",
-			"list": "列表",
-			"library": "资源库"
-		},
 		"list": {
-			"name": "名称",
-			"reach": "Leader 可选用",
-			"access": "权限",
-			"actions": "操作",
-			"actionsFor": "对 {{name}} 的操作",
-			"owner": "我的",
 			"noDescription": "暂无描述",
 			"chat": "打开对话",
-			"edit": "编辑",
-			"delete": "删除智能体",
-			"emptyTitle": "还没有智能体",
-			"emptyDescription": "点击上方“创建智能体”来创建第一个。",
-			"errorTitle": "未能加载智能体列表",
-			"errorDescription": "请检查与服务器的连接后重试。",
-			"retry": "重试"
+			"edit": "编辑"
 		},
 		"graph": {
 			"agentCount": "{{count}} 个智能体",
@@ -275,27 +254,7 @@
 			"notInvitableHelp": "该智能体未开启“允许被邀请”，Leader 无法将其加入会话。请在编辑的“邀请配置”中开启。",
 			"inspectorSessions": "工单",
 			"inspectorRunning": "回复",
-			"inspectorResponse": "最近活动",
-			"mobile": "拓扑图需要更宽的屏幕。下面是智能体列表。"
-		},
-		"library": {
-			"intro": "可以分配给智能体的资源。每一项在“设置”中都有自己的页面。",
-			"mcp": {
-				"title": "外部连接（MCP）",
-				"description": "来自外部系统的工具。"
-			},
-			"skill": {
-				"title": "技能",
-				"description": "可复用的智能体指引。"
-			},
-			"knowledge": {
-				"title": "知识库",
-				"description": "供智能体查阅的文档。"
-			},
-			"credential": {
-				"title": "凭证",
-				"description": "模型与服务的访问密钥。"
-			}
+			"inspectorResponse": "最近活动"
 		},
 		"office": {
 			"phase": {

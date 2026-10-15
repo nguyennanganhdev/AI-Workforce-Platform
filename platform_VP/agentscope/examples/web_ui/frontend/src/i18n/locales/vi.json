@@ -218,36 +218,15 @@
 		"leader": "Leader và ticket",
 		"builder": "Builder",
 		"agentStudio": "Quản lý agent",
-		"agentMap": "Sơ đồ agent",
 		"groupOperations": "Vận hành",
 		"groupCapabilities": "Năng lực của agent",
 		"account": "Tài khoản"
 	},
 	"agents": {
-		"title": "Agent",
-		"create": "Tạo agent",
-		"view": {
-			"graph": "Sơ đồ",
-			"office": "Văn phòng",
-			"list": "Danh sách",
-			"library": "Thư viện"
-		},
 		"list": {
-			"name": "Tên",
-			"reach": "Leader chọn được",
-			"access": "Quyền",
-			"actions": "Thao tác",
-			"actionsFor": "Thao tác với {{name}}",
-			"owner": "Của bạn",
 			"noDescription": "Chưa có mô tả",
 			"chat": "Mở trò chuyện",
-			"edit": "Chỉnh sửa",
-			"delete": "Xóa agent",
-			"emptyTitle": "Chưa có agent nào",
-			"emptyDescription": "Bấm “Tạo agent” ở góc trên để tạo agent đầu tiên.",
-			"errorTitle": "Chưa tải được danh sách agent",
-			"errorDescription": "Kiểm tra kết nối tới máy chủ rồi thử lại.",
-			"retry": "Thử lại"
+			"edit": "Chỉnh sửa"
 		},
 		"graph": {
 			"agentCount": "{{count}} agent",
@@ -274,27 +253,7 @@
 			"notInvitableHelp": "Agent này chưa bật “Cho phép được mời” nên Leader không đưa được vào phiên. Bật trong phần chỉnh sửa, mục Cấu hình lời mời.",
 			"inspectorSessions": "Phiếu",
 			"inspectorRunning": "Lượt trả lời",
-			"inspectorResponse": "Gần nhất",
-			"mobile": "Sơ đồ chỉ hiển thị trên màn hình rộng. Dưới đây là danh sách agent."
-		},
-		"library": {
-			"intro": "Những thứ bạn có thể cấp cho agent. Mỗi mục có trang riêng trong phần Cài đặt.",
-			"mcp": {
-				"title": "Kết nối ngoài (MCP)",
-				"description": "Công cụ từ các hệ thống bên ngoài."
-			},
-			"skill": {
-				"title": "Kỹ năng",
-				"description": "Chỉ dẫn dùng lại được cho agent."
-			},
-			"knowledge": {
-				"title": "Kho tri thức",
-				"description": "Tài liệu để agent tra cứu."
-			},
-			"credential": {
-				"title": "Thông tin xác thực",
-				"description": "Khóa truy cập model và dịch vụ."
-			}
+			"inspectorResponse": "Gần nhất"
 		},
 		"office": {
 			"phase": {

@@ -1,15 +1,12 @@
 import {
 	Bot,
 	CheckCircle2,
-	ChevronRight,
 	CircleAlert,
 	Hammer,
-	MessageSquare,
 	Plus,
 	Power,
 	PowerOff,
 	Send,
-	Sparkles,
 	Wrench,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -24,12 +21,16 @@ import type {
 	ChatModelConfig,
 	WorkforceAgent,
 } from '@/api';
+import { sessionTime } from '@/components/chat/session-row-utils';
+import { ChatRow } from '@/components/chat/SessionRow';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Progress } from '@/components/ui/progress';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -148,6 +149,7 @@ export function AgentBuilderPage() {
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
+	const [agentsOpen, setAgentsOpen] = useState(false);
 
 	const loadAgents = useCallback(async () => {
 		setAgents(await workforceApi.listAgents());
@@ -260,206 +262,232 @@ export function AgentBuilderPage() {
 		await loadAgents();
 	};
 
+	const current = conversations.find((item) => item.conversation_id === conversationId);
+
 	return (
 		<>
-		<div className="grid size-full min-h-0 gap-2 p-2 lg:grid-cols-[minmax(0,1fr)_320px]">
-		<main className="flex min-h-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
-			<header className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-5">
-				<div className="flex items-center gap-3">
-					<div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-						<Hammer className="size-5" />
-					</div>
-					<div>
-						<h1 className="text-xl font-medium tracking-tight">Agent Builder</h1>
-						<p className="text-sm text-muted-foreground">
-							Mô tả một agent hoặc nhiều agent. Builder tự viết prompt, skill và chọn tool.
+		<div className="flex size-full min-h-0">
+			<aside className="cue-column flex w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar max-md:hidden">
+				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
+					<h1 className="truncate text-[15px]/5 font-semibold">Agent Builder</h1>
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Hội thoại mới"
+						title="Hội thoại mới"
+						onClick={newConversation}
+						disabled={working}
+					>
+						<Plus className="size-5" />
+					</Button>
+				</header>
+				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+					{conversations.length === 0 ? (
+						<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
+							Chưa có hội thoại. Mô tả agent bạn cần ở khung bên phải.
 						</p>
-					</div>
+					) : (
+						conversations.map((item) => (
+							<ChatRow
+								key={item.conversation_id}
+								avatarId="agent-builder"
+								avatarLabel="Builder"
+								title={item.title}
+								time={sessionTime(item.updated_at)}
+								preview={`ID ${item.conversation_id.slice(0, 8)}`}
+								active={item.conversation_id === conversationId}
+								onSelect={() => void openConversation(item.conversation_id)}
+								disabled={working}
+							/>
+						))
+					)}
 				</div>
-				<div className="min-w-56">
-					<p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-						Model cho Builder và agent
-					</p>
+			</aside>
+
+			<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+				<header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						className="md:hidden"
+						aria-label="Hội thoại mới"
+						onClick={newConversation}
+						disabled={working}
+					>
+						<Plus />
+					</Button>
+					<h2 className="min-w-0 flex-1 truncate text-[15px]/5 font-semibold">
+						{current?.title ?? 'Hội thoại mới'}
+					</h2>
 					<LlmSelect
 						value={selectedModel}
 						onChange={setSelectedModel}
 						onAddCredential={() => setCredentialOpen(true)}
 						refetchTrigger={credentialRefetchTrigger}
 						placeholder="Chọn model"
-						className="w-full justify-between font-mono"
+						className="w-48 font-mono"
 						disabled={working}
 					/>
-				</div>
-			</header>
-			<div className="flex items-center gap-2 overflow-x-auto border-b px-4 py-2">
-				<Button size="sm" variant="outline" onClick={newConversation} disabled={working}>
-					<Plus /> Hội thoại mới
-				</Button>
-				{conversations.map((item) => (
-					<Button
-						key={item.conversation_id}
-						size="sm"
-						variant={item.conversation_id === conversationId ? 'secondary' : 'ghost'}
-						className="max-w-56 shrink-0 justify-start"
-						onClick={() => void openConversation(item.conversation_id)}
-						disabled={working}
-						title={`${item.title}\nconversation_id: ${item.conversation_id}`}
-					>
-						<MessageSquare />
-						<span className="truncate">{item.title}</span>
+					<Button variant="outline" size="sm" onClick={() => setAgentsOpen(true)}>
+						<Bot /> Agent
+						<Badge variant="secondary" className="ml-0.5">{agents.length}</Badge>
 					</Button>
-				))}
-				{conversationId && (
-					<span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-						ID: {conversationId}
-					</span>
-				)}
-			</div>
+				</header>
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-				<div className="mx-auto max-w-5xl space-y-5">
-					<div className="rounded-xl border bg-muted/20 p-4">
-						{conversation.length > 0 && (
-							<div className="mb-4 max-h-64 space-y-2 overflow-y-auto border-b pb-4">
-								{conversation.map((item, index) => (
-									<div
-										key={`${item.role}:${index}`}
-										className={`max-w-[84%] rounded-xl px-3 py-2 text-sm ${
-											item.role === 'user'
-												? 'ml-auto bg-primary text-primary-foreground'
-												: 'border bg-background'
-										}`}
-									>
-										{item.text}
-									</div>
-								))}
-							</div>
-						)}
-						<div className="flex items-start gap-3">
-							<Sparkles className="mt-1 size-4 text-primary" />
-							<div className="flex-1">
-								<p className="text-sm font-medium">Bạn cần agent làm nghiệp vụ gì?</p>
-								<Textarea
-									value={message}
-									onChange={(event) => setMessage(event.target.value)}
-									placeholder="Ví dụ: Tạo agent tìm khách sạn, kiểm tra phòng trống và đề xuất theo ngân sách..."
-									className="mt-3 min-h-28 resize-y bg-background"
-									disabled={working}
-								/>
-								<div className="mt-3 flex justify-end">
-									<Button
-										onClick={() => void prepare()}
-										disabled={working || !message.trim() || !selectedModel}
-									>
-										{working ? <Spinner /> : <Send />}
-										Gửi cho Builder
-									</Button>
-								</div>
-								{!selectedModel && (
-									<p className="mt-2 text-right text-xs text-amber-700">
-										Hãy chọn model trước khi gửi yêu cầu cho Builder.
-									</p>
-								)}
-							</div>
-						</div>
-					</div>
-
-					{proposal && (
-						<>
-							<div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3">
-								<div>
-									<p className="text-sm font-medium">{proposal.assistant_message}</p>
-									{proposal.clarification_question && (
-										<p className="mt-1 text-sm text-amber-700">
-											{proposal.clarification_question}
-										</p>
-									)}
-									<p className="mt-1 text-xs text-muted-foreground">
-										Model: <span className="font-mono">{proposal.chat_model_config.model}</span>
-										{' · '}{proposal.fixed_config.runtime_note}
-									</p>
-								</div>
-								{proposal.status === 'ready' && (
-									<Button onClick={publish} disabled={working}>
-										<CheckCircle2 /> Phát hành
-									</Button>
-								)}
-								{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (
-									<Button onClick={() => void confirmOutline()} disabled={working}>
-										<CheckCircle2 /> Chốt định hướng và sinh cấu hình
-									</Button>
-								)}
-								{proposal.status === 'published' && <Badge>Đã phát hành</Badge>}
-								{proposal.status === 'blocked' && <Badge variant="destructive">Bị chặn</Badge>}
-							</div>
-							{proposal.planned_agents.length > 0 && (
-								<div className="grid gap-3 md:grid-cols-2">
-									{proposal.planned_agents.map((agent) => (
-										<div key={agent.name} className="rounded-xl border bg-background p-4">
-											<div className="flex items-center gap-2">
-												<Bot className="size-4 text-primary" />
-												<p className="font-medium">{agent.name}</p>
-											</div>
-											<p className="mt-2 text-sm text-muted-foreground">{agent.objective}</p>
-											<div className="mt-3 flex flex-wrap gap-1.5">
-												{agent.suggested_tools.map((tool) => (
-													<Badge key={tool.id} variant="secondary" className="font-mono text-[10px]">
-														{tool.tool_name}
-													</Badge>
-												))}
-											</div>
-										</div>
-									))}
-								</div>
-							)}
-							{proposal.agents.map((agent) => (
-								<AgentProposalCard key={`${agent.name}:${agent.skill_name}`} proposal={agent} />
-							))}
-						</>
-					)}
-				</div>
-			</div>
-		</main>
-
-		<aside className="min-h-0 overflow-y-auto rounded-[22px] bg-card p-4 shadow-panel">
-			<div className="mb-4 flex items-center justify-between">
-				<div>
-					<h2 className="font-medium">Agent trong platform</h2>
-					<p className="text-xs text-muted-foreground">Leader chỉ thấy agent đang phát hành</p>
-				</div>
-				<Badge variant="secondary">{agents.length}</Badge>
-			</div>
-			<div className="space-y-2">
-				{agents.map((agent) => (
-					<div key={agent.agent_id} className="rounded-xl border p-3">
-						<div className="flex items-start justify-between gap-2">
-							<div className="min-w-0">
-								<p className="truncate text-sm font-medium">{agent.name}</p>
-								<p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-									{agent.objective}
+				<div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+					<div className="mx-auto max-w-4xl space-y-5">
+						{conversation.length === 0 && !proposal && (
+							<div className="pt-10 text-center">
+								<Hammer className="mx-auto size-6 text-muted-foreground" />
+								<p className="mt-3 text-[15px]/5 font-semibold">Bạn cần agent làm nghiệp vụ gì?</p>
+								<p className="mx-auto mt-1 max-w-md text-[13px]/[18px] text-muted-foreground">
+									Mô tả một agent hoặc cả một đội. Builder viết prompt, chọn tool, gắn kho tri thức,
+									dùng lại skill đã có rồi chấm eval trước khi bạn phát hành.
 								</p>
 							</div>
-							<Button size="icon-sm" variant="ghost" onClick={() => toggleLifecycle(agent)}>
+						)}
+						{conversation.map((item, index) => (
+							<div
+								key={`${item.role}:${index}`}
+								className={`w-fit max-w-[84%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm ${
+									item.role === 'user'
+										? 'ml-auto bg-[var(--cue-bg-subtle,var(--muted))]'
+										: 'border bg-background'
+								}`}
+							>
+								{item.text}
+							</div>
+						))}
+						{working && (
+							<p className="flex items-center gap-2 text-[13px]/[18px] text-muted-foreground">
+								<Spinner /> Builder đang soạn, có thể mất vài phút với một đội nhiều agent.
+							</p>
+						)}
+
+						{proposal && (
+							<>
+								<div className="flex flex-wrap items-center justify-between gap-3 border-y py-3">
+									<div className="min-w-0">
+										<p className="text-sm font-medium">{proposal.assistant_message}</p>
+										{proposal.clarification_question && (
+											<p className="mt-1 text-sm text-amber-700">
+												{proposal.clarification_question}
+											</p>
+										)}
+										<p className="mt-1 text-xs text-muted-foreground">
+											Model: <span className="font-mono">{proposal.chat_model_config.model}</span>
+											{' · '}{proposal.fixed_config.runtime_note}
+										</p>
+									</div>
+									{proposal.status === 'ready' && (
+										<Button onClick={publish} disabled={working}>
+											<CheckCircle2 /> Phát hành
+										</Button>
+									)}
+									{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (
+										<Button onClick={() => void confirmOutline()} disabled={working}>
+											<CheckCircle2 /> Chốt định hướng và sinh cấu hình
+										</Button>
+									)}
+									{proposal.status === 'published' && <Badge>Đã phát hành</Badge>}
+									{proposal.status === 'blocked' && <Badge variant="destructive">Bị chặn</Badge>}
+								</div>
+								{proposal.planned_agents.length > 0 && (
+									<div className="grid gap-3 md:grid-cols-2">
+										{proposal.planned_agents.map((agent) => (
+											<div key={agent.name} className="rounded-xl border bg-background p-4">
+												<div className="flex items-center gap-2">
+													<Bot className="size-4 text-primary" />
+													<p className="font-medium">{agent.name}</p>
+												</div>
+												<p className="mt-2 text-sm text-muted-foreground">{agent.objective}</p>
+												<div className="mt-3 flex flex-wrap gap-1.5">
+													{agent.suggested_tools.map((tool) => (
+														<Badge key={tool.id} variant="secondary" className="font-mono text-[10px]">
+															{tool.tool_name}
+														</Badge>
+													))}
+												</div>
+											</div>
+										))}
+									</div>
+								)}
+								{proposal.agents.map((agent) => (
+									<AgentProposalCard key={`${agent.name}:${agent.skill_name}`} proposal={agent} />
+								))}
+							</>
+						)}
+					</div>
+				</div>
+
+				<div className="shrink-0 px-4 pb-4">
+					<div className="mx-auto max-w-4xl rounded-2xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring">
+						<Textarea
+							value={message}
+							onChange={(event) => setMessage(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+									event.preventDefault();
+									void prepare();
+								}
+							}}
+							placeholder="Ví dụ: Tạo agent tìm khách sạn, kiểm tra phòng trống và đề xuất theo ngân sách..."
+							className="min-h-16 resize-none border-none shadow-none focus-visible:ring-0"
+							disabled={working}
+						/>
+						<div className="flex items-center justify-between gap-2 px-1">
+							<p className="text-xs text-amber-700">
+								{!selectedModel && 'Hãy chọn model trước khi gửi yêu cầu cho Builder.'}
+							</p>
+							<Button
+								size="sm"
+								onClick={() => void prepare()}
+								disabled={working || !message.trim() || !selectedModel}
+							>
+								{working ? <Spinner /> : <Send />}
+								Gửi cho Builder
+							</Button>
+						</div>
+					</div>
+				</div>
+			</main>
+		</div>
+
+		<Sheet open={agentsOpen} onOpenChange={setAgentsOpen}>
+			<SheetContent className="w-[360px] sm:max-w-[360px]">
+				<SheetHeader>
+					<SheetTitle>Agent trong platform</SheetTitle>
+					<SheetDescription>Leader chỉ mời agent đang phát hành. Bấm nút nguồn để bật hoặc tắt.</SheetDescription>
+				</SheetHeader>
+				<div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">
+					{agents.map((agent) => (
+						<div key={agent.agent_id} className="flex items-start gap-3 rounded-xl px-2 py-2.5 hover:bg-muted/60">
+							<ClayAvatar id={agent.agent_id} label={agent.name} size={32} />
+							<div className="min-w-0 flex-1">
+								<p className="truncate text-sm font-medium">{agent.name}</p>
+								<p className="line-clamp-2 text-xs text-muted-foreground">{agent.objective}</p>
+								<p className="mt-1 text-[11px] text-muted-foreground">
+									{agent.tool_count} tool ·{' '}
+									{agent.lifecycle_state === 'published' ? 'Đang phát hành' : 'Bản nháp'}
+								</p>
+							</div>
+							<Button
+								size="icon-sm"
+								variant="ghost"
+								aria-label={agent.lifecycle_state === 'published' ? 'Ngừng phát hành' : 'Phát hành'}
+								title={agent.lifecycle_state === 'published' ? 'Ngừng phát hành' : 'Phát hành'}
+								onClick={() => toggleLifecycle(agent)}
+							>
 								{agent.lifecycle_state === 'published' ? <Power /> : <PowerOff />}
 							</Button>
 						</div>
-						<div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
-							<span>{agent.tool_count} tool</span>
-							<span className="inline-flex items-center gap-1">
-								<ChevronRight className="size-3" />
-								{agent.lifecycle_state === 'published' ? 'Đang phát hành' : 'Bản nháp'}
-							</span>
-						</div>
-					</div>
-				))}
-				{agents.length === 0 && (
-					<p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-						Chưa có business agent nào.
-					</p>
-				)}
-			</div>
-		</aside>
-		</div>
+					))}
+					{agents.length === 0 && (
+						<p className="px-2 py-6 text-center text-sm text-muted-foreground">Chưa có business agent nào.</p>
+					)}
+				</div>
+			</SheetContent>
+		</Sheet>
 		<CreateCredentialDialog
 			open={credentialOpen}
 			onOpenChange={setCredentialOpen}

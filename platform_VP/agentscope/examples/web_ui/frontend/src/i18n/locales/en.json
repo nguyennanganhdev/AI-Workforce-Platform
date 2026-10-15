@@ -221,36 +221,15 @@
 		"leader": "Leader and tickets",
 		"builder": "Builder",
 		"agentStudio": "Agent management",
-		"agentMap": "Agent map",
 		"groupOperations": "Operations",
 		"groupCapabilities": "What agents can use",
 		"account": "Account"
 	},
 	"agents": {
-		"title": "Agents",
-		"create": "Create agent",
-		"view": {
-			"graph": "Graph",
-			"office": "Office",
-			"list": "List",
-			"library": "Library"
-		},
 		"list": {
-			"name": "Name",
-			"reach": "Leader can pick",
-			"access": "Access",
-			"actions": "Actions",
-			"actionsFor": "Actions for {{name}}",
-			"owner": "Yours",
 			"noDescription": "No description yet",
 			"chat": "Open chat",
-			"edit": "Edit",
-			"delete": "Delete agent",
-			"emptyTitle": "No agents yet",
-			"emptyDescription": "Use “Create agent” at the top to make the first one.",
-			"errorTitle": "Could not load the agents",
-			"errorDescription": "Check the connection to the server and try again.",
-			"retry": "Try again"
+			"edit": "Edit"
 		},
 		"graph": {
 			"agentCount": "Agents: {{count}}",
@@ -277,27 +256,7 @@
 			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
 			"inspectorSessions": "Tickets",
 			"inspectorRunning": "Replies",
-			"inspectorResponse": "Last active",
-			"mobile": "The graph needs a wider screen. The agents are listed below."
-		},
-		"library": {
-			"intro": "What you can give your agents. Each has its own page in Settings.",
-			"mcp": {
-				"title": "External connections (MCP)",
-				"description": "Tools from outside systems."
-			},
-			"skill": {
-				"title": "Skills",
-				"description": "Reusable instructions for agents."
-			},
-			"knowledge": {
-				"title": "Knowledge",
-				"description": "Documents agents can look things up in."
-			},
-			"credential": {
-				"title": "Credentials",
-				"description": "Access keys for models and services."
-			}
+			"inspectorResponse": "Last active"
 		},
 		"office": {
 			"phase": {

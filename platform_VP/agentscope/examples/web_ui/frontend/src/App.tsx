@@ -65,8 +65,9 @@ const router = createBrowserRouter([
 					{ path: '/workforce/builder', lazy: page(() => import('@/pages/workforce/builder'), 'AgentBuilderPage') },
 					{ path: '/workforce/agents', lazy: page(() => import('@/pages/workforce/agents'), 'AgentManagementPage') },
 					{ path: '/workforce/agents/:agentId', lazy: page(() => import('@/pages/workforce/agents'), 'AgentDetailPage') },
-					{ path: '/settings', element: <Navigate to="/agents" replace /> },
-					{ path: '/agents/:view?', lazy: page(() => import('@/pages/agents'), 'AgentsPage') },
+					{ path: '/settings', element: <Navigate to="/workforce/agents" replace /> },
+					// The agent map is a tab of agent management now.
+					{ path: '/agents/*', element: <Navigate to="/workforce/agents?view=graph" replace /> },
 					{ path: '/schedule', lazy: page(() => import('@/pages/schedule'), 'SchedulePage') },
 					{ path: '/channel', lazy: page(() => import('@/pages/channel'), 'ChannelPage') },
 					{ path: '/credential', lazy: page(() => import('@/pages/credential'), 'CredentialPage') },
