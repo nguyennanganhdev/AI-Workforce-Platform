@@ -10,9 +10,9 @@ function getPattern(input: string): string {
 export const GlobRenderer: ToolRenderer = {
 	getDisplayName: (_call, t) => t('tool.glob.name'),
 
-	renderHeader: (pair) => (
+	renderHeader: (pair, t) => (
 		<>
-			<span className={toolLabelClass}>Glob pattern</span>
+			<span className={toolLabelClass}>{t('tool.glob.pattern')}</span>
 			<span className={toolArgClass}>{getPattern(pair.call.input)}</span>
 		</>
 	),

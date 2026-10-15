@@ -104,7 +104,7 @@ export function ChannelDetailPanel({
 	}
 
 	return (
-		<div className="flex h-full flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
+		<div className="flex h-full flex-col overflow-hidden bg-background">
 			<div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4">
 				<div className="flex min-w-0 items-center gap-3">
 					<TypeAvatar type={type} className="size-10 rounded-lg" />

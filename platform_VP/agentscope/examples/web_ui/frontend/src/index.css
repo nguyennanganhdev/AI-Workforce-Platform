@@ -3,6 +3,9 @@
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
+/* The Cue design layer. It only declares tokens under `.cue-theme`, so this
+   import alone changes nothing — `useCueTheme` is what switches it on. */
+@import './styles/cue.css';
 @source '../node_modules/streamdown/dist/*.js';
 @source '../node_modules/@streamdown/*/dist/*.js';
 
@@ -29,7 +32,9 @@ svg.lucide {
 	stroke-width: 1.7;
 }
 
-@custom-variant dark (&:is(.dark *));
+/* Off under `.cue-theme`: Cue is light only, and `.dark` follows the OS, so
+   without this a dark-mode machine paints dark utilities over light tokens. */
+@custom-variant dark (&:is(.dark *):not(.cue-theme *));
 
 :root {
 	/* --text: #6b6375; */

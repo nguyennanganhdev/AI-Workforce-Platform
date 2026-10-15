@@ -51,7 +51,8 @@
 		"message": "消息",
 		"llm": "LLM",
 		"tts": "TTS",
-		"embedding": "向量"
+		"embedding": "向量",
+		"switchToVi": "Chuyển sang tiếng Việt"
 	},
 	"error": {
 		"description": "页面遇到意外错误。你可以重试或返回首页。",
@@ -65,16 +66,21 @@
 			"fileCount_one": "{{count}} 个文件",
 			"fileCount_other": "{{count}} 个文件",
 			"lineCount_one": "读取 {{formatted}} 行",
-			"lineCount_other": "读取 {{formatted}} 行"
+			"lineCount_other": "读取 {{formatted}} 行",
+			"lines": "{{count}} lines"
 		},
 		"glob": {
-			"name": "Glob"
+			"name": "Glob",
+			"pattern": "Glob pattern"
 		},
 		"taskCreate": {
-			"name": "TaskCreate"
+			"name": "TaskCreate",
+			"title": "Create task",
+			"untitled": "(untitled)"
 		},
 		"grep": {
-			"name": "Grep"
+			"name": "Grep",
+			"pattern": "Grep pattern"
 		},
 		"summary": {
 			"separator": "，",
@@ -92,7 +98,9 @@
 			"mcp_other": "调用 {{count}} 次 MCP",
 			"fallback_one": "调用 {{count}} 次工具",
 			"fallback_other": "调用 {{count}} 次工具"
-		}
+		},
+		"input": "Input",
+		"output": "Output"
 	},
 	"textInput": {
 		"toComplete": "补全",
@@ -161,23 +169,188 @@
 			"emptyNoAgent": "请先选择一个智能体。",
 			"emptyHasAgent": "创建会话开始对话。",
 			"today": "今天",
-			"earlier": "更早"
+			"earlier": "更早",
+			"search": "搜索对话",
+			"searchPlaceholder": "搜索对话…",
+			"recent": "最近对话",
+			"results": "结果",
+			"noResults": "没有匹配“{{query}}”的对话。",
+			"previewAgent": "智能体：{{name}}",
+			"previewRunning": "处理中…",
+			"previewAwaiting": "等待你的操作",
+			"demoSection": "示例场景",
+			"newMenu": "新建",
+			"newAgent": "新建智能体",
+			"close": "关闭"
+		},
+		"header": {
+			"openProfile": "打开 {{name}} 的设置",
+			"panels": "侧边面板"
+		},
+		"messagePlaceholder": "发消息给 {{name}}",
+		"onboarding": {
+			"greeting": "你好 {{name}}，很高兴认识你，我来帮你。",
+			"greetingNoName": "你好，很高兴认识你，我来帮你。",
+			"question": "你想从哪件事开始？",
+			"hint": "没有合适的选项？直接输入你的回复。",
+			"continue": "继续",
+			"options": [
+				"S1.01-1201 住户报告厨房水槽下方从早上开始漏水，请处理",
+				"住户报告客厅插座冒烟并有焦味",
+				"12 楼走廊有大块污渍，请安排保洁",
+				"现在的智能体团队有哪些成员，各自负责什么？"
+			]
+		},
+		"agents": {
+			"label": "智能体",
+			"emptyTitle": "还没有智能体",
+			"emptyDescription": "点击 + 创建第一个智能体。",
+			"sessions": "对话",
+			"renameSession": "重命名此对话",
+			"deleteSession": "删除此对话",
+			"chatsOf": "与 {{name}} 的对话"
+		}
+	},
+	"shell": {
+		"backToChat": "返回对话",
+		"collapseSidebar": "收起侧边栏",
+		"expandSidebar": "展开侧边栏",
+		"groupWorkforce": "Workforce",
+		"leader": "Leader 与工单",
+		"builder": "Builder",
+		"agentStudio": "智能体管理",
+		"agentMap": "智能体图",
+		"groupOperations": "运行",
+		"groupCapabilities": "智能体可用的能力",
+		"account": "账户"
+	},
+	"agents": {
+		"title": "智能体",
+		"create": "创建智能体",
+		"view": {
+			"graph": "拓扑图",
+			"office": "办公室",
+			"list": "列表",
+			"library": "资源库"
+		},
+		"list": {
+			"name": "名称",
+			"reach": "Leader 可选用",
+			"access": "权限",
+			"actions": "操作",
+			"actionsFor": "对 {{name}} 的操作",
+			"owner": "我的",
+			"noDescription": "暂无描述",
+			"chat": "打开对话",
+			"edit": "编辑",
+			"delete": "删除智能体",
+			"emptyTitle": "还没有智能体",
+			"emptyDescription": "点击上方“创建智能体”来创建第一个。",
+			"errorTitle": "未能加载智能体列表",
+			"errorDescription": "请检查与服务器的连接后重试。",
+			"retry": "重试"
+		},
+		"graph": {
+			"agentCount": "{{count}} 个智能体",
+			"running": "{{days}} 天内 {{count}} 个工单",
+			"fullscreen": "全屏",
+			"exitFullscreen": "退出全屏",
+			"zoomIn": "放大",
+			"zoomOut": "缩小",
+			"fit": "适应视图",
+			"legendLive": "最近 15 分钟内有回复",
+			"legendIdle": "已配置，空闲",
+			"resident": "住户",
+			"residentNote": "通过合作方发送请求",
+			"you": "你",
+			"youNote": "直接对话",
+			"leader": "Leader",
+			"leaderNote": "为每个请求挑选智能体",
+			"sessionCount": "{{count}} 个工单",
+			"idle": "空闲",
+			"invitable": "Leader 可选用",
+			"notInvitable": "未开启邀请",
+			"notInvitableShort": "未开启邀请",
+			"invitableHelp": "当请求需要时，Leader 可以把这个智能体加入会话。",
+			"notInvitableHelp": "该智能体未开启“允许被邀请”，Leader 无法将其加入会话。请在编辑的“邀请配置”中开启。",
+			"inspectorSessions": "工单",
+			"inspectorRunning": "回复",
+			"inspectorResponse": "最近活动",
+			"mobile": "拓扑图需要更宽的屏幕。下面是智能体列表。"
+		},
+		"library": {
+			"intro": "可以分配给智能体的资源。每一项在“设置”中都有自己的页面。",
+			"mcp": {
+				"title": "外部连接（MCP）",
+				"description": "来自外部系统的工具。"
+			},
+			"skill": {
+				"title": "技能",
+				"description": "可复用的智能体指引。"
+			},
+			"knowledge": {
+				"title": "知识库",
+				"description": "供智能体查阅的文档。"
+			},
+			"credential": {
+				"title": "凭证",
+				"description": "模型与服务的访问密钥。"
+			}
+		},
+		"office": {
+			"sample": "办公室按演示脚本运行，尚未接入真实会话数据",
+			"sampleAll": "办公室中的智能体和活动均为示例数据",
+			"phase": {
+				"idle": "大家都在工位",
+				"request": "新请求",
+				"call": "Leader 召集开会",
+				"meeting": "会议中",
+				"return": "回到工位",
+				"work": "处理中",
+				"collab": "协作中",
+				"approval": "等待你审批",
+				"done": "已完成"
+			},
+			"play": "继续",
+			"pause": "暂停",
+			"speed": "速度",
+			"restart": "重新开始",
+			"log": "动态",
+			"rooms": {
+				"meeting": "会议室",
+				"approval": "你的办公室 · 审批",
+				"reception": "接待台",
+				"workspace": "办公区"
+			},
+			"status": {
+				"idle": "在工位空闲",
+				"working": "正在处理任务",
+				"off": "未开启可被邀请，不参加会议",
+				"walking": "走动中"
+			}
 		}
 	},
 	"dialog-agent-create": {
 		"title": "创建智能体",
-		"description": "定义新智能体的身份与行为。"
+		"description": "定义新智能体的身份与行为。",
+		"submit": "创建智能体"
 	},
 	"agent-form": {
+		"advanced": {
+			"legend": "高级设置",
+			"description": "可保持默认。需要调整时再展开对应部分。"
+		},
 		"identity": {
 			"legend": "智能体身份",
 			"description": "定义此智能体行为的名称和指令。",
 			"name": {
 				"label": "名称",
-				"placeholder": "我的智能体"
+				"placeholder": "我的智能体",
+				"description": "名称中带有角色词（如技术、接待、计算）时，会选择对应的头像。"
 			},
 			"system-prompt": {
-				"label": "系统提示词"
+				"label": "系统提示词",
+				"description": "描述智能体的角色、工作范围和回答方式。"
 			}
 		},
 		"context-config": {
@@ -188,6 +361,9 @@
 			},
 			"reserve-ratio": {
 				"label": "保留比例"
+			},
+			"context-buffer-ratio": {
+				"label": "上下文缓冲比例"
 			},
 			"tool-result-limit": {
 				"label": "工具结果限制"
@@ -238,7 +414,8 @@
 	},
 	"dialog-agent-edit": {
 		"title": "编辑智能体",
-		"description": "更新此智能体的配置。"
+		"description": "更新此智能体的配置。",
+		"submit": "保存更改"
 	},
 	"dialog-agent-delete": {
 		"entity": "智能体",
@@ -564,6 +741,22 @@
 		"heroTitle": "为您的区域构建和运营智能体",
 		"heroDescription": "创建区域管理员账户，管理智能体，并接收正确路由到所属业务域和区域的请求。",
 		"securityHint": "短期访问令牌和自动轮换的安全会话",
+		"showcase": {
+			"live": "实时",
+			"caption": "示意：住户的请求由 Leader 路由到合适的智能体并完成处理",
+			"statusIdle": "等待请求",
+			"statusBusy": "处理中",
+			"statusDone": "已完成",
+			"resident": "住户",
+			"routed": "已路由：Ocean Park 1 · 水电",
+			"request": "我家水管爆了，请帮忙叫维修师傅。",
+			"reply": "已预约师傅今天 14:00 上门，工单号 SC-1042。",
+			"agents": {
+				"reception": "前台",
+				"technical": "技术",
+				"hotel": "酒店"
+			}
+		},
 		"loginTitle": "欢迎回来",
 		"loginDescription": "使用邮箱或用户名登录。",
 		"registerTitle": "创建账户",
@@ -582,7 +775,18 @@
 		"selectArea": "选择区域",
 		"createAccount": "创建账户",
 		"connectedTo": "服务地址：",
-		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。"
+		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。",
+		"brand": "VAgents Platform",
+		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
+		"errors": {
+			"invalidCredentials": "invalid credentials",
+			"invalidEmail": "invalid email address",
+			"invalidUsername": "username must be 3-64 lowercase letters, numbers, ., _, or -",
+			"invalidPassword": "password must be 12-1024 bytes",
+			"alreadyExists": "email or username already exists",
+			"scopeRequired": "domain_id and area_id are required",
+			"invalidArea": "area does not belong to the selected domain"
+		}
 	},
 	"setup": {
 		"title": "连接到服务器",
@@ -892,5 +1096,61 @@
 		"empty": "此文件夹为空",
 		"pressEnter": "先按回车校验该路径",
 		"gitTooltip": "{{staged}} 已暂存 · {{unstaged}} 已修改 · {{untracked}} 未跟踪\n行数不含未跟踪文件"
+	},
+	"quickAgent": {
+		"title": "新建智能体",
+		"description": "起个名字并说明它做什么，其余使用默认设置。",
+		"templates": "快速开始",
+		"name": "名称",
+		"namePlaceholder": "例如：Mia",
+		"role": "这个智能体帮你做什么？",
+		"rolePlaceholder": "告诉智能体如何工作、优先什么、避免什么。",
+		"advanced": "高级设置",
+		"create": "创建智能体",
+		"creating": "创建中…",
+		"presets": {
+			"assistant": {
+				"name": "个人助理",
+				"prompt": "你是一位友好的个人助理。帮助用户安排日程、总结信息、规划待办。回答简洁，信息不足时先提问。"
+			},
+			"reception": {
+				"name": "前台",
+				"prompt": "你是物业管理处的前台。接收住户的请求，收集完整信息（房号、问题、时间）并转给对应部门。始终礼貌、清晰。"
+			},
+			"technician": {
+				"name": "技术员",
+				"prompt": "你是水电技术员。根据住户描述诊断问题，给出安全的临时处理建议，必要时创建维修单。"
+			},
+			"planner": {
+				"name": "规划师",
+				"prompt": "你帮助规划旅行和活动：询问预算、人数和时间，然后给出带费用估算的具体方案。"
+			}
+		}
+	},
+	"groupChat": {
+		"menuAgent": "创建智能体",
+		"menuGroup": "创建群聊",
+		"title": "新建群聊",
+		"description": "选择一起工作的智能体。组长负责协调并给成员分配任务。",
+		"name": "群聊名称",
+		"namePlaceholder": "例如：住户服务团队",
+		"members": "成员",
+		"selected": "已选 {{count}} 个",
+		"searchPlaceholder": "搜索智能体…",
+		"leader": "组长",
+		"makeLeader": "设为组长",
+		"goal": "这个群聊做什么？（可选）",
+		"goalPlaceholder": "群聊的共同目标，例如：受理并处理住户的维修请求。",
+		"willEnable": "将为 {{names}} 开启“允许被邀请”，以便组长邀请其加入。",
+		"blocked": "无法邀请 {{names}}：未开启“允许被邀请”，且你无权编辑该智能体。",
+		"notEnough": "群聊至少需要 2 个智能体，你目前有 {{count}} 个。",
+		"needTwo": "至少选择 2 个智能体",
+		"create": "创建群聊",
+		"creating": "创建中…",
+		"delete": "删除群聊",
+		"entity": "群聊",
+		"kickoff": "这是群聊“{{name}}”。{{goal}}请使用 TeamCreate 创建团队并由你担任组长，然后使用 AgentInvite 邀请成员：{{members}}。成员到齐后，请简要介绍团队并等待我的请求。",
+		"kickoffGoal": "目标：{{goal}}。",
+		"headerNote": "组长 {{leader}} · {{count}} 个智能体"
 	}
 }

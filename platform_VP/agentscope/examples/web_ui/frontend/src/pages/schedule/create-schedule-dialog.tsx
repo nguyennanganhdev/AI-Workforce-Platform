@@ -189,7 +189,7 @@ export function CreateScheduleDialog({ open, onOpenChange, onCreated }: Props) {
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4">
+				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6">
 					<FieldGroup className="[&>[data-orientation=horizontal]>:last-child]:w-48">
 						<Field>
 							<FieldLabel>{t('common.name')}</FieldLabel>
