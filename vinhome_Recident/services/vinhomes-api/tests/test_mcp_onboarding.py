@@ -57,12 +57,16 @@ def test_onboarding_requires_bearer_and_discovers_tools_with_bridge_off(monkeypa
         response = client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=headers)
         assert response.status_code == 200
         tools = response.json()["result"]["tools"]
-        assert len(tools) == 7
-        assert {tool["name"] for tool in tools} == {'vh_ticket_get', 'vh_work_order_reschedule', 'vh_ticket_add_note', 'vh_knowledge_search', 'vh_work_order_dispatch', 'vh_ticket_cancel', 'vh_staff_available'}
+        assert len(tools) == 16
+        assert {tool["name"] for tool in tools} >= {'vh_ticket_get', 'vh_work_order_reschedule', 'vh_ticket_add_note', 'vh_knowledge_search', 'vh_work_order_dispatch', 'vh_ticket_cancel', 'vh_staff_available'}
         assert all("ticket_id" in tool["inputSchema"]["required"] for tool in tools)
         declaration_path=Path(os.getenv("VINHOMES_TEST_DECLARATION_PATH",str(Path(__file__).resolve().parents[3]/"deploy/platform/vinhomes-declaration.json")))
         declaration=json.loads(declaration_path.read_text(encoding="utf-8"))
-        assert {item["name"] for item in declaration["tools"]} == {tool["name"] for tool in tools}
+        # The standard dispatch declaration deliberately grants only its seven core tools.
+        # Service-context and Travel discovery do not silently expand deployed route permissions.
+        declared = {item["name"] for item in declaration["tools"]}
+        assert declared == {'vh_ticket_get', 'vh_work_order_reschedule', 'vh_ticket_add_note', 'vh_knowledge_search', 'vh_work_order_dispatch', 'vh_ticket_cancel', 'vh_staff_available'}
+        assert declared <= {tool["name"] for tool in tools}
         for name in ("vh_resident_context","vh_visitor_register","vh_amenity_book","create_ticket"):
             response=client.post("/mcp",json={"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":name,"arguments":{"ticket_id":"not-a-ticket"}}},headers=headers)
             body=response.json()

@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["httpx>=0.27,<1", "pytest>=8,<10"]
+test = ["pytest>=8,<10", "ruff>=0.16,<1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

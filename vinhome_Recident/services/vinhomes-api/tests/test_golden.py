@@ -400,7 +400,7 @@ def test_G07_renovation_rules_and_permits(database):
 
 def test_G08_a_planned_outage_is_drafted_by_an_agent_published_by_management_and_told_once(database):
     s101 = sql(database, "select id from buildings where code='S1.01'")[0]["id"]
-    staff_token = mint(database, MINH, "staff_assistant")["token"]
+    staff_token = mint(database, GIANG, "staff_assistant")["token"]
     with outsider(database) as c:
         drafted = c.post("/operations/announcements", headers={**bearer(staff_token), **idem()}, json={
             "kind": "outage_notice", "title": "Cắt nước S1.01", "body_md": "Cắt nước 09:00 đến 12:00.", "building_ids": [str(s101)],

@@ -1,14 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./state-variants.css";
 @import "@fontsource-variable/manrope";
-
-/*
- * Streamdown draws an agent's prose, and Tailwind only ships classes it can see used. Its markup lives
- * in a dependency, so without this the transcript renders unstyled markdown — correct HTML with none
- * of the spacing that makes it readable. The path is relative to this file.
- */
-@source "../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 

@@ -24,7 +24,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from .platform import (ACTIVE, PROGRESS, RETRY_CODES, SILENT_TEXT, STOP_TRACKING, TENANT, TIMEZONE, Bridge, Platform,
+from .platform import (ACTIVE, PROGRESS, RETRY_CODES, SILENT_TEXT, STOP_TRACKING, TENANT, TIMEZONE, Platform,
                        PlatformError, apply_event, apply_result, apply_snapshot, event_body, fail_link, post_chat,
                        provider_events, quote_card, retryable)
 
@@ -97,7 +97,7 @@ async def _send(engine: AsyncEngine, client: Platform, tenant: str, ticket: str)
         command = (await db.execute(text(f"""
             select id,kind,body,attempts,next_attempt_at<=now() as due from platform_commands
             where ticket_id=:ticket and tenant_id={TENANT} and status='pending'
-            order by (kind='approval_decision') desc,created_at,id limit 1
+            order by (kind='approval_decision') desc,enqueue_seq limit 1
         """), {"ticket": ticket})).mappings().first()
         if command is None or not command["due"]:
             return

@@ -72,7 +72,9 @@ Chỉ có một leader, không có chuyên viên: mỗi ticket là một việc 
 
 ### Công cụ
 
-Catalog v2 giữ 7 tool, chỉ xử lý ticket đã bàn giao. Identity/căn hộ có sẵn; Reception giữ tiếp nhận/dịch vụ cư dân. Platform quản lý session và ngoại lệ, không có bước BQL duyệt yêu cầu ở domain. Xem [MCP_PLATFORM_V2.md](../../docs/domain/MCP_PLATFORM_V2.md): backend platform dùng control-plane token để tự lấy grant theo ticket/workflow, gắn vào transport riêng, refresh catalog/grants và parser v2. Không tự áp declaration vào platform chưa xác nhận adapter.
+MCP discovery hiện công bố 16 tool. Declaration trong thư mục này chủ động chỉ cấp 7 tool điều phối cơ bản bên dưới, không tự mở quyền Travel hoặc ngữ cảnh dịch vụ trên route đang chạy. Hai tool ngữ cảnh/availability và 7 tool Travel cần cấu hình quyền riêng đúng nghiệp vụ; xem [Travel contract](../../docs/domain/TRAVEL_MOCK_PLATFORM_CONTRACT_20261014.md). Không coi số lượng discovery là số quyền của một ticket.
+
+Chỉ xử lý ticket đã bàn giao. Identity/căn hộ có sẵn; Reception giữ tiếp nhận/dịch vụ cư dân. Platform quản lý session và ngoại lệ, không có bước BQL duyệt yêu cầu ở domain. Xem [MCP_PLATFORM_V2.md](../../docs/domain/MCP_PLATFORM_V2.md): backend platform dùng control-plane token để tự lấy grant theo ticket/workflow, gắn vào transport riêng, refresh catalog/grants và parser v2. Không tự áp declaration vào platform chưa xác nhận adapter.
 
 Mọi công cụ nhận ticket_id từ bàn giao và phải dùng grant đúng ticket/workflow/tool còn hiệu lực. Backend cấp client_reference; lệnh mới có expected_ticket_version, hủy/đổi lịch có nguồn lời cư dân. Bootstrap token chỉ discovery/control-plane. Các thẻ đồng ý báo giá/xác nhận hoàn thành vẫn do cư dân tự bấm tại domain; requires_consent:false không bỏ qua quyền này. Tool timeout7s, declaration timeout8s; retry giữ reference/nội dung.
 

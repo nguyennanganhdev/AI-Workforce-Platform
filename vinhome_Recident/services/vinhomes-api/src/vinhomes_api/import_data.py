@@ -16,7 +16,7 @@ from pathlib import Path
 
 import asyncpg
 
-from .mock_data import CAT_SEC, CAT_TECH, DOMAIN, MANAGEMENT, SITE, TENANT, uid
+from .mock_data import CAT_SEC, CAT_TECH, MANAGEMENT, SITE, TENANT, uid
 
 ORDER = ["service_categories", "buildings", "management_coverage", "units", "zone_settings", "residents", "staff", "shifts", "vehicles", "cards", "debit_notes", "debit_note_lines",
          "amenities", "handbook", "policies", "announcements"]

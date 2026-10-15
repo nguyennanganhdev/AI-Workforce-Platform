@@ -415,7 +415,7 @@ def resident_reply_text(value):
 
 
 def commands(database, ticket):
-    rows = sql(database, "select * from platform_commands where ticket_id=$1 order by created_at,id", UUID(ticket))
+    rows = sql(database, "select * from platform_commands where ticket_id=$1 order by enqueue_seq", UUID(ticket))
     return [{**row, "body": json.loads(row["body"])} for row in rows]
 
 

@@ -15,7 +15,7 @@ from vinhomes_api.v3_config import V3Settings
 
 CLIENT = "demo-platform"
 RESIDENT = "local-v3-resident"
-MANAGER = "local-v3-management"
+STAFF = "local-v3-technical"
 HEADERS = {"Idempotency-Key": "x"}
 
 
@@ -81,12 +81,20 @@ def test_the_token_acts_as_that_person_and_only_for_catalog_operations(database)
 
 
 def test_staff_delegation_reaches_staff_operations_with_the_persons_own_rights(database):
-    token = mint(database, MANAGER, "staff_assistant")
+    token = mint(database, STAFF, "staff_assistant")
     assert token["scopes"] == ["read", "draft", "propose"] and token["persona"] == "staff"
     with outsider(database) as c:
         assert c.get("/operations/me", headers=bearer(token["token"])).status_code == 200
         assert c.get("/tickets", headers=bearer(token["token"])).status_code == 200
         assert c.get("/resident/tickets", headers=bearer(token["token"])).status_code == 403
+
+
+def test_retired_management_delegation_cannot_reopen_domain_operations(database):
+    # Loopback fixtures can mint a legacy token; a real caller must still be refused.
+    token = mint(database, "local-v3-management", "staff_assistant")
+    with outsider(database) as c:
+        assert c.get("/operations/me", headers=bearer(token["token"])).status_code == 403
+        assert c.get("/tickets", headers=bearer(token["token"])).status_code == 403
 
 
 def test_a_resident_cannot_get_a_staff_delegation(database):

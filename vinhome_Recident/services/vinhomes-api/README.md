@@ -1,6 +1,12 @@
 # Vinhomes Operations FastAPI
 
-## Demo mock
+## Triển khai hiện tại
+
+Ứng dụng chính chạy bằng [Compose độc lập](../../deploy/README.md): landing/auth/cư dân và staff/admin. BQL điều phối qua Platform, không có role BQL đăng nhập Domain. Xem [README Domain](../../README.md) và [ranh giới kiến trúc](../../ARCHITECTURE.md).
+
+MCP Streamable HTTP `/mcp` có 16 tool công bố; từng grant chỉ cho phép thao tác đúng ticket/tuyến. Kết nối hiện tại dùng [Workforce v1](../../docs/domain/NOI_WORKFORCE_V1.md), cấu hình và route do Domain admin quản lý. `/integration/v1` bên dưới là contract tương thích, không phải luồng triển khai chính.
+
+## Demo mock legacy (database test riêng)
 
 Chạy `setup_demo_database.ps1`, rồi `start_demo.ps1` trong `scripts/` từ thư mục dự án, mở `http://localhost:8000/docs`. Xem [hướng dẫn demo database V3](../../docs/backend/HUONG_DAN_DEMO_DATABASE_V3.md). Demo dùng PostgreSQL với dữ liệu faker, không dùng RAM; chọn vai trò bằng `X-Demo-Actor`, quyền vẫn kiểm tra từ database.
 
@@ -10,7 +16,7 @@ Run `python -m vinhomes_api` from this directory. The default bind address is `1
 
 Business endpoints require `VINHOMES_API_DATABASE_URL` (`postgresql+asyncpg://...`), a tenant (`VINHOMES_API_TENANT_ID`) and a signed-in user: set `VINHOMES_API_PASSWORD_AUTH=1` for password sign-in. For local loopback development, `VINHOMES_API_DEV_USER_ID` can select an existing active user; database grants are still checked. This development setting is rejected when binding to a non-loopback host.
 
-`GET /health` checks the process. `GET /ready` checks required V3 tables. Business queries use a transaction with `SET LOCAL app.tenant_id` and `app.user_id`. Operations routes require active management/staff grants; `/resident/*` and `/my/notifications` require an active tenant membership and check ownership of each chat, ticket or notification. Report and admin routes apply additional management scope or admin checks.
+`GET /health` checks the process. `GET /ready` checks required V3 tables. Business queries use a transaction with `SET LOCAL app.tenant_id` and `app.user_id`. Operations routes require active admin/staff grants; `/resident/*` and `/my/notifications` require an active tenant membership and check ownership of each chat, ticket or notification. Report and admin routes apply additional staff scope or admin checks.
 
 The API includes V3 read and write routes for tickets, assessment/review triage,
 work orders, assignments, approvals, evidence, QC, cleaning, security, contractor
@@ -21,10 +27,10 @@ interruptions, and JSON/DOCX incident or issued-invoice
 reports. Security incident creation accepts `business_severity` P0–P3 and stores
 the corresponding `p1`–`p4` value.
 `POST /resident/chats/{channel_id}/tickets` creates one ticket for a verified
-resident unit in an existing chat, resolves the active management coverage and
-notifies scoped managers. `POST /tickets/{ticket_id}/routing/ack` records BQL
-acceptance and notifies the requester.
-## Tích hợp với platform
+resident unit in an existing chat and resolves active operator coverage. With the
+bridge enabled, the Domain queues the request for Platform dispatch. The legacy
+`POST /tickets/{ticket_id}/routing/ack` compatibility route is not a BQL reception gate.
+## Contract tương thích legacy
 
 Domain là một đối tác độc lập; platform nối vào qua `/integration/v1` ([HOP_DONG_TICH_HOP.md](../../docs/domain/HOP_DONG_TICH_HOP.md)): danh mục công cụ, hộp thư hồ sơ và đề xuất phương án, nguồn sự kiện, gói tri thức. Mười hai kịch bản kiểm thu: [KICH_BAN_VANG.md](../../docs/domain/KICH_BAN_VANG.md), chạy bằng `python -m pytest tests/test_golden.py`.
 
@@ -37,7 +43,7 @@ python -m vinhomes_api.jobs sweep                                               
 
 ## Cơ sở dữ liệu
 
-Schema của domain nằm trong package, ở `src/vinhomes_api/schema/`: các migration đánh số (`migrations/0001…0005`), dữ liệu mẫu (`seed/`) và quyền của role chạy API (`roles.sql`). Không còn phụ thuộc `server/drizzle` hay công cụ của platform cũ.
+Schema của domain nằm trong package, ở `src/vinhomes_api/schema/`: 25 migration đánh số (`migrations/*.sql`), dữ liệu mẫu (`seed/`) và quyền của role chạy API (`roles.sql`). Không còn phụ thuộc `server/drizzle` hay công cụ của platform cũ.
 
 ```powershell
 $env:PYTHONPATH = 'src'
@@ -49,11 +55,13 @@ python -m vinhomes_api.database role    --url … --role vinhomes_api --password
 
 `--url` có thể bỏ khi biến `DATABASE_URL` đã đặt, để mật khẩu không nằm trên dòng lệnh. Một migration đã áp mà file bị sửa thì bị từ chối; muốn đổi schema hãy thêm migration mới.
 
-Quy tắc của schema: mọi bảng nghiệp vụ có `tenant_id`, bật RLS và **bắt buộc** RLS (kể cả với chủ bảng). Chỉ sáu bảng danh tính dùng chung không có (`accounts`, `platform_admins`, `runtime_backends`, `sessions`, `tenants`, `users`). API chạy bằng role không phải superuser và không `BYPASSRLS`; mỗi truy vấn chạy trong transaction đã đặt `app.tenant_id` và `app.user_id`. Quyền ghi của role runtime được liệt kê tối thiểu trong `roles.sql`. Các trigger giữ bất biến nghiệp vụ (bản ghi chỉ thêm, sức chứa phân công, quyết định phân loại, kiểm tra tệp và bằng chứng) nằm ở `0003_functions.sql` và `0004_…`.
+Quy tắc của schema: mọi bảng nghiệp vụ theo tenant có `tenant_id`, bật RLS và **bắt buộc** RLS (kể cả với chủ bảng). Danh tính dùng chung gồm `accounts`, `platform_admins`, `sessions`, `sign_in_attempts`, `tenants`, `users`; cấu hình chuyển trạng thái và metadata migration cũng nằm ngoài phạm vi tenant. API chạy bằng role không phải superuser và không `BYPASSRLS`; mỗi truy vấn chạy trong transaction đã đặt `app.tenant_id` và `app.user_id`. Quyền ghi của role runtime được liệt kê tối thiểu trong `roles.sql`. Các trigger giữ bất biến nghiệp vụ nằm trong các migration; schema contract test kiểm tra không còn bảng Agent/runtime của Platform cũ trong database Domain.
 
 Kiểm thử cần database: đặt `RESIDENT_TEST_ADMIN_URL` (role có CREATEDB, CREATEROLE, BYPASSRLS) và `RESIDENT_TEST_RUNTIME_URL` (role chạy API), rồi `python -m pytest tests`. Mỗi module test tự dựng một database sạch từ đúng các file trên và xóa nó sau đó.
 
-## Giao diện chạy thử API V3
+## Giao diện legacy chạy thử API V3
+
+Các bước dưới đây mô tả UI demo lịch sử với actor mô phỏng, không mô tả quyền hoặc luồng Platform hiện tại. Không dùng launcher/seed trên database vận hành. UI này không thuộc phạm vi nghiệm thu production.
 
 Mở `services/vinhomes-api/launchers/CHAY_DEMO_API.cmd` hoặc chạy `scripts/start_demo.ps1`, rồi mở **http://localhost:8000/demo/ui**.
 Trang là giao diện nghiệp vụ: cư dân gửi yêu cầu, BQL điều phối/phê duyệt, nhân viên nhận việc,

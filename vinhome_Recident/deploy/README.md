@@ -163,7 +163,7 @@ Domain dùng Nginx gateway hiện có; Caddy đã bỏ khỏi Compose. Xem [HTTP
 
 Không chạy new-env hoặc seed/reset lên server đã có dữ liệu. Backup trước khi áp migration mới; chạy migration và cấp role bằng image API mới, sau đó recreate riêng dịch vụ thay đổi. Không dùng `down -v`.
 
-MCP cung cấp 7 tool xử lý ticket đã bàn giao. `/mcp` thiếu/sai Bearer trả 401; catalog có key hoạt động độc lập với outbound bridge. Cấu hình platform kết nối sau theo [platform/README.md](platform/README.md).
+MCP công bố 16 tool; quyền thực thi được giới hạn theo grant của từng ticket và tuyến nghiệp vụ, không phải mọi ticket được gọi cả 16 tool. `/mcp` thiếu/sai Bearer trả 401; catalog có key hoạt động độc lập với outbound bridge. Cấu hình platform kết nối sau theo [platform/README.md](platform/README.md).
 
 ### Khôi phục mật khẩu
 

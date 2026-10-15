@@ -4,7 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 

@@ -232,7 +232,14 @@ def test_more_than_ten_initial_photos_are_split_without_losing_any(database, on)
     with resident(database) as c:
         _, ticket, _ = with_photo(c, count=11)
         queued = commands(database, ticket)
+        assert len({item["created_at"] for item in queued}) == 1
+        assert [item["kind"] for item in queued] == ["start_workflow", "workflow_reply"]
+        assert queued[0]["enqueue_seq"] < queued[1]["enqueue_seq"]
         assert [len(item["body"]["file_ids"]) for item in queued] == [10, 1]
+        # Force UUID order to disagree with insertion order: the worker must use enqueue_seq.
+        low_id, high_id = sorted((uuid4(), uuid4()))
+        for item, replacement in zip(queued, (high_id, low_id)):
+            sql(database, "update platform_commands set id=$2 where id=$1 returning id", item["id"], replacement)
         sync(database, fake)
         sync(database, fake)
         requests = fake.posts("/partner/requests")

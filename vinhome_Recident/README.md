@@ -1,65 +1,59 @@
-# Vinhomes — cư dân và nhân viên
+# Vinhomes — Domain cư dân và nhân viên
 
-Gói domain Vinhomes, đứng riêng, không chứa mã của platform: giao diện cư dân, giao diện nhân viên (Ban quản lý và nhân viên hiện trường), backend nghiệp vụ và agent lễ tân (Reception) trả lời cư dân. Về sau platform sẽ nối vào gói này như một khách hàng; Reception là đầu nối duy nhất từ Vinhomes sang platform.
+Domain độc lập gồm landing, auth, ứng dụng cư dân, staff/admin, API nghiệp vụ và Reception. **BQL dùng Platform** để điều phối session, gọi MCP, quản lý tiến độ và phản hồi cư dân. Domain giữ dữ liệu, quyền, trạng thái nghiệp vụ và bằng chứng.
 
-## Cấu trúc
-
-```
-vinhome_Recident/
-├── apps/
-│   ├── resident-web/   Giao diện cư dân        (React + Vite, cổng 3011)
-│   └── staff-web/      Giao diện nhân viên/BQL (React + Vite, cổng 3020)
-├── services/
-│   └── vinhomes-api/   Backend nghiệp vụ       (FastAPI + PostgreSQL, cổng 8000)
-├── agents/
-│   └── reception/      Agent lễ tân cho cư dân (Python, cổng 4202)
-├── packages/
-│   └── shared/         Mã dùng chung của hai app (upload ảnh, đính kèm)
-├── deploy/             Đóng gói: Dockerfile.web, nginx, compose.yml, deployment.env.example
-└── docs/               Hướng dẫn chạy và API (resident-web/, backend/)
-```
-
-`apps/` là thứ người dùng mở trên trình duyệt, `services/` là backend, `agents/` là agent chạy riêng, `packages/` là mã dùng chung không chạy một mình, `deploy/` là đóng gói. Mã mới đặt vào đúng thư mục theo nghĩa đó.
-
-## Công cụ
-
-Phần web dùng **Node 22 trở lên và npm** (build bằng Vite, test bằng Vitest); phần Python dùng Python 3.12. Không cần Bun.
-
-## Chạy khi phát triển
-
-```powershell
-npm install
-npm run dev:resident      # http://127.0.0.1:3011
-npm run dev:operations    # http://127.0.0.1:3020
-```
-
-Cả hai app chuyển `/api/business/*` tới backend (`VINHOMES_API_URL`, mặc định `http://127.0.0.1:8000`). Cách dựng backend và agent: [services/vinhomes-api/README.md](services/vinhomes-api/README.md), [agents/reception/README.md](agents/reception/README.md).
-
-| Lệnh | Việc làm |
+| Thư mục | Trách nhiệm |
 |---|---|
-| `npm run typecheck` | Kiểm tra TypeScript của cả hai app và `packages/shared` |
-| `npm test` | Test Vitest của cả ba workspace |
-| `npm run build` | Build cả hai app |
+| `apps/resident-web` | Landing, auth, chat, yêu cầu, thông báo và quyết định cư dân |
+| `apps/staff-web` | Staff nhận việc/ETA/tiến độ/bằng chứng; admin quản lý tài khoản, phạm vi và kết nối Platform |
+| `services/vinhomes-api` | FastAPI, PostgreSQL/pgvector, RLS, nghiệp vụ, MCP, scheduler và outbox |
+| `agents/reception` | Tiếp nhận CSKH, tra cứu tri thức, tạo yêu cầu có ngữ cảnh cư dân |
+| `packages/shared` | Upload/attachment và hợp đồng frontend dùng chung |
+| `deploy` | Compose, gateway, backup, TLS, bộ dữ liệu đầu vào và sandbox |
 
-Test Python: `python -m pytest tests` trong `agents/reception/` và `services/vinhomes-api/` (xem README của từng phần).
+Ranh giới module và nguyên tắc bảo trì: [ARCHITECTURE.md](ARCHITECTURE.md). Domain không import/build code `platform_VP`.
 
-## Đóng gói
+## Phát triển và kiểm tra
 
-Các thành phần của domain đóng thành container: `api`, `reception`, `resident`, `operations` và `gateway`, địa chỉ duy nhất phía trước. Hai app web dùng chung một Dockerfile ([deploy/Dockerfile.web](deploy/Dockerfile.web)); cư dân và nhân viên cùng đăng nhập ở `/login` rồi được chuyển sang đúng app.
+Node 22 trở lên (CI Node 24), npm, Python 3.12 và Docker Linux.
 
 ```powershell
-cd deploy
-copy deployment.env.example deployment.env      # điền giá trị, không commit
-docker compose --env-file deployment.env up -d --build
+npm ci --ignore-scripts --no-audit --no-fund
+npm run dev:resident
+npm run dev:operations
+npm run typecheck
+npm test
+npm run build
 ```
 
-Compose không khởi động PostgreSQL và kho S3; job `migrate` tự tạo schema trong database trống. Chi tiết trong [deploy/README.md](deploy/README.md).
+`npm test` chạy từng file DOM test trong process riêng; có thể chọn app bằng `npm test -- resident-web` hoặc `npm test -- staff-web`. Hai dev server proxy `/api/business` đến `VINHOMES_API_URL`, mặc định `http://127.0.0.1:8000`.
 
-## Đã bỏ và còn dang dở
+Trong `services/vinhomes-api`: cài `python -m pip install -e '.[test]'`, chạy `python -m pytest -q`. Test PostgreSQL cần `RESIDENT_TEST_ADMIN_URL` và `RESIDENT_TEST_RUNTIME_URL` trỏ tới PostgreSQL test loopback. Xem [API README](services/vinhomes-api/README.md).
 
-Gói này đã bỏ toàn bộ phần Supervisor, quản lý agent (builder, đánh giá, model, kết nối MCP, lịch chạy, phòng chat của agent), học tri thức và tool gateway, cùng các màn hình tương ứng trong app nhân viên. Còn lại:
+Trong `agents/reception`: cài `requirements-test.txt`, rồi chạy offline contracts bằng `python -m pytest -q tests/runtime/test_model_endpoint.py tests/runtime/test_cskh_contract.py`. Kết quả này không thay thế nghiệm thu Agent thật.
 
-- **Database đã thuộc gói** (`services/vinhomes-api/src/vinhomes_api/schema/`: 9 migration, dữ liệu mẫu, quyền role) và **bề mặt cho platform** (`/integration/v1`). Đọc theo thứ tự: nghiệp vụ [docs/domain/NGHIEP_VU_VINHOMES.md](docs/domain/NGHIEP_VU_VINHOMES.md) → 12 kịch bản kiểm thu [docs/domain/KICH_BAN_VANG.md](docs/domain/KICH_BAN_VANG.md) → hợp đồng với platform [docs/domain/HOP_DONG_TICH_HOP.md](docs/domain/HOP_DONG_TICH_HOP.md) → cách nạp dữ liệu [docs/domain/NAP_DU_LIEU.md](docs/domain/NAP_DU_LIEU.md) → quyết định về database [docs/domain/SPEC_DATABASE_DOMAIN.md](docs/domain/SPEC_DATABASE_DOMAIN.md) và kế hoạch [docs/domain/KE_HOACH_TRIEN_KHAI.md](docs/domain/KE_HOACH_TRIEN_KHAI.md).
-- **Đường nối Reception ⇄ "Supervisor".** Reception giao ticket bằng hợp đồng `schema_v2`: hộp thư, kết quả trả về và câu hỏi gửi lại cư dân (`v3_reception_supervisor`, `v3_resident_interactions`, `/resident/supervisor-interactions`). Chưa có ai đọc hộp thư này; tên gọi và hợp đồng sẽ đổi khi nối sang platform.
-- **Lớp xem thử dữ liệu mẫu trong app nhân viên** vẫn còn khái niệm phòng và agent (`hooks/use-operations-data.ts`, `mock/`, `workspace/`).
-- **Nội dung an toàn khẩn cấp** hiện để trống: Reception không đưa lời khuyên tự xử lý. Câu hỏi thông tin được trả lời từ kho tri thức do API tìm (`RECEPTION_KNOWLEDGE_URL` trỏ về API; xem [docs/domain/NAP_DU_LIEU.md](docs/domain/NAP_DU_LIEU.md) mục 5); để trống biến này thì Reception không trả lời câu hỏi thông tin.
+## Docker và dữ liệu
+
+```powershell
+deploy\new-env.ps1
+# Điền cấu hình riêng trong deploy/deployment.env; giữ secret của volume đang có.
+docker compose --env-file deploy/deployment.env -f deploy/compose.yml up -d --build
+```
+
+Compose có PostgreSQL, MinIO, init/migration, API, scheduler, platform-sync, Reception, hai app web, gateway và backup. `/` mở landing; `/login` đăng nhập chung; `/resident` và `/operations` mở app theo quyền. Chi tiết: [deploy/README.md](deploy/README.md).
+
+Production mặc định không tạo người/căn/giao dịch giả (`VINHOMES_SAMPLE_WORLD=0`) hoặc tự nạp lại tri thức (`VINHOMES_LOAD_KNOWLEDGE=0`). Owner template/proposal/reference giữ provenance và hiệu lực; hồ sơ cư trú/nhân sự/giá/SLA mô phỏng không phải xác nhận của operator.
+
+Sandbox dùng [compose.sandbox.yml](deploy/compose.sandbox.yml) với marker/volume riêng: [SANDBOX_LOCAL.md](deploy/SANDBOX_LOCAL.md). Không tạo env mới để thay mật khẩu của volume cũ.
+
+## Platform và tương thích
+
+MCP Streamable HTTP tại `/mcp` có **16 tool**: 7 ticket/work order, 2 ngữ cảnh dịch vụ/availability và 7 Travel mock. Catalog không đồng nghĩa mọi tool được cấp cho mọi tuyến. Backend giữ bootstrap token; model dùng grant giới hạn ticket/workflow/đơn vị. Không cung cấp tool tạo lại ticket/cư trú hoặc xuất hồ sơ cá nhân hàng loạt.
+
+Domain admin lưu cấu hình và xác nhận tuyến trước khi bật bridge. Cấu hình database ưu tiên env; khi clone DB phải giữ cấu hình của môi trường đích và khóa mã hóa tương ứng, không sao chép ciphertext giữa hai khóa khác nhau. Xem [platform/README.md](deploy/platform/README.md) và [NOI_WORKFORCE_V1.md](docs/domain/NOI_WORKFORCE_V1.md).
+
+`/integration/v1` và endpoint có tên `supervisor` còn phục vụ tương thích/test legacy, không phải Platform/Supervisor chạy kèm Domain. Preview chỉ dùng phát triển; production tắt `VITE_ALLOW_DEMO_BACKEND` và `VITE_ENABLE_UI_PREVIEW`.
+
+CI kiểm tra schema/RLS, tài khoản, API, grant/MCP, bridge với transport giả, HTTP closure/rework, Reception offline và frontend. CI/container healthy chưa chứng minh Agent thật, route hai chiều, dữ liệu được operator xác nhận hoặc tải production. Chưa expose cấp/hủy thẻ, đăng ký khách, booking tiện ích, thanh toán/xóa nợ hoặc duyệt cải tạo qua MCP.
+
+Secret, account export, dump và log riêng nằm ngoài Git. PR vào `develop2` chỉ gồm Domain và CI liên quan; không thay Platform trên nhánh đích.

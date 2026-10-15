@@ -36,4 +36,7 @@ deploy/deployment.env
 deploy/platform-handoff-*/
 deploy/mcp-grants/
 deploy/test-accounts-*/
+deploy/runtime-access-*/
+*.secret.*
+*.private.*
 deploy/nginx/gateway.tls.generated.conf.template
