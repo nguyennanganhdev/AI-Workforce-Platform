@@ -1,8 +1,8 @@
 """Scripted model for the room scenario (see drive_room.py). No real model.
 
 Leader (the console Leader; system prompt has PARTNER CASE POLICY):
-  handover            -> TeamCreate -> AgentInvite(KyThuat: assess; DieuPhoi: dispatch, depends_on KyThuat)
-                      -> end of reply
+  handover            -> AgentInvite(KyThuat: assess; DieuPhoi: dispatch, depends_on KyThuat)
+                      (the runtime opened the room; the step ends without another call)
   "Thành viên đã báo về" (the runtime's nudge once the room reported)
                       -> CaseSay citing every E label of the reports -> end
   provider event      -> CaseSay(expects="confirmation") -> end
@@ -14,6 +14,7 @@ Members (system prompt has PARTNER CASE MEMBER POLICY), told apart by their tool
 """
 
 import json
+import os
 import re
 import sys
 import time
@@ -25,6 +26,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 sys.stdout.reconfigure(encoding="utf-8")
 app = FastAPI()
+DUMP = os.getenv("FAKE_MODEL_DUMP")
 
 
 def _text(message) -> str:
@@ -63,6 +65,25 @@ def _effective(messages):
     return out
 
 
+def _invite(messages, tools):
+    invite = next(t for t in tools if t["function"]["name"] == "AgentInvite")
+    targets = invite["function"]["parameters"]["properties"]["target"]["enum"]
+    expert = next(t for t in targets if "KyThuat" in t)
+    coordinator = next(t for t in targets if "DieuPhoi" in t)
+    return ("tool", "AgentInvite", {
+        "target": expert,
+        "prompt": f"ticket_id: {_ticket(messages)}\nĐánh giá sự cố, cần thợ chuyên môn gì.",
+        "done_when": "Có kết luận kèm mã E của kết quả công cụ.",
+        "additional_assignments": [{
+            "target": coordinator,
+            "prompt": f"ticket_id: {_ticket(messages)}\nGiao việc cho nhân viên theo đánh giá kỹ thuật, "
+                      "báo lại kèm mã E và câu đề xuất gửi người dùng.",
+            "done_when": "Đã giao việc, có mã E của kết quả giao việc.",
+            "depends_on": [expert],
+        }],
+    })
+
+
 def _leader(messages, tools):
     everything = messages
     messages = _effective(messages)
@@ -70,23 +91,6 @@ def _leader(messages, tools):
     tail = " ".join(_text(m) for m in messages[-3:])
     if last.get("role") == "tool":
         name = _last_tool(messages)
-        if name == "TeamCreate":
-            invite = next(t for t in tools if t["function"]["name"] == "AgentInvite")
-            targets = invite["function"]["parameters"]["properties"]["target"]["enum"]
-            expert = next(t for t in targets if "KyThuat" in t)
-            coordinator = next(t for t in targets if "DieuPhoi" in t)
-            return ("tool", "AgentInvite", {
-                "target": expert,
-                "prompt": f"ticket_id: {_ticket(messages)}\nĐánh giá sự cố, cần thợ chuyên môn gì.",
-                "done_when": "Có kết luận kèm mã E của kết quả công cụ.",
-                "additional_assignments": [{
-                    "target": coordinator,
-                    "prompt": f"ticket_id: {_ticket(messages)}\nGiao việc cho nhân viên theo đánh giá kỹ thuật, "
-                              "báo lại kèm mã E và câu đề xuất gửi người dùng.",
-                    "done_when": "Đã giao việc, có mã E của kết quả giao việc.",
-                    "depends_on": [expert],
-                }],
-            })
         if name == "AgentInvite":
             return ("text", "Đã giao việc cho phòng, chờ báo cáo.", None)
         return ("text", "Xong lượt.", None)
@@ -98,7 +102,7 @@ def _leader(messages, tools):
         })
     if "Sự kiện" in _text(last):
         return ("tool", "CaseSay", {"text": "Đã có kết quả, bạn xác nhận hoàn thành giúp tôi.", "expects": "confirmation", "cites": []})
-    return ("tool", "TeamCreate", {"name": "Phòng phiếu", "description": "Đánh giá kỹ thuật rồi giao việc"})
+    return _invite(messages, tools)
 
 
 def _calls(messages, tool, kind=None):
@@ -160,6 +164,11 @@ def _member(messages, tools):
     return ("text", "Đã báo.", None)
 
 
+def _dump(request: dict) -> None:
+    with open(DUMP, "a", encoding="utf-8") as dump:
+        dump.write(json.dumps(request, ensure_ascii=False) + "\n")
+
+
 @app.get("/v1/models")
 async def models():
     return {"object": "list", "data": [{"id": "gpt-5.4-mini", "object": "model"}, {"id": "gpt-5.5", "object": "model"}]}
@@ -177,6 +186,9 @@ async def chat(request: Request):
         kind, name, args = _leader(messages, tools)
     else:
         kind, name, args = "text", "ok", None
+    if DUMP:  # every request as sent, for prefix_report.py
+        _dump({"role": role, "key": body.get("prompt_cache_key") or "", "model": body.get("model"),
+               "tools": tools, "messages": messages})
     tail = [[m.get("role"), m.get("name"), _text(m)[:60]] for m in messages[-3:]]
     print(json.dumps({"role": role, "model": body.get("model"), "tools": [t["function"]["name"] for t in tools],
                       "decision": [kind, name, args], "tail": tail}, ensure_ascii=False), flush=True)

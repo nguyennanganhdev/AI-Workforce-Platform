@@ -122,6 +122,34 @@ PM chọn làm Đợt 1 và Đợt 2.
 
 Cần có key để làm tiếp: chạy `room_eval` với model thật (k=3) để lấy mốc pass^3 và chi phí/phiếu; sau đó thử `WORKFORCE_REASONING_EFFORT_LEADER=low` và so.
 
+### 4.1 Đo prefix cache và cắt lần gọi Leader (15/10, sau Đợt 2)
+
+Cách đo, không tốn tiền: model giả ghi lại từng request (`FAKE_MODEL_DUMP`), rồi
+`scripts/workforce/offline_partner_e2e/prefix_report.py` tính với mỗi agent phần đầu
+chung dài nhất giữa mỗi lần gọi và các lần gọi trước (phần provider có thể lấy từ cache),
+và liệt kê chỗ prefix gãy sớm. Prompt và tool là thật; câu trả lời của model là kịch bản.
+
+Đo phát hiện ba chỗ:
+
+| Phát hiện | Sửa |
+|---|---|
+| Sau CaseSay, Leader bị gọi thêm một lần không có tool chỉ để kết thúc lượt. Bộ tool đổi nên prefix gãy ngay từ đầu | Đã nói xong thì kết thúc lượt, không gọi model |
+| System prompt: khối `<system-notification>` (id phiên, danh sách thành viên: đổi theo từng phiếu) nằm TRƯỚC chính sách đối tác dài, nên chính sách không bao giờ được cache giữa các phiếu | Đưa khối đó xuống cuối system prompt (Leader và thành viên) |
+| Lượt đầu Leader tốn 2 lần gọi chỉ để TeamCreate và để viết "đã giao việc, chờ báo cáo" | Runtime lập phòng sẵn khi mở phiên phiếu (đặt tên theo phiếu), bỏ TeamCreate khỏi Leader; sau AgentInvite thành công thì kết thúc bước, waiter đánh thức Leader khi có báo cáo |
+
+Kết quả, 5 phiếu của `room_eval` (khai báo Vinhome thật, model giả):
+
+| Leader (gpt-5.5) | Trước | Sau |
+|---|---|---|
+| Lần gọi | 25 (5/phiếu) | 10 (2/phiếu) |
+| Token input | 175k | 75k |
+| Input không cache được | ~94k | ~38k (−59%) |
+| Chỗ gãy prefix ngoài dự kiến | 1 | 0 |
+
+Ước tính phần input của Leader theo giá gpt-5.5: ~$0,10 → ~$0,04 mỗi phiếu, chưa tính phần
+output của 3 lần gọi bị bỏ. Thành viên không đổi: runtime vốn đã dừng thành viên sau báo cáo cuối.
+Số thật cần đo lại bằng `room_eval` với model thật.
+
 ## 5. Ước tính tác động (cần đo lại bằng số thật khi có key)
 
 Giá gpt-5.5: $5 / 1M input, $0,50 cached, $30 output; gpt-5.4-mini: $0,75 / $0,075 / $4,50.

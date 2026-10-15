@@ -2,10 +2,10 @@
 
 A partner ticket is a ticket of the platform's Leader (the console
 Leader of the route's manager). The Leader talks to the partner's end user
-only through ``CaseSay`` / ``CaseFinalize`` and holds no partner tool: it
-opens the ticket's room (``TeamCreate`` / ``AgentInvite``) with the partner's
-coordinator agent (the declaration's leader profile) and, when needed, its
-specialists, and waits for their reports within its turn. Members call their
+only through ``CaseSay`` / ``CaseFinalize`` and holds no partner tool: the
+runtime opens the ticket's room with its session, and the Leader invites
+(``AgentInvite``) the partner's coordinator agent (the declaration's leader
+profile) and, when needed, its specialists, and waits for their reports within its turn. Members call their
 share of the route's tools under their declared names and the ticket's grant
 (the platform fills the hidden ``client_reference``); every result and
 provider event carries an evidence label ``E<n>`` that the Leader cites.
@@ -33,6 +33,7 @@ from ....._logging import logger
 from .....event import ReplyEndEvent, ReplyFinishedReason
 from .....message import TextBlock, ToolResultBlock, ToolResultState
 from .....middleware import MiddlewareBase
+from .....model import ChatResponse
 from .....permission import PermissionBehavior, PermissionDecision
 from .....tool import MCPTool, ParamsBase, ToolBase, ToolChunk
 from ...orchestration._tables import partner_requests, workflow_inputs
@@ -41,7 +42,8 @@ from ._tables import case_entries, case_sessions, operations, routes
 EXPECTS = ("none", "reply", "confirmation")
 # The ticket's room lasts as long as the ticket: no TeamDelete (its schema
 # would ride along in every Leader call).
-TEAM_TOOLS = ("TeamCreate", "AgentInvite", "TeamSay")
+# The ticket's room opens with its session (the runner's _case_session): no TeamCreate.
+TEAM_TOOLS = ("AgentInvite", "TeamSay")
 # Rounds of member reports the leader may wait for within one turn.
 MAX_TEAM_ROUNDS = 4
 MAX_TEXT = 4000
@@ -581,7 +583,7 @@ PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflictin
 
 PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ PHIẾU (bắt buộc):
 - Bạn không có công cụ của đối tác. Tra cứu phiếu, kiến thức, nhân viên, giao việc, hủy hay ghi chú đều do thành viên phòng làm.
-- Lượt đầu của phiếu: TeamCreate rồi MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ: cần làm gì, trả về gì. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on.
+- Phòng của phiếu đã được lập sẵn. Lượt đầu của phiếu: MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ: cần làm gì, trả về gì. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on.
 - Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. và câu đề xuất gửi người dùng. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
 - Phản biện: thành viên dùng kết quả của nhau sẽ tự hỏi lại nhau khi thấy thiếu hay mâu thuẫn. Báo cáo vẫn thiếu, mâu thuẫn với báo cáo khác hoặc với bằng chứng: TeamSay(kind="review", decision="challenge", to=<thành viên>) nêu đúng điểm cần sửa; chỉ gửi người dùng khi các báo cáo khớp nhau.
 - Phòng giữ suốt phiếu: lượt sau giao việc bằng TeamSay cho thành viên đã có, không lập phòng mới. Người dùng chỉ chào hay cảm ơn, không cần dữ liệu mới: trả lời ngay bằng CaseSay.
@@ -638,6 +640,25 @@ def _invite_only(schema: dict, names: set[str]) -> dict | None:
     return schema
 
 
+TURN_DONE = "Đã gửi tin cho người dùng."
+ROOM_WORKING = "Đã giao việc cho phòng, chờ báo cáo."
+NOTE_OPEN, NOTE_CLOSE = "<system-notification>", "</system-notification>"
+
+
+def notification_last(prompt: str) -> str:
+    """Move the session's notification (session id, team roster: it changes
+    with every ticket) after the fixed instructions. The provider caches only
+    an unchanged prefix, so fixed text behind it was never served from cache."""
+
+    start = prompt.find(NOTE_OPEN)
+    end = prompt.find(NOTE_CLOSE, start)
+    if start < 0 or end < 0:
+        return prompt
+    end += len(NOTE_CLOSE)
+    rest = (prompt[:start].rstrip() + "\n\n" + prompt[end:].strip()).strip()
+    return rest + "\n\n" + prompt[start:end]
+
+
 class PartnerCaseMiddleware(MiddlewareBase):
     """Case tools + policy for one partner workflow session."""
 
@@ -655,6 +676,8 @@ class PartnerCaseMiddleware(MiddlewareBase):
         self._members = members or {}
         # A LeaderEvidenceMiddleware used for its wait/nudge helpers only.
         self._waiter = waiter
+        # AgentInvite calls whose step already ended without a model call.
+        self._ended_on: set[str] = set()
 
     async def list_tools(self) -> list[ToolBase]:
         return [CaseSay(self._case), CaseFinalize(self._case), *self._tools]
@@ -668,9 +691,17 @@ class PartnerCaseMiddleware(MiddlewareBase):
             allowed.update(TEAM_TOOLS)
         if await self._case.said():
             # The turn's one message is out: anything more (another say, a
-            # re-read woken by room traffic) is a model call for nothing.
-            # The runtime accepts members' evidence-backed reports itself.
-            return await next_handler(tools=[])
+            # re-read woken by room traffic) is a model call for nothing, so
+            # the turn ends here without one. The runtime accepts members'
+            # evidence-backed reports itself.
+            return ChatResponse(content=[TextBlock(text=TURN_DONE)], is_last=True)
+        last = _last_success(input_kwargs.get("messages") or [], getattr(getattr(agent, "state", None), "reply_id", None))
+        if self._waiter is not None and last and last[0] == "AgentInvite" and last[1] not in self._ended_on:
+            # The room has its work: the next model call would only write
+            # "waiting". End the step; the waiter wakes the Leader with the
+            # members' reports.
+            self._ended_on.add(last[1])
+            return ChatResponse(content=[TextBlock(text=ROOM_WORKING)], is_last=True)
         tools = []
         for schema in input_kwargs.get("tools") or []:
             name = _schema_name(schema)
@@ -727,7 +758,7 @@ class PartnerCaseMiddleware(MiddlewareBase):
             )
         brief = str((self._case.route.get("config") or {}).get("leader_brief") or "").strip()
         brief = ("\nHƯỚNG DẪN CỦA ĐỐI TÁC:\n" + brief) if brief else ""
-        return prompt + "\n\n" + PARTNER_CASE_POLICY + team + brief + (("\n" + banned) if banned else "")
+        return notification_last(prompt + "\n\n" + PARTNER_CASE_POLICY + team + brief + (("\n" + banned) if banned else ""))
 
     async def get_middleware_key(self) -> str:
         return "partner_case"
@@ -770,6 +801,21 @@ def clear_old_results(messages: list, reply_id: str | None) -> list:
     return cleared if saved >= CLEAR_AT_LEAST_CHARS else messages
 
 
+def _last_success(messages: list, reply_id: str | None) -> tuple[str, str] | None:
+    """(tool name, call id) of the current reply's latest tool result, when
+    that result succeeded."""
+
+    for message in reversed(messages):
+        if getattr(message, "role", None) != "assistant" or message.id != reply_id:
+            continue
+        content = message.content if isinstance(message.content, list) else []
+        results = [block for block in content if isinstance(block, ToolResultBlock)]
+        if not results or results[-1].state != ToolResultState.SUCCESS:
+            return None
+        return results[-1].name, results[-1].id
+    return None
+
+
 class PartnerMemberMiddleware(MiddlewareBase):
     """A member of a partner ticket's room: its share of the route's tools,
     under the ticket's grant; it reports to the leader, never to the user."""
@@ -792,7 +838,7 @@ class PartnerMemberMiddleware(MiddlewareBase):
         from ...._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY
 
         prompt = current_prompt.replace(BUSINESS_AGENT_EVIDENCE_POLICY, "").rstrip()
-        return prompt + "\n\n" + PARTNER_MEMBER_POLICY
+        return notification_last(prompt + "\n\n" + PARTNER_MEMBER_POLICY)
 
     async def get_middleware_key(self) -> str:
         return "partner_case_member"

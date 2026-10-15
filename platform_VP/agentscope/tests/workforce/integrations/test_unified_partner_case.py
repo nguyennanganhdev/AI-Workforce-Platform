@@ -240,6 +240,12 @@ class _Storage:
         self.sessions[session_id] = session
         return session
 
+    async def upsert_team(self, user_id, team):
+        self.teams = {**getattr(self, "teams", {}), team.id: team}
+
+    async def set_session_team_id(self, user_id, session_id, team_id):
+        self.sessions[session_id].team_id = team_id
+
     async def get_mcp(self, user_id, mcp_id):
         return self.mcp if mcp_id == "mcp-1" else None
 
@@ -1004,8 +1010,9 @@ def _unsaid_case(said: bool = False, route: dict | None = None):
 
 
 class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
-    async def test_after_the_turns_message_the_leader_has_nothing_more_to_call(self):
+    async def test_after_the_turns_message_the_turn_ends_without_a_model_call(self):
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
+        from agentscope.model import ChatResponse
 
         middleware = PartnerCaseMiddleware(_unsaid_case(said=True), [SimpleNamespace(name="vh_ticket_get")])
         seen = {}
@@ -1014,8 +1021,11 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             seen.update(kwargs)
 
         offered = [{"type": "function", "function": {"name": n}} for n in ("CaseSay", "CaseFinalize", "vh_ticket_get")]
-        await middleware.on_model_call(None, {"tools": offered}, next_handler)
-        self.assertEqual([], seen["tools"])
+        response = await middleware.on_model_call(None, {"tools": offered}, next_handler)
+        self.assertEqual({}, seen)  # the model was not called
+        self.assertIsInstance(response, ChatResponse)
+        self.assertTrue(response.is_last)
+        self.assertEqual(["text"], [block.type for block in response.content])
 
     async def test_the_case_middleware_offers_only_case_and_given_tools(self):
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
@@ -1086,7 +1096,7 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         ] + [invite]
         await middleware.on_model_call(None, {"tools": offered}, next_handler)
         kept = {tool["function"]["name"]: tool for tool in seen["tools"]}
-        self.assertEqual({"TeamCreate", "TeamSay", "CaseSay", "AgentInvite"}, set(kept))
+        self.assertEqual({"TeamSay", "CaseSay", "AgentInvite"}, set(kept))
         limited = kept["AgentInvite"]["function"]
         self.assertEqual(names[:2], limited["parameters"]["properties"]["target"]["enum"])
         self.assertEqual(
@@ -1236,3 +1246,46 @@ class CheckSayTest(unittest.TestCase):
 
     def test_unknown_labels_are_refused(self):
         self.assertTrue(check_say("Đã ghi nhận.", ["E9"], {}, {}, []))
+
+
+class PromptCacheOrderTest(unittest.TestCase):
+    def test_the_session_notification_goes_after_the_fixed_instructions(self):
+        from agentscope.app.workforce.integrations.unified._case import notification_last
+
+        prompt = "Agent.\n\n<system-notification>session (id=1), roster: A</system-notification>\n<workspace>w</workspace>\n\nPOLICY"
+        self.assertEqual(
+            "Agent.\n\n<workspace>w</workspace>\n\nPOLICY\n\n<system-notification>session (id=1), roster: A</system-notification>",
+            notification_last(prompt),
+        )
+        self.assertEqual("no note", notification_last("no note"))
+
+
+class RoomStepEndTest(unittest.IsolatedAsyncioTestCase):
+    async def test_after_inviting_the_step_ends_once_and_the_reports_wake_the_leader(self):
+        from agentscope.app.workforce.integrations.unified._case import ROOM_WORKING, PartnerCaseMiddleware
+        from agentscope.message import AssistantMsg, ToolResultBlock, ToolResultState
+
+        def reply(name, state=ToolResultState.SUCCESS):
+            return AssistantMsg(id="r1", name="Leader", content=[ToolResultBlock(
+                id=f"c-{name}", name=name, output=[TextBlock(text="ok")], state=state,
+            )])
+
+        members = {"DieuPhoi@a": {"name": "DieuPhoi"}}
+        middleware = PartnerCaseMiddleware(_unsaid_case(), [], members, waiter=object())
+        agent = SimpleNamespace(state=SimpleNamespace(reply_id="r1"))
+        calls = []
+
+        async def next_handler(**kwargs):
+            calls.append(kwargs)
+            return "model"
+
+        first = await middleware.on_model_call(agent, {"tools": [], "messages": [reply("AgentInvite")]}, next_handler)
+        self.assertEqual(ROOM_WORKING, first.content[0].text)
+        self.assertEqual([], calls)
+        # Woken by the reports (same reply, same invite): the model answers.
+        again = await middleware.on_model_call(agent, {"tools": [], "messages": [reply("AgentInvite")]}, next_handler)
+        self.assertEqual("model", again)
+        # A failed invite, or any other last step, goes to the model.
+        fresh = PartnerCaseMiddleware(_unsaid_case(), [], members, waiter=object())
+        for messages in ([reply("AgentInvite", ToolResultState.ERROR)], [reply("TeamSay")]):
+            self.assertEqual("model", await fresh.on_model_call(agent, {"tools": [], "messages": messages}, next_handler))

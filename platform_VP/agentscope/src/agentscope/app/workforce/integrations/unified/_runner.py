@@ -460,45 +460,55 @@ class ChatLeaderTurnRunner:
         Leader): the ticket shows on the Leader page with its room."""
 
         from ...._router._workforce_console import _leader
-        from ....storage import SessionConfig
+        from ....storage import SessionConfig, TeamData, TeamRecord
+        from ._case import _members
 
         state = self._state()
         storage = state.storage
         leader, primary = await _leader(user_id, storage, state.workspace_manager)
         session = await storage.get_session(user_id, leader.id, session_ref)
-        if session is not None:
-            return session
-        fields = (route.get("config") or {}).get("ticket_title_fields") or []
-        session = await storage.upsert_session(
-            user_id=user_id,
-            agent_id=leader.id,
-            config=SessionConfig(
-                workspace_id=session_ref,
-                name=ticket_title(text, fields) or "Phiếu đối tác",
-                chat_model_config=primary.config.chat_model_config,
-            ),
-            session_id=session_ref,
-        )
-        workspace = await state.workspace_manager.get_workspace(
-            user_id, leader.id, session.id, session.config.workspace_id,
-        )
-        # The Leader orchestrates; the route's tools belong to the room's members.
-        for client in await workspace.list_mcps(agent_id=leader.id, session_id=session.id):
-            await workspace.remove_mcp(client.name, agent_id=leader.id, session_id=session.id)
-        for default_mcp in workspace.default_mcps:
-            await workspace.remove_mcp(default_mcp.name, agent_id=leader.id, session_id=session.id)
-        await self._case.store.bind_session(
-            {
-                "session_id": session.id,
-                "workflow_id": workflow.workflow_id,
-                "route_id": route["route_id"],
-                "manager_account_id": user_id,
-                "scope": scope.model_dump(mode="json"),
-                "agent_id": leader.id,
-                "agent_version": 0,
-                "trigger_id": None,
-            },
-        )
+        if session is None:
+            fields = (route.get("config") or {}).get("ticket_title_fields") or []
+            session = await storage.upsert_session(
+                user_id=user_id,
+                agent_id=leader.id,
+                config=SessionConfig(
+                    workspace_id=session_ref,
+                    name=ticket_title(text, fields) or "Phiếu đối tác",
+                    chat_model_config=primary.config.chat_model_config,
+                ),
+                session_id=session_ref,
+            )
+            workspace = await state.workspace_manager.get_workspace(
+                user_id, leader.id, session.id, session.config.workspace_id,
+            )
+            # The Leader orchestrates; the route's tools belong to the room's members.
+            for client in await workspace.list_mcps(agent_id=leader.id, session_id=session.id):
+                await workspace.remove_mcp(client.name, agent_id=leader.id, session_id=session.id)
+            for default_mcp in workspace.default_mcps:
+                await workspace.remove_mcp(default_mcp.name, agent_id=leader.id, session_id=session.id)
+            await self._case.store.bind_session(
+                {
+                    "session_id": session.id,
+                    "workflow_id": workflow.workflow_id,
+                    "route_id": route["route_id"],
+                    "manager_account_id": user_id,
+                    "scope": scope.model_dump(mode="json"),
+                    "agent_id": leader.id,
+                    "agent_version": 0,
+                    "trigger_id": None,
+                },
+            )
+        if session.team_id is None and _members(route):
+            # The Leader always works a partner ticket with a room: it opens
+            # with the session (a model call less) and carries the ticket's name.
+            team = TeamRecord(
+                user_id=user_id, session_id=session.id, leader_agent_id=leader.id,
+                data=TeamData(name=session.config.name, description="Phòng xử lý phiếu", member_ids=[]),
+            )
+            await storage.upsert_team(user_id, team)
+            await storage.set_session_team_id(user_id, session.id, team.id)
+            session = await storage.get_session(user_id, leader.id, session.id)
         return session
 
     async def _wait_for_say(self, workflow_id: str, trigger_id: str) -> None:
