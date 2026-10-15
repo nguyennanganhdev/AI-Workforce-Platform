@@ -1,0 +1,370 @@
+name: vinhomes-domain
+
+# The whole Vinhomes domain on one machine: PostgreSQL (data), MinIO (photos and files), the business API with
+# its scheduler, the Reception agent, the resident and staff web apps and the one address in front of them.
+#
+#   deploy/new-env.ps1   (or new-env.sh)   writes deploy/deployment.env with fresh secrets, once
+#   docker compose --env-file deploy/deployment.env -f deploy/compose.yml up -d --build
+#
+# Only the gateway (and the API, on loopback) is reachable from the host. See README.md.
+#
+# The images we build are named <VINHOMES_IMAGE_PREFIX>-<service>:<VINHOMES_IMAGE_TAG>. With a registry in the
+# prefix (ghcr.io/company/vinhomes), `build` then `push` publish them and a server runs `pull` then
+# `up -d --no-build` from this folder alone, without the sources. See README "Phát hành qua registry".
+
+x-python-health: &python-health
+  interval: 15s
+  timeout: 8s
+  retries: 5
+  start_period: 30s
+
+# Built from the passwords in the env file, so the file holds no URL. The three *_URL / S3_ENDPOINT variables
+# are only set to use a database or an S3 service that runs somewhere else.
+x-owner-db: &owner-db ${MIGRATION_DATABASE_URL:-postgresql://vinhomes_owner:${POSTGRES_PASSWORD}@postgres:5432/${VINHOMES_DATABASE_NAME:-vinhomes}}
+x-api-db: &api-db ${VINHOMES_API_DATABASE_URL:-postgresql+asyncpg://vinhomes_api:${API_DB_PASSWORD}@postgres:5432/${VINHOMES_DATABASE_NAME:-vinhomes}}
+# The one tenant of this package: the base organisation, the sample world, the first accounts and the knowledge are its.
+x-tenant: &tenant 11111111-1111-5111-a111-111111111111
+x-s3-endpoint: &s3-endpoint ${S3_ENDPOINT:-http://minio:9000}
+x-s3-access: &s3-access ${S3_ACCESS_KEY:?object storage access key required}
+x-s3-secret: &s3-secret ${S3_SECRET_KEY:?object storage secret key required}
+x-s3-bucket: &s3-bucket ${S3_BUCKET:-vinhomes-files}
+# The search of the knowledge pack embeds the question with the same vendor key as Reception unless another is given.
+# EMBEDDING_API_KEY set empty: no embedding call at all, the search goes by words (a model address without embeddings).
+x-embedding-key: &embedding-key ${EMBEDDING_API_KEY-${OPENAI_API_KEY:-}}
+# The AI platform (Workforce v1). Empty URL: the bridge is off and nothing below is used. See platform/README.md.
+x-platform: &platform
+  VINHOMES_API_PLATFORM_URL: ${VINHOMES_API_PLATFORM_URL:-}
+  VINHOMES_API_PLATFORM_CUSTOMER_KEY: ${VINHOMES_API_PLATFORM_CUSTOMER_KEY:-}
+  VINHOMES_API_PLATFORM_PROVIDER_KEY: ${VINHOMES_API_PLATFORM_PROVIDER_KEY:-}
+  VINHOMES_API_PLATFORM_SIGNING_KEY_ID: ${VINHOMES_API_PLATFORM_SIGNING_KEY_ID:-}
+  VINHOMES_API_PLATFORM_SIGNING_SECRET: ${VINHOMES_API_PLATFORM_SIGNING_SECRET:-}
+  # What the platform must send to call the tools at /mcp.
+  VINHOMES_API_PLATFORM_MCP_TOKEN: ${VINHOMES_API_PLATFORM_MCP_TOKEN:-}
+  VINHOMES_API_CONFIG_ENCRYPTION_KEY: ${VINHOMES_API_CONFIG_ENCRYPTION_KEY:-}
+  VINHOMES_PLATFORM_ALLOWED_HOSTS: ${VINHOMES_PLATFORM_ALLOWED_HOSTS:-awp-platform,host.docker.internal}
+
+services:
+  # All business data. The knowledge passages are searched through pgvector (0013_knowledge.sql), which this
+  # image brings. Not published: use
+  #   docker compose --env-file deploy/deployment.env -f deploy/compose.yml exec postgres psql -U vinhomes_owner vinhomes
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vinhomes
+      POSTGRES_USER: vinhomes_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?database owner password required (run deploy/new-env)}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # For a database tool on this machine only (pgAdmin, DBeaver); never reachable from the network.
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5560}:5432'
+    healthcheck:
+      # Over TCP: the server that only answers on the socket while the data folder is being created does not count.
+      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'vinhomes_owner', '-d', 'vinhomes']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Photos and files, in a private bucket. Not published: content always leaves through the API.
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vinhomes-root}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?object storage administrator password required (run deploy/new-env)}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'mc alias set self http://127.0.0.1:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null && mc ready self']
+      interval: 15s
+      timeout: 8s
+      retries: 5
+
+  # Prepares the database and the bucket, then stops; runs again on every start and changes nothing that is
+  # already there. Runs as the database owner; the API itself never gets that role. In order: the schema, the
+  # minimal organisation (explicit sample mode is only for development), API rights and storage.
+  # Knowledge is loaded only when explicitly requested; normal restarts keep owner-managed review metadata.
+  init:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    build:
+      context: ../services/vinhomes-api
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: *owner-db
+      API_DB_PASSWORD: ${API_DB_PASSWORD:?API database password required (run deploy/new-env)}
+      VINHOMES_SAMPLE_WORLD: ${VINHOMES_SAMPLE_WORLD:-0}
+      VINHOMES_LOAD_KNOWLEDGE: ${VINHOMES_LOAD_KNOWLEDGE:-0}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+      VINHOMES_API_TENANT_ID: *tenant
+      VINHOMES_API_S3_ENDPOINT: *s3-endpoint
+      VINHOMES_API_S3_ACCESS_KEY: *s3-access
+      VINHOMES_API_S3_SECRET_KEY: *s3-secret
+      VINHOMES_API_S3_BUCKET: *s3-bucket
+      # The storage server's administrator: creates the bucket and makes the API's key a user of that bucket only.
+      # (MINIO_ROOT_USER set but empty: the key already exists on an S3 service of your own.)
+      VINHOMES_API_S3_ADMIN_ACCESS_KEY: ${MINIO_ROOT_USER-vinhomes-root}
+      VINHOMES_API_S3_ADMIN_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-}
+      VINHOMES_API_EMBEDDING_API_KEY: *embedding-key
+    command:
+      - sh
+      - -ec
+      - |
+        python -m vinhomes_api.database migrate
+        if [ "$$VINHOMES_SAMPLE_WORLD" = 1 ]; then
+          python -m vinhomes_api.database seed
+        else
+          python -m vinhomes_api.database bootstrap
+        fi
+        if [ "$$VINHOMES_SAMPLE_WORLD" = 1 ]; then python -m vinhomes_api.database mock --profile standard; fi
+        python -m vinhomes_api.database role --role vinhomes_api --password-env API_DB_PASSWORD
+        python -m vinhomes_api.storage_setup
+        if [ "$$VINHOMES_SAMPLE_WORLD" = 1 ]; then
+          python -m vinhomes_api.database accounts --password-env DEMO_PASSWORD \
+            --users local-v3-admin,mock-minh,mock-hoa,mock-giang,mock-an,mock-binh,mock-dung,mock-s02,mock-s03,mock-s09,mock-s11,mock-s12,mock-s18,mock-s20,mock-s21
+        fi
+        if [ "$$VINHOMES_LOAD_KNOWLEDGE" = 1 ]; then python -m vinhomes_api.knowledge load; fi
+
+  api:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    build:
+      context: ../services/vinhomes-api
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      <<: *platform
+      VINHOMES_API_DATABASE_URL: *api-db
+      VINHOMES_API_TENANT_ID: *tenant
+      VINHOMES_API_PASSWORD_AUTH: '1'
+      VINHOMES_TRAVEL_MOCK_ENABLED: ${VINHOMES_TRAVEL_MOCK_ENABLED:-0}
+      VINHOMES_API_RESIDENT_SIGNING_KEY: ${RESIDENT_SIGNING_KEY:?32 byte hex key required}
+      # Reception reaches this API with the service token and a short-lived delegation signed with the key.
+      VINHOMES_API_RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}
+      RECEPTION_DELEGATION_KEY: ${RECEPTION_DELEGATION_KEY:?delegation key required}
+      VINHOMES_API_RECEPTION_URL: http://reception:4202
+      VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
+      # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
+      VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      VINHOMES_PUBLIC_URL: ${VINHOMES_PUBLIC_URL:-}
+      VINHOMES_SMTP_HOST: ${VINHOMES_SMTP_HOST:-}
+      VINHOMES_SMTP_PORT: ${VINHOMES_SMTP_PORT:-587}
+      VINHOMES_SMTP_SECURITY: ${VINHOMES_SMTP_SECURITY:-starttls}
+      VINHOMES_SMTP_FROM: ${VINHOMES_SMTP_FROM:-}
+      VINHOMES_SMTP_USERNAME: ${VINHOMES_SMTP_USERNAME:-}
+      VINHOMES_SMTP_PASSWORD: ${VINHOMES_SMTP_PASSWORD:-}
+      # Photos and files are stored in a private bucket. Content always leaves through the API, which checks
+      # who is asking.
+      VINHOMES_API_S3_ENDPOINT: *s3-endpoint
+      VINHOMES_API_S3_ACCESS_KEY: *s3-access
+      VINHOMES_API_S3_SECRET_KEY: *s3-secret
+      VINHOMES_API_S3_BUCKET: *s3-bucket
+      # Empty: a browser sends its photos to the API, which stores them. An origin the browser can reach
+      # (https://files.example.com) makes it send them straight to the bucket instead.
+      VINHOMES_API_S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT-}
+      VINHOMES_API_S3_REGION: ${S3_REGION:-us-east-1}
+      VINHOMES_API_EMBEDDING_API_KEY: *embedding-key
+      # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
+      VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:8080}
+      VINHOMES_API_MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:8080}
+      # How many proxies of ours a browser's request crosses before the API: the gateway, and Caddy on a server.
+      VINHOMES_API_TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}
+    volumes:
+      - api-files:/var/lib/vinhomes/files
+    # Set VINHOMES_API_PORT empty to run several copies (--scale api=2): each then gets a free host port.
+    ports:
+      - '127.0.0.1:${VINHOMES_API_PORT-8000}:8000'
+    healthcheck:
+      <<: *python-health
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=5)']
+
+  # Deadlines and expiries, once a minute: warns before a request is late and says so when it is, lets unpaid
+  # bookings lapse and visits nobody came to end. Safe to run twice. Same restricted database role as the API.
+  scheduler:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: *api-db
+    command: ['sh', '-c', 'while true; do python -m vinhomes_api.jobs sweep || true; sleep 60; done']
+
+  # The bridge to the AI platform: sends what residents and staff did, writes what its agent says into the
+  # chat. Safe to run twice. Same restricted database role as the API. Without a platform it only waits.
+  platform-sync:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      <<: *platform
+      DATABASE_URL: *api-db
+      # The bridge reads verified resident images before uploading them to the Platform Asset API.
+      VINHOMES_API_S3_ENDPOINT: *s3-endpoint
+      VINHOMES_API_S3_ACCESS_KEY: *s3-access
+      VINHOMES_API_S3_SECRET_KEY: *s3-secret
+      VINHOMES_API_S3_BUCKET: *s3-bucket
+      VINHOMES_API_S3_REGION: ${S3_REGION:-us-east-1}
+    volumes:
+      - api-files:/var/lib/vinhomes/files:ro
+    # A platform on this machine is reached as host.docker.internal; Docker on Linux needs the name spelled out.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: ['python', '-m', 'vinhomes_api.platform_sync']
+
+  # Only with --profile sync: every DATA_SYNC_SECONDS, loads the export files found in DATA_SYNC_DIR with the
+  # import that is also run by hand (README "Chạy với dữ liệu thật"). As the database owner, as init.
+  data-sync:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    profiles: ['sync']
+    restart: unless-stopped
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: *owner-db
+    volumes:
+      - ${DATA_SYNC_DIR:-./sync}:/sync
+    command: ['python', '-m', 'vinhomes_api.database', 'sync', '--dir', '/sync', '--every', '${DATA_SYNC_SECONDS:-300}']
+
+  # Every day at BACKUP_HOUR (Vietnam time): a dump of the database, of which the newest BACKUP_KEEP are kept,
+  # and a copy of every file of the bucket, into the volume backup-data or the host folder BACKUP_DIR.
+  # Unhealthy: the last backup failed (logs say why). Does not wait for init, so that it can fill an empty system:
+  #   docker compose --env-file deploy/deployment.env -f deploy/compose.yml run --rm backup now
+  #   docker compose --env-file deploy/deployment.env -f deploy/compose.yml run --rm backup restore
+  backup:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-backup:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ./backup
+    restart: unless-stopped
+    # The script is a shell loop: without an init process it would not hear the stop signal.
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+      DATABASE_URL: *owner-db
+      S3_ENDPOINT: *s3-endpoint
+      S3_BUCKET: *s3-bucket
+      # The storage server's administrator, as init: a restore creates the bucket before the API's key exists.
+      S3_USER: ${MINIO_ROOT_USER-vinhomes-root}
+      S3_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    volumes:
+      - ${BACKUP_DIR:-backup-data}:/backup
+    healthcheck:
+      test: ['CMD', 'test', '!', '-e', '/backup/FAILED']
+      interval: 60s
+      timeout: 5s
+
+  reception:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-reception:${VINHOMES_RECEPTION_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    build:
+      context: ../agents/reception
+    restart: unless-stopped
+    environment:
+      RECEPTION_BACKEND_URL: http://api:8000
+      RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}
+      # Where the knowledge pack is searched: the API. Set but empty: Reception answers no information question from a source.
+      RECEPTION_KNOWLEDGE_URL: ${RECEPTION_KNOWLEDGE_URL-http://api:8000}
+      RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-5.4-mini}
+      RECEPTION_AGENT: ${RECEPTION_AGENT:-loop}
+      RECEPTION_STATE_PATH: ${RECEPTION_STATE_PATH:-/var/lib/reception/reception.sqlite3}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required, paste it in deploy/deployment.env}
+      # Another vendor for this role: its provider name, its own key, and an address only for `custom`.
+      RECEPTION_MODEL_PROVIDER: ${RECEPTION_MODEL_PROVIDER:-}
+      RECEPTION_MODEL_API_KEY: ${RECEPTION_MODEL_API_KEY:-}
+      RECEPTION_MODEL_BASE_URL: ${RECEPTION_MODEL_BASE_URL:-}
+    volumes:
+      - reception-state:/var/lib/reception
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      <<: *python-health
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4202/health", timeout=5)']
+
+  # Residents.
+  resident:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-resident:${VINHOMES_RESIDENT_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        APP: resident-web
+    restart: unless-stopped
+    environment:
+      VINHOMES_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3011/']
+
+  # Management, administrators and staff on site: one app, each role sees its own pages.
+  operations:
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-operations:${VINHOMES_OPERATIONS_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        APP: staff-web
+    restart: unless-stopped
+    environment:
+      VINHOMES_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3020/operations/login']
+
+  # The one address people use: /login and the resident app on /, the staff app on /operations, the API on
+  # /api/business. See nginx/gateway.conf.template.
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    environment:
+      VINHOMES_API_URL: http://api:8000
+    volumes:
+      - ./nginx/gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080'
+    depends_on:
+      resident:
+        condition: service_healthy
+      operations:
+        condition: service_healthy
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
+
+volumes:
+  postgres-data:
+  minio-data:
+  # Only used by a deployment that keeps files on disk; with the bucket it stays empty.
+  api-files:
+  reception-state:
+  # The backups, unless BACKUP_DIR names a host folder.
+  backup-data:

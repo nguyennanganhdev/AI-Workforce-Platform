@@ -1,0 +1,49 @@
+# The staff app: management, administrators and staff on site, in one build. What each role sees is decided by
+# the app from the signed-in person's role, and what they may read or change by the business API.
+server {
+  listen 3020;
+  # Redirects carry no host or port: the container's port (3020) is not the one the browser used.
+  absolute_redirect off;
+  root /usr/share/nginx/html;
+  index index.html;
+  # Photos and files are uploaded through this path.
+  client_max_body_size 25m;
+
+  resolver 127.0.0.11 valid=10s ipv6=off;
+
+  # The tools of the AI platform's agent are not for browsers: the platform calls the API's own address.
+  location ~ ^/api/business/mcp(/|$) {
+    return 404;
+  }
+
+  location /api/business/ {
+    set $vinhomes_api ${VINHOMES_API_URL};
+    rewrite ^/api/business/(.*)$ /$1 break;
+    proxy_pass $vinhomes_api;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    # No front door is named: one sign-in serves every app of the host (see gateway.conf.template).
+    proxy_set_header X-Vinhomes-Surface "";
+    # An agent's answer can wait on a model call.
+    proxy_read_timeout 255s;
+  }
+
+  # Built files: a miss is a real 404, never the app's HTML. (Not /assets: the resident app has that one.)
+  location /staff-assets/ {
+    try_files $uri =404;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+  }
+
+  location = / {
+    return 302 /operations;
+  }
+
+  location /operations {
+    try_files $uri /index.html;
+  }
+
+  # Anything else is a file (favicon) or a page address this app does not have.
+  location / {
+    try_files $uri /index.html;
+  }
+}

@@ -1,0 +1,67 @@
+[
+  {
+    "site_code": "ocean-park-1",
+    "record_code": "technical/sapphire-basic-handover",
+    "title": "Sapphire OP1 — tiêu chuẩn bàn giao cơ bản (tham khảo)",
+    "kind": "technical-handover-reference",
+    "category": "public-technical-reference",
+    "authority": "reference",
+    "sources": [
+      "https://oceanpark.vinhomes.vn/wp-content/uploads/2019/08/Tieu-chuan-co-ban-Can-ho-Sapphire.pdf"
+    ],
+    "source_published_at": null,
+    "retrieved_at": "2026-10-15",
+    "applicability": "Tài liệu công khai trong thư viện OP1, phương án Sapphire cơ bản; chưa gắn với tòa/căn hoặc quyền bảo hành hiện hành. Không suy ra ngày hiệu lực từ đường dẫn 2019/08.",
+    "body": "Tài liệu bàn giao hoàn thiện cơ bản Sapphire tại thư viện OP1 liệt kê điện, điều hòa, intercom, bếp và phòng tắm; gồm bếp từ, chậu rửa, hút mùi, bình nước nóng. Intercom nối tầng 1 và tầng hầm. Chủ đầu tư có thể thay vật liệu/thiết bị tương đương. Đây là tài liệu tham khảo, chưa xác định thiết bị hoặc quyền bảo hành của từng căn; cần đối chiếu phụ lục bàn giao thực tế. Chưa có ngày hiệu lực được xác minh.",
+    "source_snapshot_sha256": "a1a023d0c681c3abebf5dc52d25a1279b6feac266827617ba5c6bf6f22d5f7bc"
+  },
+  {
+    "site_code": "ocean-park-1",
+    "record_code": "technical/sapphire-minimum-handover",
+    "title": "Sapphire OP1 — tiêu chuẩn bàn giao tối thiểu (tham khảo)",
+    "kind": "technical-handover-reference",
+    "category": "public-technical-reference",
+    "authority": "reference",
+    "sources": [
+      "https://oceanpark.vinhomes.vn/wp-content/uploads/2019/08/Tieu-chuan-toi-thieu-Can-ho-Sapphire.pdf"
+    ],
+    "source_published_at": null,
+    "retrieved_at": "2026-10-15",
+    "applicability": "Phương án Sapphire tối thiểu, không phải kết luận cấu hình mọi căn Sapphire. Cần đối chiếu hợp đồng/phụ lục và bàn giao thực tế; ngày hiệu lực chưa xác minh.",
+    "body": "Bảng bàn giao tối thiểu Sapphire trong thư viện OP1 liệt kê cửa, phòng tắm, điện, intercom và điều hòa. Danh mục này không liệt kê bếp và bình nước nóng như bảng cơ bản. Sự khác biệt chỉ mô tả hai tài liệu, không kết luận thiết bị của một căn cụ thể. Vật liệu/thiết bị có thể thay tương đương; phải đối chiếu hợp đồng và bàn giao thực tế, không suy ra bảo hành hay sửa miễn phí. Chưa có ngày hiệu lực được xác minh.",
+    "source_snapshot_sha256": "c7716165d05b5d6befaa260cb77c437e24e2fa90ab7a6bf396eb958f8dbaa84c"
+  },
+  {
+    "site_code": "ocean-park-1",
+    "record_code": "technical/shophouse-shell-handover",
+    "title": "OP1 — tiêu chuẩn bàn giao thô căn thương mại (tham khảo)",
+    "kind": "technical-handover-reference",
+    "category": "public-technical-reference",
+    "authority": "reference",
+    "sources": [
+      "https://oceanpark.vinhomes.vn/wp-content/uploads/2019/08/Tieu-chuan-ban-giao-tho-shophouse.pdf"
+    ],
+    "source_published_at": null,
+    "retrieved_at": "2026-10-15",
+    "applicability": "Căn hộ/căn thương mại dịch vụ theo bảng bàn giao thô trong thư viện OP1; không áp cho mọi căn, không phải giấy phép thi công hay SOP an toàn. Ngày hiệu lực chưa xác minh.",
+    "body": "Bảng bàn giao thô căn hộ/căn thương mại dịch vụ trong thư viện OP1 mô tả đầu chờ điện, cấp/thoát nước và PCCC theo thiết kế. Bên mua hoàn thiện nhiều phần bên trong; điều hòa và hệ thống lọc không khí của ngành nghề có mùi phải theo thiết kế/công suất được phê duyệt. Tài liệu tham khảo này không cấp quyền thi công và không thay nội quy hiện hành, hồ sơ bàn giao hoặc xác nhận bảo hành của căn. Chưa có ngày hiệu lực được xác minh.",
+    "source_snapshot_sha256": "f1137200ee855fdf5441e981cc7db4532d8402cba6eade99f7c4ff39e6791a1b"
+  },
+  {
+    "site_code": "ocean-park-1",
+    "record_code": "resident/official-app-channel",
+    "title": "Kênh Vinhomes Resident chính thức — phân biệt với Domain AI",
+    "kind": "official-app-reference",
+    "category": "public-resident-channel-reference",
+    "authority": "reference",
+    "sources": [
+      "https://play.google.com/store/apps/details?hl=vi&id=com.vinhomes.resident"
+    ],
+    "source_published_at": null,
+    "source_updated_at": "2026-09-02",
+    "retrieved_at": "2026-10-15",
+    "applicability": "Mô tả kênh ứng dụng toàn thương hiệu từ nhà phát triển Vingroup; không phải xác nhận chính sách/khả năng phục vụ OP1 hay API của dự án AI này.",
+    "body": "Mô tả chính thức Vinhomes Resident nêu đặt tiện ích, thanh toán hóa đơn, gửi yêu cầu dịch vụ tòa nhà/góp ý BQL và nhận thông tin PCCC/intercom. Trang Google Play hiển thị cập nhật 02/09/2026, ghi bổ sung xem biểu phí. Đây là kênh ứng dụng của thương hiệu, khác Domain AI đang triển khai; không chứng minh dự án AI đã tích hợp các tính năng đó. Nguồn không cung cấp bảng phí, giờ phục vụ, SLA hoặc quyền API riêng OP1. Cần xác nhận quy định hiện hành với đơn vị vận hành.",
+    "source_snapshot_sha256": "da53d7da70b315de2412aa5e18a7aabc40738d18b21c1d9dcb9bf52d0881f877"
+  }
+]
