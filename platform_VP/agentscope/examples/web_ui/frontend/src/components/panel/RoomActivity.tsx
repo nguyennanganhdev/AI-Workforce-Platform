@@ -18,7 +18,11 @@ function Entry({ entry }: { entry: RoomEntry }) {
 	const time = new Date(entry.at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 	return (
 		<li
-			className={cn('rounded-lg border border-border/60 p-2', quiet && 'border-dashed bg-muted/40')}
+			className={cn(
+				'rounded-lg border border-border/60 p-2',
+				quiet && 'border-dashed bg-muted/40',
+				entry.kind === 'error' && 'border-destructive/40 bg-destructive/5',
+			)}
 			onClick={() => setOpen((value) => !value)}
 		>
 			<div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">

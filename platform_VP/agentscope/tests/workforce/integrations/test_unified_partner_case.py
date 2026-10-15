@@ -505,6 +505,23 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         self.assertEqual("needs_attention", result["workflow_state"])
         self.assertEqual("fallback", result["result"]["data"]["outcome"])
         self.assertEqual(RULES["safe_reply"], result["result"]["messages"][0]["text"])
+        [why] = await self.runner._case.store.entries(started["workflow_id"], kind="attention")
+        self.assertEqual("Leader không gửi tin nào cho người dùng trong lượt này.", why["text"])
+
+    async def test_a_ticket_stopped_by_an_empty_model_account_says_so(self):
+        async def out_of_credit(tools):
+            self.storage.messages.append(SimpleNamespace(id=self.leader.messages[-1].id, usage=None, error=None))
+            self.storage.messages.append(SimpleNamespace(id="reply-q", usage=None, error=SimpleNamespace(type="quota")))
+
+        self.leader.scripts = [out_of_credit]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("succeeded", await self._run())  # not retried: more tries do not add credit
+            result = (await client.get(f"/workforce/v1/partner/requests/{started['request_id']}",
+                                       params={"external_user_id": "resident-1"})).json()
+        self.assertEqual("needs_attention", result["workflow_state"])
+        [why] = await self.runner._case.store.entries(started["workflow_id"], kind="attention")
+        self.assertIn("hết tiền", why["text"])
 
     async def test_early_progress_is_not_orphaned_or_rolled_back_by_dispatch_response(self):
         self.early_progress = True

@@ -877,6 +877,11 @@ class CaseRuntime:
         line = "Tiến độ từ hệ thống đối tác: " + text
         await self._share(workflow_id, "external_event", line, fact=True)
 
+    async def share_attention(self, workflow_id: str, reason: str) -> None:
+        """Why the ticket needs a person, on the room's timeline."""
+
+        await self._share(workflow_id, "error", "Cần xử lý: " + reason)
+
     async def _share(self, workflow_id: str, kind: str, text: str, fact: bool = False) -> None:
         """One event in the ticket's room, when the Leader opened one."""
 

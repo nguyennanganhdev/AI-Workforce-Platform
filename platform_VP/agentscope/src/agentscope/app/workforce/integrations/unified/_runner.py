@@ -40,6 +40,23 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 # network); a model without credit is not retried.
 MAX_MODEL_RETRIES = 2
 TRANSIENT_ERRORS = {"rate_limit", "upstream", "connection"}
+ATTENTION_REASONS = {
+    "quota": "Tài khoản model đã hết tiền (hết hạn mức API). Nạp tiền hoặc đổi key, rồi chạy lại phiếu.",
+    "authentication": "Key model không hợp lệ. Kiểm tra credential của tài khoản.",
+    "permission": "Key model không có quyền dùng model này. Kiểm tra credential của tài khoản.",
+    "context_budget": "Phiếu vượt ngân sách context của Leader.",
+    "collaboration_limit": "Phòng vượt giới hạn trao đổi giữa các agent.",
+}
+
+
+def attention_reason(error: str | None) -> str:
+    """Why a partner turn needs a person, in the words the room shows."""
+
+    if error is None:
+        return "Leader không gửi tin nào cho người dùng trong lượt này."
+    if error in TRANSIENT_ERRORS:
+        return f"Lỗi model tạm thời ({error}) vẫn còn sau {MAX_MODEL_RETRIES} lần chạy lại."
+    return ATTENTION_REASONS.get(error, f"Lỗi model: {error}.")
 
 
 def ticket_title(text: str | None, fields: list[str]) -> str:
@@ -261,16 +278,20 @@ class ChatLeaderTurnRunner:
         usages = [m.usage for m in messages if m.id not in before and getattr(m, "usage", None)]
         return sum(u.input_tokens for u in usages), sum(u.output_tokens for u in usages)
 
-    async def _transient_model_error(self, user_id: str, session_id: str, before: set[str]) -> bool:
-        """Whether this turn's Leader reply ended on a provider error worth retrying."""
+    async def _model_error(self, user_id: str, session_id: str, before: set[str]) -> str | None:
+        """The error type this turn's Leader reply ended on, if any."""
 
         lister = getattr(self._state().storage, "list_messages", None)
         if lister is None:
-            return False
+            return None
         messages, _ = await lister(user_id, session_id, limit=500)
-        return any(
-            m.id not in before and getattr(getattr(m, "error", None), "type", None) in TRANSIENT_ERRORS
-            for m in messages
+        return next(
+            (
+                str(m.error.type)
+                for m in messages
+                if m.id not in before and getattr(getattr(m, "error", None), "type", None)
+            ),
+            None,
         )
 
     async def _member_tokens(self, user_id: str, session_id: str, leader_agent_id: str) -> tuple[int, int]:
@@ -602,7 +623,8 @@ class ChatLeaderTurnRunner:
 
         says = await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
         rejected = await store.entries(workflow.workflow_id, kind="rejected", trigger_id=trigger_id)
-        if ran and not says and await self._transient_model_error(user_id, session.id, before_ids):
+        error = await self._model_error(user_id, session.id, before_ids) if ran and not says else None
+        if error in TRANSIENT_ERRORS:
             failures = await store.entries(workflow.workflow_id, kind="model_error", trigger_id=trigger_id)
             if len(failures) < MAX_MODEL_RETRIES:
                 await store.append(workflow.workflow_id, "model_error", "transient", trigger_id=trigger_id)
@@ -643,6 +665,9 @@ class ChatLeaderTurnRunner:
             next_state = WorkflowState.AWAITING_APPROVAL
         elif ran and not says:
             next_state = WorkflowState.NEEDS_ATTENTION
+            reason = attention_reason(error)
+            await store.append(workflow.workflow_id, "attention", reason, trigger_id=trigger_id)
+            await self._case.share_attention(workflow.workflow_id, reason)
         elif says and says[-1]["expects"] == "reply":
             next_state = WorkflowState.AWAITING_USER
         elif says and says[-1]["expects"] == "confirmation":
