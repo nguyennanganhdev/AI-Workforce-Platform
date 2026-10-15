@@ -104,3 +104,32 @@ Tài khoản quản lý demo và các khoá nằm trong
 - Kết quả kiểm tra: route `local-management` **active**; cầu nối **bật**
   (`http://awp-platform:8000`); khoá khách hàng và khoá provider **được chấp
   nhận**.
+
+## Cập nhật 16/10 (develop2 #94, Vinhome #95)
+
+Triển khai lại platform với bản mới:
+
+1. Kéo `develop2` vào `/opt/awp-platform/app`. Thêm vào `.env` các biến mới có
+   trong `.env.example`:
+   - `OPENAI_CHAT_API=responses`: OpenAI dùng Responses API. Model suy nghĩ
+     trả tóm tắt suy nghĩ, hiện thành thinking. Đặt `chat_completions` để quay
+     lại Chat Completions.
+   - `WORKFORCE_REASONING_EFFORT_LEADER` / `_AGENT` (ví dụ `low`): có tác dụng
+     trên Responses API, chỉ với model suy nghĩ.
+   - `PARTNER_DOCKER_NETWORK`: tên mạng Docker thật của Vinhome trên VPS
+     (`docker network ls`). `PARTNER_PLATFORM_ALIAS`: tên Vinhome gọi platform,
+     phải khớp `VINHOMES_API_PLATFORM_URL`.
+   - `BIND_HOST=127.0.0.1`: chỉ mở cổng trên máy, đặt reverse proxy phía trước.
+2. Build và khởi động:
+   `docker compose -f compose.yaml -f compose.partner-network.yaml up -d --build`.
+3. Đăng ký lại tuyến Vinhome bằng bản khai báo mới (`ticket_input`,
+   `ticket_title_fields`, `leader_brief`), chạy `scripts/workforce/onboard_partner.py`
+   như bước 6. Khoá cũ giữ nguyên; lần chạy lại chỉ cập nhật agent, tool, sự kiện
+   và cấu hình tuyến.
+4. Kiểm tra: `curl http://127.0.0.1:8000/health` trả 200; Vinhome gọi được
+   `http://<PARTNER_PLATFORM_ALIAS>:8000/health`; gửi một phiếu thử từ ứng dụng
+   cư dân và xem session mới trên trang Leader.
+
+Nếu key OpenAI thuộc tổ chức chưa xác minh, tóm tắt suy nghĩ bị từ chối: platform
+tự gọi lại không kèm tóm tắt (log `Reasoning summaries refused`), agent vẫn chạy.
+
