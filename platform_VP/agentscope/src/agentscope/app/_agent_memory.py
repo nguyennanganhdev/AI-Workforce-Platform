@@ -60,7 +60,9 @@ def rank(query: str, memories: list[AgentMemoryRecord]) -> list[tuple[float, Age
             tf = terms[token]
             score += idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * len(document) / average))
         if score > 0:
-            scored.append((score * (0.5 + memory.confidence / 2), memory))
+            # Track record: an item that kept appearing in rejected results ranks lower.
+            record = (memory.successes + 1) / (memory.successes + memory.failures + 2)
+            scored.append((score * (0.5 + memory.confidence / 2) * (0.5 + record), memory))
     scored.sort(key=lambda item: item[0], reverse=True)
     return scored
 
@@ -108,8 +110,10 @@ class AgentMemoryService:
         *,
         limit: int = 5,
         max_chars: int = 2400,
+        ticket: str | None = None,
     ) -> list[AgentMemoryRecord]:
-        """Best matching active memories within a character budget."""
+        """Best matching active memories within a character budget; ``ticket``
+        (team id) is noted on each so the ticket's outcome can score it."""
 
         selected: list[AgentMemoryRecord] = []
         used = 0
@@ -120,6 +124,8 @@ class AgentMemoryService:
             used += len(memory.content)
         for memory in selected:
             memory.uses += 1
+            if ticket and ticket not in memory.used_in:
+                memory.used_in = [*memory.used_in, ticket][-20:]
             try:
                 await self._storage.upsert_agent_memory(user_id, memory)
             except Exception:  # noqa: BLE001 - usage count is best effort
@@ -138,6 +144,29 @@ class AgentMemoryService:
             "without checking it.\n"
             f"{lines}\n</agent-memory>"
         )
+
+    async def record_outcome(self, user_id: str, agent_ids: list[str], ticket: str, success: bool) -> list[str]:
+        """Score the items recalled in ``ticket``; retire an item that failed at
+        least twice and more often than it helped. Returns retired ids."""
+
+        retired = []
+        for agent_id in agent_ids:
+            for memory in await self.active(user_id, agent_id):
+                if ticket not in memory.used_in:
+                    continue
+                if success:
+                    memory.successes += 1
+                else:
+                    memory.failures += 1
+                if memory.failures >= 2 and memory.failures > memory.successes:
+                    memory.status = "rejected"
+                    memory.reason = (
+                        f"Tự gỡ: có mặt trong {memory.failures} phiếu người dùng chê kết quả, "
+                        f"{memory.successes} phiếu tốt."
+                    )
+                    retired.append(memory.id)
+                await self._storage.upsert_agent_memory(user_id, memory)
+        return retired
 
     async def retire(
         self,

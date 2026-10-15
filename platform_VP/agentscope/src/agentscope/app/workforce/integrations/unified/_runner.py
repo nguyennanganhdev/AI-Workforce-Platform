@@ -36,6 +36,41 @@ LEADER_VERSION_ID = "console-leader"
 # The end user's photos shown to the route leader per turn, and their size cap.
 MAX_IMAGES_PER_TURN = 4
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+# Turn retries after a transient model error (rate limit, provider 5xx,
+# network); a model without credit is not retried.
+MAX_MODEL_RETRIES = 2
+TRANSIENT_ERRORS = {"rate_limit", "upstream", "connection"}
+ATTENTION_REASONS = {
+    "quota": "Tài khoản model đã hết tiền (hết hạn mức API). Nạp tiền hoặc đổi key, rồi chạy lại phiếu.",
+    "authentication": "Key model không hợp lệ. Kiểm tra credential của tài khoản.",
+    "permission": "Key model không có quyền dùng model này. Kiểm tra credential của tài khoản.",
+    "context_budget": "Phiếu vượt ngân sách context của Leader.",
+    "collaboration_limit": "Phòng vượt giới hạn trao đổi giữa các agent.",
+}
+
+
+def attention_reason(error: str | None) -> str:
+    """Why a partner turn needs a person, in the words the room shows."""
+
+    if error is None:
+        return "Leader không gửi tin nào cho người dùng trong lượt này."
+    if error in TRANSIENT_ERRORS:
+        return f"Lỗi model tạm thời ({error}) vẫn còn sau {MAX_MODEL_RETRIES} lần chạy lại."
+    return ATTENTION_REASONS.get(error, f"Lỗi model: {error}.")
+
+
+def ticket_title(text: str | None, fields: list[str]) -> str:
+    """A readable ticket name from the handover's ``field: value`` lines the
+    partner declared (route config ``ticket_title_fields``)."""
+
+    values = {}
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition(":")
+        if sep and value.strip():
+            values.setdefault(key.strip().casefold(), value.strip())
+    parts = [values[field.casefold()] for field in fields if field.casefold() in values]
+    title = " · ".join(parts)
+    return title if len(title) <= 80 else title[:79].rstrip() + "…"
 
 
 def _text_of(message: Any) -> str:
@@ -133,6 +168,17 @@ class ChatLeaderTurnRunner:
         self._app = app
         if self._case is not None:
             self._case.bind(app)
+        app.state.partner_quality = self.quality
+
+    async def quality(self, manager_account_id: str, days: int = 30) -> dict:
+        """Outcomes, message quality and cost of the manager's partner tickets."""
+
+        from ._quality import ticket_quality
+
+        state = self._state()
+        return await ticket_quality(
+            self._uows, state.storage, state.shared_context_storage, manager_account_id, days=days,
+        )
 
     # ------------------------------------------------------------------ deps
 
@@ -232,6 +278,22 @@ class ChatLeaderTurnRunner:
         usages = [m.usage for m in messages if m.id not in before and getattr(m, "usage", None)]
         return sum(u.input_tokens for u in usages), sum(u.output_tokens for u in usages)
 
+    async def _model_error(self, user_id: str, session_id: str, before: set[str]) -> str | None:
+        """The error type this turn's Leader reply ended on, if any."""
+
+        lister = getattr(self._state().storage, "list_messages", None)
+        if lister is None:
+            return None
+        messages, _ = await lister(user_id, session_id, limit=500)
+        return next(
+            (
+                str(m.error.type)
+                for m in messages
+                if m.id not in before and getattr(getattr(m, "error", None), "type", None)
+            ),
+            None,
+        )
+
     async def _member_tokens(self, user_id: str, session_id: str, leader_agent_id: str) -> tuple[int, int]:
         """(input, output) tokens the room's members used so far (leader excluded)."""
 
@@ -255,6 +317,43 @@ class ChatLeaderTurnRunner:
         session = await state.storage.get_session(user_id, agent_id, session_id)
         if session is not None and session.team_id is not None:
             schedule(user_id, session, session.team_id)
+
+    async def workflow_closed(self, scope: Any, workflow_id: str, reason: str) -> None:
+        """A partner closed a ticket: its room teaches its agents only when the
+        end user confirmed the result (route config ``success_close_reasons``),
+        not when the Leader merely asked for confirmation."""
+
+        if self._case is None:
+            return
+        binding = await self._case.store.session_of_workflow(workflow_id)
+        if binding is None:
+            return
+        route = await self._case.store.route(binding["route_id"]) or {}
+        success = (route.get("config") or {}).get("success_close_reasons") or ["resident_confirmed"]
+        if reason not in success:
+            logger.info("Partner case %s closed (%s): nothing learned", workflow_id, reason)
+            return
+        user_id = binding["manager_account_id"]
+        await self._score_recalled_memory(user_id, binding, workflow_id)
+        await self._learn_from_room(user_id, binding["agent_id"], binding["session_id"])
+
+    async def _score_recalled_memory(self, user_id: str, binding: dict, workflow_id: str) -> None:
+        """Memories recalled in this ticket count as helpful when the end user
+        confirmed at the first invitation, harmful when they rejected first."""
+
+        state = self._state()
+        record = getattr(state.chat_service, "record_ticket_outcome", None)
+        session = await state.storage.get_session(user_id, binding["agent_id"], binding["session_id"])
+        team_id = getattr(session, "team_id", None)
+        if record is None or not team_id:
+            return
+        invitations = [
+            entry for entry in await self._case.store.entries(workflow_id, kind="say")
+            if entry["expects"] == "confirmation"
+        ]
+        retired = await record(user_id, team_id, len(invitations) <= 1)
+        if retired:
+            logger.info("Partner case %s: retired memories %s", workflow_id, retired)
 
     async def _messages_after(self, user_id: str, session_id: str, message_id: str) -> list[Any]:
         storage = self._state().storage
@@ -375,50 +474,62 @@ class ChatLeaderTurnRunner:
 
     # ------------------------------------------------------- partner case
 
-    async def _case_session(self, user_id: str, scope: Any, workflow: Any, route: dict, session_ref: str) -> Any:
+    async def _case_session(
+        self, user_id: str, scope: Any, workflow: Any, route: dict, session_ref: str, text: str | None = None,
+    ) -> Any:
         """The ticket's own session of the manager's Leader (the console
         Leader): the ticket shows on the Leader page with its room."""
 
         from ...._router._workforce_console import _leader
-        from ....storage import SessionConfig
+        from ....storage import SessionConfig, TeamData, TeamRecord
+        from ._case import _members
 
         state = self._state()
         storage = state.storage
         leader, primary = await _leader(user_id, storage, state.workspace_manager)
         session = await storage.get_session(user_id, leader.id, session_ref)
-        if session is not None:
-            return session
-        ticket = workflow.audience.external_ticket_id or workflow.workflow_id
-        session = await storage.upsert_session(
-            user_id=user_id,
-            agent_id=leader.id,
-            config=SessionConfig(
-                workspace_id=session_ref,
-                name=f"Phiếu đối tác {ticket}",
-                chat_model_config=primary.config.chat_model_config,
-            ),
-            session_id=session_ref,
-        )
-        workspace = await state.workspace_manager.get_workspace(
-            user_id, leader.id, session.id, session.config.workspace_id,
-        )
-        # The Leader orchestrates; the route's tools belong to the room's members.
-        for client in await workspace.list_mcps(agent_id=leader.id, session_id=session.id):
-            await workspace.remove_mcp(client.name, agent_id=leader.id, session_id=session.id)
-        for default_mcp in workspace.default_mcps:
-            await workspace.remove_mcp(default_mcp.name, agent_id=leader.id, session_id=session.id)
-        await self._case.store.bind_session(
-            {
-                "session_id": session.id,
-                "workflow_id": workflow.workflow_id,
-                "route_id": route["route_id"],
-                "manager_account_id": user_id,
-                "scope": scope.model_dump(mode="json"),
-                "agent_id": leader.id,
-                "agent_version": 0,
-                "trigger_id": None,
-            },
-        )
+        if session is None:
+            fields = (route.get("config") or {}).get("ticket_title_fields") or []
+            session = await storage.upsert_session(
+                user_id=user_id,
+                agent_id=leader.id,
+                config=SessionConfig(
+                    workspace_id=session_ref,
+                    name=ticket_title(text, fields) or "Phiếu đối tác",
+                    chat_model_config=primary.config.chat_model_config,
+                ),
+                session_id=session_ref,
+            )
+            workspace = await state.workspace_manager.get_workspace(
+                user_id, leader.id, session.id, session.config.workspace_id,
+            )
+            # The Leader orchestrates; the route's tools belong to the room's members.
+            for client in await workspace.list_mcps(agent_id=leader.id, session_id=session.id):
+                await workspace.remove_mcp(client.name, agent_id=leader.id, session_id=session.id)
+            for default_mcp in workspace.default_mcps:
+                await workspace.remove_mcp(default_mcp.name, agent_id=leader.id, session_id=session.id)
+            await self._case.store.bind_session(
+                {
+                    "session_id": session.id,
+                    "workflow_id": workflow.workflow_id,
+                    "route_id": route["route_id"],
+                    "manager_account_id": user_id,
+                    "scope": scope.model_dump(mode="json"),
+                    "agent_id": leader.id,
+                    "agent_version": 0,
+                    "trigger_id": None,
+                },
+            )
+        if session.team_id is None and _members(route):
+            # The Leader always works a partner ticket with a room: it opens
+            # with the session (a model call less) and carries the ticket's name.
+            team = TeamRecord(
+                user_id=user_id, session_id=session.id, leader_agent_id=leader.id,
+                data=TeamData(name=session.config.name, description="Phòng xử lý phiếu", member_ids=[]),
+            )
+            await storage.upsert_team(user_id, team)
+            await storage.set_session_team_id(user_id, session.id, team.id)
+            session = await storage.get_session(user_id, leader.id, session.id)
         return session
 
     async def _wait_for_say(self, workflow_id: str, trigger_id: str) -> None:
@@ -434,8 +545,9 @@ class ChatLeaderTurnRunner:
         user_id = scope.manager_account_id
         workflow = context.workflow
         store = self._case.store
+        text = await self._input_text(workflow.workflow_id, trigger)
         session = await self._case_session(
-            user_id, scope, workflow, route, context.checkpoint.session_refs[0],
+            user_id, scope, workflow, route, context.checkpoint.session_refs[0], text,
         )
         agent_id = session.agent_id
         trigger_id = trigger["trigger_id"]
@@ -471,6 +583,17 @@ class ChatLeaderTurnRunner:
                     await self._wait_for_say(workflow.workflow_id, trigger_id)
                 ran = True
             approval_ids = [item for item in approval_ids if item != cause["approval_id"]]
+        elif f"{trigger_id}:input" in before_ids:
+            # A retry after a transient model error: the input is already in
+            # the session; resending it would duplicate it.
+            attempt = len(await store.entries(workflow.workflow_id, kind="model_error", trigger_id=trigger_id))
+            message = UserMsg(
+                id=f"{trigger_id}:retry{attempt}",
+                name="customer",
+                content=[TextBlock(text="(Hệ thống) Lượt trước bị lỗi model nên chưa trả lời. Tiếp tục xử lý yêu cầu ở trên.")],
+            )
+            await state.chat_service.run(user_id, session.id, agent_id, message)
+            ran = True
         else:
             parts = []
             heard = await store.take_pending(workflow.workflow_id)
@@ -479,14 +602,15 @@ class ChatLeaderTurnRunner:
                     "(Hệ thống) Sự kiện mới của việc đang theo dõi:\n"
                     + "\n".join(f"E{item['seq']}: {item['text']}" for item in heard),
                 )
-            text = await self._input_text(workflow.workflow_id, trigger)
             if text:
                 parts.append(text)
             images = await self._new_images(workflow.workflow_id)
             if images:
                 parts.append(f"(Hệ thống) Người dùng gửi kèm {len(images)} ảnh bên dưới.")
             if parts:
-                message = UserMsg(name="customer", content=[TextBlock(text="\n\n".join(parts)), *images])
+                message = UserMsg(
+                    id=f"{trigger_id}:input", name="customer", content=[TextBlock(text="\n\n".join(parts)), *images],
+                )
                 await state.chat_service.run(user_id, session.id, agent_id, message)
                 ran = True
         # The turn is over: a later wake-up (a member's late report) has no
@@ -497,8 +621,15 @@ class ChatLeaderTurnRunner:
         spent_in = leader_in + max(0, members_after[0] - members_before[0])
         spent_out = leader_out + max(0, members_after[1] - members_before[1])
 
-        says =await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
+        says = await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
         rejected = await store.entries(workflow.workflow_id, kind="rejected", trigger_id=trigger_id)
+        error = await self._model_error(user_id, session.id, before_ids) if ran and not says else None
+        if error in TRANSIENT_ERRORS:
+            failures = await store.entries(workflow.workflow_id, kind="model_error", trigger_id=trigger_id)
+            if len(failures) < MAX_MODEL_RETRIES:
+                await store.append(workflow.workflow_id, "model_error", "transient", trigger_id=trigger_id)
+                # The durable job retries the turn (see the retry branch above).
+                raise RuntimeError("transient model error; the partner turn is retried")
         messages = [
             AssistantMessage(
                 message_id=f"{trigger_id}:say:{item['seq']}",
@@ -534,6 +665,9 @@ class ChatLeaderTurnRunner:
             next_state = WorkflowState.AWAITING_APPROVAL
         elif ran and not says:
             next_state = WorkflowState.NEEDS_ATTENTION
+            reason = attention_reason(error)
+            await store.append(workflow.workflow_id, "attention", reason, trigger_id=trigger_id)
+            await self._case.share_attention(workflow.workflow_id, reason)
         elif says and says[-1]["expects"] == "reply":
             next_state = WorkflowState.AWAITING_USER
         elif says and says[-1]["expects"] == "confirmation":
@@ -542,9 +676,6 @@ class ChatLeaderTurnRunner:
             next_state = workflow.state
         else:
             next_state = WorkflowState.AWAITING_USER
-
-        if next_state == WorkflowState.AWAITING_CONFIRMATION:
-            await self._learn_from_room(user_id, agent_id, session.id)
 
         budget = context.checkpoint.used_budget
         checkpoint = context.checkpoint.model_copy(

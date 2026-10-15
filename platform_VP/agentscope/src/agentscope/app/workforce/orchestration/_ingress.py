@@ -8,6 +8,7 @@ from time import monotonic
 from typing import Protocol
 from urllib.parse import quote
 
+from ...._logging import logger
 from ..contracts import (
     CloseWorkflowCommand,
     InboundReceipt,
@@ -94,6 +95,9 @@ class PartnerIngressService:
         self.assets = assets
         self.clock = clock
         self.wait_slice_seconds = wait_slice_seconds
+        # Called as hook(scope, workflow_id, reason) after a close commits;
+        # a failing hook never fails the close.
+        self.closed_hooks: list = []
 
     @staticmethod
     def _require_customer_actor(actor, external_user_id: str) -> None:
@@ -523,6 +527,12 @@ class PartnerIngressService:
                     tx,
                 )
             await tx.commit()
+        if claim.is_new:
+            for hook in self.closed_hooks:
+                try:
+                    await hook(scope, workflow_id, parsed.reason)
+                except Exception:  # noqa: BLE001 - the close itself succeeded
+                    logger.exception("Close hook failed for workflow %s", workflow_id)
         return await self.read_result(
             partner_actor, claim.request_id, parsed.external_user_id
         )

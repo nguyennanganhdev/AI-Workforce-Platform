@@ -15,7 +15,7 @@ import os
 import tempfile
 import time
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -240,6 +240,12 @@ class _Storage:
         self.sessions[session_id] = session
         return session
 
+    async def upsert_team(self, user_id, team):
+        self.teams = {**getattr(self, "teams", {}), team.id: team}
+
+    async def set_session_team_id(self, user_id, session_id, team_id):
+        self.sessions[session_id].team_id = team_id
+
     async def get_mcp(self, user_id, mcp_id):
         return self.mcp if mcp_id == "mcp-1" else None
 
@@ -349,14 +355,16 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
                     route_id="route-1", tenant_id="tenant-1", partner_client_id="partner-1",
                     manager_account_id="manager-1", leader_agent_id="leader-vh", integration_id="pi-1",
                     config={"rules": RULES, "policy": {"approval_ttl_seconds": 600},
-                            "member_agents": {"leader-vh": COORDINATOR}}, tools=TOOLS,
+                            "member_agents": {"leader-vh": COORDINATOR},
+                            "ticket_title_fields": ["Mô tả của cư dân", "Căn"]}, tools=TOOLS,
                     created_at=NOW, updated_at=NOW,
                 ),
             )
         uows = SqlAlchemyUnitOfWorkFactory(async_sessionmaker(self.engine, expire_on_commit=False))
         self.uows = uows
         bus = InMemoryMessageBus()
-        jobs = DurableJobService(SqlDurableJobRepository(uows))
+        # No delay between attempts: a retried turn runs on the next worker step.
+        jobs = DurableJobService(SqlDurableJobRepository(uows), retry_base=timedelta(0))
         foundation = SimpleNamespace(
             uows=uows,
             jobs=jobs,
@@ -497,6 +505,23 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         self.assertEqual("needs_attention", result["workflow_state"])
         self.assertEqual("fallback", result["result"]["data"]["outcome"])
         self.assertEqual(RULES["safe_reply"], result["result"]["messages"][0]["text"])
+        [why] = await self.runner._case.store.entries(started["workflow_id"], kind="attention")
+        self.assertEqual("Leader không gửi tin nào cho người dùng trong lượt này.", why["text"])
+
+    async def test_a_ticket_stopped_by_an_empty_model_account_says_so(self):
+        async def out_of_credit(tools):
+            self.storage.messages.append(SimpleNamespace(id=self.leader.messages[-1].id, usage=None, error=None))
+            self.storage.messages.append(SimpleNamespace(id="reply-q", usage=None, error=SimpleNamespace(type="quota")))
+
+        self.leader.scripts = [out_of_credit]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("succeeded", await self._run())  # not retried: more tries do not add credit
+            result = (await client.get(f"/workforce/v1/partner/requests/{started['request_id']}",
+                                       params={"external_user_id": "resident-1"})).json()
+        self.assertEqual("needs_attention", result["workflow_state"])
+        [why] = await self.runner._case.store.entries(started["workflow_id"], kind="attention")
+        self.assertIn("hết tiền", why["text"])
 
     async def test_early_progress_is_not_orphaned_or_rolled_back_by_dispatch_response(self):
         self.early_progress = True
@@ -533,20 +558,106 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         budget = payload["used_budget"]
         self.assertEqual((1200, 80), (budget["input_tokens"], budget["output_tokens"]))
 
-    async def test_a_result_with_a_room_teaches_its_agents(self):
+    async def test_the_room_teaches_its_agents_only_when_the_user_confirms(self):
         scheduled = []
 
         async def summary(tools):
             for session in self.storage.sessions.values():
                 session.team_id = "team-9"  # the leader opened a room earlier
-            await call(tools, "CaseSay", text="Nhân viên đã báo xong, anh/chị xác nhận giúp tôi.", expects="confirmation")
+            await call(tools, "CaseSay", text="Nhân viên đã báo xong, bạn xác nhận giúp tôi.", expects="confirmation")
+
+        scored = []
+
+        async def record_ticket_outcome(user_id, team_id, success):
+            scored.append((team_id, success))
+            return []
 
         self.leader.schedule_learning = lambda user_id, session, team_id: scheduled.append(team_id)
+        self.leader.record_ticket_outcome = record_ticket_outcome
+        self.leader.scripts = [summary, summary]
+        async with self._client() as client:
+            for request_id, ticket, reason in (("vh-cmd-1", "T-77", "resident_cancelled"), ("vh-cmd-2", "T-78", "resident_confirmed")):
+                start = self._start(request_id=request_id)
+                start.update(external_ticket_id=ticket, external_conversation_id=f"chat-9:{ticket}")
+                started = (await client.post("/workforce/v1/partner/requests", json=start)).json()
+                self.assertEqual("succeeded", await self._run())
+                # Asking for confirmation teaches nothing yet.
+                self.assertEqual([], scheduled)
+                items = await self._history(client, started["conversation_id"])
+                revision = [i["payload"]["revision"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
+                closed = await client.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close", json={
+                    "schema_version": "1", "external_request_id": f"close-{ticket}", "external_user_id": "resident-1",
+                    "external_ticket_id": ticket, "external_conversation_id": f"chat-9:{ticket}",
+                    "expected_revision": revision, "reason": reason,
+                })
+                self.assertEqual("closed", closed.json()["workflow_state"], closed.text)
+        # Cancelled: nothing learned; confirmed: the room teaches its agents, and
+        # the memories it recalled count as helpful (confirmed at the first ask).
+        self.assertEqual(["team-9"], scheduled)
+        self.assertEqual([("team-9", True)], scored)
+
+    async def test_quality_counts_outcomes_refusals_and_cost(self):
+        from agentscope.app.workforce.integrations.unified._quality import ticket_quality
+
+        async def summary(tools):
+            for session in self.storage.sessions.values():
+                session.team_id = "team-1"
+            await call(tools, "CaseSay", text="Việc này được miễn phí.", expects="none")  # refused
+            await call(tools, "CaseSay", text="Đã xong, bạn xác nhận giúp tôi.", expects="confirmation")
+
         self.leader.scripts = [summary]
         async with self._client() as client:
-            await client.post("/workforce/v1/partner/requests", json=self._start())
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
             self.assertEqual("succeeded", await self._run())
-        self.assertEqual(["team-9"], scheduled)
+            items = await self._history(client, started["conversation_id"])
+            revision = [i["payload"]["revision"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
+            closed = await client.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close", json={
+                "schema_version": "1", "external_request_id": "close-1", "external_user_id": "resident-1",
+                "external_ticket_id": "T-77", "external_conversation_id": "chat-9:T-77",
+                "expected_revision": revision, "reason": "resident_confirmed",
+            })
+            self.assertEqual("closed", closed.json()["workflow_state"], closed.text)
+        usage = {
+            "leader": SimpleNamespace(model="gpt-5.5", input_tokens=10_000, cached_input_tokens=8_000, output_tokens=500),
+            "member": SimpleNamespace(model="gpt-5.4-mini", input_tokens=4_000, cached_input_tokens=0, output_tokens=200),
+        }
+
+        async def room(*_args):
+            return SimpleNamespace(state=SimpleNamespace(metrics=SimpleNamespace(provider_usage=usage)))
+
+        quality = await ticket_quality(self.uows, self.storage, SimpleNamespace(get_team_shared_context=room), "manager-1")
+        self.assertEqual(
+            (1, 1, 1, 1, 1, 0.5),
+            (quality["tickets"], quality["closed_confirmed"], quality["first_time_confirmed"],
+             quality["messages_sent"], quality["messages_refused"], quality["refusal_rate"]),
+        )
+        # gpt-5.5: 2,000×5 + 8,000×0.5 + 500×30; mini: 4,000×0.75 + 200×4.5 (per 1M tokens).
+        self.assertAlmostEqual((10_000 + 4_000 + 15_000 + 3_000 + 900) / 1_000_000, quality["est_cost_usd"])
+        self.assertEqual(round(8_000 / 14_000, 3), quality["cache_rate"])
+
+    async def test_a_transient_model_error_retries_the_turn_without_resending_the_input(self):
+        async def provider_down(tools):
+            # The chat runtime stored the input, then the reply ended on a 429.
+            self.storage.messages.append(SimpleNamespace(id=self.leader.messages[-1].id, usage=None, error=None))
+            self.storage.messages.append(
+                SimpleNamespace(id="reply-err", usage=None, error=SimpleNamespace(type="rate_limit")),
+            )
+
+        async def answers(tools):
+            await call(tools, "CaseSay", text="Yêu cầu đã được tiếp nhận.", expects="none")
+
+        self.leader.scripts = [provider_down, answers]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("retry_scheduled", (await self.worker.run_once()).status)
+            self.assertEqual("succeeded", await self._run())
+            result = (await client.get(f"/workforce/v1/partner/requests/{started['request_id']}",
+                                       params={"external_user_id": "resident-1"})).json()
+        first, retry = self.leader.messages
+        self.assertTrue(first.id.endswith(":input"))
+        self.assertTrue(retry.id.endswith(":retry1"))
+        self.assertIn("Lượt trước bị lỗi model", retry.get_text_content())
+        self.assertEqual(["Yêu cầu đã được tiếp nhận."], [m["text"] for m in result["result"]["messages"]])
 
     async def test_the_end_users_photos_reach_the_leader_once(self):
         from contextlib import asynccontextmanager
@@ -620,6 +731,7 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                 "client_reference": reference, "event_type": "job.accepted", "provider_version": 2,
                 "occurred_at": "2026-10-20T02:00:00.000000Z", "data": {"staff_name": "Bình", "eta": "09:30 20/10/2026"},
             })
+            self.runner._app.state.shared_context_storage = object()
             with patch("agentscope.app._shared_context.SharedContextService", Shared), \
                     patch.object(self.storage, "get_session", in_room):
                 accepted = await client.post("/workforce/v1/provider/job-events", content=raw, headers=headers)
@@ -628,6 +740,37 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         self.assertEqual(("team-1", "external_event"), (event["team_id"], event["kind"]))
         self.assertIn("job.accepted", event["content"])
         self.assertIn("Bình", event["content"])
+
+    async def test_the_message_sent_is_the_rooms_reply(self):
+        shared = []
+
+        class Shared:
+            def __init__(self, *_args):
+                pass
+
+            async def append_event(self, **event):
+                shared.append(event)
+
+        async def say(tools):
+            for session in self.storage.sessions.values():
+                session.team_id = "team-1"
+            await call(tools, "CaseSay", text="Thợ đã nhận việc, bạn chờ thông báo tiếp nhé.", expects="none")
+
+        async def no_context(*_args):
+            return None
+
+        self.leader.scripts = [say]
+        self.runner._app.state.shared_context_storage = SimpleNamespace(get_team_shared_context=no_context)
+        with patch("agentscope.app._shared_context.SharedContextService", Shared):
+            async with self._client() as client:
+                await client.post("/workforce/v1/partner/requests", json=self._start())
+                self.assertEqual("succeeded", await self._run())
+        [event] = shared
+        self.assertEqual(
+            ("customer_reply", "Thợ đã nhận việc, bạn chờ thông báo tiếp nhé."),
+            (event["kind"], event["content"]),
+        )
+        self.assertIsNone(event["delta"])
 
     async def test_dispatch_progress_events_result_and_close_like_the_vinhomes_bridge(self):
         async def first_turn(tools):
@@ -680,7 +823,7 @@ class UnifiedPartnerCaseTest(_CaseHarness):
             self.assertEqual("awaiting_user", result["workflow_state"])
             # The ticket is a session of the console Leader: the Leader page lists it.
             [ticket] = self.storage.sessions.values()
-            self.assertEqual(("leader-console", "Phiếu đối tác T-77"), (ticket.agent_id, ticket.config.name))
+            self.assertEqual(("leader-console", "Rò nước bồn rửa · S1-1205"), (ticket.agent_id, ticket.config.name))
             self.assertEqual(1, len(result["result"]["messages"]))
             self.assertIn("đang chờ người nhận", result["result"]["messages"][0]["text"])
 
@@ -884,8 +1027,9 @@ def _unsaid_case(said: bool = False, route: dict | None = None):
 
 
 class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
-    async def test_after_the_turns_message_the_leader_has_nothing_more_to_call(self):
+    async def test_after_the_turns_message_the_turn_ends_without_a_model_call(self):
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
+        from agentscope.model import ChatResponse
 
         middleware = PartnerCaseMiddleware(_unsaid_case(said=True), [SimpleNamespace(name="vh_ticket_get")])
         seen = {}
@@ -894,8 +1038,11 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             seen.update(kwargs)
 
         offered = [{"type": "function", "function": {"name": n}} for n in ("CaseSay", "CaseFinalize", "vh_ticket_get")]
-        await middleware.on_model_call(None, {"tools": offered}, next_handler)
-        self.assertEqual([], seen["tools"])
+        response = await middleware.on_model_call(None, {"tools": offered}, next_handler)
+        self.assertEqual({}, seen)  # the model was not called
+        self.assertIsInstance(response, ChatResponse)
+        self.assertTrue(response.is_last)
+        self.assertEqual(["text"], [block.type for block in response.content])
 
     async def test_the_case_middleware_offers_only_case_and_given_tools(self):
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
@@ -966,7 +1113,7 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         ] + [invite]
         await middleware.on_model_call(None, {"tools": offered}, next_handler)
         kept = {tool["function"]["name"]: tool for tool in seen["tools"]}
-        self.assertEqual({"TeamCreate", "TeamSay", "TeamDelete", "CaseSay", "AgentInvite"}, set(kept))
+        self.assertEqual({"TeamSay", "CaseSay", "AgentInvite"}, set(kept))
         limited = kept["AgentInvite"]["function"]
         self.assertEqual(names[:2], limited["parameters"]["properties"]["target"]["enum"])
         self.assertEqual(
@@ -1046,8 +1193,41 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             seen.update(kwargs)
 
         offered = [{"type": "function", "function": {"name": n}} for n in ("TeamSay", "CaseSay", "vh_ticket_get", "Bash")]
-        await member.on_model_call(None, {"tools": offered}, next_handler)
+        agent = SimpleNamespace(state=SimpleNamespace(reply_id="r-now"))
+        await member.on_model_call(agent, {"tools": offered, "messages": []}, next_handler)
         self.assertEqual(["TeamSay", "vh_ticket_get"], [t["function"]["name"] for t in seen["tools"]])
+
+
+class ClearOldResultsTest(unittest.TestCase):
+    def test_earlier_long_results_shrink_to_their_label_in_one_batch(self):
+        from agentscope.app.workforce.integrations.unified._case import clear_old_results
+        from agentscope.message import AssistantMsg, ToolResultBlock
+
+        def reply(reply_id, label, size):
+            return AssistantMsg(id=reply_id, name="DieuPhoi", content=[ToolResultBlock(
+                id=f"c-{reply_id}", name="vh_ticket_get", output=[TextBlock(text=f"{label}: " + "x" * size)],
+            )])
+
+        old, current = reply("r-old", "E1", 7000), reply("r-now", "E2", 7000)
+        cleared = clear_old_results([old, current], "r-now")
+        [stub] = cleared[0].content[0].output
+        self.assertTrue(stub.text.startswith("E1: (kết quả của lượt trước"))
+        self.assertIs(current, cleared[1])  # this reply keeps its results
+        # Too little to free: nothing changes, so the cached prefix holds.
+        small = reply("r-old", "E1", 1000)
+        self.assertIs(small, clear_old_results([small, current], "r-now")[0])
+
+
+class TicketTitleTest(unittest.TestCase):
+    def test_the_declared_fields_name_the_ticket(self):
+        from agentscope.app.workforce.integrations.unified._runner import ticket_title
+
+        self.assertEqual("Rò nước bồn rửa · S1-1205", ticket_title(HANDOVER, ["Mô tả của cư dân", "căn"]))
+        self.assertEqual("", ticket_title(HANDOVER, []))
+        self.assertEqual("", ticket_title(None, ["Căn"]))
+        long = ticket_title("Tiêu đề: " + "x" * 200, ["Tiêu đề"])
+        self.assertEqual(80, len(long))
+        self.assertTrue(long.endswith("…"))
 
 
 class PartnerFactTest(unittest.TestCase):
@@ -1083,3 +1263,46 @@ class CheckSayTest(unittest.TestCase):
 
     def test_unknown_labels_are_refused(self):
         self.assertTrue(check_say("Đã ghi nhận.", ["E9"], {}, {}, []))
+
+
+class PromptCacheOrderTest(unittest.TestCase):
+    def test_the_session_notification_goes_after_the_fixed_instructions(self):
+        from agentscope.app.workforce.integrations.unified._case import notification_last
+
+        prompt = "Agent.\n\n<system-notification>session (id=1), roster: A</system-notification>\n<workspace>w</workspace>\n\nPOLICY"
+        self.assertEqual(
+            "Agent.\n\n<workspace>w</workspace>\n\nPOLICY\n\n<system-notification>session (id=1), roster: A</system-notification>",
+            notification_last(prompt),
+        )
+        self.assertEqual("no note", notification_last("no note"))
+
+
+class RoomStepEndTest(unittest.IsolatedAsyncioTestCase):
+    async def test_after_inviting_the_step_ends_once_and_the_reports_wake_the_leader(self):
+        from agentscope.app.workforce.integrations.unified._case import ROOM_WORKING, PartnerCaseMiddleware
+        from agentscope.message import AssistantMsg, ToolResultBlock, ToolResultState
+
+        def reply(name, state=ToolResultState.SUCCESS):
+            return AssistantMsg(id="r1", name="Leader", content=[ToolResultBlock(
+                id=f"c-{name}", name=name, output=[TextBlock(text="ok")], state=state,
+            )])
+
+        members = {"DieuPhoi@a": {"name": "DieuPhoi"}}
+        middleware = PartnerCaseMiddleware(_unsaid_case(), [], members, waiter=object())
+        agent = SimpleNamespace(state=SimpleNamespace(reply_id="r1"))
+        calls = []
+
+        async def next_handler(**kwargs):
+            calls.append(kwargs)
+            return "model"
+
+        first = await middleware.on_model_call(agent, {"tools": [], "messages": [reply("AgentInvite")]}, next_handler)
+        self.assertEqual(ROOM_WORKING, first.content[0].text)
+        self.assertEqual([], calls)
+        # Woken by the reports (same reply, same invite): the model answers.
+        again = await middleware.on_model_call(agent, {"tools": [], "messages": [reply("AgentInvite")]}, next_handler)
+        self.assertEqual("model", again)
+        # A failed invite, or any other last step, goes to the model.
+        fresh = PartnerCaseMiddleware(_unsaid_case(), [], members, waiter=object())
+        for messages in ([reply("AgentInvite", ToolResultState.ERROR)], [reply("TeamSay")]):
+            self.assertEqual("model", await fresh.on_model_call(agent, {"tools": [], "messages": messages}, next_handler))

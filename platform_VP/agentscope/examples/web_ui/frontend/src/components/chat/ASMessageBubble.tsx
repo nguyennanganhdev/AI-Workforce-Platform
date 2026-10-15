@@ -24,6 +24,8 @@ import {
 import mime from 'mime';
 import { memo, useEffect, useRef, useState } from 'react';
 
+import { DialogToolCard, HandoverCard, TeamMessageCard } from './TeamDialog';
+import { DIALOG_TOOLS, parseHandover, teamHintSource } from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
 import { DiffStats } from './tool-renderers/_shared';
 import { countDiffStats, getResultDiff } from './tool-renderers/_shared-utils';
@@ -66,7 +68,13 @@ interface ToolCallGroupBlock {
 	finished_at?: string;
 }
 
-type ExtendedContentBlock = ContentBlock | ToolCallGroupBlock;
+/** A tool call that is a message to someone (see `DIALOG_TOOLS`), shown as a card. */
+interface DialogBlock {
+	type: 'dialog';
+	pair: ToolCallWithResult;
+}
+
+type ExtendedContentBlock = ContentBlock | ToolCallGroupBlock | DialogBlock;
 
 /**
  * Pair every tool_call with its tool_result (by id) and collect *consecutive*
@@ -114,7 +122,10 @@ function groupToolCalls(content: ContentBlock[]): ExtendedContentBlock[] {
 			result.push(item.block);
 		} else {
 			const entry = callMap.get(item.id);
-			if (entry) current.push(entry);
+			if (entry && DIALOG_TOOLS.has(entry.call.name)) {
+				flush();
+				result.push({ type: 'dialog', pair: entry });
+			} else if (entry) current.push(entry);
 		}
 	}
 	flush();
@@ -601,12 +612,17 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 	const { t } = useTranslation();
 
 	switch (block.type) {
-		case 'text':
+		case 'text': {
+			const handover = block.finished_at ? parseHandover(block.text) : null;
+			if (handover) return <HandoverCard {...handover} />;
 			return (
 				<Markdown animated isAnimating={!block.finished_at} {...props}>
 					{block.text}
 				</Markdown>
 			);
+		}
+		case 'dialog':
+			return <DialogToolCard pair={block.pair} />;
 		case 'data': {
 			const dataType = block.source.media_type.split('/')[0];
 			if (dataType === 'audio') return null;
@@ -669,6 +685,11 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 		case 'thinking':
 			return <ThinkingBlockView block={block} />;
 		case 'hint': {
+			// Another agent's message in the room: a conversation card.
+			const team = teamHintSource(block.source);
+			if (team && typeof block.hint === 'string') {
+				return <TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} />;
+			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;
 			let hintSublabel: string | null = null;

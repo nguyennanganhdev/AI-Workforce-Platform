@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
+import { RoomActivity } from '@/components/panel/RoomActivity';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
@@ -137,6 +138,8 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 					<ul className="flex flex-col">{team.members.map(renderMember)}</ul>
 				)}
 			</section>
+
+			<RoomActivity sessionId={leaderSessionId} />
 		</div>
 	);
 }

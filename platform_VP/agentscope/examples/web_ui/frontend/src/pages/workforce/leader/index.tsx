@@ -96,7 +96,9 @@ function LeaderPageInner() {
 								<MessageSquareText className="mt-0.5 size-4 shrink-0" />
 								<span className="min-w-0">
 									<span className="block truncate text-sm font-medium">{session.config.name}</span>
-									<span className="block truncate font-mono text-[10px] opacity-65">{session.id.slice(0, 10)}</span>
+									<span className="block truncate text-[10px] opacity-65">
+										{new Date(session.updated_at ?? session.created_at).toLocaleString('vi-VN')}
+									</span>
 								</span>
 							</button>
 						))}

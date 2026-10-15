@@ -9,7 +9,7 @@ import asyncio
 import os
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from ..._utils._common import _generate_id
@@ -370,6 +370,20 @@ async def agent_activity(
             view.last_at = max(view.last_at or "", *(m.created_at for m in used))
         views.append(view)
     return sorted(views, key=lambda item: item.input_tokens + item.output_tokens, reverse=True)
+
+
+@workforce_studio_router.get("/quality")
+async def ticket_quality(
+    request: Request,
+    days: int = Query(default=30, ge=1, le=365),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """Outcomes, message quality and cost of this manager's partner tickets."""
+
+    quality = getattr(request.app.state, "partner_quality", None)
+    if quality is None:
+        raise HTTPException(status_code=404, detail="Chưa bật API đối tác (WORKFORCE_PARTNER_API).")
+    return await quality(user_id, days)
 
 
 @workforce_studio_router.post(

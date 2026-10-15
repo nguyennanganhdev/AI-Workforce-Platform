@@ -28,6 +28,12 @@ class AgentMemoryRecord(_RecordBase):
     source_event_ids: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     uses: int = Field(default=0, ge=0)
+    used_in: list[str] = Field(default_factory=list, max_length=20)
+    """The latest tickets (team ids) this item was recalled in."""
+    successes: int = Field(default=0, ge=0)
+    """Recalled in a ticket the end user confirmed at the first invitation."""
+    failures: int = Field(default=0, ge=0)
+    """Recalled in a ticket whose result the end user rejected at least once."""
     supersedes: str | None = Field(default=None, max_length=255)
     reason: str = Field(default="", max_length=1000)
     """Why it was added, superseded or retired."""

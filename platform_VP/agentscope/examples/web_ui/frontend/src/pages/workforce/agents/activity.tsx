@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { studioApi } from '@/api';
-import type { AgentActivity } from '@/api';
+import type { AgentActivity, TicketQuality } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,14 +18,49 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 const number = (value: number) => value.toLocaleString('vi-VN');
 
+const percent = (value: number) => `${Math.round(value * 100)}%`;
+const usd = (value: number | null) => (value === null ? '—' : `$${value.toFixed(value < 1 ? 3 : 2)}`);
+
+function QualitySummary({ quality }: { quality: TicketQuality }) {
+	const items: [string, string][] = [
+		['Phiếu', number(quality.tickets)],
+		['Cư dân xác nhận', number(quality.closed_confirmed)],
+		['Xác nhận ngay lần đầu', number(quality.first_time_confirmed)],
+		['Cần xử lý', number(quality.needs_attention)],
+		['Tin bị chặn (sai bằng chứng)', percent(quality.refusal_rate)],
+		['Cache', percent(quality.cache_rate)],
+		['Chi phí ước tính', usd(quality.est_cost_usd)],
+		['Chi phí / phiếu xác nhận', usd(quality.cost_per_confirmed_usd)],
+	];
+	return (
+		<section className="space-y-2">
+			<p className="text-xs text-muted-foreground">Phiếu đối tác {quality.days} ngày qua</p>
+			<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+				{items.map(([label, value]) => (
+					<div key={label} className="rounded-lg border border-border/70 p-2">
+						<p className="text-[11px] text-muted-foreground">{label}</p>
+						<p className="text-sm font-medium tabular-nums">{value}</p>
+					</div>
+				))}
+			</div>
+		</section>
+	);
+}
+
 /** What each agent (the Leader included) spent: tickets, replies, tokens, cache. */
 export function ActivityDialog() {
 	const [open, setOpen] = useState(false);
 	const [rows, setRows] = useState<AgentActivity[] | null>(null);
+	const [quality, setQuality] = useState<TicketQuality | null>(null);
 
 	useEffect(() => {
 		if (!open) return;
 		setRows(null);
+		// Absent when the partner API is off: the section is then hidden.
+		studioApi
+			.quality()
+			.then(setQuality)
+			.catch(() => setQuality(null));
 		studioApi
 			.activity()
 			.then(setRows)
@@ -48,6 +83,7 @@ export function ActivityDialog() {
 							Token theo số liệu nhà cung cấp model trả về cho từng lượt trả lời. Phần cache được tính giá thấp hơn.
 						</DialogDescription>
 					</DialogHeader>
+					{quality && <QualitySummary quality={quality} />}
 					{rows === null ? (
 						<div className="flex justify-center p-6">
 							<Spinner />

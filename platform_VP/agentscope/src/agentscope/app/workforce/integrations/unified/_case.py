@@ -2,10 +2,10 @@
 
 A partner ticket is a ticket of the platform's Leader (the console
 Leader of the route's manager). The Leader talks to the partner's end user
-only through ``CaseSay`` / ``CaseFinalize`` and holds no partner tool: it
-opens the ticket's room (``TeamCreate`` / ``AgentInvite``) with the partner's
-coordinator agent (the declaration's leader profile) and, when needed, its
-specialists, and waits for their reports within its turn. Members call their
+only through ``CaseSay`` / ``CaseFinalize`` and holds no partner tool: the
+runtime opens the ticket's room with its session, and the Leader invites
+(``AgentInvite``) the partner's coordinator agent (the declaration's leader
+profile) and, when needed, its specialists, and waits for their reports within its turn. Members call their
 share of the route's tools under their declared names and the ticket's grant
 (the platform fills the hidden ``client_reference``); every result and
 provider event carries an evidence label ``E<n>`` that the Leader cites.
@@ -31,15 +31,19 @@ from sqlalchemy.exc import IntegrityError
 
 from ....._logging import logger
 from .....event import ReplyEndEvent, ReplyFinishedReason
-from .....message import TextBlock, ToolResultState
+from .....message import TextBlock, ToolResultBlock, ToolResultState
 from .....middleware import MiddlewareBase
+from .....model import ChatResponse
 from .....permission import PermissionBehavior, PermissionDecision
 from .....tool import MCPTool, ParamsBase, ToolBase, ToolChunk
 from ...orchestration._tables import partner_requests, workflow_inputs
 from ._tables import case_entries, case_sessions, operations, routes
 
 EXPECTS = ("none", "reply", "confirmation")
-TEAM_TOOLS = ("TeamCreate", "AgentInvite", "TeamSay", "TeamDelete")
+# The ticket's room lasts as long as the ticket: no TeamDelete (its schema
+# would ride along in every Leader call).
+# The ticket's room opens with its session (the runner's _case_session): no TeamCreate.
+TEAM_TOOLS = ("AgentInvite", "TeamSay")
 # Rounds of member reports the leader may wait for within one turn.
 MAX_TEAM_ROUNDS = 4
 MAX_TEXT = 4000
@@ -329,12 +333,14 @@ class CaseStore:
 class _Case:
     """What the tools of one session need to know at call time."""
 
-    def __init__(self, store: CaseStore, session: dict, route: dict) -> None:
+    def __init__(self, store: CaseStore, session: dict, route: dict, on_say: Callable | None = None) -> None:
         self.store = store
         self.workflow_id = session["workflow_id"]
         self.session_id = session["session_id"]
         self.route = route
         self.rules = (route.get("config") or {}).get("rules") or {}
+        # Tells the ticket's room what the end user was sent.
+        self.on_say = on_say
 
     async def trigger_id(self) -> str:
         current = await self.store.session(self.session_id)
@@ -431,6 +437,8 @@ class _CaseTool(ToolBase):
             expects=expects,
             outcome=outcome,
         )
+        if case.on_say is not None:
+            await case.on_say(text)
         return ToolChunk(
             content=[TextBlock(text="Đã gửi cho người dùng. Kết thúc lượt ngay, không gửi thêm tin.")],
             state=ToolResultState.SUCCESS,
@@ -575,8 +583,9 @@ PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflictin
 
 PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ PHIẾU (bắt buộc):
 - Bạn không có công cụ của đối tác. Tra cứu phiếu, kiến thức, nhân viên, giao việc, hủy hay ghi chú đều do thành viên phòng làm.
-- Lượt đầu của phiếu: TeamCreate rồi MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ: cần làm gì, trả về gì. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on.
+- Phòng của phiếu đã được lập sẵn. Lượt đầu của phiếu: MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ: cần làm gì, trả về gì. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on.
 - Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. và câu đề xuất gửi người dùng. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
+- Phản biện: thành viên dùng kết quả của nhau sẽ tự hỏi lại nhau khi thấy thiếu hay mâu thuẫn. Báo cáo vẫn thiếu, mâu thuẫn với báo cáo khác hoặc với bằng chứng: TeamSay(kind="review", decision="challenge", to=<thành viên>) nêu đúng điểm cần sửa; chỉ gửi người dùng khi các báo cáo khớp nhau.
 - Phòng giữ suốt phiếu: lượt sau giao việc bằng TeamSay cho thành viên đã có, không lập phòng mới. Người dùng chỉ chào hay cảm ơn, không cần dữ liệu mới: trả lời ngay bằng CaseSay.
 """
 
@@ -584,6 +593,9 @@ PARTNER_MEMBER_POLICY = """PARTNER CASE MEMBER POLICY (server-owned; overrides c
 - Bạn là thành viên phòng xử lý một phiếu của đối tác, do Leader của platform lập. Bạn không nói với người dùng; chỉ Leader gửi tin cho họ.
 - Mỗi kết quả công cụ bắt đầu bằng mã E.. (ví dụ "E7: ..."). Làm phần việc được giao bằng công cụ của bạn, rồi báo lại Leader bằng MỘT TeamSay: kết luận ngắn, các mã E.. chứa dữ liệu bạn dùng, và câu đề xuất gửi người dùng (theo cách xưng hô của đối tác).
 - Không đoán. Thiếu dữ liệu thì nói rõ thiếu gì.
+- Phản biện trong phòng: việc của bạn dùng kết quả của thành viên khác ("Inputs from teammates") thì kiểm kết quả đó với dữ liệu công cụ của bạn trước khi làm tiếp. Thấy thiếu, mơ hồ hoặc mâu thuẫn: hỏi thẳng người đó bằng TeamSay(kind="question", to=<tên@mã của họ>), nêu đúng điểm và mã E.. khiến bạn nghi ngờ, rồi chờ trả lời. Rõ ràng rồi thì không hỏi.
+- Được thành viên khác hỏi: trả lời bằng TeamSay(kind="answer") dựa trên dữ liệu (mã E..); họ đúng thì nói rõ bạn sửa kết luận thế nào.
+- Báo cáo cuối cho Leader ghi cả điểm đã được làm rõ với thành viên khác hoặc còn bất đồng.
 - Không tự điền client_reference: platform điền.
 """
 
@@ -628,6 +640,25 @@ def _invite_only(schema: dict, names: set[str]) -> dict | None:
     return schema
 
 
+TURN_DONE = "Đã gửi tin cho người dùng."
+ROOM_WORKING = "Đã giao việc cho phòng, chờ báo cáo."
+NOTE_OPEN, NOTE_CLOSE = "<system-notification>", "</system-notification>"
+
+
+def notification_last(prompt: str) -> str:
+    """Move the session's notification (session id, team roster: it changes
+    with every ticket) after the fixed instructions. The provider caches only
+    an unchanged prefix, so fixed text behind it was never served from cache."""
+
+    start = prompt.find(NOTE_OPEN)
+    end = prompt.find(NOTE_CLOSE, start)
+    if start < 0 or end < 0:
+        return prompt
+    end += len(NOTE_CLOSE)
+    rest = (prompt[:start].rstrip() + "\n\n" + prompt[end:].strip()).strip()
+    return rest + "\n\n" + prompt[start:end]
+
+
 class PartnerCaseMiddleware(MiddlewareBase):
     """Case tools + policy for one partner workflow session."""
 
@@ -645,6 +676,8 @@ class PartnerCaseMiddleware(MiddlewareBase):
         self._members = members or {}
         # A LeaderEvidenceMiddleware used for its wait/nudge helpers only.
         self._waiter = waiter
+        # AgentInvite calls whose step already ended without a model call.
+        self._ended_on: set[str] = set()
 
     async def list_tools(self) -> list[ToolBase]:
         return [CaseSay(self._case), CaseFinalize(self._case), *self._tools]
@@ -658,9 +691,17 @@ class PartnerCaseMiddleware(MiddlewareBase):
             allowed.update(TEAM_TOOLS)
         if await self._case.said():
             # The turn's one message is out: anything more (another say, a
-            # re-read woken by room traffic) is a model call for nothing.
-            # The runtime accepts members' evidence-backed reports itself.
-            return await next_handler(tools=[])
+            # re-read woken by room traffic) is a model call for nothing, so
+            # the turn ends here without one. The runtime accepts members'
+            # evidence-backed reports itself.
+            return ChatResponse(content=[TextBlock(text=TURN_DONE)], is_last=True)
+        last = _last_success(input_kwargs.get("messages") or [], getattr(getattr(agent, "state", None), "reply_id", None))
+        if self._waiter is not None and last and last[0] == "AgentInvite" and last[1] not in self._ended_on:
+            # The room has its work: the next model call would only write
+            # "waiting". End the step; the waiter wakes the Leader with the
+            # members' reports.
+            self._ended_on.add(last[1])
+            return ChatResponse(content=[TextBlock(text=ROOM_WORKING)], is_last=True)
         tools = []
         for schema in input_kwargs.get("tools") or []:
             name = _schema_name(schema)
@@ -717,10 +758,62 @@ class PartnerCaseMiddleware(MiddlewareBase):
             )
         brief = str((self._case.route.get("config") or {}).get("leader_brief") or "").strip()
         brief = ("\nHƯỚNG DẪN CỦA ĐỐI TÁC:\n" + brief) if brief else ""
-        return prompt + "\n\n" + PARTNER_CASE_POLICY + team + brief + (("\n" + banned) if banned else "")
+        return notification_last(prompt + "\n\n" + PARTNER_CASE_POLICY + team + brief + (("\n" + banned) if banned else ""))
 
     async def get_middleware_key(self) -> str:
         return "partner_case"
+
+
+# A partner tool result from an earlier reply, longer than this, is cleared
+# from a member's input once clearing frees CLEAR_AT_LEAST_CHARS: the full
+# text stays in the case log under its label. In batches, so the cached
+# prefix is not invalidated on every call.
+STALE_RESULT_CHARS = 400
+CLEAR_AT_LEAST_CHARS = 6000
+_LABEL_HEAD = re.compile(r"^E\d+:")
+
+
+def clear_old_results(messages: list, reply_id: str | None) -> list:
+    """``messages`` with earlier replies' long partner results reduced to
+    their evidence label (unchanged when that frees too little)."""
+
+    cleared, saved = [], 0
+    for message in messages:
+        content = getattr(message, "content", None)
+        if getattr(message, "role", None) != "assistant" or message.id == reply_id or not isinstance(content, list):
+            cleared.append(message)
+            continue
+        blocks, changed = [], False
+        for block in content:
+            if isinstance(block, ToolResultBlock):
+                output = block.output if isinstance(block.output, str) else "".join(
+                    item.text for item in block.output if isinstance(item, TextBlock)
+                )
+                head = _LABEL_HEAD.match(output)
+                if head and len(output) > STALE_RESULT_CHARS:
+                    stub = f"{head.group(0)} (kết quả của lượt trước, đã dùng; gọi lại công cụ nếu cần dữ liệu mới)"
+                    blocks.append(block.model_copy(update={"output": [TextBlock(text=stub)]}))
+                    saved += len(output) - len(stub)
+                    changed = True
+                    continue
+            blocks.append(block)
+        cleared.append(message.model_copy(update={"content": blocks}) if changed else message)
+    return cleared if saved >= CLEAR_AT_LEAST_CHARS else messages
+
+
+def _last_success(messages: list, reply_id: str | None) -> tuple[str, str] | None:
+    """(tool name, call id) of the current reply's latest tool result, when
+    that result succeeded."""
+
+    for message in reversed(messages):
+        if getattr(message, "role", None) != "assistant" or message.id != reply_id:
+            continue
+        content = message.content if isinstance(message.content, list) else []
+        results = [block for block in content if isinstance(block, ToolResultBlock)]
+        if not results or results[-1].state != ToolResultState.SUCCESS:
+            return None
+        return results[-1].name, results[-1].id
+    return None
 
 
 class PartnerMemberMiddleware(MiddlewareBase):
@@ -738,13 +831,14 @@ class PartnerMemberMiddleware(MiddlewareBase):
     async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
         allowed = {"TeamSay", *(tool.name for tool in self._tools)}
         tools = [schema for schema in input_kwargs.get("tools") or [] if _schema_name(schema) in allowed]
-        return await next_handler(tools=tools)
+        messages = clear_old_results(list(input_kwargs.get("messages") or []), agent.state.reply_id)
+        return await next_handler(tools=tools, messages=messages)
 
     async def on_system_prompt(self, agent: Any, current_prompt: str) -> str:
         from ...._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY
 
         prompt = current_prompt.replace(BUSINESS_AGENT_EVIDENCE_POLICY, "").rstrip()
-        return prompt + "\n\n" + PARTNER_MEMBER_POLICY
+        return notification_last(prompt + "\n\n" + PARTNER_MEMBER_POLICY)
 
     async def get_middleware_key(self) -> str:
         return "partner_case_member"
@@ -780,6 +874,17 @@ class CaseRuntime:
         state in Shared Context like any other fact.
         """
 
+        line = "Tiến độ từ hệ thống đối tác: " + text
+        await self._share(workflow_id, "external_event", line, fact=True)
+
+    async def share_attention(self, workflow_id: str, reason: str) -> None:
+        """Why the ticket needs a person, on the room's timeline."""
+
+        await self._share(workflow_id, "error", "Cần xử lý: " + reason)
+
+    async def _share(self, workflow_id: str, kind: str, text: str, fact: bool = False) -> None:
+        """One event in the ticket's room, when the Leader opened one."""
+
         if self._app is None:
             return
         binding = await self.store.session_of_workflow(workflow_id)
@@ -789,20 +894,19 @@ class CaseRuntime:
         user_id, agent_id = binding["manager_account_id"], binding["agent_id"]
         record = await state.storage.get_session(user_id, agent_id, binding["session_id"])
         team_id = getattr(record, "team_id", None)
-        if not team_id:
+        if not team_id or getattr(state, "shared_context_storage", None) is None:
             return
         from ...._shared_context import SharedContextService
         from ....storage._model._team_context import ContextDelta
 
-        line = "Tiến độ từ hệ thống đối tác: " + text
         await SharedContextService(state.shared_context_storage, state.message_bus).append_event(
             user_id=user_id,
             team_id=team_id,
-            kind="external_event",
-            content=line,
+            kind=kind,
+            content=text,
             source_agent_id=agent_id,
             source_session_id=binding["session_id"],
-            delta=ContextDelta(add_confirmed_facts=(line,)),
+            delta=ContextDelta(add_confirmed_facts=(text,)) if fact else None,
         )
 
     async def _delete_guard(self, user_id: str, agent_id: str) -> str | None:
@@ -829,7 +933,12 @@ class CaseRuntime:
         route = await self.store.route(session["route_id"])
         if route is None:
             return []
-        case = _Case(self.store, session, route)
+        workflow_id = session["workflow_id"]
+
+        async def said(text: str) -> None:
+            await self._share(workflow_id, "customer_reply", text)
+
+        case = _Case(self.store, session, route, on_say=said)
         members = _members(route)
         waiter = self._waiter(user_id, agent_id, session_id) if members else None
         # The Leader holds no partner tool: the room's members do the work.

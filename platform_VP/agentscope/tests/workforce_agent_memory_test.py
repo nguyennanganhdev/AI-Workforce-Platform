@@ -138,6 +138,34 @@ class MemoryServiceTest(IsolatedAsyncioTestCase):
         self.assertIn("<agent-memory>", self.memory.render(recalled))
         self.assertEqual([], rank("", recalled))
 
+    async def test_a_memory_that_keeps_coming_with_rejected_results_is_retired(self) -> None:
+        good = await self.storage.upsert_agent_memory(
+            "u", AgentMemoryRecord(user_id="u", agent_id="agent-1", content="Rò nước: khoá van tổng trước"),
+        )
+        bad = await self.storage.upsert_agent_memory(
+            "u", AgentMemoryRecord(user_id="u", agent_id="agent-1", content="Rò nước: hẹn thợ ngày mai"),
+        )
+        for ticket, success in (("t-1", False), ("t-2", False), ("t-3", True)):
+            recalled = await self.memory.recall("u", "agent-1", "rò nước", ticket=ticket)
+            self.assertIn(ticket, recalled[0].used_in)
+            # The good item helped every time; the bad one only in rejected tickets.
+            for memory in await self.memory.active("u", "agent-1"):
+                if memory.id == good.id and not success:
+                    memory.used_in = [m for m in memory.used_in if m != ticket]
+                    await self.storage.upsert_agent_memory("u", memory)
+            retired = await self.memory.record_outcome("u", ["agent-1"], ticket, success)
+        self.assertEqual([], retired)
+        stored = await self.storage.get_agent_memory("u", "agent-1", bad.id)
+        self.assertEqual(("rejected", 2, 0), (stored.status, stored.failures, stored.successes))
+        self.assertIn("phiếu người dùng chê", stored.reason)
+        kept = await self.storage.get_agent_memory("u", "agent-1", good.id)
+        self.assertEqual(("active", 1), (kept.status, kept.successes))
+
+    def test_track_record_lowers_the_rank(self) -> None:
+        tried = AgentMemoryRecord(user_id="u", agent_id="a", content="Rò nước: khoá van", failures=3)
+        fresh = AgentMemoryRecord(user_id="u", agent_id="a", content="Rò nước: khoá van")
+        self.assertIs(fresh, rank("rò nước khoá van", [tried, fresh])[0][1])
+
     async def test_retired_memory_is_no_longer_recalled(self) -> None:
         record = await self.storage.upsert_agent_memory(
             "u",
@@ -212,7 +240,8 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
                 "_Learning": {
                     "memories": [
                         {"kind": "lesson", "content": "Rò nước: hướng dẫn khoá van tổng ngay", "evidence_event_ids": ["t1", "r1"]},
-                        {"kind": "fact", "content": "Một điều không có nguồn", "evidence_event_ids": ["invented"]},
+                        {"kind": "fact", "content": "Mã sự cố rò nước là PLB-LEAK", "evidence_event_ids": ["t1", "invented"]},
+                        {"kind": "fact", "content": "Vỡ ống luôn là khẩn cấp", "evidence_event_ids": ["r1"]},
                     ],
                     "rule": {"text": "Hỏi vị trí van tổng nếu khách không biết", "reason": "khách lúng túng"},
                 },
@@ -229,7 +258,9 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
         outcome = await self.learning.learn("u", "ticket-1", self._models())
 
         result = outcome["agents"]["agent-1"]
-        self.assertEqual(1, len(result["memories"]))  # the unsourced one is dropped
+        # Kept: the lesson and the fact from a tool result (its invented id is
+        # stripped). Dropped: the "fact" resting only on an agent's report.
+        self.assertEqual(2, len(result["memories"]))
         self.assertTrue(result["rule"]["applied"])
         agent = self.agents.agents["agent-1"]
         self.assertEqual(2, agent.data.published_version)

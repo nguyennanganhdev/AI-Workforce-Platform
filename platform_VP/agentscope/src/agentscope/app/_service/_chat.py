@@ -104,7 +104,7 @@ from ..storage._model._session import SessionKnowledgeConfig
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
-from ._errors import _classify_error, _classify_setup_error
+from ._errors import _classify_error, _classify_setup_error, _classify_type
 from ._model import get_model
 from ._projectors import SubagentHitlProjector
 from ._session_projection import SessionProjection
@@ -192,6 +192,75 @@ def _partner_fact(call: ToolCallBlock, result: ToolResultBlock) -> str:
     if len(text) <= _PARTNER_FACT_CHARS:
         return text
     return text[:_PARTNER_FACT_CHARS] + " …(rút gọn; bản đầy đủ theo mã E ở đầu)"
+
+
+class _FlexFirst:
+    """A model whose structured-output calls (memory extraction and
+    consolidation, test judging: background work nobody waits for) run on
+    OpenAI Flex at half price, falling back to the standard tier when a Flex
+    call fails (slow capacity returns 429). Streamed agent calls keep the
+    standard tier. ``WORKFORCE_BACKGROUND_SERVICE_TIER``: ``flex`` (default)
+    or empty to turn it off."""
+
+    def __init__(self, model: ChatModelBase) -> None:
+        self._model = model
+
+    def __getattr__(self, name: str):
+        return getattr(self._model, name)
+
+    async def __call__(self, *args, **kwargs):
+        return await self._model(*args, **kwargs)
+
+    async def generate_structured_output(self, *args, **kwargs):
+        model = self._model
+        standard = model.extra_body
+        model.extra_body = {**(standard or {}), "service_tier": "flex"}
+        try:
+            return await model.generate_structured_output(*args, **kwargs)
+        except Exception as exc:
+            # Only what the tier can cause: no Flex capacity (429), a provider
+            # error, or a request refused for this tier. A bad output would
+            # fail the same way on the standard tier.
+            if _classify_type(exc).value not in {"rate_limit", "upstream", "invalid_request"}:
+                raise
+            logger.info("Flex call failed (%s); retrying on the standard tier", type(exc).__name__)
+            model.extra_body = standard
+            return await model.generate_structured_output(*args, **kwargs)
+        finally:
+            model.extra_body = standard
+
+
+def _background(model: ChatModelBase) -> ChatModelBase:
+    tier = os.getenv("WORKFORCE_BACKGROUND_SERVICE_TIER", "flex").strip().lower()
+    if tier != "flex" or not hasattr(model, "extra_body"):
+        return model
+    return _FlexFirst(model)  # type: ignore[return-value]
+
+
+def _private_context_ratio(context_size: int) -> float:
+    """``WORKFORCE_PRIVATE_CONTEXT_TOKENS`` (default 16,000) as a ratio of
+    the model's window, for the private-history compression trigger."""
+
+    tokens = int(os.getenv("WORKFORCE_PRIVATE_CONTEXT_TOKENS", "16000") or 0)
+    if tokens <= 0 or context_size <= 0:
+        return 0.9
+    return min(0.9, tokens / context_size)
+
+
+def _apply_reasoning_effort(model: ChatModelBase, system_role: str) -> None:
+    """A fixed reasoning effort per role (``WORKFORCE_REASONING_EFFORT_LEADER``
+    / ``WORKFORCE_REASONING_EFFORT_AGENT``; unset: the provider's default).
+
+    Fixed, not per call: a different effort changes the request and so the
+    cached prefix. Reasoning tokens are billed as output.
+    """
+
+    name = "LEADER" if system_role == "leader" else "AGENT"
+    effort = os.getenv(f"WORKFORCE_REASONING_EFFORT_{name}", "").strip().lower()
+    parameters = getattr(model, "parameters", None)
+    if not effort or parameters is None or "reasoning_effort" not in type(parameters).model_fields:
+        return
+    model.parameters = parameters.model_copy(update={"thinking_enable": True, "reasoning_effort": effort})
 
 
 class _SessionTitle(BaseModel):
@@ -445,8 +514,8 @@ class ChatService:
             base = session_record.config.chat_model_config
             strong = _role_model_config(base, "leader")
             return (
-                await get_model(user_id, base, self._access),
-                await get_model(user_id, strong, self._access),
+                _background(await get_model(user_id, base, self._access)),
+                _background(await get_model(user_id, strong, self._access)),
             )
 
         def on_verified_answer(team_id: str) -> None:
@@ -461,6 +530,16 @@ class ChatService:
         console Leader's verified answers)."""
 
         self._learning_hook(user_id, session_record, None)(team_id)
+
+    async def record_ticket_outcome(self, user_id: str, team_id: str, success: bool) -> list[str]:
+        """Score the memories the ticket's agents recalled (see
+        :meth:`AgentMemoryService.record_outcome`); returns retired ids."""
+
+        team = await self._storage.get_team(user_id, team_id)
+        if team is None:
+            return []
+        agent_ids = [member.agent_id for member in await _ensure_team_members(self._storage, user_id, team)]
+        return await self._learning.memory.record_outcome(user_id, agent_ids, team_id, success)
 
     async def _recalled_memory(
         self,
@@ -496,7 +575,9 @@ class ChatService:
         if not query.strip():
             return ""
         try:
-            memories = await self._learning.memory.recall(user_id, agent_id, query)
+            memories = await self._learning.memory.recall(
+                user_id, agent_id, query, ticket=team.id if team is not None else None,
+            )
         except Exception:  # noqa: BLE001 - memory never blocks a turn
             logger.exception("Memory recall failed for agent %s", agent_id)
             return ""
@@ -993,6 +1074,12 @@ class ChatService:
             shared_context_attachment = ""
             shared_context_attachment_tokens = 0
             context_task_id: str | None = None
+            # A partner ticket's Leader speaks through CaseSay only; the case
+            # runtime records what it sent (see the case middleware).
+            partner_case = False
+            # Where recalled memory goes: the end of each model input (see
+            # SharedContextIsolationMiddleware), not the system message.
+            isolation = None
             customer_input_msgs = (
                 [input_msg]
                 if isinstance(input_msg, Msg)
@@ -1303,7 +1390,6 @@ class ChatService:
                     extras = list(await self._extra_agent_middlewares(*factory_args))
                 # A partner ticket's Leader waits for its room in its own case
                 # middleware and learns when the ticket's result is out.
-                partner_case = False
                 for extra in extras:
                     if await extra.get_middleware_key() == "partner_case":
                         partner_case = True
@@ -1462,6 +1548,7 @@ class ChatService:
                     else None
                 )
                 _apply_prompt_cache_key(model, agent_id)
+                _apply_reasoning_effort(model, agent_record.data.system_role)
 
                 # Persist customer-visible input before any agent reasons.
                 # Message ids make retries idempotent. Team handoff wakeups
@@ -1589,34 +1676,34 @@ class ChatService:
                         ],
                         None,
                     )
-                    middlewares.append(
-                        SharedContextIsolationMiddleware(
-                            shared_context_mode,
-                            self._shared_context,
-                            user_id,
-                            team.id,
-                            session_record.state.context,
-                            shared_context_attachment,
-                            task_id=context_task_id,
-                            membership_storage=self._storage,
-                            agent_id=agent_id,
-                            summary_model=summary_model,
-                        ),
+                    isolation = SharedContextIsolationMiddleware(
+                        shared_context_mode,
+                        self._shared_context,
+                        user_id,
+                        team.id,
+                        session_record.state.context,
+                        shared_context_attachment,
+                        task_id=context_task_id,
+                        membership_storage=self._storage,
+                        agent_id=agent_id,
+                        summary_model=summary_model,
                     )
+                    middlewares.append(isolation)
 
                 if team is None and (
                     agent_record.data.system_role == "leader"
                     or agent_record.data.tool_bindings
                 ):
                     # Measure even the initial turn, before TeamCreate exists.
-                    middlewares.append(SharedContextIsolationMiddleware(
+                    isolation = SharedContextIsolationMiddleware(
                         "task",
                         self._shared_context,
                         user_id,
                         None,
                         membership_storage=self._storage,
                         agent_id=agent_id,
-                    ))
+                    )
+                    middlewares.append(isolation)
 
                 fallback_cfg = session_record.config.fallback_chat_model_config
                 fallback_model = (
@@ -1715,13 +1802,20 @@ class ChatService:
                     agent_record.data.system_role == "business"
                     and (agent_record.data.spec or {}).get("memory_enabled", True)
                 ):
-                    attachment += await self._recalled_memory(
+                    recalled = await self._recalled_memory(
                         user_id,
                         agent_id,
                         team,
                         session_id,
                         customer_input_msgs,
                     )
+                    # Recall changes with each turn's input: inside the system
+                    # message it would void the cached prefix of the whole
+                    # history behind it.
+                    if isolation is not None:
+                        isolation.recall = recalled
+                    else:
+                        attachment += recalled
                 system_prompt = runtime_system_prompt + "\n\n" + attachment
 
                 agent_state = session_record.state
@@ -1750,9 +1844,14 @@ class ChatService:
                             "context window. Select a larger-context model or "
                             "split the task."
                         )
+                    # A ratio of a 1M-token window would never trigger: every
+                    # later turn would resend the whole ticket. Cap the private
+                    # history by tokens too (WORKFORCE_PRIVATE_CONTEXT_TOKENS).
+                    capped = _private_context_ratio(model.context_size)
                     safe_trigger_ratio = min(
                         context_config.trigger_ratio,
                         private_prompt_limit / model.context_size,
+                        capped,
                     )
                     safe_reserve_ratio = min(
                         context_config.reserve_ratio,
@@ -1765,7 +1864,9 @@ class ChatService:
                             # output reserve and runtime-state variability.
                             "trigger_ratio": safe_trigger_ratio,
                             "reserve_ratio": safe_reserve_ratio,
-                            "context_buffer_ratio": min(
+                            # Under the token cap, no "compression is near"
+                            # notice: it would change every call's input.
+                            "context_buffer_ratio": 0.0 if safe_trigger_ratio == capped else min(
                                 context_config.context_buffer_ratio,
                                 max(0.0, safe_trigger_ratio - 0.01),
                             ),
@@ -2402,7 +2503,7 @@ class ChatService:
                                     customer_output_session_id,
                                     msg.model_copy(deep=True),
                                 )
-                            if team is not None and is_reply_owner:
+                            if team is not None and is_reply_owner and not partner_case:
                                 reply_text = (msg.get_text_content() or "").strip()
                                 if reply_text:
                                     await self._shared_context.append_event(

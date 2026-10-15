@@ -44,7 +44,8 @@ DECLARATION = {
         "key": "kt", "name": f"E2EKyThuat{RUN}", "role": "member", "mission": "đánh giá kỹ thuật",
         "instructions": "Đọc phiếu rồi báo Leader.", "tools_allow": ["vh_ticket_get"],
     }],
-    "route": {"leader_profile": "lead", "config": {"rules": {"safe_reply": "Chưa xác minh được.", "phrase_rules": []}}},
+    "route": {"leader_profile": "lead", "config": {"rules": {"safe_reply": "Chưa xác minh được.", "phrase_rules": []},
+                                                     "ticket_title_fields": ["Mô tả của cư dân"]}},
     "mcp_server": {"name": f"e2epartner{RUN}", "timeout": 8.0},
     "tools": [
         {"name": "vh_ticket_get", "mcp_tool": "vh_ticket_get", "read_only": True, "tracking": "none"},
@@ -101,7 +102,7 @@ with httpx.Client(base_url=BASE, timeout=180) as http:
     started = check(http.post("/workforce/v1/partner/requests", headers=customer, json={
         "schema_version": "1", "command_type": "start_workflow", "external_request_id": f"cmd-{RUN}-1",
         "external_management_ref": "e2e-ref", "timezone": "Asia/Ho_Chi_Minh", **ids,
-        "message": {"type": "text", "text": f"ticket_id: T-{RUN}\nMô tả của cư dân: Rò nước bồn rửa"}}), 200, 202)
+        "message": {"type": "text", "text": f"ticket_id: T-{RUN}\nMô tả của cư dân: Rò nước bồn rửa {RUN}"}}), 200, 202)
     deadline = time.time() + 120
     while True:
         result = check(http.get(f"/workforce/v1/partner/requests/{started['request_id']}", headers=customer,
@@ -119,10 +120,31 @@ with httpx.Client(base_url=BASE, timeout=180) as http:
     step("the Leader page lists the ticket with its room")
     leader = check(http.get("/workforce/console/leader/bootstrap", headers=auth), 200)
     sessions = check(http.get("/sessions/", headers=auth, params={"agent_id": leader["agent_id"]}), 200)["sessions"]
-    ticket = next((v for v in sessions if v["session"]["config"]["name"] == f"Phiếu đối tác T-{RUN}"), None)
+    ticket = next((v for v in sessions if v["session"]["config"]["name"] == f"Rò nước bồn rửa {RUN}"), None)
     team = json.dumps((ticket or {}).get("team") or {}, ensure_ascii=False)
     on_page = ticket is not None and f"E2EDieuPhoi{RUN}" in team and f"E2EKyThuat{RUN}" in team
     print("LEADER PAGE", "PASS" if on_page else "FAIL")
+
+    step("the room as people read it: assignments, reports, the message sent, tokens")
+    room = check(http.get(f"/workforce/console/sessions/{ticket['session']['id']}/room", headers=auth), 200) if ticket else {}
+    kinds = [(e["kind"], e["sender"], e["to"]) for e in room.get("timeline", [])]
+    for entry in room.get("timeline", []):
+        print(f"  {entry['kind']:<13} {entry['sender']} -> {entry['to']}: {entry['text'][:70]!r}")
+    for p in room.get("participants", []):
+        print(f"  {p['name']:<22} {p['model']:<13} calls={p['calls']} in={p['input_tokens']} out={p['output_tokens']}")
+    replies = [e["text"] for e in room.get("timeline", []) if e["kind"] == "reply"]
+    in_room = (
+        ("assign", "Workforce Leader", f"E2EKyThuat{RUN}") in kinds
+        and ("assign", "Workforce Leader", f"E2EDieuPhoi{RUN}") in kinds
+        and ("result", f"E2EKyThuat{RUN}", "Workforce Leader") in kinds
+        and ("result", f"E2EDieuPhoi{RUN}", "Workforce Leader") in kinds
+        # The members argue it out between themselves, not only with the Leader.
+        and ("question", f"E2EDieuPhoi{RUN}", f"E2EKyThuat{RUN}") in kinds
+        and ("answer", f"E2EKyThuat{RUN}", f"E2EDieuPhoi{RUN}") in kinds
+        and replies == texts  # the message sent, not the Leader's internal text
+        and len(room.get("participants", [])) == 3
+    )
+    print("ROOM VIEW", "PASS" if in_room else "FAIL")
 
     step("provider events (signed)")
     history = lambda: check(http.get(f"/workforce/v1/partner/conversations/{started['conversation_id']}/event-history",
@@ -161,6 +183,6 @@ with httpx.Client(base_url=BASE, timeout=180) as http:
         "schema_version": "1", "external_request_id": f"close-{RUN}", **ids,
         "expected_revision": revision, "reason": "resident_confirmed"}), 200)
     print("closed:", closed["workflow_state"])
-    ok = answered and on_page and closed["workflow_state"] == "closed"
+    ok = answered and on_page and in_room and closed["workflow_state"] == "closed"
     print("ROOM", "PASS" if ok else "FAIL")
     raise SystemExit(0 if ok else 1)
