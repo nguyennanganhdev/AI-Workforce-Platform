@@ -1349,7 +1349,7 @@ class SharedContextService:
         return None
 
     async def collaboration_review(
-        self, user_id: str, team_id: str, owner: str
+        self, user_id: str, team_id: str, owner: str, *, working_only: bool = False
     ) -> list[str]:
         """Finalize evidence-backed reports and return non-terminal branches.
 
@@ -1442,12 +1442,15 @@ class SharedContextService:
 
             if mutated:
                 await self._commit_mutation(user_id, record)
+            # ``working_only``: a branch in review waits for the Leader, not for
+            # its worker, so it must not keep the Leader waiting for it.
+            statuses = {"running", "waiting_peer"} if working_only else {"running", "waiting_peer", "review"}
             pending = [
                 sid
                 for sid, branch in task.collaboration.items()
                 if sid != owner
                 and branch.customer_revision == task.latest_customer_revision
-                and branch.status in {"running", "waiting_peer", "review"}
+                and branch.status in statuses
             ]
             # A queued assignment has not run yet, so it has no branch; the
             # Leader must still wait for it instead of answering early.

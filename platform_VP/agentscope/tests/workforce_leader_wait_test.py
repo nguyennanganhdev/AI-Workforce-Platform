@@ -58,7 +58,7 @@ class WatchTest(IsolatedAsyncioTestCase):
             async def team_evidence_status(self, *_a, **_k):
                 return (1, 0, 0, False) if state["ready"] else (0, 0, 0, False)
 
-            async def collaboration_review(self, *_a):
+            async def collaboration_review(self, *_a, **_k):
                 return [] if state["ready"] else ["worker"]
 
             async def pending_user_question(self, *_a):
@@ -92,7 +92,7 @@ class WatchTest(IsolatedAsyncioTestCase):
             async def team_evidence_status(self, *_a, **_k):
                 return (reported["members"], 0, 0, False)
 
-            async def collaboration_review(self, *_a):
+            async def collaboration_review(self, *_a, **_k):
                 return []
 
         middleware = LeaderEvidenceMiddleware(

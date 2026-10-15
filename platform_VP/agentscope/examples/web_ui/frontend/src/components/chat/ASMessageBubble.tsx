@@ -708,7 +708,9 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			// Another agent's message in the room: a conversation card.
 			const team = teamHintSource(block.source);
 			if (team && typeof block.hint === 'string') {
-				return <TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} />;
+				return (
+					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} at={block.created_at} />
+				);
 			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;

@@ -130,7 +130,8 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
 
     async def _ready(self, expected: int) -> bool:
         team_exists, completed, _errors, _verified, waiting = await self._status()
-        pending = await self._review() if team_exists and not waiting else []
+        # A report waiting for review waits for the Leader: wake it to decide.
+        pending = await self._review(working_only=True) if team_exists and not waiting else []
         # ``completed`` counts the members that reported or failed. Every
         # dispatched member must have: one queued behind another's report has
         # not run yet, and answering without it drops its part of the work.
@@ -138,14 +139,14 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             waiting or completed >= max(expected, 1)
         )
 
-    async def _review(self) -> list[str]:
+    async def _review(self, *, working_only: bool = False) -> list[str]:
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
         )
         if session is None or session.team_id is None:
             return []
         return await self._shared_context.collaboration_review(
-            self._user_id, session.team_id, self._session_id
+            self._user_id, session.team_id, self._session_id, working_only=working_only
         )
 
     async def _wait_until_ready(self, expected: int, deadline: float) -> bool:

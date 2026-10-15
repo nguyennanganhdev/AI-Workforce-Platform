@@ -23,7 +23,7 @@ import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
-import { TeamRosterContext, TicketViewContext } from '@/components/chat/team-roster';
+import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
 import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
@@ -419,16 +419,19 @@ export function ChatViewport({
 			})),
 		[team, completeTeamMention],
 	);
-	// Names to portraits, for the room's message cards.
+	// Names to portraits, for the room's message cards ("Leader" is the team's leader).
 	const roster = useMemo(
 		() =>
-			new Map(
-				[...(team?.leader_agent ? [team.leader_agent] : []), ...(team?.members.map(({ agent }) => agent) ?? [])].map(
+			new Map([
+				...[...(team?.leader_agent ? [team.leader_agent] : []), ...(team?.members.map(({ agent }) => agent) ?? [])].map(
 					(agent) => [cleanName(agent.data.name).toLocaleLowerCase(), agent.id] as const,
 				),
-			),
+				...(team?.leader_agent ? [['leader', team.leader_agent.id] as const] : []),
+			]),
 		[team],
 	);
+	// The room's log (members' reports and tool calls), shared by cards and panel.
+	const room = useRoom(team?.team.session_id ?? null);
 
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
 		agentId,
@@ -826,6 +829,7 @@ export function ChatViewport({
 	return (
 		<TicketViewContext.Provider value={ticketView}>
 		<TeamRosterContext.Provider value={roster}>
+		<RoomContext.Provider value={room}>
 			<SessionWorkspace snapshot={office}>
 				<main className="flex size-full">
 					<ResizablePanelGroup orientation="horizontal">
@@ -1120,6 +1124,7 @@ export function ChatViewport({
 				onOpenChange={setCredentialOpen}
 				onCreated={() => setCredentialRefetchTrigger((n) => n + 1)}
 			/>
+		</RoomContext.Provider>
 		</TeamRosterContext.Provider>
 		</TicketViewContext.Provider>
 	);

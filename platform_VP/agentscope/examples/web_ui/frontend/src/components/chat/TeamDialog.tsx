@@ -1,9 +1,10 @@
-import { ClipboardList, Inbox, UserRound } from 'lucide-react';
-import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { ArrowRight, ChevronRight, Inbox, UserRound, Wrench } from 'lucide-react';
+import { type ReactNode, useContext, useLayoutEffect, useRef, useState } from 'react';
 
-import { useAgentId } from './team-roster';
+import { RoomContext, memberToolCalls, useAgentId } from './team-roster';
 import { KIND_LABEL, cleanName, teamMessageText } from './teamDialogText';
 import type { ToolCallWithResult } from './tool-renderers/types';
+import type { RoomEntry } from '@/api';
 import { Markdown } from '@/components/markdown';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
@@ -15,7 +16,8 @@ import { cn } from '@/lib/utils';
 
 /**
  * How agents talk to each other (and to the end user) in a ticket, shown as
- * a conversation instead of raw tool calls and runtime headers.
+ * a conversation instead of raw tool calls and runtime headers: who wrote to
+ * whom, what kind of message it is, its text, and the tools behind a report.
  */
 
 function parseArgs(input: string | undefined): Record<string, unknown> {
@@ -26,7 +28,33 @@ function parseArgs(input: string | undefined): Record<string, unknown> {
 	}
 }
 
-/** Three lines of a message, the rest one click away. */
+/** One tone per kind of message, used for its label and its edge. */
+type Tone = 'task' | 'report' | 'talk' | 'review' | 'error' | 'reply';
+
+const TONE: Record<Tone, { edge: string; pill: string }> = {
+	task: { edge: 'before:bg-sky-400', pill: 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300' },
+	report: { edge: 'before:bg-emerald-400', pill: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
+	talk: { edge: 'before:bg-violet-400', pill: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
+	review: { edge: 'before:bg-amber-400', pill: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
+	error: { edge: 'before:bg-red-400', pill: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300' },
+	reply: { edge: 'before:bg-foreground/70', pill: 'bg-foreground text-background' },
+};
+
+function toneOf(kind: string | undefined, decision?: string): Tone {
+	if (kind === 'review') return decision === 'challenge' ? 'review' : 'report';
+	if (kind === 'assign' || kind === 'handoff') return 'task';
+	if (kind === 'error' || kind === 'conflict') return 'error';
+	if (kind === 'question' || kind === 'answer' || kind === 'progress') return 'talk';
+	if (kind === 'reply') return 'reply';
+	return 'report';
+}
+
+function labelOf(kind: string | undefined, decision?: string): string {
+	if (kind === 'review' && decision === 'challenge') return 'Yêu cầu làm lại';
+	return (kind && KIND_LABEL[kind]) || 'Tin nhắn';
+}
+
+/** Four lines of a message, the rest one click away. */
 function Clamped({ children }: { children: ReactNode }) {
 	const ref = useRef<HTMLDivElement>(null);
 	const [open, setOpen] = useState(false);
@@ -37,13 +65,13 @@ function Clamped({ children }: { children: ReactNode }) {
 	}, [children, open]);
 	return (
 		<>
-			<div ref={ref} className={cn('text-sm [&_p]:my-0', !open && 'line-clamp-3')}>
+			<div ref={ref} className={cn('text-sm/6 [&_p]:my-0', !open && 'line-clamp-4')}>
 				{children}
 			</div>
 			{(overflows || open) && (
 				<button
 					type="button"
-					className="mt-1 text-xs text-muted-foreground hover:text-foreground"
+					className="mt-1 text-xs font-medium text-muted-foreground hover:text-foreground"
 					onClick={() => setOpen((value) => !value)}
 				>
 					{open ? 'Thu gọn' : 'Xem thêm'}
@@ -53,68 +81,119 @@ function Clamped({ children }: { children: ReactNode }) {
 	);
 }
 
-/** An agent's portrait, or a person's circle for the end user. */
-function Face({ name, person = false }: { name: string; person?: boolean }) {
-	const id = useAgentId(name);
-	if (person) {
-		return (
-			<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-				<UserRound className="size-3.5" />
-			</span>
-		);
-	}
-	return <ClayAvatar id={id} label={name} size={28} />;
+/** An agent's portrait (the same on every screen). */
+function Face({ name }: { name: string }) {
+	return <ClayAvatar id={useAgentId(name)} label={name} size={28} />;
+}
+
+/** The tool calls behind a report: a count, then each call with its arguments. */
+function ToolTrace({ calls }: { calls: RoomEntry[] }) {
+	if (calls.length === 0) return null;
+	const names = [...new Set(calls.map((call) => call.text.split(/\s/, 1)[0]))];
+	return (
+		<Collapsible className="mt-2.5 border-t border-dashed border-border/80 pt-2">
+			<CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+				<Wrench className="size-3.5 shrink-0" />
+				<span className="shrink-0">Đã gọi {calls.length} công cụ</span>
+				<span className="min-w-0 flex-1 truncate text-left font-mono">{names.join(' · ')}</span>
+				<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				<ol className="mt-2 flex flex-col gap-1">
+					{calls.map((call, index) => {
+						const [tool, ...rest] = call.text.split(' ');
+						return (
+							<li key={index} className="rounded-lg bg-muted/60 px-2.5 py-1.5 font-mono text-xs">
+								<span className="font-semibold">{tool}</span>
+								{rest.length > 0 && (
+									<span className="ml-1.5 break-all text-muted-foreground">{rest.join(' ')}</span>
+								)}
+							</li>
+						);
+					})}
+				</ol>
+			</CollapsibleContent>
+		</Collapsible>
+	);
 }
 
 export function DialogCard({
-	who,
-	person = false,
-	label,
+	from,
+	to,
+	toPerson = false,
+	kind,
+	decision,
 	note,
-	tone,
+	footer,
 	children,
 }: {
-	/** The other side of this message: who sent it, or who it is for. */
-	who: string;
-	person?: boolean;
-	/** What the message is, in a few words ("giao việc", "báo kết quả"). */
-	label?: string;
+	from: string;
+	to?: string;
+	toPerson?: boolean;
+	kind?: string;
+	decision?: string;
 	note?: ReactNode;
-	tone?: 'error';
+	footer?: ReactNode;
 	children: ReactNode;
 }) {
+	const tone = TONE[toneOf(kind, decision)];
 	return (
 		<div
 			className={cn(
-				'w-full rounded-xl border border-border/60 bg-background px-3 py-2.5',
-				tone === 'error' && 'border-destructive/40 bg-destructive/5',
+				'relative w-full overflow-hidden rounded-2xl border border-border/70 bg-background py-3 pr-3.5 pl-4',
+				'before:absolute before:inset-y-0 before:left-0 before:w-[3px]',
+				tone.edge,
+				'motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1',
 			)}
 		>
-			<div className="mb-1 flex min-w-0 items-center gap-2 text-[13px]/[18px]">
-				<Face name={who} person={person} />
-				<span className="truncate font-medium text-foreground">{who}</span>
-				{label && <span className="shrink-0 text-muted-foreground">{label}</span>}
-				{note}
+			<div className="mb-1.5 flex min-w-0 items-center gap-2 text-[13px]/[18px]">
+				<Face name={from} />
+				<span className="truncate font-semibold text-foreground">{from}</span>
+				{to && (
+					<>
+						<ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
+						<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+							{toPerson && <UserRound className="size-3.5 shrink-0" />}
+							<span className="truncate">{to}</span>
+						</span>
+					</>
+				)}
+				<span className={cn('ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', tone.pill)}>
+					{labelOf(kind, decision)}
+				</span>
 			</div>
 			<Clamped>{children}</Clamped>
+			{note && <div className="mt-1.5 text-xs text-muted-foreground">{note}</div>}
+			{footer}
 		</div>
 	);
 }
 
-const kindLabel = (kind: string | undefined) => (kind ? (KIND_LABEL[kind] ?? kind).toLocaleLowerCase('vi') : undefined);
-
 /** A message another agent sent into this session (a team hint). */
-export function TeamMessageCard({ sender, kind, text }: { sender: string; kind?: string; text: string }) {
+export function TeamMessageCard({
+	sender,
+	kind,
+	text,
+	at,
+}: {
+	sender: string;
+	kind?: string;
+	text: string;
+	at?: string;
+}) {
+	const room = useContext(RoomContext);
+	const from = cleanName(sender);
+	const calls = room ? memberToolCalls(room.timeline, from, at) : [];
 	return (
-		<DialogCard who={cleanName(sender)} label={kindLabel(kind)} tone={kind === 'error' ? 'error' : undefined}>
+		<DialogCard from={from} to="Leader" kind={kind} footer={<ToolTrace calls={calls} />}>
 			<Markdown>{teamMessageText(text)}</Markdown>
 		</DialogCard>
 	);
 }
 
 function resultNote(pair: ToolCallWithResult): ReactNode {
-	if (!pair.result) return <span className="text-muted-foreground">đang gửi…</span>;
-	if (pair.result.state === 'error') return <span className="text-destructive">bị từ chối</span>;
+	if (!pair.result) return <span>Đang gửi…</span>;
+	if (pair.result.state === 'error') return <span className="text-destructive">Bị từ chối</span>;
 	return null;
 }
 
@@ -125,7 +204,7 @@ function resultText(pair: ToolCallWithResult): string {
 	return output.map((block) => ('text' in block ? block.text : '')).join('\n');
 }
 
-/** A message this agent sent: an assignment, a room message or the user reply. */
+/** A message the Leader sent: an assignment, a room message or the user reply. */
 export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 	const args = parseArgs(pair.call.input);
 	const name = pair.call.name;
@@ -141,9 +220,10 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 					return (
 						<DialogCard
 							key={index}
-							who={cleanName(String(item.target ?? ''))}
-							label={after.length > 0 ? `nhận việc, sau khi ${after.join(', ')} báo` : 'nhận việc'}
-							note={<ClipboardList className="ml-auto size-3.5 shrink-0 text-muted-foreground" />}
+							from="Leader"
+							to={cleanName(String(item.target ?? ''))}
+							kind="assign"
+							note={after.length > 0 && <>Bắt đầu sau khi {after.join(', ')} báo kết quả</>}
 						>
 							<Markdown>{String(item.prompt ?? '')}</Markdown>
 						</DialogCard>
@@ -155,8 +235,10 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 	if (name === 'TeamSay') {
 		return (
 			<DialogCard
-				who={cleanName(String(args.to ?? '')) || 'Cả phòng'}
-				label={kindLabel(String(args.kind ?? '')) ?? 'nhận tin'}
+				from="Leader"
+				to={cleanName(String(args.to ?? '')) || 'Cả phòng'}
+				kind={String(args.kind ?? '')}
+				decision={String(args.decision ?? '')}
 				note={resultNote(pair)}
 			>
 				<Markdown>{String(args.content ?? '')}</Markdown>
@@ -166,9 +248,14 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 	// CaseSay / CaseFinalize: what the end user receives (unless refused).
 	const refused = pair.result?.state === 'error';
 	return (
-		<DialogCard who="Cư dân" person label="nhận tin" note={resultNote(pair)} tone={refused ? 'error' : undefined}>
+		<DialogCard
+			from="Leader"
+			to="Cư dân"
+			toPerson
+			kind={refused ? 'error' : 'reply'}
+			note={refused ? <span className="text-destructive">{resultText(pair)}</span> : resultNote(pair)}
+		>
 			<Markdown>{String(args.text ?? args.answer ?? '')}</Markdown>
-			{refused && <p className="mt-2 text-xs text-destructive">{resultText(pair)}</p>}
 		</DialogCard>
 	);
 }

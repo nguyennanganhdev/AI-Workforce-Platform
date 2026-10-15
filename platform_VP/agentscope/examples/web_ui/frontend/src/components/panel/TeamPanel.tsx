@@ -134,7 +134,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 				<p className="-mt-2 px-3 text-xs text-muted-foreground">{t('panel.team.noMembers')}</p>
 			)}
 
-			<RoomActivity sessionId={leaderSessionId} />
+			<RoomActivity />
 		</div>
 	);
 }

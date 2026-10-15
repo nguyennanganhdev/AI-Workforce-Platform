@@ -76,5 +76,6 @@ export function liveSessionPresentation(input: {
 		participants: [...participants.values()],
 		phase,
 		activeAgentId: phase === 'working' ? input.ownerId : null,
+		hostId: input.ownerId,
 	};
 }

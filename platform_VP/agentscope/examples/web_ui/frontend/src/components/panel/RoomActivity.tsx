@@ -1,15 +1,13 @@
 import { ChevronRight, UserRound } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useContext, useState } from 'react';
 
-import { workforceApi } from '@/api';
-import type { RoomEntry, RoomView } from '@/api';
-import { useAgentId } from '@/components/chat/team-roster';
+import type { RoomEntry } from '@/api';
+import { RoomContext, useAgentId } from '@/components/chat/team-roster';
 import { KIND_LABEL, cleanName } from '@/components/chat/teamDialogText';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
-const REFRESH_MS = 5000;
 const number = (value: number) => value.toLocaleString('vi-VN');
 
 /** Kinds that are work traces rather than people talking. */
@@ -70,24 +68,9 @@ function Entry({ entry }: { entry: RoomEntry }) {
  * A ticket's room for people: who asked whom to do what, what came back and
  * what the user was told; what it cost sits folded underneath.
  */
-export function RoomActivity({ sessionId }: { sessionId: string }) {
-	const [room, setRoom] = useState<RoomView | null>(null);
+export function RoomActivity() {
+	const room = useContext(RoomContext);
 	const [showWork, setShowWork] = useState(false);
-
-	useEffect(() => {
-		let active = true;
-		const load = () =>
-			workforceApi
-				.room(sessionId)
-				.then((value) => active && setRoom(value))
-				.catch(() => active && setRoom(null));
-		load();
-		const timer = setInterval(load, REFRESH_MS);
-		return () => {
-			active = false;
-			clearInterval(timer);
-		};
-	}, [sessionId]);
 
 	if (!room || (room.timeline.length === 0 && room.participants.length === 0)) return null;
 	const timeline = showWork ? room.timeline : room.timeline.filter((entry) => !QUIET.has(entry.kind));
