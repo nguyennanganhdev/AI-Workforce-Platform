@@ -27,6 +27,8 @@ python -m vinhomes_api.synthetic_op2 <private-bundle.json> --allow-runtime-simul
 4. Nạp lại cùng bundle phải không sinh bản ghi mới; không đổi password/admin/cấu hình bridge. FK/RLS/state transition được giữ nguyên.
 5. Kiểm tra đăng nhập, scope, ca trực, service/knowledge và truy cập chéo căn. Dừng API/container kiểm tra sau nghiệm thu.
 
+Importer cập nhật full-text index của đúng các chunk trong bundle nếu text hash khớp, dùng heading/body và dạng bỏ dấu của pipeline tri thức chính. Retry chỉ sửa index khi có khác biệt; không gọi provider embedding hoặc nâng `unverified` thành approved.
+
 Không đặt flag tự seed bộ này khi khởi động Docker. Không bật bridge VPS bằng URL `localhost` hoặc alias chỉ tồn tại ở Docker local. Endpoint Platform, key và route của từng môi trường phải được cấu hình riêng.
 
 Kết quả đợt nạp và tài khoản nhận OP2: [OP2_RUNTIME_DATA_ACCEPTANCE_20261015.md](../../../docs/domain/OP2_RUNTIME_DATA_ACCEPTANCE_20261015.md).

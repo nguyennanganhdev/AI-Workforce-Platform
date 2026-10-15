@@ -39,6 +39,8 @@ Ca OP2 có tám người đồng thời; mỗi nhóm kỹ thuật/an ninh/vệ s
 
 Kiểm tra HTTP trên clone, Docker chính và VPS: **30/30 account đăng nhập và gọi API đúng quyền**, sáu cư dân gọi **36 API dữ liệu căn** thành công; đọc công nợ căn khác và danh sách account admin bị chặn. Bốn test builder/guard/roster/scoping đạt; Ruff source đạt. Không gọi Reception/Agent/provider/embedding.
 
+Tra cứu trực tiếp bằng runtime role: **14 truy vấn mỗi môi trường** cho audience cư dân/staff, có dấu/không dấu và các nhóm dịch vụ đều có kết quả đúng site OP2. Chỉ mục gồm tiêu đề, nội dung và dạng bỏ dấu giống pipeline tri thức chính; không đổi embedding. Tất cả hit giữ provenance tham khảo, không nâng thành tài liệu operator phê duyệt.
+
 Log, backup, bundle và credential riêng: `E:\Vinhomes-Deploy\domain-runtime-audit-20261015`; VPS: `/opt/vinhomes/releases/op2-simulation-20261015`. Credential dùng thử nằm ở file ignored `deploy/runtime-access-20261015/accounts-op2.secret.json` và `.txt`, không đưa vào PR.
 
 ## Đăng nhập và tuyến OP2

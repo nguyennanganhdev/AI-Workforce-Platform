@@ -17,6 +17,7 @@ import asyncpg
 
 from .bootstrap import site_id
 from .database import TENANT, _url
+from .knowledge import fold, passage
 from .password_auth import password_hash
 
 PROFILE = "op2-simulation-v1"
@@ -226,13 +227,19 @@ async def apply(url, bundle):
                         inserted += 1
                         if len(path) > 1:
                             pending.append((table, row["id"], path[1:]))
-                        if table == "vh_knowledge_chunks":
-                            await conn.execute("update vh_knowledge_chunks set search_tsv=to_tsvector('simple',text_content) where id::text=$1", row["id"])
                 counts[table] = inserted
             for table, identifier, path in pending:
                 for status in path:
                     await conn.execute(f'update "{table}" set status=$1 where id::text=$2', status, identifier)
-        return {"profile": PROFILE, "inserted": counts, "total_inserted": sum(counts.values()), "agent_calls": 0}
+            reindexed = 0
+            for chunk in bundle["tables"]["vh_knowledge_chunks"]:
+                indexed = passage(chunk.get("heading_path"), chunk["text_content"])
+                result = await conn.execute("""update vh_knowledge_chunks
+                    set search_tsv=to_tsvector('simple',$2) where id::text=$1 and text_hash=$3
+                    and search_tsv is distinct from to_tsvector('simple',$2)""",
+                    chunk["id"], indexed + " " + fold(indexed), chunk["text_hash"])
+                reindexed += int(result.split()[-1])
+        return {"profile": PROFILE, "inserted": counts, "total_inserted": sum(counts.values()), "reindexed_chunks": reindexed, "agent_calls": 0}
     finally:
         await conn.close()
 
