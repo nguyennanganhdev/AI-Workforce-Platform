@@ -6,6 +6,8 @@ Hiện có **12 dòng đề xuất**: 1 phân khu, 1 tòa, 1 tuyến chưa gán 
 
 Mở [missing-data.csv](missing-data.csv) để đối soát **108 trường/hạng mục còn thiếu**; [candidate-summary.json](candidate-summary.json) lưu số lượng và hash nguồn. Bộ này **phải trả `valid=false`**, không được nhập staging/publish thành vận hành khi chưa bổ sung hồ sơ. [Nghiên cứu nguồn](../../../docs/domain/RESEARCH_DOMAIN_DATA_COMPLETION_20261015.md) phân biệt dữ kiện công khai và phần cần owner xác nhận.
 
+Đã bổ sung tiếp [6 reference hỗ trợ/hoạt động theo khu](../../reference-data/resident-support-public-20261015.json) vào kho tri thức VPS, không sửa các CSV owner của pilot. Tin tuyển dụng và nội dung quảng bá không thay xác nhận nhân sự, dịch vụ, SOP/SLA, phí hoặc giờ; 108 mục còn thiếu không tự giảm theo số lượng reference. Xem [nghiên cứu vòng 2](../../../docs/domain/RESEARCH_DOMAIN_REFERENCE_EXPANSION_20261015.md).
+
 Đây là **schema v2 dành riêng pilot**, không thay bộ v1 nhiều khu. Cần hoàn thiện và nghiệm thu pilot trước khi thiết kế mở rộng phạm vi v2 sang OP2/3. `data_mode=owner_candidate` nghĩa là dữ liệu đề nghị tiếp nhận, chưa phải chứng nhận của đơn vị vận hành.
 
 ## Chuỗi dữ liệu cần điền

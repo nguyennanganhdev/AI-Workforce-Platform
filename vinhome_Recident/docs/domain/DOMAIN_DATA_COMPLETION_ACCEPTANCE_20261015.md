@@ -2,6 +2,8 @@
 
 Phạm vi: nhánh `dev_Vinhome`, pilot **OP1 → The Sapphire 1 → S1.01 → Kỹ thuật**. Đây là nghiệm thu nghiên cứu, chuẩn bị dữ liệu và nhập tài liệu tham khảo; **chưa phải nghiệm thu vận hành thật hoặc Agent/Platform thật**.
 
+**Cập nhật vòng 2 cùng ngày:** đã bổ sung 6 bản ghi hỗ trợ/hoạt động công khai, 2 bản ghi mỗi khu OP1/OP2/OP3, vào VPS. Local chỉ có OP1 nên nạp 2, bỏ qua 4 bản ghi khác mà không tạo thêm site. Hiện VPS **308 tài liệu / 792 đoạn**, local **170 / 654**; **84 kiểm thử đạt**. Bộ pilot vẫn có 108 trường/hạng mục owner còn thiếu. Số liệu dưới đây là sau cả hai vòng.
+
 ## Đã hoàn thành
 
 1. Kiểm kê riêng local và VPS, xác định database đang được API sử dụng. Không dùng database cũ trên VPS hoặc dữ liệu test local làm bằng chứng vận hành.
@@ -29,8 +31,8 @@ Snapshot sau import, database **`vinhomes_clean_20261014_a08369c0`**, Compose pr
 | Owner proposal records | 113 | 0 bản ghi được xác nhận vận hành |
 | Catalog dịch vụ | 34 | 0 dịch vụ bật vận hành |
 | Operational staging batches / records | 0 / 0 | Chưa nhập bộ owner hoàn chỉnh |
-| Tài liệu / đoạn tri thức | **302 / 786** | Tăng 4 / 4 trong đợt này |
-| Tài liệu reference / quarantined | 180 / 122 | Toàn bộ 302 còn cờ `unverified`; reference không phải quy định đã duyệt |
+| Tài liệu / đoạn tri thức | **308 / 792** | Tăng tổng 10 / 10 qua hai vòng |
+| Tài liệu reference / quarantined | 186 / 122 | Toàn bộ 308 còn cờ `unverified`; reference không phải quy định đã duyệt |
 | Travel mock catalog / booking | 15 / 0 | Mô phỏng, không phải nhà cung cấp/đặt chỗ thật |
 | Ticket / work order / MCP grant | 0 / 0 / 0 | Chưa có luồng nghiệp vụ đang chạy |
 | Platform connection setting | 1 | `enabled=false`, URL chưa cấu hình |
@@ -40,15 +42,15 @@ Hai `management_units` là **Local Management** (cấu hình bootstrap, chưa x�
 
 | Khu | Phân khu | Tòa | Tài liệu sau import | Dịch vụ bật vận hành |
 |---|---:|---:|---:|---:|
-| OP1 | 9 | 30 | 233 | 0 |
-| OP2 | 8 | 0 | 33 | 0 |
-| OP3 | 8 | 0 | 36 | 0 |
+| OP1 | 9 | 30 | 235 | 0 |
+| OP2 | 8 | 0 | 35 | 0 |
+| OP3 | 8 | 0 | 38 | 0 |
 
-Local dùng database `vinhomes`: **168 tài liệu / 652 đoạn** sau import, 720 user nhưng chỉ 15 account; 380 căn, 690 quan hệ cư trú, 26 staff và 1.405 ca, 945 ticket và 683 work order là dữ liệu lịch sử phục vụ test. Không chuyển dữ liệu này sang VPS hoặc gọi là hồ sơ thật. Số liệu local và VPS khác nhau có chủ đích.
+Local dùng database `vinhomes`: **170 tài liệu / 654 đoạn** sau hai vòng import, 720 user nhưng chỉ 15 account; 380 căn, 690 quan hệ cư trú, 26 staff và 1.405 ca, 945 ticket và 683 work order là dữ liệu lịch sử phục vụ test. Không chuyển dữ liệu này sang VPS hoặc gọi là hồ sơ thật. Số liệu local và VPS khác nhau có chủ đích.
 
 ## Bằng chứng kiểm thử và triển khai
 
-- **82 kiểm thử đạt**, gồm candidate, nguồn tham khảo, nhập knowledge, pilot/staging, handoff v1, owner proposals, MCP v2 và schema. Ruff đạt cho Python thay đổi. Một cảnh báo Starlette TestClient, không có lỗi trong bộ đã chạy.
+- **84 kiểm thử đạt**, gồm candidate, nguồn tham khảo, nhập knowledge, pilot/staging, handoff v1, owner proposals, MCP v2 và schema; tăng hai ca kiểm thử ở vòng 2. Ruff đạt cho Python thay đổi. Một cảnh báo Starlette TestClient, không có lỗi trong bộ đã chạy.
 - PostgreSQL test riêng được tạo và gỡ cùng volume sau kiểm thử. Candidate thiếu hồ sơ trả `valid=false`; không được nhập staging hoặc mở dịch vụ thật. Happy case staging dùng dữ liệu synthetic chỉ ở database test riêng, không phải hồ sơ sản xuất.
 - Runtime tìm đúng tài liệu mới tại OP1: ba nhóm truy vấn có lần lượt **2 / 1 / 1** kết quả mới. OP2 và OP3 đều **0** ở cùng các truy vấn. Đây là kiểm thử truy xuất dữ liệu, không phải đánh giá chất lượng hội thoại Agent.
 - Backup PostgreSQL dạng custom trước import: local **9.561.326 byte**, VPS **6.270.353 byte**. Đã kiểm tra header và danh mục `pg_restore --list`; chưa chạy khôi phục toàn bộ backup.
@@ -56,13 +58,31 @@ Local dùng database `vinhomes`: **168 tài liệu / 652 đoạn** sau import, 7
 - Không thay Compose, credentials, API image hay Reception image trong đợt nhập dữ liệu này. Dữ liệu knowledge nằm trong PostgreSQL, không cần rebuild image để bản đang chạy đọc được. Không chạy bootstrap/seed để tránh phục hồi dữ liệu demo.
 - **0 cuộc gọi Agent/model/embedding; không nghiệm thu Platform E2E**. Không tạo tài khoản, master căn, nhân sự, ca hoặc bật tuyến/dịch vụ từ bộ candidate.
 
-Gói knowledge SHA-256: `bdc88143a91a9f57366c95ef851bd05cb858e01c8b386a3d2a34da620949ce2a`.
+Gói 4 reference vòng đầu SHA-256: `bdc88143a91a9f57366c95ef851bd05cb858e01c8b386a3d2a34da620949ce2a`.
 
 Backup VPS SHA-256: `50f86282e90d4efc9b6284cd94c99ed36567f4b957753768fddcb3e4d8675fc7`.
 
 Backup local SHA-256: `22f0af4f2fb048c8ad92803a087f1afc874ad9b62c58009484db87b896d4a61d`.
 
 Bằng chứng riêng trên máy: `E:\Vinhomes-Deploy\data-completion-20261015\` (inventory, source snapshots, candidate, backup, kết quả import và log test). VPS: `/opt/vinhomes/releases/data-completion-20261015/`. File chứa cấu hình bí mật/backup không đưa vào Git hoặc chuyển cho Platform.
+
+## Bổ sung vòng 2: hỗ trợ cư dân và hoạt động theo khu
+
+Gói [resident-support-public-20261015.json](../../deploy/reference-data/resident-support-public-20261015.json) gồm:
+
+| Khu | Nội dung mới | Giới hạn |
+|---|---|---|
+| OP1 | Kênh liên hệ công khai `1900 2323 89`; phân loại chuyên môn M&E điện/nước/điều hòa | Số công khai trên website dự án, không xác nhận trực kỹ thuật/an ninh/giờ. M&E là mô tả tuyển dụng thương hiệu, không phải roster OP1 |
+| OP2 | Kênh liên hệ trên The Empire; mô tả Empire Park, Silk Park, Kingdom Avenue/Empire Square | Không suy ra nhánh, giờ, quyền dùng, giá, lịch sự kiện hoặc khả năng booking hiện hành |
+| OP3 | Phân biệt Tropical Lagoon/Four Seasons/Olympics/Aqua Bay; loại hình Aquarium/BBQ Garden/Marina Square | Mô tả quảng bá, không cam kết mở cửa, an toàn cá nhân, phí, độ tuổi hoặc chỗ còn trống |
+
+Sáu bản ghi mở rộng tri thức, không tạo master tiện ích trùng tên hoặc kích hoạt dịch vụ. Mô tả CSKH lịch sử chỉ lưu trong [nghiên cứu vòng 2](RESEARCH_DOMAIN_REFERENCE_EXPANSION_20261015.md), không nhập kho trả lời cư dân. Câu trả lời phí/giờ/đầu mối trong FAQ nhúng Market OP2/OP3 có `is_active:false` bị loại khỏi gói nhập; hostname chính thức không đủ chứng minh nội dung đó đang được xuất bản hoặc có hiệu lực.
+
+Vòng 2 đã kiểm tra **18 tổ hợp truy vấn/site trên VPS**, cả 6 nội dung đều tìm thấy tại site tương ứng, **0 rò rỉ sang site khác**. Local kiểm tra 6 truy vấn trong OP1, tìm được 2 nội dung OP1, không trả nội dung mới OP2/3. Nhập lần hai `changed=0`. Fingerprint dữ liệu cũ giữ nguyên; chỉ loại timestamp heartbeat `worker_seen_at` khỏi so sánh, vẫn đối chiếu các cột cấu hình còn lại. Không gọi Agent/model/embedding.
+
+Backup trước vòng 2: local **9.568.650 byte**, SHA-256 `b70ebaeed39fefe7742f0cc810d7f59ac8a7c35008c9e40f3097ae1b886069cb`; VPS **6.276.560 byte**, SHA-256 `bf42df65b7443635000f9657d36c3a499080ccad0167c775c7b8af2967b9245f`. Đã kiểm tra header và `pg_restore --list`, chưa chạy full restore. Gói 6 reference SHA-256 `21312bbf1a4ad6f5e466b62e76458412ee82303aec6176bd5e3c8cbbeb9bceb8`.
+
+Bằng chứng vòng 2: `E:\Vinhomes-Deploy\reference-expansion-20261015\` và `/opt/vinhomes/releases/reference-expansion-20261015/`. Nạp vào PostgreSQL dùng API image đang chạy; không rebuild image, thay Compose hay cấu hình Platform. Danh sách thiếu 108 mục vẫn giữ nguyên vì chưa có xác nhận vận hành mới.
 
 ## Còn thiếu gì để vận hành thật
 

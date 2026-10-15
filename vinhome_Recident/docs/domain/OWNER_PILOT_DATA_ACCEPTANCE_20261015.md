@@ -52,3 +52,5 @@ Platform nhận ngữ cảnh ticket và MCP grant; không nhận gói CSV hoặc
 - **82 kiểm thử đạt**, gồm pilot, nguồn/compile mới, candidate thiếu hồ sơ, staging, MCP v2, knowledge và schema. Runtime/DB được backup trước import; hồ sơ cũ giữ nguyên, ngoại trừ timestamp heartbeat worker cập nhật độc lập đã đối chiếu từ backup.
 
 Xem [báo cáo dữ liệu và phần thiếu](DOMAIN_DATA_COMPLETION_ACCEPTANCE_20261015.md) và [nghiên cứu nguồn](RESEARCH_DOMAIN_DATA_COMPLETION_20261015.md). **Chưa đủ dữ liệu để bật dịch vụ thật hoặc tạo tài khoản cư dân/staff thật**; chưa có publisher từ staging sang master. Bổ sung tài liệu tham khảo không thay điều kiện này.
+
+Vòng bổ sung tiếp cùng ngày đã nhập thêm 6 reference hỗ trợ/hoạt động theo khu trên VPS, 2 reference OP1 trên local. Số liệu mới nhất: **VPS 308 tài liệu / 792 đoạn; local 170 / 654; 84 kiểm thử đạt**. Các số 302/786, 168/652 và 82 kiểm thử ở phần trên là snapshot vòng trước. Bộ candidate vẫn chưa có hồ sơ owner mới, giữ nguyên 108 mục còn thiếu và không được nhập vận hành. Xem [nghiên cứu vòng 2](RESEARCH_DOMAIN_REFERENCE_EXPANSION_20261015.md) để biết nguồn FAQ chưa kích hoạt bị loại.
