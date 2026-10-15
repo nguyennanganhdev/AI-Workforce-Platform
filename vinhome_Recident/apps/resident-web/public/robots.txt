@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /resident
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /account-status
+Disallow: /operations
+Disallow: /api/

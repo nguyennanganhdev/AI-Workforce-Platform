@@ -1,0 +1,29 @@
+[
+  {
+    "site_code": "ocean-park-1",
+    "title": "Tiện ích công khai Ocean Park 1",
+    "authority": "reference",
+    "source_published_at": null,
+    "retrieved_at": "2026-10-14",
+    "sources": ["https://oceanpark.vinhomes.vn/gioi-thieu-diem-nhan/"],
+    "body": "Trang dự án giới thiệu biển hồ nước mặn, hồ trung tâm, công viên gym ngoài trời và khu BBQ. Đây là các nhóm lựa chọn tham khảo cho nhu cầu đi dạo, vận động và sinh hoạt gia đình. Chưa xác nhận tình trạng phục vụ, giờ, phí hay quyền sử dụng của từng hộ; cần đối chiếu thông báo đơn vị vận hành trước khi đăng ký."
+  },
+  {
+    "site_code": "ocean-park-2",
+    "title": "Tiện ích công khai Ocean Park 2",
+    "authority": "reference",
+    "source_published_at": null,
+    "retrieved_at": "2026-10-14",
+    "sources": ["https://theempire.vinhomes.vn/", "https://vinhomes.vn/en/oceanpark2"],
+    "body": "Trang dự án giới thiệu Royal Wave Park, Empire Park, công viên ven kênh Silk Park và đại lộ Kingdom Avenue. Cư dân có thể dùng danh sách này để tìm hiểu các nhóm vui chơi, cảnh quan và đi dạo tại OP2. Chưa xác nhận tình trạng phục vụ, giờ, phí hay điều kiện áp dụng cho cư dân; cần kiểm tra kênh vận hành chính thức."
+  },
+  {
+    "site_code": "ocean-park-3",
+    "title": "Tiện ích công khai Ocean Park 3",
+    "authority": "reference",
+    "source_published_at": null,
+    "retrieved_at": "2026-10-14",
+    "sources": ["https://oceanpark3.vinhomes.vn/brochure/"],
+    "body": "Trang dự án giới thiệu Paradise Bay, hồ Tropical Lagoon, hồ bơi bốn mùa Four Seasons, vịnh trượt nước Aqua Bay, BBQ Garden và sân chơi trẻ em Aquarium. Đây là thông tin tham khảo theo dự án OP3. Chưa xác nhận tình trạng phục vụ, giờ, phí, điều kiện vào khu hoặc quyền sử dụng của từng hộ; cần đối chiếu đơn vị vận hành trước khi đến hay đăng ký."
+  }
+]

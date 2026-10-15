@@ -1,0 +1,16 @@
+# The public door of a server deployment (compose profile "public"): https for the apps, and the tools the
+# AI platform calls at /mcp. Caddy gets and renews the certificate for VINHOMES_DOMAIN by itself.
+{$VINHOMES_DOMAIN} {
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		# The token is checked by the API; this also keeps everyone but the platform's server away.
+		@platform remote_ip {$PLATFORM_IPS:0.0.0.0/0 ::/0}
+		handle @platform {
+			reverse_proxy api:8000
+		}
+		respond 403
+	}
+	handle {
+		reverse_proxy gateway:8080
+	}
+}

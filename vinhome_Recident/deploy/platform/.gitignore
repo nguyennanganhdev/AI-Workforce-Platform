@@ -1,0 +1,3 @@
+# Written by apply.py: ids of what exists on the platform, and the keys it showed once.
+.applied.json
+platform.env

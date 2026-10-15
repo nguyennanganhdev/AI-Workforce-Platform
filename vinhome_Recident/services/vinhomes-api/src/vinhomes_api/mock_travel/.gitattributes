@@ -1,0 +1,2 @@
+# Preserve source bytes recorded in PROVENANCE.json on Windows checkouts.
+*.py text eol=lf

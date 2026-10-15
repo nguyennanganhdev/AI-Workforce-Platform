@@ -1,0 +1,7 @@
+# Offline source-only update; the trusted deployed image must have unchanged Reception dependencies.
+ARG BASE_RECEPTION_IMAGE
+FROM ${BASE_RECEPTION_IMAGE}
+USER root
+COPY agents/reception/src /opt/reception/src
+RUN python -m compileall -q -f /opt/reception/src && python -m pip check
+USER app

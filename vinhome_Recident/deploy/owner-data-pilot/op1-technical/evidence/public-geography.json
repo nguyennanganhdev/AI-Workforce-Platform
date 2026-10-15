@@ -1,0 +1,37 @@
+[
+  {
+    "site_code": "ocean-park-1",
+    "kind": "subdivision",
+    "code": null,
+    "name": "The Sapphire 1",
+    "sources": [
+      "https://market.vinhomes.vn/phan-khu/the-sapphire-1-vinhomes-ocean-park"
+    ],
+    "body": "The Sapphire 1 — Ocean Park 1. Phân khu công khai thuộc OP1. Đây là danh mục tham khảo từ nguồn Vinhomes, chưa phải hồ sơ vận hành đã duyệt. Chưa xác nhận đơn vị quản lý, danh sách căn/lô, cư dân, nhân sự, tình trạng phục vụ, điều kiện sử dụng, phí, giờ, bảo hành hoặc quy định đặt/hủy. Không dùng bản ghi này để xác minh cư trú hay tự cấp quyền dịch vụ.",
+    "source_published_at": null,
+    "retrieved_at": "2026-10-14",
+    "authority": "reference",
+    "record_code": "subdivision/the-sapphire-1",
+    "official_code": null,
+    "category": "public-geography-reference",
+    "title": "The Sapphire 1 — Ocean Park 1"
+  },
+  {
+    "site_code": "ocean-park-1",
+    "kind": "building",
+    "code": "S1.01",
+    "name": "Tòa S1.01",
+    "sources": [
+      "https://market.vinhomes.vn/blog/toa-nha-tai-phan-khu-sapphire-1-vinhomes-ocean-park-gia-lam-co-bao-nhieu-tang"
+    ],
+    "body": "Tòa S1.01 — Ocean Park 1. Mã tòa công khai trong The Sapphire 1. Nguồn công khai ghi thuộc The Sapphire 1. Đây là danh mục tham khảo từ nguồn Vinhomes, chưa phải hồ sơ vận hành đã duyệt. Chưa xác nhận đơn vị quản lý, danh sách căn/lô, cư dân, nhân sự, tình trạng phục vụ, điều kiện sử dụng, phí, giờ, bảo hành hoặc quy định đặt/hủy. Không dùng bản ghi này để xác minh cư trú hay tự cấp quyền dịch vụ.",
+    "source_published_at": "2024-07-05",
+    "retrieved_at": "2026-10-14",
+    "authority": "reference",
+    "parent_name": "The Sapphire 1",
+    "record_code": "building/s1-01",
+    "official_code": "S1.01",
+    "category": "public-geography-reference",
+    "title": "Tòa S1.01 — Ocean Park 1"
+  }
+]

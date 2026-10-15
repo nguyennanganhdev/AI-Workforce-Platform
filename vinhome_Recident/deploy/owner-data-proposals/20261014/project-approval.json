@@ -1,0 +1,11 @@
+{
+  "approval_id": "project-approval-20261014-v1",
+  "approval_kind": "project_scope",
+  "actor_kind": "requesting_project_user",
+  "user_statement": "Tôi duyệt tài liệu đó triển khai thêm vào database đi.",
+  "recorded_at": "2026-10-14T16:35:23.488736+00:00",
+  "proposal_snapshot_sha256": "8826aaa0595137fc08fe1ee2384a025bd31818a91626a4ea3dc2d70355ce023c",
+  "approved_for": "database registration of proposed catalog and sourced geography",
+  "operational_verification": false,
+  "note": "Ghi nhận yêu cầu triển khai của người dùng; không bổ sung tên cư dân/nhân viên, căn/lô, ca, phí, giờ hoặc pháp nhân còn thiếu."
+}

@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vinhomes · Vận hành demo</title><link rel="stylesheet" href="/demo/assets/business.css"><script src="/demo/assets/business.js" defer></script></head>
+<body>
+<header><div><strong>VINHOMES</strong><span class="subbrand">Vận hành · Demo</span></div><label for="role">Đang sử dụng với vai trò</label><select id="role"><option value="resident">Cư dân</option><option value="management">Ban quản lý</option><option value="technical">Nhân viên kỹ thuật</option><option value="security">Nhân viên bảo vệ</option><option value="admin">Quản trị viên</option></select><button id="refresh" type="button">Làm mới</button></header>
+<div class="layout"><aside><p>Dữ liệu thử nghiệm</p><nav id="navigation" aria-label="Chức năng"></nav><p class="hint">Đổi vai trò để tiếp tục các bước của cùng một yêu cầu. Dữ liệu được lưu trong database.</p></aside><main><div id="notice" role="status" aria-live="polite"></div><section id="screen" aria-live="polite"><h1>Đang kết nối…</h1></section></main></div>
+<dialog id="dialog"><form id="action-form"><div class="dialog-heading"><h2 id="form-title"></h2><button id="close-dialog" type="button" aria-label="Đóng">×</button></div><p id="form-help"></p><div id="fields"></div><p id="form-error" role="alert"></p><footer><button id="cancel-dialog" type="button">Hủy</button><button id="confirm" type="submit" class="primary">Lưu</button></footer></form></dialog>
+</body></html>

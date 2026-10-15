@@ -1,0 +1,13 @@
+# Artifact builds send only the two verified bundles and web server templates.
+**
+!apps
+!apps/resident-web
+!apps/resident-web/dist
+!apps/resident-web/dist/**
+!apps/staff-web
+!apps/staff-web/dist
+!apps/staff-web/dist/**
+!deploy
+!deploy/nginx
+!deploy/nginx/resident-web.conf.template
+!deploy/nginx/staff-web.conf.template
