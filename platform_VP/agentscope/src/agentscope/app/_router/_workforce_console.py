@@ -102,6 +102,9 @@ class GeneratedAgent(BaseModel):
     objective: str = Field(min_length=1, max_length=4000)
     system_prompt: str = Field(min_length=20, max_length=30000)
     selected_tool_ids: list[str] = Field(default_factory=list)
+    # False only for an agent whose work is coordinating teammates (TeamSay):
+    # it is then complete without a tool of its own.
+    needs_tools: bool = True
     skill_name: str = Field(min_length=1, max_length=100)
     skill_markdown: str = Field(min_length=20, max_length=50000)
     tests: list[GeneratedTest] = Field(default_factory=list, max_length=5)
@@ -612,7 +615,9 @@ escalation). Tests run with the real model before the agent can change later. Se
 tool IDs in the supplied catalog. A tool ID may appear in only one generated
 agent. Give each operational tool to the narrowest specialist that owns that
 capability; a planning/coordinator agent must call that specialist through
-TeamSay instead of receiving a duplicate tool. Never output or modify model parameters,
+TeamSay instead of receiving a duplicate tool; set needs_tools=false for an
+agent that only coordinates teammates and needs no tool of its own (true for
+every agent that has to read or change data). Never output or modify model parameters,
 context limits, ReAct settings, timeouts, credentials, permissions or publish
 policy. The system prompt must explain when to communicate with another agent
 through TeamSay, but must not hard-code a particular future ticket. If the
@@ -1202,6 +1207,25 @@ async def get_builder_conversation(
     )
 
 
+def _agent_checks(
+    agent: GeneratedAgent,
+    selected: list[BuilderTool],
+    invalid: list[str],
+    duplicates: list[str],
+) -> dict[str, bool]:
+    """What a generated agent must have before it can be published."""
+
+    return {
+        "system_prompt": len(agent.system_prompt.strip()) >= 80,
+        "registered_tools": not invalid,
+        "exclusive_tool_assignment": not duplicates,
+        # A coordinator works through its teammates; every other agent needs a
+        # registered tool for what it does.
+        "capability_has_tools": bool(selected) or not agent.needs_tools,
+        "skill": len(agent.skill_markdown.strip()) >= 40,
+    }
+
+
 @workforce_console_router.post("/builder/prepare", response_model=ProposalView)
 async def prepare_builder(
     body: PrepareRequest,
@@ -1403,13 +1427,7 @@ async def prepare_builder(
             if reuse is not None
             else 0.0
         )
-        checks = {
-            "system_prompt": len(agent.system_prompt.strip()) >= 80,
-            "registered_tools": not invalid,
-            "exclusive_tool_assignment": not duplicate_tool_ids,
-            "capability_has_tools": bool(selected),
-            "skill": len(agent.skill_markdown.strip()) >= 40,
-        }
+        checks = _agent_checks(agent, selected, invalid, duplicate_tool_ids)
         passed = all(checks.values()) or reuse_score >= 0.72
         any_blocked = any_blocked or not passed
         views.append(
