@@ -4,6 +4,8 @@ Người dùng đã chọn mở rộng OP2 trước, dùng dữ liệu mô phỏ
 
 `vinhomes_api.synthetic_op2.build(template, existing_admin_id)` tạo:
 
+API mặc định và ID OP2 được giữ nguyên. Để tạo bộ OP3 tách namespace/site/credential, dùng `build(template, existing_admin_id, site_code="ocean-park-3")`; xem [OP3](../op3-simulation/README.md). Không sửa site của bundle OP2 đã phát hành để biến thành OP3.
+
 - Một khu `SIM-OP2-ZONE`, ba tòa `SIM-OP2-TOWER-1/2/3`, sáu căn và sáu cư dân.
 - 24 staff: ba nhóm ca, mỗi ca hai kỹ thuật, hai an ninh, hai vệ sinh và hai hỗ trợ dịch vụ. Mỗi người tối đa một việc đồng thời, phạm vi chỉ khu OP2 mô phỏng.
 - 336 ca tám giờ trong 14 ngày. Nhóm `c1`: 07:00–15:00, `c2`: 15:00–23:00, `c3`: 23:00–07:00 theo Asia/Saigon. Có hai người cùng chuyên môn mỗi ca để lựa chọn dự phòng; đây không phải sơ đồ trực chính thức.
