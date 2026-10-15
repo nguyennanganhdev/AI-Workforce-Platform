@@ -493,10 +493,9 @@ class AgentInvite(_TeamToolBase):
           with ``invitable=True`` and a non-empty ``invite_description``.
         - The team does not already have this agent as a member (one
           borrow per agent per team).
-        - The invited agent has at least one existing session to
-          inherit ``workspace_id`` / ``chat_model_config`` from — a
-          brand-new never-opened agent record is not invitable in
-          practice because it has no runtime state to reuse.
+        - The invited agent may reuse an existing session's workspace;
+          its team-scoped session always uses the leader session's model
+          configuration.
 
         Args:
             target (`str`):
@@ -570,9 +569,8 @@ class AgentInvite(_TeamToolBase):
                     f"{team.data.name!r}.",
                 )
 
-            # Leader session — needed for chat-model / workspace fallback
-            # when the invited agent has no existing session, and for the
-            # sender-name in the initial team-message hint.
+            # Leader session — authoritative for the borrowed session's model,
+            # and the workspace fallback when the invited agent has no session.
             leader_session = await self._storage.get_session(
                 self._user_id,
                 "",
@@ -593,11 +591,11 @@ class AgentInvite(_TeamToolBase):
             # not block the invite.
             leader_name = leader.name if leader else leader_session.agent_id
 
-            # Reuse the caller's own primary session of this agent for
-            # workspace + model, else a fresh workspace and the leader's
-            # model. The lookup is caller-scoped, so a cross-owner borrow
-            # never reuses the owner's session, MCPs, skills, or cache.
-            # The workspace is created lazily on first chat.
+            # Reuse the caller's own primary session only for its workspace.
+            # The borrowed agent runs with the leader's primary and fallback
+            # models for this team. The lookup is caller-scoped, so a
+            # cross-owner borrow never reuses the owner's session, MCPs,
+            # skills, or cache. The workspace is created lazily on first chat.
             invited_sessions = await self._storage.list_sessions(
                 self._user_id,
                 invited.id,
@@ -605,14 +603,6 @@ class AgentInvite(_TeamToolBase):
             if invited_sessions:
                 primary = invited_sessions[0]
                 borrowed_workspace_id = primary.config.workspace_id
-                borrowed_chat_model = (
-                    primary.config.chat_model_config
-                    or leader_session.config.chat_model_config
-                )
-                borrowed_fallback_model = (
-                    primary.config.fallback_chat_model_config
-                    or leader_session.config.fallback_chat_model_config
-                )
             else:
                 borrowed_workspace_id = (
                     await self._workspace_manager.assign_workspace_id(
@@ -620,10 +610,6 @@ class AgentInvite(_TeamToolBase):
                         agent_id=invited.id,
                         session_id=_generate_id(),
                     )
-                )
-                borrowed_chat_model = leader_session.config.chat_model_config
-                borrowed_fallback_model = (
-                    leader_session.config.fallback_chat_model_config
                 )
 
             # Permission context is NOT inherited from the leader.
@@ -657,8 +643,10 @@ class AgentInvite(_TeamToolBase):
                 config=SessionConfig(
                     workspace_id=borrowed_workspace_id,
                     name=f"team:{team.id}/invited:{invited_handle}",
-                    chat_model_config=borrowed_chat_model,
-                    fallback_chat_model_config=borrowed_fallback_model,
+                    chat_model_config=leader_session.config.chat_model_config,
+                    fallback_chat_model_config=(
+                        leader_session.config.fallback_chat_model_config
+                    ),
                     knowledge_config=(
                         SessionKnowledgeConfig(
                             knowledge_base_ids=invited.data.knowledge_base_ids,

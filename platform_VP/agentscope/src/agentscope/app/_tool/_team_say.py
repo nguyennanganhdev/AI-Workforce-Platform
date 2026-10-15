@@ -204,10 +204,14 @@ your top priority is to complete the overall task.
 _WORKER_DESCRIPTION = """Send an internal message to one team member.
 
 ## When to Use This Tool
-- **IMPORTANT**: When you finish your assigned task, you MUST call this \
-tool to report your results back to the reply owner named in your runtime \
-instructions. The reply owner is waiting \
-for your report — do not end your turn without sending it.
+- **IMPORTANT**: When you are an internal collaborator and finish your assigned
+task, you MUST call this tool to report your results to the reply owner named in
+your runtime instructions. Report to the Leader only when the Leader is that
+reply owner.
+- If the runtime says the customer directly addressed you, you own the customer
+reply. Use this tool to ask capable peers for bounded dependencies, then answer
+the customer directly after their verified results arrive. Do not send your
+terminal ``result`` or ``error`` to the Leader in that direct-mention turn.
 - Share intermediate findings with one specific collaborator.
 - Use ``kind="question"`` when your own work needs the peer's answer; you will
   wait for it. A peer may ask you back for clarification, and the runtime will
@@ -755,6 +759,31 @@ class TeamSay(_TeamToolBase):
                         state=ToolResultState.ERROR,
                     )
                 recipients = [(target_session_id, target_agent_id)]
+
+            if (
+                self._role == "worker"
+                and turn is not None
+                and turn.mode == "direct_mention"
+                and is_reply_owner
+                and kind in {"result", "error"}
+                and len(recipients) == 1
+                and recipients[0][0] == leader.session_id
+            ):
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "Bạn đang sở hữu lượt trả lời; hãy trả lời "
+                                "khách hàng trực tiếp."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                    metadata={
+                        "kind": kind,
+                        "reason": "direct_mention_reply_owner",
+                    },
+                )
 
             if (
                 self._role == "worker"

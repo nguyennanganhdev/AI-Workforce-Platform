@@ -942,6 +942,65 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             "requires_user_input", self.storage.context.state.events[-1].kind
         )
 
+    async def test_direct_mention_owner_cannot_report_terminal_result_to_leader(self):
+        from agentscope.app._team_turn import start_team_turn
+
+        await start_team_turn(
+            self.bus,
+            "ticket-1",
+            reply_owner_session_id="worker-session",
+            reply_owner_agent_id="worker",
+            customer_session_id="leader-session",
+            mode="direct_mention",
+            task_id=self.task,
+            storage=self.storage,
+            user_id="u",
+        )
+
+        question = await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Find verified options",
+        )
+        await self.bus.queue_drain(MessageBusKeys.wakeup_queue(), max_count=10)
+        await self.say(
+            "peer",
+            to="Worker",
+            kind="answer",
+            content="Two verified options are available",
+            in_reply_to=question.metadata["handoff_id"],
+        )
+        await self.bus.queue_drain(MessageBusKeys.wakeup_queue(), max_count=10)
+        handoffs_before = len(self.storage.handoffs)
+
+        for kind in ("result", "error"):
+            result = await self.tool("worker")(
+                to="Leader",
+                kind=kind,
+                content="Completed internal work",
+            )
+
+            self.assertEqual("error", result.state)
+            self.assertEqual(
+                "Bạn đang sở hữu lượt trả lời; hãy trả lời khách hàng trực tiếp.",
+                result.content[0].text,
+            )
+            self.assertEqual(
+                "direct_mention_reply_owner",
+                result.metadata["reason"],
+            )
+
+        self.assertEqual(handoffs_before, len(self.storage.handoffs))
+        self.assertEqual(
+            [],
+            await self.bus.queue_drain(
+                MessageBusKeys.wakeup_queue(),
+                max_count=10,
+            ),
+        )
+        self.assertEqual("running", self.storage.turn.status)
+
     async def test_real_agent_sleeps_immediately_after_peer_question(self):
         from agentscope.agent import Agent, InjectionConfig, ReActConfig
         from agentscope.app.middleware import TeamMemberLoopMiddleware

@@ -44,6 +44,7 @@ from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.storage import (
     AgentData,
     AgentRecord,
+    ChatModelConfig,
     MCPRecord,
     RedisStorage,
     SessionConfig,
@@ -1471,6 +1472,93 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
 
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
+    async def test_invited_session_uses_leader_models(self) -> None:
+        leader_primary = ChatModelConfig(
+            type="leader-provider",
+            credential_id="leader-primary-credential",
+            model="leader-primary",
+            parameters={"temperature": 0.1},
+        )
+        leader_fallback = ChatModelConfig(
+            type="leader-provider",
+            credential_id="leader-fallback-credential",
+            model="leader-fallback",
+            parameters={},
+        )
+        agent_primary = ChatModelConfig(
+            type="builder-provider",
+            credential_id="builder-primary-credential",
+            model="builder-primary",
+            parameters={},
+        )
+        agent_fallback = ChatModelConfig(
+            type="builder-provider",
+            credential_id="builder-fallback-credential",
+            model="builder-fallback",
+            parameters={},
+        )
+        self.leader_session = await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=self.leader_agent.id,
+            session_id=self.leader_session.id,
+            config=self.leader_session.config.model_copy(
+                update={
+                    "chat_model_config": leader_primary,
+                    "fallback_chat_model_config": leader_fallback,
+                },
+            ),
+        )
+        self.monday_session = await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=self.monday_agent.id,
+            session_id=self.monday_session.id,
+            config=self.monday_session.config.model_copy(
+                update={
+                    "chat_model_config": agent_primary,
+                    "fallback_chat_model_config": agent_fallback,
+                },
+            ),
+        )
+
+        result = await AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )(
+            target=f"Monday@{self.monday_agent.id[:8]}",
+            prompt="Use the team leader's model.",
+        )
+
+        self.assertEqual(result.state, ToolResultState.RUNNING)
+        team = await self.storage.get_team(
+            self.user_id,
+            self.leader_session.team_id,
+        )
+        borrowed = await self.storage.get_session(
+            self.user_id,
+            self.monday_agent.id,
+            team.data.members[0].session_id,
+        )
+        self.assertEqual(borrowed.config.chat_model_config, leader_primary)
+        self.assertEqual(
+            borrowed.config.fallback_chat_model_config,
+            leader_fallback,
+        )
+        primary = await self.storage.get_session(
+            self.user_id,
+            self.monday_agent.id,
+            self.monday_session.id,
+        )
+        self.assertEqual(primary.config.chat_model_config, agent_primary)
+        self.assertEqual(
+            primary.config.fallback_chat_model_config,
+            agent_fallback,
+        )
+
     async def test_assignment_is_not_semantically_validated(self):
         leader = await self.storage.get_session(
             self.user_id,

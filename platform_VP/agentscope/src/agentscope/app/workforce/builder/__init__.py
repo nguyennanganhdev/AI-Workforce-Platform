@@ -1,24 +1,30 @@
 """Builder Phase-B public exports; composition stays with Foundation."""
 
-from ._requirements import ExtractionError, ExtractionResult, RequirementExtractor
+from ._protocol_validation import ProtocolBuildValidator
+from ._requirements import (
+    AgentBehaviorContract,
+    ExtractionError,
+    ExtractionResult,
+    RequirementExtractor,
+)
 from ._service import ProposalService
 from .async_capabilities._models import BuildProposal, ProtocolReadiness
-from .async_capabilities._selector import CapabilitySelector
 from .async_capabilities._protocol_adapter import (
-    RegistryProtocolReadiness,
     RegistryCapabilitySelector,
+    RegistryProtocolReadiness,
 )
-from ._protocol_validation import ProtocolBuildValidator
+from .async_capabilities._selector import CapabilitySelector
 
 __all__ = [
+    "AgentBehaviorContract",
     "BuildProposal",
     "CapabilitySelector",
     "ExtractionError",
     "ExtractionResult",
     "ProposalService",
-    "ProtocolReadiness",
-    "RequirementExtractor",
-    "RegistryProtocolReadiness",
-    "RegistryCapabilitySelector",
     "ProtocolBuildValidator",
+    "ProtocolReadiness",
+    "RegistryCapabilitySelector",
+    "RegistryProtocolReadiness",
+    "RequirementExtractor",
 ]

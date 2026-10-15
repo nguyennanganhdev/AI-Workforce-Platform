@@ -4,10 +4,51 @@ import asyncio
 import json
 from typing import Literal, Protocol
 
-from pydantic import ValidationError, model_validator
+from pydantic import Field, ValidationError, model_validator
 
 from ..contracts import WorkforceModel
-from .async_capabilities import BuildRequirements
+from .async_capabilities import AgentRequirement, BuildRequirements
+
+
+class AgentBehaviorContract(WorkforceModel):
+    """Structured source used to compile one runtime prompt and skill."""
+
+    requirement: AgentRequirement
+    role: Literal["coordinator", "specialist"]
+    request_modes: tuple[Literal["advice", "lookup", "action"], ...] = Field(
+        min_length=1,
+        max_length=3,
+    )
+    deliverables: tuple[str, ...] = Field(min_length=1, max_length=20)
+    completion_criteria: tuple[str, ...] = Field(min_length=1, max_length=20)
+    exclusions: tuple[str, ...] = Field(min_length=1, max_length=20)
+    operational_facts: tuple[str, ...] = Field(min_length=1, max_length=30)
+    no_data_behavior: str = Field(min_length=20, max_length=4000)
+    tool_error_behavior: str = Field(min_length=20, max_length=4000)
+    partial_result_behavior: str = Field(min_length=20, max_length=4000)
+    customer_input_policy: str = Field(min_length=20, max_length=4000)
+    peer_coordination_policy: str = Field(min_length=20, max_length=4000)
+    internal_reporting_policy: str = Field(min_length=20, max_length=4000)
+    synthesis_policy: str = Field(min_length=20, max_length=4000)
+    output_sections: tuple[str, ...] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> "AgentBehaviorContract":
+        if len(set(self.request_modes)) != len(self.request_modes):
+            raise ValueError("request modes must be unique")
+        for field_name in (
+            "deliverables",
+            "completion_criteria",
+            "exclusions",
+            "operational_facts",
+            "output_sections",
+        ):
+            values = getattr(self, field_name)
+            if len(set(values)) != len(values) or any(
+                not value.strip() for value in values
+            ):
+                raise ValueError(f"{field_name} must be nonblank and unique")
+        return self
 
 
 class ExtractionResult(WorkforceModel):
@@ -41,7 +82,7 @@ class RequirementExtractor:
         *,
         attempts: int = 2,
         timeout_seconds: float = 30,
-        max_input_chars: int = 16000
+        max_input_chars: int = 16000,
     ):
         if not 1 <= attempts <= 3 or timeout_seconds <= 0 or max_input_chars <= 0:
             raise ValueError("invalid extraction budget")

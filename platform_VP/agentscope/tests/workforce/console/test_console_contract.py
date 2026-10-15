@@ -1,5 +1,6 @@
 """Focused contract tests for the Workforce Builder console."""
 
+import inspect
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
@@ -8,8 +9,8 @@ from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._router._schema import MCPView
 from agentscope.app._router._workforce_console import (
     _LEADER_PROMPT,
-    BuilderKnowledgeBase,
     BuilderGeneration,
+    BuilderKnowledgeBase,
     BuilderOutline,
     BuilderTool,
     GeneratedAgent,
@@ -17,16 +18,19 @@ from agentscope.app._router._workforce_console import (
     ProposalView,
     _agent_tool_settings,
     _claim_exclusive_tool_ids,
+    _compile_skill_body,
+    _compile_system_prompt,
+    _contract_checks,
     _execution_mode_matches_tools,
-    _ensure_attraction_generation_coverage,
-    _ensure_attraction_outline_coverage,
+    _generate,
+    _generation_issues,
     _group_tool_catalog,
     _normalise_skill,
+    _outline,
     _replace_agent_session_knowledge,
     _replace_agent_workspace_mcps,
     _resolve_selected_knowledge_bases,
     _resolve_selected_tools,
-    _response_language,
     _select_model_name,
     _similarity,
     _stored_proposal,
@@ -39,6 +43,93 @@ from agentscope.app._workforce_policy import (
 from agentscope.app.storage import AgentData, ChatModelConfig, MCPRecord
 from agentscope.mcp import HttpMCPConfig, MCPClient
 from agentscope.message import AssistantMsg
+
+
+def _generated_agent(
+    *,
+    name: str = "Agent Tư Vấn",
+    role: str = "specialist",
+    execution_mode: str = "context_only",
+    request_modes: tuple[str, ...] = ("advice", "lookup"),
+    selected_tool_ids: list[str] | None = None,
+) -> GeneratedAgent:
+    key = name.casefold().replace(" ", "-")
+    supports_action = "action" in request_modes
+    return GeneratedAgent.model_validate(
+        {
+            "name": name,
+            "execution_mode": execution_mode,
+            "selected_tool_ids": selected_tool_ids or [],
+            "behavior_contract": {
+                "requirement": {
+                    "agent_key": key,
+                    "business_profile": {
+                        "profile_schema_version": "1",
+                        "objective": "Tư vấn lựa chọn phù hợp từ bằng chứng hợp lệ",
+                        "responsibilities": [
+                            "Phân tích yêu cầu và tạo khuyến nghị dùng được"
+                        ],
+                        "capabilities": ["recommend"],
+                        "input_contract": {"request": "string"},
+                        "output_contract": {"recommendations": "list"},
+                        "business_scope": "Tư vấn trong phạm vi dữ liệu được giao",
+                        "required_constraints": ["Không bịa dữ liệu"],
+                        "execution_policy": (
+                            "require_approval" if supports_action else "read_only"
+                        ),
+                        "knowledge_requirements": [],
+                    },
+                    "capabilities": [
+                        {
+                            "capability": "recommend",
+                            "required": True,
+                            "reason": "Cần tạo khuyến nghị cho khách hàng",
+                        }
+                    ],
+                    "effect": "external_operation" if supports_action else "read",
+                    "tracking_intent": "create_only",
+                },
+                "role": role,
+                "request_modes": list(request_modes),
+                "deliverables": ["Danh sách lựa chọn và khuyến nghị rõ ràng"],
+                "completion_criteria": [
+                    "Đã trả lựa chọn phù hợp hoặc blocker cuối cùng cụ thể"
+                ],
+                "exclusions": ["Không tự thực hiện nghiệp vụ của specialist khác"],
+                "operational_facts": ["Tên, giá, trạng thái và chính sách"],
+                "no_data_behavior": (
+                    "Nêu truy vấn không có kết quả và không suy diễn rằng "
+                    "lựa chọn không tồn tại"
+                ),
+                "tool_error_behavior": (
+                    "Giữ kết quả hợp lệ, nêu lỗi công cụ và không lặp lại "
+                    "truy vấn không đổi"
+                ),
+                "partial_result_behavior": (
+                    "Đưa toàn bộ kết quả đã xác minh và ghi rõ phần chưa thể xác minh"
+                ),
+                "customer_input_policy": (
+                    "Chỉ hỏi khách về dữ kiện bắt buộc do chính khách sở hữu"
+                ),
+                "peer_coordination_policy": (
+                    "Gửi một nhiệm vụ hữu hạn tới peer phù hợp rồi chờ kết quả"
+                ),
+                "internal_reporting_policy": (
+                    "Khi làm nội bộ, gửi kết quả hoàn chỉnh cho reply owner; "
+                    "khi được mention thì trả khách"
+                ),
+                "synthesis_policy": (
+                    "Tổng hợp bằng chứng và blocker thành phương án hữu ích, "
+                    "không xin Leader quyết định hộ"
+                ),
+                "output_sections": [
+                    "Khuyến nghị",
+                    "Dữ kiện đã xác minh",
+                    "Phần chưa xác minh",
+                ],
+            },
+        }
+    )
 
 
 def test_agent_schema_does_not_expose_server_owned_builder_fields() -> None:
@@ -54,6 +145,15 @@ def test_agent_schema_does_not_expose_server_owned_builder_fields() -> None:
     assert "react_config" in schema["properties"]
     assert ContextConfig().trigger_ratio == 0.8
     assert ReActConfig() is not None
+
+
+def test_builder_model_authors_contract_not_prompt_or_skill() -> None:
+    properties = GeneratedAgent.model_json_schema()["properties"]
+
+    assert "behavior_contract" in properties
+    assert "system_prompt" not in properties
+    assert "skill_markdown" not in properties
+    assert "objective" not in properties
 
 
 def test_mcp_view_exposes_catalog_but_not_connection_secret() -> None:
@@ -85,21 +185,168 @@ def test_mcp_view_exposes_catalog_but_not_connection_secret() -> None:
 
 
 def test_skill_normalisation_adds_safe_front_matter() -> None:
-    agent = GeneratedAgent(
+    agent = _generated_agent(
         name="Hotel Agent",
-        objective="Tìm phòng: theo ngân sách của khách",
         execution_mode="tool_backed",
-        system_prompt="Act only on verified hotel inventory and report tool results.",
         selected_tool_ids=["mcp-1:search_rooms"],
-        skill_name="Hotel Search",
-        skill_markdown="# Workflow\n\nSearch, compare, then report verified options.",
     )
 
     skill = _normalise_skill(agent)
 
-    assert skill.startswith("---\nname: hotel-search\n")
-    assert 'description: "Tìm phòng: theo ngân sách của khách"' in skill
-    assert "# Workflow" in skill
+    assert skill.startswith("---\nname: hotel-agent\n")
+    assert "Tư vấn lựa chọn phù hợp" in skill
+    assert "## Phạm vi và trách nhiệm" in skill
+    assert "## Quy trình" in skill
+    assert "Output contract:" in skill
+    assert "## Quyền trả lời" in skill
+
+
+def test_contract_compiler_covers_runtime_failure_scenarios() -> None:
+    agent = _generated_agent(role="coordinator")
+
+    prompt = _compile_system_prompt(agent)
+    checks = _contract_checks(agent)
+
+    assert all(checks.values())
+    assert "advice bao gồm read và transform" in prompt
+    assert "external action tạo, cập nhật, xóa" in prompt
+    assert "monitor là theo dõi trạng thái" in prompt
+    assert "Không có dữ liệu" in prompt
+    assert "Công cụ lỗi" in prompt
+    assert "Chỉ có kết quả một phần" in prompt
+    assert "không được suy diễn" in prompt
+    assert "Không xin Leader phê duyệt" in prompt
+    assert "Khi khách @mention trực tiếp" in prompt
+    assert "Không gửi lời hứa, báo cáo tiến độ" in prompt
+
+
+def test_contract_compiler_reuses_canonical_async_completion_condition() -> None:
+    payload = _generated_agent(
+        request_modes=("action",),
+        execution_mode="tool_backed",
+        selected_tool_ids=["travel:book"],
+    ).model_dump(mode="json")
+    requirement = payload["behavior_contract"]["requirement"]
+    requirement["tracking_intent"] = "track_to_completion"
+    requirement["policy_proposal"] = {
+        "schema_version": "1",
+        "capabilities": ["recommend"],
+        "event_types": ["booking.completed"],
+        "required_facts": ["booking_id", "status"],
+        "completion_condition": "Provider xác nhận trạng thái completed.",
+        "human_confirmation": True,
+        "timeout_behavior": "status_query",
+    }
+    agent = GeneratedAgent.model_validate(payload)
+
+    assert "Provider xác nhận trạng thái completed." in _compile_system_prompt(agent)
+    assert "Provider xác nhận trạng thái completed." in _compile_skill_body(agent)
+
+
+def test_semantic_validation_rejects_action_without_tool() -> None:
+    invalid = _generated_agent(request_modes=("action",))
+    generation = BuilderGeneration(agents=[invalid])
+
+    issues = _generation_issues(generation, [], [])
+
+    assert any("action bắt buộc phải là tool_backed" in issue for issue in issues)
+
+
+def test_semantic_validation_rejects_read_only_action_contract() -> None:
+    payload = _generated_agent(
+        request_modes=("action",),
+        execution_mode="tool_backed",
+        selected_tool_ids=["travel:book"],
+    ).model_dump(mode="json")
+    requirement = payload["behavior_contract"]["requirement"]
+    requirement["effect"] = "read"
+    requirement["business_profile"]["execution_policy"] = "read_only"
+    invalid = GeneratedAgent.model_validate(payload)
+
+    issues = _generation_issues(
+        BuilderGeneration(agents=[invalid]),
+        [
+            BuilderTool(
+                id="travel:book",
+                mcp_id="travel",
+                mcp_name="Travel",
+                tool_name="book",
+            )
+        ],
+        [],
+    )
+
+    assert any("action_external_effect" in issue for issue in issues)
+    assert any("action_requires_approval" in issue for issue in issues)
+
+
+class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
+    async def test_generate_repairs_invalid_contract_once(self) -> None:
+        invalid = _generated_agent(request_modes=("action",))
+        repaired = _generated_agent(
+            request_modes=("action",),
+            execution_mode="tool_backed",
+            selected_tool_ids=["travel:book"],
+        )
+
+        class _Model:
+            context_size = 100_000
+
+            def __init__(self):
+                self.outputs = [
+                    BuilderGeneration(agents=[invalid]),
+                    BuilderGeneration(agents=[repaired]),
+                ]
+                self.calls = 0
+
+            async def count_tokens(self, messages, tools):
+                del messages, tools
+                return 100
+
+            async def generate_structured_output(self, messages, schema):
+                del messages, schema
+                output = self.outputs[self.calls]
+                self.calls += 1
+                return SimpleNamespace(content=output.model_dump(mode="json"))
+
+        model = _Model()
+        generation, _tokens, _reserve = await _generate(
+            "Tạo agent thực hiện hành động",
+            [
+                BuilderTool(
+                    id="travel:book",
+                    mcp_id="travel",
+                    mcp_name="Travel",
+                    tool_name="book",
+                )
+            ],
+            [],
+            model,  # type: ignore[arg-type]
+            ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4o-mini",
+                parameters={},
+            ),
+        )
+
+        self.assertEqual(2, model.calls)
+        self.assertEqual("tool_backed", generation.agents[0].execution_mode)
+        self.assertEqual(
+            [],
+            _generation_issues(
+                generation,
+                [
+                    BuilderTool(
+                        id="travel:book",
+                        mcp_id="travel",
+                        mcp_name="Travel",
+                        tool_name="book",
+                    )
+                ],
+                [],
+            ),
+        )
 
 
 def test_reuse_similarity_prefers_same_business_capability() -> None:
@@ -141,10 +388,7 @@ def test_builder_prepare_requires_user_selected_model() -> None:
     assert "chat_model_config" in schema["required"]
 
 
-def test_builder_follows_user_language_and_leader_answers_in_vietnamese() -> None:
-    assert _response_language("Hãy tạo cho tôi một team agent") == "vi"
-    assert _response_language("Please create a travel agent team") == "en"
-    assert _response_language("OK", "Tôi muốn tạo agent khách sạn") == "vi"
+def test_workforce_agents_answer_in_natural_vietnamese() -> None:
     assert "Always answer the customer in natural Vietnamese" in _LEADER_PROMPT
     assert "helpful person" in _LEADER_PROMPT
 
@@ -185,63 +429,12 @@ def test_builder_outline_keeps_team_capabilities_separate() -> None:
     ]
 
 
-def test_builder_materializes_requested_attraction_specialist_and_tools() -> None:
-    tools = [
-        BuilderTool(
-            id="travel:search_attractions",
-            mcp_id="travel",
-            mcp_name="Travel",
-            tool_name="search_attractions",
-        ),
-        BuilderTool(
-            id="travel:book_attraction_ticket",
-            mcp_id="travel",
-            mcp_name="Travel",
-            tool_name="book_attraction_ticket",
-        ),
-    ]
-    outline = _ensure_attraction_outline_coverage(
-        BuilderOutline(
-            agents=[
-                {
-                    "name": "Agent Lập Kế Hoạch",
-                    "objective": "Lập lịch trình tổng thể",
-                    "suggested_tool_ids": ["travel:search_attractions"],
-                },
-            ],
-        ),
-        "Tư vấn địa điểm vui chơi tại Phú Quốc",
-        tools,
-    )
-
-    assert len(outline.agents) == 2
-    assert outline.agents[0].suggested_tool_ids == []
-    attraction = outline.agents[1]
-    assert attraction.name == "Agent Địa Điểm Vui Chơi"
-    assert set(attraction.suggested_tool_ids) == {tool.id for tool in tools}
-
-    generation = _ensure_attraction_generation_coverage(
-        BuilderGeneration(),
-        "Tư vấn địa điểm vui chơi tại Phú Quốc",
-        tools,
-        "vi",
-    )
-    assert len(generation.agents) == 1
-    assert generation.agents[0].execution_mode == "tool_backed"
-    assert set(generation.agents[0].selected_tool_ids) == {
-        tool.id for tool in tools
-    }
-
-
 def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> None:
     assert governed_system_prompt("leader", "old prompt") == WORKFORCE_LEADER_PROMPT
-    governed = governed_system_prompt("business", "Hotel specialist")
+    governed = governed_system_prompt("business", "Business specialist")
     assert BUSINESS_AGENT_EVIDENCE_POLICY in governed
     assert governed_system_prompt("business", governed) == governed
-    stale = (
-        "Hotel specialist\n\nWORKFORCE RUNTIME EVIDENCE POLICY:\n"
-        "- stale rule"
-    )
+    stale = "Business specialist\n\nWORKFORCE RUNTIME EVIDENCE POLICY:\n- stale rule"
     refreshed = governed_system_prompt("business", stale)
     assert "stale rule" not in refreshed
     assert refreshed.count("WORKFORCE RUNTIME EXECUTION POLICY:") == 1
@@ -251,9 +444,59 @@ def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> No
         WORKFORCE_LEADER_PROMPT
     )
     assert "Follow the authored business role" in governed
-    assert "booking, payment, cancellation" in governed
+    assert "create, update, delete, submit, communicate" in governed
     assert "Never ask the customer to type a confirmation" in governed
-    assert "`unpaid_demo` means the booking" in governed
+    assert "Tool-specific status semantics" in governed
+    assert "pretrained knowledge" in governed
+    assert "call a matching attached MCP tool before answering" in governed
+    assert "exact successful tool results" in governed
+    assert "empty lookup/search result proves only" in governed
+    assert "Do not repeat an unchanged call" in governed
+    assert "Advice, lookup and action are different intents" in governed
+    assert "never implies an external mutation" in governed
+    assert "preserve all other verified useful results" in governed
+    assert "Do not ask the Leader to approve" in governed
+    assert "A coordinator must turn verified peer outputs" in governed
+    assert "not a promise" in governed
+    assert "no suitable peer" in governed
+    assert "project configuration" in governed
+    assert "credentials/tokens" in governed
+    assert "terminal kind=result/error to the Leader" in governed
+    assert "answer the customer directly in natural Vietnamese" in governed
+
+
+def test_builder_and_global_templates_use_only_abstract_work_types() -> None:
+    templates = "\n".join(
+        (
+            inspect.getsource(_outline),
+            inspect.getsource(_generate),
+            _compile_system_prompt(_generated_agent()),
+            _compile_skill_body(_generated_agent()),
+            BUSINESS_AGENT_EVIDENCE_POLICY,
+        )
+    ).casefold()
+
+    for work_type in ("read", "transform", "lookup", "external action", "monitor"):
+        assert work_type in templates
+    for domain_term in (
+        "travel",
+        "hotel",
+        "restaurant",
+        "transport",
+        "attraction",
+        "sightseeing",
+        "booking",
+        "unpaid_demo",
+        "availability",
+        "reservation",
+        "payment",
+        "cancellation",
+        "khách sạn",
+        "nhà hàng",
+        "đặt chỗ",
+        "thanh toán",
+    ):
+        assert domain_term not in templates
 
 
 def test_builder_claims_each_tool_for_only_one_agent() -> None:
