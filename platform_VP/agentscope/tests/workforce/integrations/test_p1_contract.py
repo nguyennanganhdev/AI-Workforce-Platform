@@ -3,7 +3,7 @@
 import copy
 
 from sqlalchemy import select, update
-from test_unified_partner_case import _CaseHarness, call, signed
+from tests.workforce.integrations.test_unified_partner_case import _CaseHarness, call, signed
 
 from agentscope.app.workforce.integrations.unified._contract import route_for_workflow
 from agentscope.app.workforce.integrations.unified._tables import (

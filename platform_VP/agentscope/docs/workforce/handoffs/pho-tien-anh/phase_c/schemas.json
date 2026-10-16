@@ -1090,6 +1090,11 @@
               "title": "Version Pins",
               "type": "array"
             },
+            "contract_snapshot": {
+              "additionalProperties": true,
+              "title": "Contract Snapshot",
+              "type": "object"
+            },
             "pending_waits": {
               "default": [],
               "items": {

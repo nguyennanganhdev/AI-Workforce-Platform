@@ -45,13 +45,16 @@ Docker web được build cục bộ rồi chuyển lên VPS; hai backend build 
 
 ## 3. Kết quả kiểm tra
 
-- **405 test riêng biệt** đã qua: 190 console/integrations, 103 ledger/memory/team/shared-context, 112 Domain bridge/tools/fixture. Một số test ban đầu thiếu fixture docs hoặc dependency Lua trong môi trường QA; đã bổ sung môi trường và chạy lại các phần lỗi, không sửa logic để né test.
+- **407 test riêng biệt** đã qua: 192 console/integrations/schema artifacts, 103 ledger/memory/team/shared-context, 112 Domain bridge/tools/fixture. Một số test ban đầu thiếu fixture docs hoặc dependency Lua trong môi trường QA; đã bổ sung môi trường và chạy lại các phần lỗi, không sửa logic để né test.
+- CI phát hiện 3 import test không tương thích `--import-mode=importlib` và 2 schema artifact thiếu `contract_snapshot`; đã sửa import thành package-qualified và tái sinh schema từ code. Chạy lại đúng chế độ CI: **192 passed, 7 subtests passed**, không thay mã runtime hay image đã deploy. Workflow dùng `continue-on-error` để gom JUnit; phải đọc báo cáo D7 tổng hợp, không suy ra gate PASS từ trạng thái riêng của từng bước. Kết quả CI cuối được ghi trong `release.json`/evidence bàn giao.
 - Image QA kế thừa đúng runtime phát hành: các test ứng dụng đã qua; bộ encryption/ops 6/6 qua trong container `--network none`, gồm age round-trip, sai khóa, corruption, checksum và alert.
 - Acceptance offline **72/72 lượt**, threshold pass^3 = 1,0. MCP và model là scripted peers; không dùng kết quả này để đánh dấu UAT/provider acceptance.
 - Bridge production: enabled, config version **8**, worker version **8**, **3** active routes, **0** pending commands, **0** pending events. Đọc được conversation snapshot; provider request đã xác thực trả 404 cho receipt không tồn tại.
 - Cập nhật catalog cả ba owner và thêm **`vh_operation_get`** read-only làm recovery reader nội bộ; route gồm 8 tool. Giữ roster, published agent version và quyền tool nghiệp vụ hiện có.
 - Dashboard HTTPS mới mở được, export đúng owner, cost unknown, không có page error. UI harness chỉ cấp JWT ngắn hạn tại refresh; không thay API dữ liệu và không coi đây là test đăng nhập tương tác.
-- Smoke không tạo ticket/operation/approval mới, không gọi model: 13 auth users, 1 workflow, 2 partner requests, 0 unified operations, 0 approvals. Ledger vẫn là 1 call lịch sử của OP2, OP1/OP3 là 0.
+- Tại mốc smoke sau deploy, không tạo ticket/operation/approval mới, không gọi model: 13 auth users, 1 workflow, 2 partner requests, 0 unified operations, 0 approvals. Ledger lúc đó có 1 call lịch sử của OP2, OP1/OP3 là 0.
+
+Sau mốc smoke, từ **16:39:52 đến 16:40:02 giờ Việt Nam**, ledger ghi thêm **3 call `runtime` completed, model `gpt-5.5`, owner OP2**, cùng một session chat, không gắn workflow. Access log có `POST /chat/` thực tế trong khoảng này; đây không phải endpoint eval hay script kiểm thử triển khai. Tổng usage được ghi: 13.014 input và 545 output token; chưa tính USD vì chưa có bảng giá. Các script triển khai không gửi chat/eval tới model thật. Quan sát này xác minh ledger ghi được usage runtime sau deploy, không thay thế UAT nghiệp vụ hoặc đối soát hóa đơn provider.
 
 ## 4. Phiếu cũ được giữ để đối soát
 

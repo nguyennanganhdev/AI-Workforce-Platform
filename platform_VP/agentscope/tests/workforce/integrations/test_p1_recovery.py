@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select, update
-from test_unified_partner_case import _CaseHarness, call, runner_module, signed
+from tests.workforce.integrations.test_unified_partner_case import _CaseHarness, call, runner_module, signed
 
 from agentscope.app.workforce.foundation._tables import durable_jobs
 from agentscope.app.workforce.integrations.unified._tables import (
@@ -46,7 +46,7 @@ class RecoveryTest(_CaseHarness):
         import copy
         import json
 
-        from test_unified_partner_case import TOOLS
+        from tests.workforce.integrations.test_unified_partner_case import TOOLS
 
         from agentscope.message import TextBlock, ToolResultState
         from agentscope.tool import MCPTool, ToolChunk

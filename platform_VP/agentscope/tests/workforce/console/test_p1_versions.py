@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from test_p0_publish import agent_record, evaluated_spec
+from tests.workforce.console.test_p0_publish import agent_record, evaluated_spec
 
 from agentscope.app._service._agent_studio import materialize, pinned_view
 from agentscope.app.storage import AsyncSQLAlchemyStorage
