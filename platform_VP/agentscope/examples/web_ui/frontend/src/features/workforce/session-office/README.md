@@ -19,9 +19,18 @@ The workspace keeps Chat mounted and mounts the office only while visible.
   clear stale pending calls. Loading a different session hides previous messages.
 
 Both sources select `motion: 'events'`: working screens, speech and activity reflect
-chat, with no unrelated meetings or handoffs. Explicit movement events can be added
-later; text is never interpreted as a command to animate a meeting. The standalone
-`runDemo` remains available internally but is not used by session workspaces.
+chat. Movement follows structured events of the current request only (since the
+customer's last message). The members the host's `AgentInvite` calls name are
+`called`: they meet the host at the table once, then work at their own desks and
+report progress from there as speech. A member who needs another (`exchanges`)
+walks to that one's desk and back. The host takes the result to your office while
+the session waits for approval. Members nobody called never move; text is never
+interpreted as a command to animate anything. A name two members share calls
+neither.
+
+A member's `TeamSay` to another member reaches only that member's session, not the
+host's stream, so live sessions have no `exchanges` yet; the backend has to expose
+member-to-member messages (sender, recipient) to the host's stream first.
 
 ## Limits
 

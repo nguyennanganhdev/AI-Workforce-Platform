@@ -255,6 +255,8 @@
 			"inspectorResponse": "最近活动"
 		},
 		"office": {
+			"resetView": "重置视角",
+			"noWebgl": "此浏览器无法显示 3D 办公室（不支持 WebGL）。",
 			"phase": {
 				"idle": "大家都在工位",
 				"request": "新请求",

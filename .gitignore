@@ -5,3 +5,9 @@ graphify-out/
 .ruff_cache/
 mock_travel_booking_mcp/
 lenh_chay.txt
+
+/.codegraph/
+.env
+/app/
+node_modules/
+/server/

@@ -27,8 +27,11 @@ export function uniqueMessages(messages: Msg[]): Msg[] {
 	return [...new Map(messages.map((message) => [message.id, message])).values()];
 }
 
-/** One line said in the room: who said it (a participant id, or `customer`) and what. */
-type Line = { speaker: string; text: string };
+/**
+ * One line said in the room: who said it (a participant id, or `customer`) and
+ * what. `invite` is the member a host's `AgentInvite` call named, by id.
+ */
+type Line = { speaker: string; text: string; invite?: string };
 
 function parseArgs(input: string | undefined): Record<string, unknown> {
 	try {
@@ -47,10 +50,11 @@ function roomLines(session: SessionPresentation, messages: Msg[]): Line[] {
 	const host = session.hostId;
 	const byHandle = (handle: string) => {
 		const prefix = handle.split('@')[1];
-		const found = session.participants.find((p) =>
+		const found = session.participants.filter((p) =>
 			prefix ? p.id.startsWith(prefix) : cleanName(p.name) === cleanName(handle),
 		);
-		return found?.id ?? null;
+		// A name two members share points at neither.
+		return found.length === 1 ? found[0].id : null;
 	};
 	const lines: Line[] = [];
 	for (const message of messages) {
@@ -73,6 +77,7 @@ function roomLines(session: SessionPresentation, messages: Msg[]): Line[] {
 					lines.push({
 						speaker: host,
 						text: `Giao việc cho ${cleanName(String(args.target ?? ''))}: ${String(args.prompt ?? '')}`,
+						invite: byHandle(String(args.target ?? '')) ?? undefined,
 					});
 				} else if (block.name === 'TeamSay') {
 					const to = cleanName(String(args.to ?? '')) || 'Cả phòng';
@@ -86,19 +91,48 @@ function roomLines(session: SessionPresentation, messages: Msg[]): Line[] {
 	return lines;
 }
 
+/**
+ * Who the host called onto the current request and who has reported back, read
+ * from structured events only: the host's `AgentInvite` calls and the members'
+ * team messages to it, since the customer's last message.
+ */
+function currentTurn(lines: Line[], host: string | null) {
+	let start = 0;
+	let turn = 0;
+	lines.forEach((line, index) => {
+		if (line.speaker === 'customer') {
+			start = index + 1;
+			turn += 1;
+		}
+	});
+	const current = lines.slice(start);
+	const called = [
+		...new Set(current.flatMap((line) => (line.invite && line.invite !== host ? [line.invite] : []))),
+	];
+	const reported = [
+		...new Set(current.flatMap((line) => (called.includes(line.speaker) ? [line.speaker] : []))),
+	];
+	return { turn: String(turn), called, reported };
+}
+
 export function officeFromSession(session: SessionPresentation): SessionOfficeSnapshot {
 	const messages = uniqueMessages(session.messages);
 	const lines = roomLines(session, messages);
 	const last = lines.at(-1);
 	const names = new Map(session.participants.map((p) => [p.id, cleanName(p.name)]));
+	const { turn, called, reported } = currentTurn(lines, session.hostId);
+	const working = session.phase === 'working';
 	return {
 		id: session.id,
 		source: session.source,
 		motion: 'events',
 		participants: session.participants.map((participant) => ({
 			...participant,
+			// The active agent works, and so does every called member until it reports.
 			status:
-				session.phase === 'working' && session.activeAgentId === participant.id
+				working &&
+				(session.activeAgentId === participant.id ||
+					(called.includes(participant.id) && !reported.includes(participant.id)))
 					? 'working'
 					: 'idle',
 			// Only the last speaker talks: a room full of bubbles reads as noise.
@@ -112,8 +146,11 @@ export function officeFromSession(session: SessionPresentation): SessionOfficeSn
 					: session.phase === 'done'
 						? 'done'
 						: 'idle',
-		// While the room works its agents meet; a lone agent has nobody to meet.
-		meeting: session.phase === 'working' && session.participants.length > 1,
+		turn,
+		called,
+		// A member's `TeamSay` to another member reaches only that member's session,
+		// not the host's stream read here, so live sessions show no exchanges yet.
+		exchanges: [],
 		hostId: session.hostId,
 		activity: lines
 			.map((line, index) => ({

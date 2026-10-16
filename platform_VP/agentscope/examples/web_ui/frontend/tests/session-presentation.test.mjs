@@ -34,3 +34,36 @@ test('approval/external waits override streaming, completed tools clear stale pe
 	const result = { id: 't', type: 'tool_result', name: 'Approve', output: 'ok', state: 'success' };
 	assert.equal(live({ messages: [msg('r', [call, result])] }).phase, 'idle');
 });
+
+const ask = (id, value) => msg(id, [text(value)], { role: 'user' });
+const invite = (id, target) => msg(id, [{ id: `call-${id}`, type: 'tool_call', name: 'AgentInvite', input: JSON.stringify({ target, prompt: 'help' }), state: 'success', created_at: '2026-01-01T00:00:00Z' }]);
+const report = (id, sender, value) => msg(id, [{ id: `hint-${id}`, type: 'hint', hint: value, source: JSON.stringify({ label: 'team', sublabel: sender }), created_at: '2026-01-01T00:00:00Z' }]);
+const team = [
+	{ id: 'plumb-1', data: { name: 'Điện nước' } },
+	{ id: 'tech-2', data: { name: 'Kỹ thuật' } },
+	{ id: 'hotel-3', data: { name: 'Khách sạn' } },
+];
+
+test('the office follows who the host called and who has reported, this request only', () => {
+	const first = officeFromSession(live({ replyPhase: 'streaming', agents: team, messages: [
+		ask('u1', 'Vỡ ống nước'), invite('i1', 'Điện nước'), invite('i2', 'Kỹ thuật'), report('h1', 'Điện nước@plumb', 'Đã xếp thợ'),
+	] }));
+	assert.deepEqual(first.called, ['plumb-1', 'tech-2']);
+	assert.deepEqual(first.exchanges, []);
+	assert.equal(first.participants.find((p) => p.id === 'tech-2').status, 'working', 'called and not yet reported');
+	assert.equal(first.participants.find((p) => p.id === 'plumb-1').status, 'idle', 'reported');
+	assert.equal(first.participants.find((p) => p.id === 'hotel-3').status, 'idle', 'never called');
+
+	const second = officeFromSession(live({ replyPhase: 'streaming', agents: team, messages: [
+		ask('u1', 'Vỡ ống nước'), invite('i1', 'Điện nước'), ask('u2', 'Đặt phòng'),
+	] }));
+	assert.notEqual(second.turn, first.turn);
+	assert.deepEqual(second.called, [], 'a new request starts with nobody called');
+});
+
+test('an invite naming two members that share a name calls neither', () => {
+	const office = officeFromSession(live({ replyPhase: 'streaming', messages: [ask('u1', 'x'), invite('i1', 'Same name')], agents: [
+		{ id: 'a', data: { name: 'Same name' } }, { id: 'b', data: { name: 'Same name' } },
+	] }));
+	assert.deepEqual(office.called, []);
+});

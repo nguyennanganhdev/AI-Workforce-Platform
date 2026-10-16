@@ -257,6 +257,8 @@
 			"inspectorResponse": "Last active"
 		},
 		"office": {
+			"resetView": "Reset view",
+			"noWebgl": "This browser cannot show the 3D office (WebGL is unavailable).",
 			"phase": {
 				"idle": "Everyone at their desks",
 				"request": "New request",

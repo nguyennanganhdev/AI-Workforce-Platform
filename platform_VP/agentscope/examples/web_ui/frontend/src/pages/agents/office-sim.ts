@@ -2,49 +2,26 @@ import type { GraphAgent } from './graph-model';
 import type { SessionOfficeSnapshot } from '@/features/workforce/session-office/model';
 
 /**
- * The office view: the same agents as the graph, drawn as people in an
- * isometric office who walk to a meeting, back to their desks, and over to
+ * The office view: the same agents as the graph, drawn as people in a
+ * 3D office who walk to a meeting, back to their desks, and over to
  * each other's desks to work something out.
  *
- * A live session drives it (see `applySession`): while the session's room
- * works, its agents walk to the meeting table and the last one to speak shows
- * a bubble; when the room is done they walk back to their desks.
+ * A live session drives it (see `applySession`): the host calls the members a
+ * request needs to the meeting table once, they work at their own desks and
+ * report progress from there, a member who needs another walks over to that
+ * one's desk, and the host takes the result to your office for approval. The
+ * last one to speak shows a bubble.
  *
- * Coordinates are floor tiles: `x` runs down-right on screen, `y` down-left.
+ * Coordinates are floor tiles: `x` runs along the back wall, `y` away from it.
  */
 
 export type Point = { x: number; y: number };
 
-/* ------------------------------------------------------------------ */
-/* Projection                                                          */
-/* ------------------------------------------------------------------ */
-
-export const HALF_W = 36;
-export const HALF_H = 18;
+/** Wall height, in the design pixels the 3D view scales from (40 per tile). */
 export const WALL_H = 96;
-const PAD = 48;
 
 /** Floor width in tiles. The depth grows with the number of desk rows. */
 export const FLOOR_W = 16;
-
-export type Projection = {
-	width: number;
-	height: number;
-	at: (p: Point, lift?: number) => { sx: number; sy: number };
-};
-
-export function projection(depth: number): Projection {
-	const ox = PAD + depth * HALF_W;
-	const oy = PAD + WALL_H;
-	return {
-		width: (FLOOR_W + depth) * HALF_W + PAD * 2,
-		height: (FLOOR_W + depth) * HALF_H + WALL_H + PAD * 2,
-		at: ({ x, y }, lift = 0) => ({
-			sx: ox + (x - y) * HALF_W,
-			sy: oy + (x + y) * HALF_H - lift,
-		}),
-	};
-}
 
 /* ------------------------------------------------------------------ */
 /* Layout                                                              */
@@ -91,6 +68,18 @@ const FIRST_ROW = 6.6;
 const ROW_GAP = 3;
 const MEETING_DOOR = 2.5;
 const SEAT_XS = [1.9, 2.7, 3.5, 4.3];
+
+/** How long, in simulated ms, people stay at the table and at a colleague's desk. */
+const MEETING_MS = 3500;
+const COLLAB_MS = 4500;
+
+/** A spot someone can stand at, with its way out to the corridor (`chain`, spot first). */
+type Place = { key: string; chain: Point[] };
+
+/** Under reduced motion people are placed, not walked. */
+function prefersStill() {
+	return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
 
 export function buildLayout(agents: GraphAgent[]): Layout {
 	const rows = Math.max(2, Math.ceil(agents.length / DESK_COLUMNS.length));
@@ -169,6 +158,16 @@ export function buildLayout(agents: GraphAgent[]): Layout {
 	};
 }
 
+/** Where each room's name label sits on the floor. */
+export function roomLabels(layout: Layout): { key: string; at: Point }[] {
+	return [
+		{ key: 'meeting', at: { x: 3, y: 4.55 } },
+		{ key: 'approval', at: { x: 13.6, y: 4.1 } },
+		{ key: 'reception', at: { x: 2.8, y: layout.depth - 0.55 } },
+		{ key: 'workspace', at: { x: 11, y: 5.45 } },
+	];
+}
+
 /** A route from one place's chain out to the corridor and in along another's. */
 export function route(from: Point[], to: Point[]): Point[] {
 	return [...from.slice(1), ...[...to].reverse()];
@@ -205,7 +204,7 @@ export type Actor = {
 	carrying: boolean;
 	bubble: { text: string; until: number } | null;
 	onArrive: (() => void) | null;
-	/** -1 facing left on screen, 1 facing right. */
+	/** Which way the figure is mirrored: 1 when walking towards +x−y, else -1. */
 	facing: 1 | -1;
 };
 
@@ -262,7 +261,7 @@ export class OfficeSim {
 				? { text: participant.message, until: Infinity }
 				: null;
 		}
-		this.gather(snapshot, layout);
+		this.direct(snapshot, layout);
 		this.phase = snapshot.phase;
 		this.log = snapshot.activity
 			.slice(-6)
@@ -270,46 +269,171 @@ export class OfficeSim {
 		this.publish();
 	}
 
-	/** Who is at the meeting table now, and the seat they walked to. */
-	private seated = new Map<string, Seat>();
+	/* ---------------------------------------------------------------- */
+	/* Session choreography                                             */
+	/* ---------------------------------------------------------------- */
+
+	/** Where each person stands now, as a way out to the corridor. */
+	private placeOf = new Map<string, Place>();
+	/** Each person's moves, run one after another. */
+	private queues = new Map<string, Promise<void>>();
+	private turn: string | null = null;
+	/** Called members already seated at this turn's meeting. */
+	private seated = new Set<string>();
+	/** How many of this turn's exchanges have been walked. */
+	private exchangesSeen = 0;
+	/** The meeting, open while people still gather; settles once they split up. */
+	private meeting: Promise<void> | null = null;
+	private meetingOpen = false;
+	private meetingMembers: string[] = [];
+	private atApproval = false;
 
 	/**
-	 * Walk the room's agents to the meeting table while it works (the host to
-	 * its head), and back to their desks once it is done. Under reduced motion
-	 * they are placed, not walked.
+	 * Move the room through one request: the host calls the members it needs to
+	 * the meeting table once, they go back to work at their own desks (progress
+	 * shows as speech, nobody walks to report), and a member who needs another
+	 * walks over to that one's desk to ask, then back. The host takes the result
+	 * to your office for approval. Members nobody called stay at their desks.
 	 */
-	private gather(snapshot: SessionOfficeSnapshot, layout: Layout) {
-		const still =
-			typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		const move = (actor: Actor, path: Point[]) => {
-			if (path.length === 0) return;
-			if (still) {
-				actor.pos = { ...path[path.length - 1] };
-				actor.path = [];
-			} else {
-				actor.path = path;
-			}
-		};
-		if (snapshot.meeting && this.seated.size === 0) {
-			const host = snapshot.hostId;
-			let next = 0;
-			for (const participant of snapshot.participants) {
-				const actor = this.actors.get(participant.id);
-				const desk = layout.desks.get(participant.id);
-				if (!actor || !desk) continue;
-				const seat = participant.id === host ? layout.head : layout.seats[next++];
-				if (!seat) continue;
-				this.seated.set(participant.id, seat);
-				move(actor, route(desk.chain, seat.chain));
-			}
-		} else if (!snapshot.meeting && this.seated.size > 0) {
-			for (const [id, seat] of this.seated) {
-				const actor = this.actors.get(id);
-				const desk = layout.desks.get(id);
-				if (actor && desk) move(actor, route(seat.chain, desk.chain));
-			}
+	private direct(snapshot: SessionOfficeSnapshot, layout: Layout) {
+		const host = snapshot.hostId && this.home(snapshot.hostId, layout) ? snapshot.hostId : null;
+		const turn = snapshot.turn ?? '';
+
+		if (turn !== this.turn) {
+			this.turn = turn;
 			this.seated.clear();
+			this.exchangesSeen = 0;
+			this.meeting = null;
+			this.meetingOpen = false;
+			this.meetingMembers = [];
+			for (const id of this.actors.keys()) this.go(id, this.home(id, layout), layout);
 		}
+		if (!host) return;
+
+		if (snapshot.phase === 'work') {
+			for (const id of snapshot.called ?? []) {
+				if (id === host || this.seated.has(id) || !layout.desks.has(id)) continue;
+				this.call(host, id, layout);
+			}
+		}
+		const exchanges = snapshot.exchanges ?? [];
+		for (const { from, to } of exchanges.slice(this.exchangesSeen)) {
+			if (from === to || !layout.desks.has(from) || !layout.desks.has(to)) continue;
+			this.afterMeeting(() => {
+				this.go(from, this.visit(to, layout), layout, COLLAB_MS);
+				this.go(from, this.home(from, layout), layout);
+			});
+		}
+		this.exchangesSeen = Math.max(this.exchangesSeen, exchanges.length);
+		const approval = snapshot.phase === 'approval';
+		if (approval !== this.atApproval) {
+			this.atApproval = approval;
+			this.afterMeeting(() =>
+				this.go(
+					host,
+					approval ? { key: 'approval', chain: layout.approval.chain } : this.home(host, layout),
+					layout,
+				),
+			);
+		}
+		if (snapshot.phase === 'idle' || snapshot.phase === 'done') {
+			this.afterMeeting(() => {
+				for (const id of this.actors.keys()) this.go(id, this.home(id, layout), layout);
+			});
+		}
+	}
+
+	/**
+	 * Seat a called member at the meeting, opening it on the first call. There is
+	 * one meeting a request: called once it has split up, a member takes the work
+	 * at its own desk.
+	 */
+	private call(host: string, id: string, layout: Layout) {
+		if (!this.meeting) {
+			this.meetingOpen = true;
+			this.go(host, { key: 'head', chain: layout.head.chain }, layout);
+			this.meeting = this.meet(host, layout);
+		}
+		const seat = layout.seats[this.meetingMembers.length];
+		if (!this.meetingOpen || !seat) return;
+		this.seated.add(id);
+		this.go(id, { key: `seat:${this.meetingMembers.length}`, chain: seat.chain }, layout);
+		this.meetingMembers.push(id);
+	}
+
+	/** Hold the meeting until everyone called so far is seated, then send all back to their desks. */
+	private async meet(host: string, layout: Layout) {
+		const turn = this.turn;
+		try {
+			// Calls usually arrive one by one; wait until nobody new is on the way.
+			let seen = -1;
+			while (seen !== this.meetingMembers.length) {
+				seen = this.meetingMembers.length;
+				await Promise.all([host, ...this.meetingMembers].map((id) => this.queues.get(id)));
+				await this.wait(MEETING_MS);
+				if (this.turn !== turn) return;
+			}
+			this.meetingOpen = false;
+			for (const id of [host, ...this.meetingMembers]) this.go(id, this.home(id, layout), layout);
+			await Promise.all([host, ...this.meetingMembers].map((id) => this.queues.get(id)));
+		} catch (error) {
+			if (!OfficeSim.isAbort(error)) throw error;
+		}
+	}
+
+	/** Run `then` once the meeting (if any) has split up, unless a new request came in. */
+	private afterMeeting(then: () => void) {
+		const turn = this.turn;
+		void (this.meeting ?? Promise.resolve()).then(() => {
+			if (this.turn === turn) then();
+		});
+	}
+
+	/** Queue a walk to `place`, then an optional pause there. */
+	private go(id: string, place: Place | null, layout: Layout, hold = 0) {
+		const actor = this.actors.get(id);
+		if (!actor || !place) return;
+		const next = (this.queues.get(id) ?? Promise.resolve())
+			.then(async () => {
+				const from = this.placeOf.get(id) ?? this.home(id, layout);
+				if (from && from.key !== place.key) {
+					const path = route(from.chain, place.chain);
+					if (prefersStill()) {
+						actor.pos = { ...path[path.length - 1] };
+						actor.path = [];
+					} else {
+						await this.walk(id, path);
+					}
+				}
+				this.placeOf.set(id, place);
+				if (hold) await this.wait(hold);
+			})
+			.catch((error: unknown) => {
+				if (!OfficeSim.isAbort(error)) throw error;
+			});
+		this.queues.set(id, next);
+	}
+
+	/** Someone's own seat: an agent's desk chair, or the Leader's. */
+	private home(id: string, layout: Layout): Place | null {
+		if (id === LEADER_ID) return { key: 'home', chain: layout.leader.chain };
+		const desk = layout.desks.get(id);
+		return desk ? { key: 'home', chain: desk.chain } : null;
+	}
+
+	/** Beside a colleague's chair, reached along their row. */
+	private visit(id: string, layout: Layout): Place | null {
+		const desk = layout.desks.get(id);
+		if (!desk) return null;
+		return {
+			key: `visit:${id}`,
+			chain: [
+				desk.visit,
+				{ x: desk.visit.x, y: desk.lane },
+				{ x: desk.aisle, y: desk.lane },
+				{ x: desk.aisle, y: CORRIDOR_Y },
+			],
+		};
 	}
 
 	actors = new Map<string, Actor>();
