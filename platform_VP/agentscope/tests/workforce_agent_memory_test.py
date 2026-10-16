@@ -1,6 +1,8 @@
 """Agent long-term memory and the learning / self-improvement loop."""
 
 from types import SimpleNamespace
+from datetime import UTC, datetime, timedelta
+import hashlib
 from unittest import IsolatedAsyncioTestCase
 
 from agentscope.agent import ContextConfig, ReActConfig
@@ -24,6 +26,27 @@ from agentscope.message import TextBlock
 from agentscope.model import ChatResponse
 
 
+def verified_memory(**kwargs):
+    content = kwargs["content"]
+    kwargs.setdefault("source_ticket", "training-case")
+    kwargs.setdefault("source_event_ids", ["verified-tool"])
+    kwargs.setdefault("expires_at", datetime.now(UTC) + timedelta(days=14))
+    kwargs.setdefault("provenance", {"policy": "agent-memory-evidence-v2", "supported": True, "safe_to_transfer": True,
+                                    "content_sha256": hashlib.sha256(content.encode()).hexdigest()})
+    return AgentMemoryRecord(**kwargs)
+
+
+async def source(storage, ticket, event_id, content):
+    record = TeamSharedContextRecord(user_id="u", team_id=ticket)
+    task = SharedTaskState(id="task", objective="Verified repair")
+    task.assignments["worker"] = TaskAssignment(agent_id="agent-1", goal="Repair", status="verified")
+    record.state.active_task_id = task.id
+    record.state.tasks[task.id] = task
+    record.state.events = [SharedContextEvent(id=event_id, revision=1, task_id=task.id,
+        kind="external_event", content=content, source_agent_id="agent-1", source_session_id="worker")]
+    await storage.upsert_team_shared_context("u", record)
+
+
 class _Model:
     """Scripted structured outputs keyed by schema name."""
 
@@ -34,7 +57,7 @@ class _Model:
     async def generate_structured_output(self, messages, structured_model, **_):
         name = structured_model.__name__
         self.calls.append(name)
-        value = self.outputs[name]
+        value = self.outputs.get(name, {"supported": True, "safe_to_transfer": True, "reason": "scripted evidence verifier"})
         return SimpleNamespace(content=value(messages) if callable(value) else value)
 
     async def __call__(self, messages, tools=None, **_):
@@ -73,12 +96,14 @@ class MemoryServiceTest(IsolatedAsyncioTestCase):
         await self.storage.__aexit__(None, None, None)
 
     async def test_add_update_supersedes_and_noop(self) -> None:
+        await source(self.storage, "ticket-1", "e1", "R? n??c kh?n c?p: h??ng d?n kho? van t?ng tr??c")
+        await source(self.storage, "ticket-2", "e9", "R? n??c: nh? ng?t ?i?n khu v?c ??t c?ng l?c kho? van")
         first = await self.memory.consolidate(
             "u",
             "agent-1",
             [MemoryCandidate(content="Rò nước khẩn cấp: hướng dẫn khoá van tổng trước", evidence_event_ids=["e1"])],
             ticket_id="ticket-1",
-            model=None,
+            model=_Model({}),
         )
         self.assertEqual("add", first[0]["action"])
         old_id = first[0]["memory_id"]
@@ -114,8 +139,8 @@ class MemoryServiceTest(IsolatedAsyncioTestCase):
         again = await self.memory.consolidate(
             "u",
             "agent-1",
-            [MemoryCandidate(content="Rò nước khẩn cấp: khoá van tổng và ngắt điện khu vực ướt trước", evidence_event_ids=["e9"])],
-            ticket_id="ticket-3",
+            [MemoryCandidate(content="Rò nước: nhớ ngắt điện khu vực ướt cùng lúc khoá van", evidence_event_ids=["e9"])],
+            ticket_id="ticket-2",
             model=model,
         )
         self.assertEqual([], again)
@@ -128,7 +153,7 @@ class MemoryServiceTest(IsolatedAsyncioTestCase):
         ):
             await self.storage.upsert_agent_memory(
                 "u",
-                AgentMemoryRecord(user_id="u", agent_id="agent-1", content=content),
+                verified_memory(user_id="u", agent_id="agent-1", content=content),
             )
         recalled = await self.memory.recall("u", "agent-1", "nha toi bi ro nuoc, khoa van o dau?")
 
@@ -140,10 +165,10 @@ class MemoryServiceTest(IsolatedAsyncioTestCase):
 
     async def test_a_memory_that_keeps_coming_with_rejected_results_is_retired(self) -> None:
         good = await self.storage.upsert_agent_memory(
-            "u", AgentMemoryRecord(user_id="u", agent_id="agent-1", content="Rò nước: khoá van tổng trước"),
+            "u", verified_memory(user_id="u", agent_id="agent-1", content="Rò nước: khoá van tổng trước"),
         )
         bad = await self.storage.upsert_agent_memory(
-            "u", AgentMemoryRecord(user_id="u", agent_id="agent-1", content="Rò nước: hẹn thợ ngày mai"),
+            "u", verified_memory(user_id="u", agent_id="agent-1", content="Rò nước: hẹn thợ ngày mai"),
         )
         for ticket, success in (("t-1", False), ("t-2", False), ("t-3", True)):
             recalled = await self.memory.recall("u", "agent-1", "rò nước", ticket=ticket)
@@ -162,14 +187,14 @@ class MemoryServiceTest(IsolatedAsyncioTestCase):
         self.assertEqual(("active", 1), (kept.status, kept.successes))
 
     def test_track_record_lowers_the_rank(self) -> None:
-        tried = AgentMemoryRecord(user_id="u", agent_id="a", content="Rò nước: khoá van", failures=3)
-        fresh = AgentMemoryRecord(user_id="u", agent_id="a", content="Rò nước: khoá van")
+        tried = verified_memory(user_id="u", agent_id="a", content="Rò nước: khoá van", failures=3)
+        fresh = verified_memory(user_id="u", agent_id="a", content="Rò nước: khoá van")
         self.assertIs(fresh, rank("rò nước khoá van", [tried, fresh])[0][1])
 
     async def test_retired_memory_is_no_longer_recalled(self) -> None:
         record = await self.storage.upsert_agent_memory(
             "u",
-            AgentMemoryRecord(user_id="u", agent_id="agent-1", content="Rò nước: khoá van tổng"),
+            verified_memory(user_id="u", agent_id="agent-1", content="Rò nước: khoá van tổng"),
         )
         await self.memory.retire("u", "agent-1", record.id)
         self.assertEqual([], await self.memory.recall("u", "agent-1", "rò nước"))
@@ -184,7 +209,7 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
         spec = AgentSpec(
             name="Kỹ thuật",
             tests=[
-                SpecTest(scenario=f"Kịch bản {i}", expected="Hướng dẫn an toàn") for i in range(3)
+                SpecTest(scenario=f"Kịch bản {i}", expected="Hướng dẫn an toàn", safety_critical=i == 0) for i in range(3)
             ],
         )
         self.agents.agents["agent-1"] = AgentRecord(
@@ -239,11 +264,11 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
             {
                 "_Learning": {
                     "memories": [
-                        {"kind": "lesson", "content": "Rò nước: hướng dẫn khoá van tổng ngay", "evidence_event_ids": ["t1", "r1"]},
+                        {"kind": "lesson", "content": "Rò nước: hướng dẫn khoá van tổng ngay", "evidence_event_ids": ["t1"]},
                         {"kind": "fact", "content": "Mã sự cố rò nước là PLB-LEAK", "evidence_event_ids": ["t1", "invented"]},
                         {"kind": "fact", "content": "Vỡ ống luôn là khẩn cấp", "evidence_event_ids": ["r1"]},
                     ],
-                    "rule": {"text": "Hỏi vị trí van tổng nếu khách không biết", "reason": "khách lúng túng"},
+                    "rule": {"text": "Hỏi vị trí van tổng nếu khách không biết", "reason": "khách lúng túng", "evidence_event_ids": ["t1"]},
                 },
                 "_Judgement": {"passed": judge_pass, "reason": "ok"},
             },
@@ -260,7 +285,7 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
         result = outcome["agents"]["agent-1"]
         # Kept: the lesson and the fact from a tool result (its invented id is
         # stripped). Dropped: the "fact" resting only on an agent's report.
-        self.assertEqual(2, len(result["memories"]))
+        self.assertEqual(1, len(result["memories"]))
         self.assertTrue(result["rule"]["applied"])
         agent = self.agents.agents["agent-1"]
         self.assertEqual(2, agent.data.published_version)
@@ -307,17 +332,18 @@ class RedisMemoryStorageTest(IsolatedAsyncioTestCase):
         RedisStorage.__init__(storage)
         storage._client = fakeredis.aioredis.FakeRedis(decode_responses=True)
         memory = AgentMemoryService(storage)
+        await source(storage, "t", "e1", "R? n??c: kho? van t?ng")
         added = await memory.consolidate(
             "u",
             "agent-1",
             [MemoryCandidate(content="Rò nước: khoá van tổng", evidence_event_ids=["e1"])],
             ticket_id="t",
-            model=None,
+            model=_Model({}),
         )
         await memory.retire("u", "agent-1", added[0]["memory_id"])
         await storage.upsert_agent_memory(
             "u",
-            AgentMemoryRecord(user_id="u", agent_id="agent-1", content="Mất điện: ngắt cầu dao"),
+            verified_memory(user_id="u", agent_id="agent-1", content="Mất điện: ngắt cầu dao"),
         )
 
         self.assertEqual(2, len(await storage.list_agent_memories("u", "agent-1")))

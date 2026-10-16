@@ -14,10 +14,11 @@ from pydantic import BaseModel, Field
 
 from ..._utils._common import _generate_id
 from ...model import ChatModelBase
-from .._agent_spec import AgentSpec, diff_specs, render_prompt
+from .._agent_spec import AgentSpec, diff_specs, render_prompt, spec_hash
 from .._agent_templates import TEMPLATES, template_list
 from .._service import ResourceAccessService, get_model
-from .._service._agent_eval import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, run_spec_tests
+from .._service._agent_eval import run_spec_tests
+from .._service._publish_gate import MIN_TESTS_TO_PUBLISH, publish_blocker
 from .._service._agent_studio import (
     CompositionPlan,
     CopilotReply,
@@ -49,6 +50,7 @@ from ..deps import (
     get_workspace_manager,
 )
 from ..storage import AgentData, AgentRecord, InviteConfig, SessionConfig, StorageBase
+from ..storage._base import AgentRevisionConflict
 from ..workspace_manager import WorkspaceManagerBase
 from ._workforce_console import _FIXED_CONTEXT, _FIXED_REACT, _model_config
 
@@ -173,25 +175,10 @@ def _summary(record: AgentRecord) -> AgentSummaryView:
 def _publish_blocker(record: AgentRecord, spec: AgentSpec) -> str:
     if record.data.draft_spec is None:
         if record.data.lifecycle_state == "withdrawn" and record.data.published_version:
-            return ""  # re-activate the last tested version
+            return publish_blocker(spec, record.data.evaluation)
         if record.data.lifecycle_state == "published":
             return "Không có thay đổi nào cần phát hành."
-    if len(spec.tests) < MIN_TESTS_TO_PUBLISH:
-        return f"Cần ít nhất {MIN_TESTS_TO_PUBLISH} kịch bản kiểm thử."
-    report = last_test_for(record, spec)
-    if report is None:
-        return "Hãy chạy kiểm thử cho bản nháp hiện tại trước khi phát hành."
-    if report.get("errors"):
-        return (
-            f"Chưa kiểm thử được {report['errors']}/{report.get('total')} kịch bản: "
-            f"{report.get('model_error')} Chạy lại kiểm thử sau khi sửa."
-        )
-    if not report.get("publishable"):
-        return (
-            f"Kiểm thử đạt {report.get('passed')}/{report.get('total')}; "
-            f"cần tối thiểu {int(PASS_THRESHOLD * 100)}%."
-        )
-    return ""
+    return publish_blocker(spec, last_test_for(record, spec))
 
 
 def _detail(record: AgentRecord) -> AgentDetailView:
@@ -217,12 +204,19 @@ def _detail(record: AgentRecord) -> AgentDetailView:
     )
 
 
+async def _save_agent(storage: StorageBase, user_id: str, record: AgentRecord) -> None:
+    try:
+        await storage.upsert_agent(user_id, record)
+    except AgentRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 async def _business_agent(storage: StorageBase, user_id: str, agent_id: str) -> AgentRecord:
     record = await storage.get_agent(user_id, agent_id)
     if record is None or record.data.system_role != "business" or record.source != "user":
         raise HTTPException(status_code=404, detail="Không tìm thấy agent")
     if ensure_spec(record):
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
     return record
 
 
@@ -265,7 +259,7 @@ async def _create_record(
         ),
     )
     set_draft(record, spec, author="manager", note="Tạo mới")
-    await storage.upsert_agent(user_id, record)
+    await _save_agent(storage, user_id, record)
     workspace_id = await workspace_manager.assign_workspace_id(
         user_id=user_id,
         agent_id=record.id,
@@ -312,7 +306,7 @@ async def list_agents(
         if record.source != "user" or record.data.system_role != "business":
             continue
         if ensure_spec(record):
-            await storage.upsert_agent(user_id, record)
+            await _save_agent(storage, user_id, record)
         views.append(_summary(record))
     return views
 
@@ -384,6 +378,38 @@ async def ticket_quality(
     if quality is None:
         raise HTTPException(status_code=404, detail="Chưa bật API đối tác (WORKFORCE_PARTNER_API).")
     return await quality(user_id, days)
+
+
+@workforce_studio_router.get("/observability")
+async def model_observability(request: Request, days: int = Query(default=30, ge=1, le=365),
+                              user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._model_ledger import observability
+    result = await observability(storage, user_id, days)
+    quality = getattr(request.app.state, "partner_quality", None)
+    if quality is not None:
+        ticket = await quality(user_id, days)
+        result.update(successful_tickets=ticket["closed_confirmed"],
+                      successful_ticket_cost_usd=ticket.get("successful_ticket_cost_usd"),
+                      cost_per_successful_ticket_usd=ticket["cost_per_confirmed_usd"])
+        result["backlog"].update(tickets_open=ticket["open"], tickets_need_attention=ticket["needs_attention"])
+    return result
+
+
+@workforce_studio_router.get("/model-calls")
+async def model_call_evidence(since: str, until: str, offset: int = Query(default=0, ge=0),
+                              limit: int = Query(default=200, ge=1, le=1000),
+                              user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from datetime import UTC, datetime
+    try:
+        start, end = datetime.fromisoformat(since), datetime.fromisoformat(until)
+        if start.tzinfo is None or end.tzinfo is None or end < start:
+            raise ValueError
+    except ValueError as exc:
+        raise HTTPException(422, "Use an ordered, timezone-aware since/until window") from exc
+    start, end = start.astimezone(UTC), end.astimezone(UTC)
+    rows = await storage.list_model_calls(user_id, since=start.isoformat(), until=end.isoformat(), offset=offset, limit=limit + 1)
+    return {"calls": rows[:limit], "next_offset": offset + limit if len(rows) > limit else None,
+            "since": start.isoformat(), "until": end.isoformat(), "before_ledger_unknown": True}
 
 
 @workforce_studio_router.post(
@@ -503,7 +529,7 @@ async def save_draft(
     async with _locks[agent_id]:
         record = await _business_agent(storage, user_id, agent_id)
         set_draft(record, body.spec, author="manager", note=body.note)
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
     return _detail(record)
 
 
@@ -519,7 +545,7 @@ async def discard_draft(
             raise HTTPException(status_code=409, detail="Agent chưa phát hành; không có bản để quay về.")
         record.data.draft_spec = None
         record.data.draft_meta = {}
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
     return _detail(record)
 
 
@@ -545,7 +571,7 @@ async def copilot(
         record = await _business_agent(storage, user_id, agent_id)
         if changes:
             set_draft(record, spec, author="builder", note=body.message[:300])
-            await storage.upsert_agent(user_id, record)
+            await _save_agent(storage, user_id, record)
     return CopilotView(reply=reply, changes=changes, agent=_detail(record))
 
 
@@ -565,6 +591,9 @@ async def run_tests(
 
 async def _run_and_record(storage, user_id, access, agent_id: str, spec: AgentSpec) -> dict:
     model, judge_model = await _models(storage, user_id, access, spec)
+    for selected in (model, judge_model):
+        selected._usage_attributes = {"user_id": user_id, "agent_id": agent_id,
+                                      "operation_id": spec_hash(spec), "purpose": "eval"}
     report = await run_spec_tests(
         spec=spec,
         model=model,
@@ -574,12 +603,14 @@ async def _run_and_record(storage, user_id, access, agent_id: str, spec: AgentSp
     )
     async with _locks[agent_id]:
         record = await _business_agent(storage, user_id, agent_id)
+        if spec_hash(draft_spec(record)) != spec_hash(spec):
+            raise HTTPException(status_code=409, detail="Bản nháp đã thay đổi trong khi kiểm thử; hãy chạy lại.")
         if record.data.draft_spec is None:
             # Testing the published spec: keep the report on a draft copy so
             # the manager can publish an identical re-test if needed.
             set_draft(record, spec, author="manager", note="Kiểm thử bản đang phát hành")
         record_test_run(record, report)
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
     return report
 
 
@@ -598,15 +629,17 @@ async def publish(
         blocker = _publish_blocker(record, spec)
         if blocker:
             raise HTTPException(status_code=409, detail=blocker)
-        report = last_test_for(record, spec)
+        report = last_test_for(record, spec) or record.data.evaluation
         author = (record.data.draft_meta or {}).get("author", "manager")
         previous = published_spec(record) if record.data.published_version else None
         materialize(record, spec, author=author, note=body.note, evaluation=report)
+        # Reserve the immutable publication before mutating derived workspace
+        # bindings; a losing worker must have no binding/skill side effects.
+        await _save_agent(storage, user_id, record)
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
             install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous,
         )
-        await storage.upsert_agent(user_id, record)
     return _detail(record)
 
 
@@ -625,19 +658,28 @@ async def rollback(
         if target is None:
             raise HTTPException(status_code=404, detail="Không có phiên bản này")
         spec = AgentSpec.model_validate(target["spec"])
+        report = target.get("evaluation")
+        blocker = publish_blocker(spec, report)
+        if blocker:
+            # A historical unchecked version cannot bypass today's policy.
+            set_draft(record, spec, author="manager", note=f"Kiểm thử lại phiên bản {body.version}")
+            await _save_agent(storage, user_id, record)
+            raise HTTPException(status_code=409, detail=blocker)
         previous = published_spec(record) if record.data.published_version else None
         materialize(
             record,
             spec,
             author="manager",
             note=body.note or f"Quay về phiên bản {body.version}",
-            evaluation=None,
+            evaluation=report,
         )
+        # Reserve the immutable publication before mutating derived workspace
+        # bindings; a losing worker must have no binding/skill side effects.
+        await _save_agent(storage, user_id, record)
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
             install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous,
         )
-        await storage.upsert_agent(user_id, record)
     return _detail(record)
 
 
@@ -654,7 +696,7 @@ async def withdraw(
             invitable=False,
             invite_description=record.data.invite_config.invite_description,
         )
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
     return _detail(record)
 
 

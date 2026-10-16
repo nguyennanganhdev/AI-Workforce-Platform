@@ -25,6 +25,8 @@ export interface ProposedAgent {
 		passed?: boolean;
 		score?: number;
 		checks?: Record<string, boolean>;
+		publish_blocker?: string;
+		model_report?: { passed: number; total: number; pass_rate: number; errors: number; latency_ms: number };
 		invalid_tool_ids?: string[];
 		reuse_similarity?: number;
 	};

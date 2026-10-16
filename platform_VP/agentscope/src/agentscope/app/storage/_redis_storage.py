@@ -101,6 +101,7 @@ class RedisStorage(StorageBase):
         messages: str = (
             "agentscope:user:{user_id}:session:{session_id}:messages"
         )
+        builder_publish: str = "agentscope:user:{user_id}:session:{session_id}:builder_publish:{proposal_id}"
 
         schedule: str = "agentscope:user:{user_id}:schedule:{schedule_id}"
         schedule_index: str = "agentscope:user:{user_id}:schedules"
@@ -276,6 +277,12 @@ class RedisStorage(StorageBase):
     def get_client(self) -> Redis:
         """Get the underlying Redis client instance."""
         return self._client
+
+    async def claim_builder_publish(self, user_id: str, conversation_id: str, proposal_id: str) -> bool:
+        key = self._key(self.key_config.builder_publish, user_id=user_id,
+                        session_id=conversation_id, proposal_id=proposal_id)
+        # Deliberately no TTL: expiry cannot establish whether side effects ran.
+        return bool(await self._client.set(key, datetime.now().isoformat(), nx=True))
 
     async def _generate_credential_name(
         self,
@@ -754,9 +761,35 @@ class RedisStorage(StorageBase):
             user_id=user_id,
             agent_id=agent_record.id,
         )
+        from ._base import AgentRevisionConflict, validate_agent_history
+
+        if agent_record.user_id != user_id:
+            raise PermissionError("Agent owner mismatch")
         index_key = self._key(self.key_config.agent_index, user_id=user_id)
-        await self._set_with_ttl(key, agent_record.model_dump_json())
-        await self._client.sadd(index_key, agent_record.id)
+        expected = agent_record.storage_revision
+        candidate = agent_record.model_copy(deep=True)
+        candidate.storage_revision = expected + 1
+        candidate.updated_at = datetime.now()
+        async with self._client.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                raw = await pipe.get(key)
+                current = AgentRecord.model_validate_json(raw) if raw else None
+                if (current is None and expected != 0) or (
+                    current is not None and current.storage_revision != expected
+                ):
+                    raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                validate_agent_history(current, candidate)
+                pipe.multi()
+                pipe.set(key, candidate.model_dump_json())
+                if self.key_ttl is not None:
+                    pipe.expire(key, self.key_ttl)
+                pipe.sadd(index_key, agent_record.id)
+                await pipe.execute()
+            except _watch_error() as exc:
+                raise AgentRevisionConflict("AGENT_REVISION_CONFLICT") from exc
+        agent_record.storage_revision = candidate.storage_revision
+        agent_record.updated_at = candidate.updated_at
         return agent_record.id
 
     async def list_agents(self, user_id: str) -> list[AgentRecord]:
@@ -2003,6 +2036,67 @@ class RedisStorage(StorageBase):
             records = [record for record in records if record.status == status]
         records.sort(key=lambda record: record.created_at, reverse=True)
         return records[:limit]
+
+    async def compare_and_swap_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+        expected_revision: int | None,
+    ) -> bool:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        if record.revision != (expected_revision or 0) + 1:
+            raise ValueError("memory revision must advance exactly once")
+        key = self._key(self.key_config.agent_memories, user_id=user_id, agent_id=record.agent_id)
+        async with self._client.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                raw = await pipe.hget(key, record.id)
+                current = AgentMemoryRecord.model_validate_json(raw) if raw else None
+                if (current.revision if current else None) != expected_revision:
+                    await pipe.unwatch()
+                    return False
+                record.updated_at = datetime.utcnow()
+                pipe.multi()
+                pipe.hset(key, record.id, record.model_dump_json())
+                await pipe.execute()
+                return True
+            except _watch_error():
+                return False
+
+    async def record_model_call(self, user_id: str, record: dict) -> None:
+        import json
+        if record.get("user_id") != user_id:
+            raise ValueError("Ledger owner mismatch")
+        key = f"agentscope:user:{user_id}:model_calls"
+        async with self._client.pipeline(transaction=True) as pipe:
+            for _ in range(20):
+                try:
+                    await pipe.watch(key)
+                    raw = await pipe.hget(key, record["id"])
+                    current = json.loads(raw) if raw else None
+                    if current and current["status"] != "started":
+                        await pipe.unwatch()
+                        if current != record:
+                            raise ValueError("Terminal model-call evidence is immutable")
+                        return
+                    if current and any(current.get(k) != record.get(k) for k in ("id", "user_id", "started_at", "model")):
+                        raise ValueError("Model-call identity changed")
+                    pipe.multi()
+                    pipe.hset(key, record["id"], json.dumps(record))
+                    await pipe.execute()
+                    return
+                except _watch_error():
+                    continue
+        raise RuntimeError("Model ledger contention")
+
+    async def list_model_calls(self, user_id: str, *, since: str, limit: int = 1000,
+                               offset: int = 0, until: str | None = None) -> list[dict]:
+        import json
+        rows = [json.loads(raw) for raw in await self._client.hvals(f"agentscope:user:{user_id}:model_calls")]
+        rows = [row for row in rows if row["user_id"] == user_id and row["started_at"] >= since
+                and (until is None or row["started_at"] <= until)]
+        return sorted(rows, key=lambda row: (row["started_at"], row["id"]))[offset:offset + limit]
 
     async def get_agent_memory(
         self,

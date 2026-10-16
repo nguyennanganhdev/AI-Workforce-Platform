@@ -98,6 +98,8 @@ async def read_sse(client, conversation_id, user, last_event_id=None, seconds=8)
 
 
 async def run(args, transport: httpx.AsyncBaseTransport | None = None) -> int:
+    if not getattr(args, "stop_tracking_only", False) and not getattr(args, "ticket_id", None):
+        raise ValueError("Business acceptance requires --ticket-id from the isolated Domain fixture")
     recorder = Recorder()
     run_id = uuid.uuid4().hex[:8]
     headers = {"Authorization": f"ApiKey {args.api_key}"}
@@ -110,10 +112,10 @@ async def run(args, transport: httpx.AsyncBaseTransport | None = None) -> int:
         envelope = {
             "schema_version": "1",
             "command_type": "start_workflow",
-            "external_request_id": f"sandbox-{run_id}-1",
+            "external_request_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"sandbox/{run_id}/start")),
             "external_management_ref": args.management_ref,
             "external_user_id": args.external_user_id,
-            "external_ticket_id": f"sandbox-ticket-{run_id}",
+            "external_ticket_id": str(uuid.UUID(getattr(args, "ticket_id", None))) if getattr(args, "ticket_id", None) else str(uuid.uuid4()),
             "external_conversation_id": f"sandbox-chat-{run_id}",
             "message": {"type": "text", "text": args.message},
         }
@@ -127,7 +129,7 @@ async def run(args, transport: httpx.AsyncBaseTransport | None = None) -> int:
         recorder.add(
             "read_result",
             result["response"],
-            result["body"].get("request_status") == "completed",
+            result["body"].get("request_status") == "completed" and state not in {"needs_attention", "blocked", "failed"},
             f"state={state}",
         )
 
@@ -164,7 +166,7 @@ async def run(args, transport: httpx.AsyncBaseTransport | None = None) -> int:
             reply_envelope = {
                 **envelope,
                 "command_type": "workflow_reply",
-                "external_request_id": f"sandbox-{run_id}-2",
+                "external_request_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"sandbox/{run_id}/reply")),
                 "workflow_id": first["workflow_id"],
                 "message": {"type": "text", "text": args.reply},
             }
@@ -186,27 +188,37 @@ async def run(args, transport: httpx.AsyncBaseTransport | None = None) -> int:
                     f"state={state}",
                 )
 
+        closed_ok = False
         if state == "awaiting_confirmation" and revision:
             closed = await client.post(
                 f"/workforce/v1/partner/workflows/{first['workflow_id']}/close",
                 json={
                     "schema_version": "1",
-                    "external_request_id": f"sandbox-{run_id}-close",
+                    "external_request_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"sandbox/{run_id}/close")),
                     "external_user_id": args.external_user_id,
                     "external_ticket_id": envelope["external_ticket_id"],
                     "external_conversation_id": envelope["external_conversation_id"],
                     "expected_revision": revision,
-                    "reason": "sandbox contract check",
+                    "reason": "resident_requested_stop_tracking" if getattr(args, "stop_tracking_only", False) else "resident_confirmed",
+                    "stop_tracking_only": bool(getattr(args, "stop_tracking_only", False)),
+                    **({"domain_acceptance": json.loads(Path(args.acceptance_json).read_text(encoding="utf-8"))}
+                       if getattr(args, "acceptance_json", None) else {}),
                 },
             )
             recorder.add("close_workflow", closed, closed.status_code == 200, closed.json().get("workflow_state", ""))
+            closed_ok = closed.status_code == 200 and closed.json().get("workflow_state") == "closed"
+        if not getattr(args, "stop_tracking_only", False):
+            recorder.steps.append({"step": "business_completion", "ok": closed_ok,
+                "note": "Requires terminal work and Domain resident acceptance; an unfinished state cannot be skipped."})
     return finish(recorder, args, run_id)
 
 
 def finish(recorder: Recorder, args, run_id: str) -> int:
     out = Path(args.output) / datetime.now().strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
-    data = {"base_url": args.base_url, "run_id": run_id, "steps": recorder.steps}
+    data = {"base_url": args.base_url, "run_id": run_id,
+            "mode": "transport_stop_tracking" if getattr(args, "stop_tracking_only", False) else "business_completion",
+            "steps": recorder.steps}
     raw = json.dumps(data, ensure_ascii=False, indent=2, default=str)
     (out / "evidence.json").write_text(raw, encoding="utf-8")
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
@@ -240,10 +252,13 @@ def main() -> int:
     parser.add_argument("--api-key", default=os.getenv("PARTNER_SANDBOX_API_KEY"), required=os.getenv("PARTNER_SANDBOX_API_KEY") is None)
     parser.add_argument("--management-ref", default=os.getenv("PARTNER_SANDBOX_MANAGEMENT_REF", "tower-a"))
     parser.add_argument("--external-user-id", default=os.getenv("PARTNER_SANDBOX_USER", "resident-sandbox-1"))
+    parser.add_argument("--ticket-id", help="Actual UUID from the isolated Domain fixture, required for business acceptance")
     parser.add_argument("--message", default="Căn hộ của tôi bị rò nước ở bồn rửa, xử lý giúp với.")
     parser.add_argument("--reply", default="Căn S1-1205, tầng 12.")
     parser.add_argument("--timeout", type=float, default=300)
     parser.add_argument("--output", default=".artifacts/partner-sandbox")
+    parser.add_argument("--stop-tracking-only", action="store_true", help="Stop observation; does not certify business completion")
+    parser.add_argument("--acceptance-json", help="DB-backed Domain resident acceptance for completion close")
     return asyncio.run(run(parser.parse_args()))
 
 

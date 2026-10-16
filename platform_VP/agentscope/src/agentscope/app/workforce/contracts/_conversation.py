@@ -4,6 +4,8 @@
 from datetime import datetime
 from enum import StrEnum
 
+from typing import Literal
+
 from pydantic import Field, model_validator
 
 from ._assets import AssetReferenceInput
@@ -181,6 +183,18 @@ class InboundReceipt(WorkforceModel):
         return self
 
 
+class DomainCompletionAcceptance(WorkforceModel):
+    """DB-backed resident acceptance asserted by the authenticated Domain backend."""
+
+    external_ticket_id: OpaqueId
+    external_user_id: OpaqueId
+    ticket_status: Literal["closed"]
+    ticket_version: int = Field(ge=1, strict=True)
+    approval_id: OpaqueId
+    decided_event_id: OpaqueId
+    work_order_ids: tuple[OpaqueId, ...] = Field(min_length=1)
+
+
 class CloseWorkflowCommand(WorkforceModel):
     """Explicit, idempotent request to close one bound workflow."""
 
@@ -192,6 +206,7 @@ class CloseWorkflowCommand(WorkforceModel):
     expected_revision: int = Field(ge=1)
     reason: str = Field(min_length=1, max_length=200)
     stop_tracking_only: bool = False
+    domain_acceptance: DomainCompletionAcceptance | None = None
 
 
 class WorkflowProjection(WorkforceModel):
@@ -226,6 +241,8 @@ class WorkflowRecord(WorkforceModel):
     group_id: OpaqueId
     checkpoint_ref: OpaqueId | None = None
     version_pins: tuple[OpaqueId, ...] = ()
+    contract_snapshot: JsonObject = Field(default_factory=dict)
+    """Route, tools, schema, policy and grant frozen when the ticket starts."""
     pending_waits: tuple[OpaqueId, ...] = ()
     last_applied_event_id: OpaqueId | None = None
     created_at: datetime

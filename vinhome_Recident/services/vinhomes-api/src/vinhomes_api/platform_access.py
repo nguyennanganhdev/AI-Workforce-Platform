@@ -21,6 +21,7 @@ from pydantic import BaseModel,Field
 from .platform import TENANT
 
 TOOLS=('vh_ticket_get','vh_knowledge_search','vh_staff_available','vh_work_order_dispatch',
+       'vh_operation_get',
        'vh_work_order_reschedule','vh_ticket_cancel','vh_ticket_add_note',
        'vh_travel_catalog','vh_travel_search','vh_travel_details','vh_travel_availability',
        'vh_travel_prepare','vh_travel_commit','vh_travel_bookings',

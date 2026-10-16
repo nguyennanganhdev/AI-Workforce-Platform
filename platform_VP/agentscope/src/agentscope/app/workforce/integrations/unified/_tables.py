@@ -77,6 +77,8 @@ operations = Table(
     Column("rank", Integer, nullable=False),
     Column("terminal", Boolean, nullable=False),
     Column("outcome", String(64), nullable=True),
+    Column("provider_version", Integer, nullable=True),
+    Column("call_result", JSON, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
@@ -95,6 +97,10 @@ receipts = Table(
     Column("operation_id", String(255), nullable=True),
     Column("received_at", DateTime(timezone=True), nullable=False),
     Column("applied_at", DateTime(timezone=True), nullable=True),
+    Column("envelope", JSON, nullable=True),
+    Column("schema_entry", JSON, nullable=True),
+    Column("projection_text", Text, nullable=True),
+    Column("projected_at", DateTime(timezone=True), nullable=True),
     UniqueConstraint(
         "integration_id",
         "external_event_id",

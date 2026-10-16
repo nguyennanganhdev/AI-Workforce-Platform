@@ -54,6 +54,8 @@ services:
       WORKFORCE_PLATFORM_OPENAI_BASE_URL: ${WORKFORCE_PLATFORM_OPENAI_BASE_URL:-}
       WORKFORCE_LEADER_WAIT_SECONDS: ${WORKFORCE_LEADER_WAIT_SECONDS:-240}
       WORKFORCE_LEARNING: ${WORKFORCE_LEARNING:-true}
+      WORKFORCE_LEDGER_STARTED_AT: ${WORKFORCE_LEDGER_STARTED_AT:-}
+      WORKFORCE_PRICE_CATALOG: /run/workforce/model-prices.json
       KNOWLEDGE_VECTOR_URL: ${KNOWLEDGE_VECTOR_URL:-}
       KNOWLEDGE_VECTOR_API_KEY: ${KNOWLEDGE_VECTOR_API_KEY:-}
       KNOWLEDGE_VECTOR_PATH: ${KNOWLEDGE_VECTOR_PATH:-}
@@ -62,6 +64,7 @@ services:
       - "${BIND_HOST:-127.0.0.1}:${AGENTSCOPE_PORT:-8000}:8000"
     volumes:
       - agentscope_workspaces:/app/examples/agent_service/workspaces
+      - ${WORKFORCE_PRICE_CATALOG_FILE:-./deploy/vps/model-prices.example.json}:/run/workforce/model-prices.json:ro
     depends_on:
       redis:
         condition: service_healthy

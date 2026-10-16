@@ -100,6 +100,7 @@ class WorkflowService:
         clock: Callable[[], datetime],
         ids: Callable[[], str] = lambda: uuid4().hex,
         shared_context_projection: bool = False,
+        completion_close_guard: Callable | None = None,
     ) -> None:
         self.repository = repository
         self.bootstrap = bootstrap
@@ -112,6 +113,7 @@ class WorkflowService:
         self.clock = clock
         self.ids = ids
         self.shared_context_projection = shared_context_projection
+        self.completion_close_guard = completion_close_guard
 
     async def project_shared_context(
         self,
@@ -664,6 +666,8 @@ class WorkflowService:
                     "close revision conflict", record.revision
                 )
             checkpoint = aggregate.checkpoint
+            if self.completion_close_guard is not None:
+                await self.completion_close_guard(aggregate, parsed, tx)
             if checkpoint.pending_approval_ids and not parsed.stop_tracking_only:
                 raise WorkflowApprovalPending(
                     "pending approval prevents completion close"
@@ -715,6 +719,7 @@ class WorkflowService:
                     "state": "closed",
                     "revision": candidate.workflow.revision,
                     "reason": parsed.reason,
+                    "stop_tracking_only": parsed.stop_tracking_only,
                     "closed_at": self.clock().isoformat(),
                 },
                 tx,

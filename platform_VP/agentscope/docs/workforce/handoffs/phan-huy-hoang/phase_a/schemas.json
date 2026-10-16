@@ -1195,6 +1195,69 @@
       "type": "object"
     },
     "CloseWorkflowCommand": {
+      "$defs": {
+        "DomainCompletionAcceptance": {
+          "additionalProperties": false,
+          "description": "DB-backed resident acceptance asserted by the authenticated Domain backend.",
+          "properties": {
+            "external_ticket_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External Ticket Id",
+              "type": "string"
+            },
+            "external_user_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External User Id",
+              "type": "string"
+            },
+            "ticket_status": {
+              "const": "closed",
+              "title": "Ticket Status",
+              "type": "string"
+            },
+            "ticket_version": {
+              "minimum": 1,
+              "title": "Ticket Version",
+              "type": "integer"
+            },
+            "approval_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Approval Id",
+              "type": "string"
+            },
+            "decided_event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Decided Event Id",
+              "type": "string"
+            },
+            "work_order_ids": {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Work Order Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "external_ticket_id",
+            "external_user_id",
+            "ticket_status",
+            "ticket_version",
+            "approval_id",
+            "decided_event_id",
+            "work_order_ids"
+          ],
+          "title": "DomainCompletionAcceptance",
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "description": "Explicit, idempotent request to close one bound workflow.",
       "properties": {
@@ -1250,6 +1313,17 @@
           "default": false,
           "title": "Stop Tracking Only",
           "type": "boolean"
+        },
+        "domain_acceptance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DomainCompletionAcceptance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -3691,6 +3765,11 @@
     "workflow.closed": {
       "additionalProperties": false,
       "properties": {
+        "stop_tracking_only": {
+          "default": false,
+          "title": "Stop Tracking Only",
+          "type": "boolean"
+        },
         "state": {
           "const": "closed",
           "title": "State",

@@ -21,12 +21,13 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
 from pydantic import ValidationError
 from sqlalchemy import insert, select, update
+from sqlalchemy.exc import IntegrityError
 
 from ....._logging import logger
 from ...contracts import (
@@ -37,7 +38,9 @@ from ...contracts import (
     Scope,
 )
 from ...orchestration.workflows._models import parse_aggregate
+from ...orchestration._tables import workflows
 from ._case import CaseStore
+from ._contract import read_contract
 from ._tables import case_sessions, integrations, operations, receipts
 
 
@@ -98,6 +101,7 @@ class UnifiedProviderEvents:
         ids: Callable[[], str] = lambda: uuid4().hex,
         requests: Any = None,
         share: Callable[[str, str], Any] | None = None,
+        jobs: Any = None,
     ) -> None:
         self._uows = uows
         # Puts a staff progress line into the room of the ticket, if any.
@@ -108,6 +112,7 @@ class UnifiedProviderEvents:
         self._workflows = workflows
         self._events = events
         self._ids = ids
+        self._jobs = jobs
 
     async def _principal(self, raw: bytes, headers: dict) -> Any:
         if self._auth is None:
@@ -144,6 +149,9 @@ class UnifiedProviderEvents:
         if seen is not None:
             if seen["payload_hash"] != payload_hash:
                 raise ProviderError(409, "EVENT_ID_CONFLICT")
+            if seen["ingestion_status"] == "quarantined" and seen["envelope"] is not None:
+                result = await self.reprocess(seen["receipt_id"])
+                return 202, {**result, "duplicate": True}
             return 202, self._accepted(seen, duplicate=True)
         async with self._uows() as uow:
             integration = (
@@ -151,8 +159,33 @@ class UnifiedProviderEvents:
             ).mappings().first()
         if integration is None:
             raise ProviderError(403, "INTEGRATION_NOT_CONFIGURED")
-        entry = check_event(integration["event_schema"], envelope.event_type, envelope.data)
-        return 202, await self._apply(integration_id, envelope, entry, payload_hash)
+        schema = integration["event_schema"]
+        async with self._uows() as uow:
+            operation = await self._operation(uow, integration_id, envelope)
+            if operation:
+                payload = await uow.scalar(select(workflows.c.payload).where(workflows.c.id == operation["workflow_id"]))
+                try:
+                    pinned = read_contract(payload)
+                except ValueError as exc:
+                    raise ProviderError(409, str(exc)) from exc
+                if pinned is None:
+                    raise ProviderError(409, "WORKFLOW_CONTRACT_NOT_PINNED")
+                schema = pinned["event_schema"]
+        entry = check_event(schema, envelope.event_type, envelope.data)
+        try:
+            return 202, await self._apply(integration_id, envelope, entry, payload_hash)
+        except IntegrityError:
+            # Concurrent delivery of the same event is still one receipt/effect.
+            async with self._uows() as uow:
+                seen = (await uow.execute(select(receipts).where(
+                    receipts.c.integration_id == integration_id,
+                    receipts.c.external_event_id == envelope.external_event_id,
+                ))).mappings().first()
+            if seen is None:
+                raise
+            if seen["payload_hash"] != payload_hash:
+                raise ProviderError(409, "EVENT_ID_CONFLICT")
+            return 202, self._accepted(seen, duplicate=True)
 
     @staticmethod
     def _accepted(row: dict, duplicate: bool = False) -> dict:
@@ -184,7 +217,7 @@ class UnifiedProviderEvents:
             raise ProviderError(409, "CORRELATION_MISMATCH")
         return dict(row)
 
-    async def _apply(self, integration_id, envelope, entry, payload_hash) -> dict:
+    async def _apply(self, integration_id, envelope, entry, payload_hash, *, receipt_id=None) -> dict:
         now = _now()
         receipt = {
             "receipt_id": "rcpt_" + self._ids(),
@@ -197,19 +230,55 @@ class UnifiedProviderEvents:
             "operation_id": None,
             "received_at": now,
             "applied_at": now,
+            "envelope": envelope.model_dump(mode="json"),
+            "schema_entry": entry,
         }
         async with self._uows() as uow:
+            if receipt_id is not None:
+                previous = (await uow.execute(select(receipts).where(
+                    receipts.c.receipt_id == receipt_id,
+                ).with_for_update())).mappings().one()
+                if previous["ingestion_status"] != "quarantined":
+                    return self._accepted(previous, duplicate=True)
+                receipt.update(receipt_id=receipt_id, received_at=previous["received_at"])
             operation = await self._operation(uow, integration_id, envelope)
             if operation is None:
+                if receipt_id is not None:
+                    return self._accepted(previous)
                 receipt.update(ingestion_status="quarantined", applied_at=None, error_code="OPERATION_NOT_FOUND")
                 await uow.execute(insert(receipts).values(**receipt))
+                if self._jobs is not None:
+                    integration = (await uow.execute(select(integrations).where(
+                        integrations.c.integration_id == integration_id,
+                    ))).mappings().one()
+                    await self._jobs.enqueue_provider(
+                        {"tenant_id": integration["tenant_id"], "provider_integration_id": integration_id},
+                        "workforce.unified.receipt", {"receipt_id": receipt["receipt_id"], "generation": 0},
+                        "unified-receipt:" + receipt["receipt_id"] + ":0", uow,
+                    )
                 await uow.commit()
                 return self._accepted(receipt)
+            # Re-onboarding must not change a running ticket's event contract.
+            payload = await uow.scalar(select(workflows.c.payload).where(workflows.c.id == operation["workflow_id"]))
+            try:
+                pinned = read_contract(payload)
+            except ValueError as exc:
+                raise ProviderError(409, str(exc)) from exc
+            if pinned is None:
+                raise ProviderError(409, "WORKFLOW_CONTRACT_NOT_PINNED")
+            schema = pinned.get("event_schema")
+            if schema:
+                entry = check_event(schema, envelope.event_type, envelope.data)
+                receipt.update(schema_entry=entry, normalized_status=entry.get("status"))
             receipt["operation_id"] = operation["operation_id"]
             rank = int(entry.get("rank") or 0)
-            if operation["terminal"] or rank < operation["rank"]:
+            last_version = operation["provider_version"]
+            stale_version = last_version is not None and (
+                envelope.provider_version is None or envelope.provider_version <= last_version
+            )
+            if operation["terminal"] or rank < operation["rank"] or stale_version:
                 receipt.update(ingestion_status="rejected", error_code="STALE_EVENT")
-                await uow.execute(insert(receipts).values(**receipt))
+                await self._save_receipt(uow, receipt, receipt_id)
                 await uow.commit()
                 return self._accepted(receipt)
             await uow.execute(
@@ -222,18 +291,61 @@ class UnifiedProviderEvents:
                     outcome=entry.get("outcome"),
                     external_job_id=operation["external_job_id"] or envelope.external_job_id,
                     integration_id=integration_id,
+                    provider_version=envelope.provider_version,
                     updated_at=now,
                 ),
             )
-            await uow.execute(insert(receipts).values(**receipt))
             shared = await self._effects(uow, operation, envelope, entry, receipt["receipt_id"])
+            receipt["projection_text"] = shared
+            await self._save_receipt(uow, receipt, receipt_id)
+            if shared and self._jobs is not None:
+                await self._jobs.enqueue(
+                    Scope(**{k: (payload or {})["workflow"]["scope"][k] for k in ("tenant_id", "domain_id", "area_id", "manager_account_id")}),
+                    "workforce.unified.projection", {"receipt_id": receipt["receipt_id"]},
+                    "unified-projection:" + receipt["receipt_id"], uow,
+                    not_before=now + timedelta(seconds=30),
+                )
             await uow.commit()
-        if shared and self._share is not None:
+        if shared:
             try:
-                await self._share(operation["workflow_id"], shared)
+                await self.replay_projection(receipt["receipt_id"])
             except Exception:  # noqa: BLE001 - the event is applied; the room copy is best effort
                 logger.exception("Could not share provider progress with the room of %s", operation["workflow_id"])
         return self._accepted(receipt)
+
+    @staticmethod
+    async def _save_receipt(uow, row, receipt_id):
+        if receipt_id is None:
+            await uow.execute(insert(receipts).values(**row))
+        else:
+            await uow.execute(update(receipts).where(receipts.c.receipt_id == receipt_id).values(**row))
+
+    async def reprocess(self, receipt_id: str) -> dict:
+        """Replay the authenticated persisted envelope; never re-authenticate an old nonce."""
+        async with self._uows() as uow:
+            row = (await uow.execute(select(receipts).where(receipts.c.receipt_id == receipt_id))).mappings().one()
+        if row["ingestion_status"] != "quarantined" or row["envelope"] is None:
+            return self._accepted(row, duplicate=True)
+        return await self._apply(row["integration_id"], ProviderEventEnvelope.model_validate(row["envelope"]),
+            row["schema_entry"], row["payload_hash"], receipt_id=receipt_id)
+
+    async def replay_projection(self, receipt_id: str) -> bool:
+        """Retry the room copy using a stable ledger event ID after a process crash."""
+        if self._share is None:
+            return False
+        async with self._uows() as uow:
+            row = (await uow.execute(select(receipts, operations.c.workflow_id).join(
+                operations, operations.c.operation_id == receipts.c.operation_id,
+            ).where(receipts.c.receipt_id == receipt_id))).mappings().one()
+        if row["projected_at"] is not None or not row["projection_text"]:
+            return True
+        copied = await self._share(row["workflow_id"], row["projection_text"], event_id="provider:" + receipt_id)
+        if copied is False:
+            return False
+        async with self._uows() as uow:
+            await uow.execute(update(receipts).where(receipts.c.receipt_id == receipt_id).values(projected_at=_now()))
+            await uow.commit()
+        return True
 
     async def _effects(self, uow, operation, envelope, entry, receipt_id) -> str | None:
         """Apply an accepted event; returns the progress line for the room."""

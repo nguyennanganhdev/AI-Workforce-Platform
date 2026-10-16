@@ -207,6 +207,7 @@ class SharedContextMetrics(BaseModel):
     """Auditable measurements from the selected model's token counter."""
 
     provider_usage: dict[str, ProviderUsage] = Field(default_factory=dict)
+    provider_usage_by_model: dict[str, ProviderUsage] = Field(default_factory=dict)
     """Provider usage keyed by agent id."""
 
     packets_built: int = Field(default=0, ge=0)

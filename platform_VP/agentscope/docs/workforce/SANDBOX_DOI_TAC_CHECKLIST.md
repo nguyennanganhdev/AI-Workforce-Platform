@@ -1,5 +1,11 @@
 # Checklist sandbox đối tác
 
+> Cập nhật bản tích hợp: [bàn giao Docker/VPS P0–P2 16/10/2026](BAO_CAO_BAN_GIAO_DOCKER_VPS_P0_P2_2026-10-16.md). P1 đã triển khai cùng P0/P2; phần dưới giữ bằng chứng tại thời điểm viết. UAT model thật chưa nghiệm thu; phiếu cũ thiếu hợp đồng được giữ và chặn xử lý tiếp.
+
+> P2 ngày 16/10: xem [kết quả ledger/memory/offsite](BAO_CAO_HOAN_THANH_P2_2026-10-16.md)
+> và [runbook kiểm chứng](../../deploy/vps/P2_RUNBOOK.md). Test offline/restore P2
+> không thay trạng thái nghiệm thu sandbox đối tác trong checklist này.
+
 Trạng thái: **chuẩn bị sẵn, chưa chạy**. Chưa có sandbox/UAT đối tác nào được
 cấp, nên chưa có bằng chứng thật. CI chỉ được ghi sandbox là pass khi biến
 `WORKFORCE_SANDBOX_EVIDENCE` trỏ tới bằng chứng do **người** đã duyệt

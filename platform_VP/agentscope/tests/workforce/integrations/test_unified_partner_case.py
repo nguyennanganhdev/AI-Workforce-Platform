@@ -18,7 +18,7 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -48,6 +48,7 @@ from agentscope.app.workforce.foundation._provider_auth import (
 )
 from agentscope.app.workforce.foundation._tables import metadata as foundation_metadata
 from agentscope.app.workforce.foundation._tables import (
+    partner_manager_routes,
     provider_credentials,
     provider_integrations,
 )
@@ -63,6 +64,7 @@ from agentscope.app.workforce.integrations.unified._secrets import (
     seal,
 )
 from agentscope.app.workforce.integrations.unified._tables import (
+    approvals,
     integrations,
     operations,
     routes,
@@ -181,6 +183,7 @@ class _Storage:
     def __init__(self):
         self.sessions = {}
         self.messages = []  # every session's messages; enough for token counting
+
         self.mcp = SimpleNamespace(
             id="mcp-1",
             enabled=True,
@@ -215,8 +218,20 @@ class _Storage:
             ],
         )
 
+    async def list_model_calls(self, *_args, **_kwargs):
+        return getattr(self, "model_calls", [])
+
     async def get_agent(self, user_id, agent_id):
-        return SimpleNamespace(id=agent_id, data=SimpleNamespace(published_version=3))
+        from agentscope.agent import ContextConfig, ReActConfig
+        from agentscope.app._agent_spec import AgentSpec
+        from agentscope.app.storage import AgentData, AgentRecord
+
+        return AgentRecord(id=agent_id, user_id=user_id, data=AgentData(
+            name=agent_id, context_config=ContextConfig(), react_config=ReActConfig(), published_version=3, versions=[{
+                "version": 3, "system_prompt": "Scripted test agent",
+                "spec": AgentSpec(name=agent_id).model_dump(mode="json"), "evaluation": {},
+            }],
+        ))
 
     async def list_sessions(self, user_id, agent_id):
         return [SimpleNamespace(config=SimpleNamespace(chat_model_config=None))]
@@ -330,6 +345,12 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
                 text("CREATE TABLE partner_api_clients (id TEXT PRIMARY KEY, tenant_id TEXT, status TEXT)"),
             )
             await connection.execute(text("INSERT INTO partner_api_clients VALUES ('partner-1', 'tenant-1', 'active')"))
+            await connection.execute(insert(partner_manager_routes).values(
+                id="route-1", **SCOPE.model_dump(), partner_client_id="partner-1",
+                external_management_ref="local-management", status="active", revision=1,
+                membership_revision=1, allowed_operations=[op.value for op in PartnerOperation],
+                granted_by="fixture", confirmed_by_client_id="partner-1", created_at=NOW, updated_at=NOW,
+            ))
             await connection.execute(
                 insert(provider_integrations).values(
                     id="pi-1", tenant_id="tenant-1", partner_client_id="partner-1",
@@ -425,6 +446,8 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
             return SimpleNamespace(id="leader-console"), primary
 
         self.patches = [
+            # Readiness has its own real-storage regression suite; this harness isolates case/close behavior.
+            patch("agentscope.app.workforce.integrations.unified._readiness.route_readiness", AsyncMock(return_value={"ready": True})),
             patch.object(MCPTool, "call", fake_mcp_call),
             patch.object(runner_module, "pending_chat_actions", no_pending),
             patch("agentscope.app._router._workforce_console._leader", console_leader),
@@ -478,6 +501,131 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
             params={"external_user_id": "resident-1", "limit": 200},
         )
         return page.json()["items"]
+
+    @staticmethod
+    def _acceptance(ticket="T-77", job="WO-1"):
+        return {"external_ticket_id": ticket, "external_user_id": "resident-1",
+                "ticket_status": "closed", "ticket_version": 3, "approval_id": "domain-approval-1",
+                "decided_event_id": "domain-event-1", "work_order_ids": [job]}
+
+    async def _completed_work(self, workflow_id, *, job="WO-1", terminal=True, outcome="completed", status="result_published"):
+        async with self.uows() as uow:
+            await uow.execute(insert(operations).values(
+                operation_id="op-" + workflow_id, workflow_id=workflow_id, integration_id="pi-1",
+                tool_name="vh_work_order_dispatch", client_reference="cr_" + workflow_id,
+                external_job_id=job, status=status, rank=90, terminal=terminal, outcome=outcome,
+                created_at=NOW, updated_at=NOW,
+            ))
+            await uow.commit()
+
+
+class UnifiedCaseCloseBarrierTest(_CaseHarness):
+    async def _ready(self, client):
+        async def confirmation(tools):
+            await call(tools, "CaseSay", text="Please confirm completion.", expects="confirmation")
+
+        self.leader.scripts = [confirmation]
+        started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+        self.assertEqual("succeeded", await self._run())
+        items = await self._history(client, started["conversation_id"])
+        revision = [i["payload"]["revision"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
+        self.close_body = {
+            "schema_version": "1", "external_request_id": "close-1", "external_user_id": "resident-1",
+            "external_ticket_id": "T-77", "external_conversation_id": "chat-9:T-77",
+            "expected_revision": revision, "reason": "resident_confirmed",
+            "domain_acceptance": self._acceptance(),
+        }
+        return started
+
+    async def _close(self, client, started, **changes):
+        return await client.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close",
+                                 json={**self.close_body, **changes})
+
+    async def test_confirmation_text_and_domain_assertion_cannot_replace_terminal_work(self):
+        async with self._client() as client:
+            started = await self._ready(client)
+            response = await self._close(client, started)
+            self.assertEqual((409, "WORKFLOW_NOT_READY_TO_CLOSE"),
+                             (response.status_code, response.json()["error"]["code"]))
+            await self._completed_work(started["workflow_id"], outcome="cancelled", status="cancelled")
+            response = await self._close(client, started)
+            self.assertEqual(409, response.status_code)
+
+    async def test_actual_pending_and_unknown_work_block_even_when_checkpoint_has_no_refs(self):
+        async with self._client() as client:
+            started = await self._ready(client)
+            await self._completed_work(started["workflow_id"], terminal=False)
+            for status in ("pending", "dispatching", "unknown"):
+                with self.subTest(status=status):
+                    async with self.uows() as uow:
+                        await uow.execute(update(operations).values(status=status, terminal=False))
+                        await uow.commit()
+                    response = await self._close(client, started)
+                    self.assertEqual((409, "WORKFLOW_NOT_READY_TO_CLOSE"),
+                                     (response.status_code, response.json()["error"]["code"]))
+
+    async def test_actual_pending_approval_blocks_despite_empty_checkpoint(self):
+        async with self._client() as client:
+            started = await self._ready(client)
+            await self._completed_work(started["workflow_id"])
+            async with self.uows() as uow:
+                await uow.execute(insert(approvals).values(
+                    approval_id="pending-approval", workflow_id=started["workflow_id"],
+                    session_id="member-session", agent_id="member", tool_call_id="call-1", tool_name="write",
+                    arguments={}, arguments_hash="sha256:a", expected_revision=1, summary={}, status="pending",
+                    expires_at=NOW, created_at=NOW, decided_at=None,
+                ))
+                await uow.commit()
+            response = await self._close(client, started)
+            self.assertEqual((409, "APPROVAL_PENDING"), (response.status_code, response.json()["error"]["code"]))
+
+    async def test_domain_acceptance_is_required_and_bound_to_customer_ticket_and_work(self):
+        async with self._client() as client:
+            started = await self._ready(client)
+            await self._completed_work(started["workflow_id"])
+            for acceptance in (None, {**self._acceptance(), "external_ticket_id": "another-ticket"},
+                               {**self._acceptance(), "external_user_id": "another-resident"},
+                               {**self._acceptance(), "work_order_ids": ["another-job"]}):
+                with self.subTest(acceptance=acceptance):
+                    response = await self._close(client, started, domain_acceptance=acceptance)
+                    self.assertEqual(409, response.status_code)
+            response = await self._close(client, started, reason="model_says_done")
+            self.assertEqual(409, response.status_code)
+
+    async def test_successful_close_preserves_revision_audience_and_replay(self):
+        async with self._client() as client:
+            started = await self._ready(client)
+            await self._completed_work(started["workflow_id"])
+            stale = await self._close(client, started, expected_revision=1)
+            self.assertEqual((409, "REVISION_CONFLICT"), (stale.status_code, stale.json()["error"]["code"]))
+            wrong = await self._close(client, started, external_user_id="another-resident")
+            self.assertIn(wrong.status_code, (403, 404))
+            closed = await self._close(client, started)
+            self.assertEqual(200, closed.status_code, closed.text)
+            self.assertEqual("closed", closed.json()["workflow_state"])
+            replay = await self._close(client, started)
+            self.assertEqual(closed.json(), replay.json())
+            items = await self._history(client, started["conversation_id"])
+            endings = [i for i in items if i["event_type"] == "workflow.closed"]
+            self.assertEqual(1, len(endings))
+            self.assertFalse(endings[0]["payload"]["stop_tracking_only"])
+
+    async def test_stop_tracking_is_distinct_and_closed_cases_cannot_start_more_work(self):
+        async with self._client() as client:
+            started = await self._ready(client)
+            await self._completed_work(started["workflow_id"], terminal=False, status="unknown")
+            spoof = await self._close(client, started, stop_tracking_only=True)
+            self.assertEqual(409, spoof.status_code)
+            closed = await self._close(client, started, reason="resident_requested_stop_tracking",
+                                       stop_tracking_only=True, domain_acceptance=None)
+            self.assertEqual(200, closed.status_code, closed.text)
+            items = await self._history(client, started["conversation_id"])
+            ending = next(i for i in items if i["event_type"] == "workflow.closed")
+            self.assertTrue(ending["payload"]["stop_tracking_only"])
+            with self.assertRaisesRegex(ValueError, "closed workflows"):
+                await self.runner._case.store.record_operation({
+                    "workflow_id": started["workflow_id"], "client_reference": "late-operation",
+                })
 
 
 class UnifiedPartnerCaseTest(_CaseHarness):
@@ -585,10 +733,17 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                 self.assertEqual([], scheduled)
                 items = await self._history(client, started["conversation_id"])
                 revision = [i["payload"]["revision"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
+                extra = {"stop_tracking_only": True}
+                if reason == "resident_confirmed":
+                    await self._completed_work(started["workflow_id"])
+                    extra = {"domain_acceptance": self._acceptance(ticket)}
+                else:
+                    reason = "resident_requested_stop_tracking"
                 closed = await client.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close", json={
                     "schema_version": "1", "external_request_id": f"close-{ticket}", "external_user_id": "resident-1",
                     "external_ticket_id": ticket, "external_conversation_id": f"chat-9:{ticket}",
                     "expected_revision": revision, "reason": reason,
+                    **extra,
                 })
                 self.assertEqual("closed", closed.json()["workflow_state"], closed.text)
         # Cancelled: nothing learned; confirmed: the room teaches its agents, and
@@ -611,10 +766,12 @@ class UnifiedPartnerCaseTest(_CaseHarness):
             self.assertEqual("succeeded", await self._run())
             items = await self._history(client, started["conversation_id"])
             revision = [i["payload"]["revision"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
+            await self._completed_work(started["workflow_id"])
             closed = await client.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close", json={
                 "schema_version": "1", "external_request_id": "close-1", "external_user_id": "resident-1",
                 "external_ticket_id": "T-77", "external_conversation_id": "chat-9:T-77",
                 "expected_revision": revision, "reason": "resident_confirmed",
+                "domain_acceptance": self._acceptance(),
             })
             self.assertEqual("closed", closed.json()["workflow_state"], closed.text)
         usage = {
@@ -625,14 +782,24 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         async def room(*_args):
             return SimpleNamespace(state=SimpleNamespace(metrics=SimpleNamespace(provider_usage=usage)))
 
+        self.storage.model_calls = [
+            {"id": "call-1", "workflow_id": started["workflow_id"], "purpose": "runtime", "model": "gpt-5.5",
+             "status": "completed", "input_tokens": 10000, "cached_input_tokens": 8000, "output_tokens": 500,
+             "usage_complete": True, "cost_complete": False, "cost_usd": None},
+            {"id": "call-2", "workflow_id": started["workflow_id"], "purpose": "learning", "model": "gpt-5.4-mini",
+             "status": "completed", "input_tokens": 4000, "cached_input_tokens": 0, "output_tokens": 200,
+             "usage_complete": True, "cost_complete": False, "cost_usd": None},
+        ]
         quality = await ticket_quality(self.uows, self.storage, SimpleNamespace(get_team_shared_context=room), "manager-1")
         self.assertEqual(
             (1, 1, 1, 1, 1, 0.5),
             (quality["tickets"], quality["closed_confirmed"], quality["first_time_confirmed"],
              quality["messages_sent"], quality["messages_refused"], quality["refusal_rate"]),
         )
-        # gpt-5.5: 2,000×5 + 8,000×0.5 + 500×30; mini: 4,000×0.75 + 200×4.5 (per 1M tokens).
-        self.assertAlmostEqual((10_000 + 4_000 + 15_000 + 3_000 + 900) / 1_000_000, quality["est_cost_usd"])
+        self.assertIsNone(quality["est_cost_usd"])
+        self.assertIsNone(quality["cost_per_confirmed_usd"])
+        self.assertFalse(quality["cost_complete"])
+        self.assertEqual(14000, quality["input_tokens"])
         self.assertEqual(round(8_000 / 14_000, 3), quality["cache_rate"])
 
     async def test_a_transient_model_error_retries_the_turn_without_resending_the_input(self):
@@ -909,6 +1076,7 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                     "external_conversation_id": "chat-9:T-77",
                     "expected_revision": revision,
                     "reason": "resident_confirmed",
+                    "domain_acceptance": self._acceptance(),
                 },
             )
             self.assertEqual(200, closed.status_code, closed.text)
@@ -1127,7 +1295,8 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"{names[0]} (điều phối của đối tác) luôn có mặt", prompt)
         self.assertIn("Gọi cư dân là bạn.", prompt)
 
-    async def test_a_declared_member_in_the_ticket_room_gets_its_tools_under_the_case(self):
+    @patch("agentscope.app.workforce.integrations.unified._contract.route_for_workflow", new_callable=AsyncMock)
+    async def test_a_declared_member_in_the_ticket_room_gets_its_tools_under_the_case(self, pinned_route):
         from agentscope.app.workforce.integrations.unified._case import CaseRuntime, PartnerMemberMiddleware
 
         leader = {"session_id": "s-leader", "workflow_id": "wf-1", "route_id": "r-1", "agent_id": "a-leader"}
@@ -1135,6 +1304,7 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             "route_id": "r-1",
             "config": {"member_agents": {"a-kt": {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]}}},
         }
+        pinned_route.return_value = route
 
         class Store:
             async def session(self, session_id):

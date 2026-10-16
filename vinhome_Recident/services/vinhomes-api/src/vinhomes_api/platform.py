@@ -326,6 +326,44 @@ async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids
     return kind is None
 
 
+async def completion_acceptance(db, ticket_id) -> dict | None:
+    """Read resident acceptance from Domain records; never infer it from model text."""
+    from .v3_mutations import UNRESOLVED_QC
+
+    row = (await db.execute(text(f"""
+        select t.id,t.version,t.requester_user_id,a.id as approval_id,a.decided_event_id
+        from tickets t join work_orders w on w.ticket_id=t.id and w.tenant_id=t.tenant_id
+        join work_approvals a on a.work_order_id=w.id and a.tenant_id=w.tenant_id
+        join ticket_events e on e.id=a.decided_event_id and e.ticket_id=t.id and e.tenant_id=t.tenant_id
+        where t.id=:id and t.tenant_id={TENANT} and t.status='closed' and t.closed_at is not null
+          and w.status='completed' and a.kind='customer_completion' and a.status='approved'
+          and a.decided_by=t.requester_user_id and a.requested_to_user_id=t.requester_user_id
+          and e.actor_user_id=t.requester_user_id and e.event_type='work_approval.decided'
+          and e.payload->>'status'='approved'
+        order by a.decided_at desc,a.id desc limit 1 for share of t
+    """), {"id": ticket_id})).mappings().first()
+    if row is None:
+        return None
+    unfinished = (await db.execute(text(f"""
+        select w.id from work_orders w where w.ticket_id=:id and w.tenant_id={TENANT}
+          and w.status not in ('cancelled','rejected')
+          and (w.status<>'completed' or {UNRESOLVED_QC}) limit 1
+    """), {"id": ticket_id})).first()
+    pending = (await db.execute(text(f"""
+        select a.id from work_approvals a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
+        where w.ticket_id=:id and w.tenant_id={TENANT} and a.status='pending' limit 1
+    """), {"id": ticket_id})).first()
+    if unfinished is not None or pending is not None:
+        return None
+    jobs = (await db.execute(text(f"""
+        select id from work_orders where ticket_id=:id and tenant_id={TENANT} and status='completed' order by id
+    """), {"id": ticket_id})).scalars().all()
+    return {"external_ticket_id": str(row["id"]), "external_user_id": row["requester_user_id"],
+            "ticket_status": "closed", "ticket_version": row["version"],
+            "approval_id": str(row["approval_id"]), "decided_event_id": str(row["decided_event_id"]),
+            "work_order_ids": [str(job) for job in jobs]}
+
+
 async def completion_decided(db, ticket_id, closed: bool, approved: bool, note: str) -> None:
     """The resident answered the completion request of a ticket: tell its workflow, if it has one."""
     linked = await db.execute(text(f"select 1 from platform_links where ticket_id=:id and tenant_id={TENANT} and status in {ACTIVE}"),
@@ -333,6 +371,8 @@ async def completion_decided(db, ticket_id, closed: bool, approved: bool, note: 
     if linked.first() is None:
         return
     if closed:
+        if not approved or await completion_acceptance(db, ticket_id) is None:
+            raise HTTPException(409, "Domain resident acceptance and completed work required")
         await command(db, ticket_id, "close", {"reason": "resident_confirmed"})
     elif not approved:
         # The ticket is open again: the coordinator has to send someone back.

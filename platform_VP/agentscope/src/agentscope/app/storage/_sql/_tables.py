@@ -575,3 +575,13 @@ class MessageRow(_Base):
     __table_args__ = (
         Index("ix_messages_session_created", "session_id", "created_at"),
     )
+
+
+class ModelCallRow(_Base):
+    __tablename__ = "model_call_ledger"
+    user_id: Mapped[str] = mapped_column(String(_ID_LEN), primary_key=True)
+    id: Mapped[str] = mapped_column(String(_ID_LEN), primary_key=True)
+    started_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    __table_args__ = (Index("ix_model_call_owner_started", "user_id", "started_at"),)

@@ -444,6 +444,16 @@ async def notices(db, ticket_id) -> dict:
 
 # ---- actions ---------------------------------------------------------------------------------------------------------
 
+async def operation_get(db, ticket_id, client_reference: str) -> dict:
+    """Read a durable mutation receipt without repeating its side effect."""
+    await _ticket(db, ticket_id)
+    row = (await db.execute(text(f"""
+        select answer from platform_operations
+        where client_reference=:ref and ticket_id=:ticket and tenant_id={TENANT}
+    """), {"ref": client_reference, "ticket": ticket_id})).first()
+    return {"found": row is not None, "client_reference": client_reference,
+            "result": row.answer if row else None}
+
 async def _stored(db, reference: str, tool: str, ticket_id, request_hash=None):
     """The answer already given for this reference, to the same tool about the same ticket only."""
     row = (await db.execute(text(f"select ticket_id,tool,answer,request_hash from platform_operations where client_reference=:ref and tenant_id={TENANT}"),

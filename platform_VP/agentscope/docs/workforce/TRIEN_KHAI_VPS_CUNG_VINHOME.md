@@ -1,5 +1,9 @@
 # Triển khai platform trên cùng VPS với Vinhome
 
+> Cập nhật bản tích hợp: [bàn giao Docker/VPS P0–P2 16/10/2026](BAO_CAO_BAN_GIAO_DOCKER_VPS_P0_P2_2026-10-16.md). P1 đã triển khai cùng P0/P2; phần dưới giữ bằng chứng tại thời điểm viết. UAT model thật chưa nghiệm thu; phiếu cũ thiếu hợp đồng được giữ và chặn xử lý tiếp.
+
+> Quy trình P2 cho hai VPS hiện tại: [usage, memory, backup mã hóa và khôi phục](../../deploy/vps/P2_RUNBOOK.md).
+
 > VPS platform riêng triển khai ngày 16/10/2026: `103.238.234.172`,
 > `https://vagen-platform.duckdns.org`. Xem [runbook VPS mới](../../deploy/vps/README.md).
 > Vinhome vẫn ở `103.238.235.156`; hai bên kết nối HTTPS. Phần dưới là hướng dẫn

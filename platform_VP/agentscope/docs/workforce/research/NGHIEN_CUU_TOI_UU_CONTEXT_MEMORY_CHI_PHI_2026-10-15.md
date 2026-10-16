@@ -1,5 +1,8 @@
 # Nghiên cứu tối ưu context, memory, chất lượng và chi phí token cho nền tảng Workforce
 
+> Đối chiếu phần đã thực hiện bằng [báo cáo P2 ngày 16/10](../BAO_CAO_HOAN_THANH_P2_2026-10-16.md).
+> Tài liệu này là nghiên cứu, không phải bằng chứng production acceptance.
+
 Ngày nghiên cứu: 15/10/2026. Phạm vi: chỉ nguồn gốc (tài liệu chính thức của OpenAI/Anthropic/Google, blog kỹ thuật của chính hãng, bài báo arXiv của tác giả, tài liệu/README chính thức của framework). Mỗi khẳng định có kèm URL. Ngày của nguồn ghi trong ngoặc khi nguồn có ghi.
 
 Quy ước:

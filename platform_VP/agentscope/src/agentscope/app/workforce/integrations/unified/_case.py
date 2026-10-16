@@ -20,7 +20,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -36,7 +36,8 @@ from .....middleware import MiddlewareBase
 from .....model import ChatResponse
 from .....permission import PermissionBehavior, PermissionDecision
 from .....tool import MCPTool, ParamsBase, ToolBase, ToolChunk
-from ...orchestration._tables import partner_requests, workflow_inputs
+from ...contracts import Scope
+from ...orchestration._tables import partner_requests, workflow_inputs, workflows
 from ._tables import case_entries, case_sessions, operations, routes
 
 EXPECTS = ("none", "reply", "confirmation")
@@ -115,8 +116,9 @@ def check_say(
 class CaseStore:
     """Persistence of one partner case (sessions, log, operations)."""
 
-    def __init__(self, uows: Callable[[], Any]) -> None:
+    def __init__(self, uows: Callable[[], Any], jobs: Any = None) -> None:
         self._uows = uows
+        self.jobs = jobs
 
     async def route(self, route_id: str) -> dict | None:
         async with self._uows() as uow:
@@ -281,8 +283,20 @@ class CaseStore:
         return {"ticket_id": payload["audience"]["external_ticket_id"],
                 "external_request_id": payload["external_request_id"]}
 
-    async def record_operation(self, values: dict) -> None:
+    async def operation(self, reference: str) -> dict | None:
         async with self._uows() as uow:
+            row = (await uow.execute(select(operations).where(
+                operations.c.client_reference == reference,
+            ))).mappings().first()
+        return dict(row) if row else None
+
+    async def record_operation(self, values: dict) -> bool:
+        async with self._uows() as uow:
+            workflow = (await uow.execute(select(workflows).where(
+                workflows.c.id == values["workflow_id"],
+            ).with_for_update())).mappings().one()
+            if workflow["state"] == "closed":
+                raise ValueError("closed workflows cannot start partner operations")
             existing = (
                 await uow.execute(
                     select(operations.c.operation_id).where(
@@ -303,7 +317,16 @@ class CaseStore:
                         **values,
                     ),
                 )
+                if self.jobs is not None:
+                    await self.jobs.enqueue(
+                        Scope(**{key: workflow[key] for key in ("tenant_id", "domain_id", "area_id", "manager_account_id")}),
+                        "workforce.unified.reconcile", {"client_reference": values["client_reference"], "generation": 0},
+                        "unified-reconcile:" + values["client_reference"] + ":0", uow,
+                        not_before=now + timedelta(seconds=30),
+                    )
                 await uow.commit()
+                return True
+            return False
 
     async def open_operations(self, workflow_id: str) -> int:
         async with self._uows() as uow:
@@ -327,6 +350,18 @@ class CaseStore:
             await uow.execute(update(operations).where(
                 operations.c.client_reference == reference, operations.c.rank == 0,
             ).values(status=status[:64], terminal=status in ("failed", "confirmed", "rejected")))
+            await uow.commit()
+
+    async def save_call_result(self, reference: str, result: dict, *, unknown: bool = False) -> None:
+        async with self._uows() as uow:
+            await uow.execute(update(operations).where(
+                operations.c.client_reference == reference,
+            ).values(call_result=result, updated_at=_now()))
+            if unknown:
+                await uow.execute(update(operations).where(
+                    operations.c.client_reference == reference, operations.c.rank == 0,
+                    operations.c.terminal.is_(False),
+                ).values(status="unknown"))
             await uow.commit()
 
 
@@ -528,14 +563,23 @@ class PartnerTool(ToolBase):
             arguments[self._reference] = reference
         timeout = float(self._spec.get("call_timeout") or 30.0)
         tracking = self._spec.get("tracking") == "events" and reference is not None
+        dispatch = True
         if tracking:
-            await self._case.store.record_operation({"workflow_id": self._case.workflow_id,
+            dispatch = await self._case.store.record_operation({"workflow_id": self._case.workflow_id,
                 "integration_id": self._integration_id, "tool_name": self.name,
                 "client_reference": reference, "external_job_id": None, "status": "dispatching"})
         try:
-            chunk = await asyncio.wait_for(self._mcp.call(**arguments), timeout=timeout)
-            text = "\n".join(block.text for block in chunk.content if isinstance(block, TextBlock))
-            state = chunk.state
+            if not dispatch:
+                operation = await self._case.store.operation(reference)
+                saved = operation.get("call_result") or {}
+                text = saved.get("text") or json.dumps({"status": operation["status"],
+                    "external_job_id": operation["external_job_id"], "client_reference": reference,
+                    "reconciliation_pending": not operation["terminal"]}, ensure_ascii=False)
+                state = ToolResultState(saved.get("state") or ToolResultState.ERROR)
+            else:
+                chunk = await asyncio.wait_for(self._mcp.call(**arguments), timeout=timeout)
+                text = "\n".join(block.text for block in chunk.content if isinstance(block, TextBlock))
+                state = chunk.state
         except TimeoutError:
             text = "UNKNOWN: công cụ không trả lời kịp; chưa rõ thao tác đã thực hiện hay chưa."
             state = ToolResultState.ERROR
@@ -543,8 +587,10 @@ class PartnerTool(ToolBase):
             logger.warning("Partner tool %s failed: %s", self.name, type(exc).__name__)
             text = f"Lỗi khi gọi công cụ: {type(exc).__name__}"
             state = ToolResultState.ERROR
-        if tracking:
+        if tracking and dispatch:
             await self._track(reference, text)
+            await self._case.store.save_call_result(reference, {"text": text, "state": state.value},
+                unknown=state == ToolResultState.ERROR)
         label = await self._case.store.append(
             self._case.workflow_id,
             "evidence",
@@ -567,6 +613,8 @@ class PartnerTool(ToolBase):
         if not isinstance(result, dict):
             return
         status = str(result.get("status") or "")
+        if result.get("retryable") or (result.get("error") or {}).get("retryable"):
+            status = "unknown"
         if not status:
             return
         await self._case.store.settle_operation(reference, status, str(result.get("external_job_id") or "") or None)
@@ -875,7 +923,7 @@ class CaseRuntime:
         if self._delete_guard not in guards:
             guards.append(self._delete_guard)
 
-    async def share_progress(self, workflow_id: str, text: str) -> None:
+    async def share_progress(self, workflow_id: str, text: str, *, event_id: str | None = None) -> bool:
         """A staff progress line, verified (signed event), for the ticket's room.
 
         Only when the route leader opened a room: members then read the job's
@@ -883,27 +931,28 @@ class CaseRuntime:
         """
 
         line = "Tiến độ từ hệ thống đối tác: " + text
-        await self._share(workflow_id, "external_event", line, fact=True)
+        return await self._share(workflow_id, "external_event", line, fact=True, event_id=event_id)
 
     async def share_attention(self, workflow_id: str, reason: str) -> None:
         """Why the ticket needs a person, on the room's timeline."""
 
         await self._share(workflow_id, "error", "Cần xử lý: " + reason)
 
-    async def _share(self, workflow_id: str, kind: str, text: str, fact: bool = False) -> None:
+    async def _share(self, workflow_id: str, kind: str, text: str, fact: bool = False,
+                     event_id: str | None = None) -> bool:
         """One event in the ticket's room, when the Leader opened one."""
 
         if self._app is None:
-            return
+            return False
         binding = await self.store.session_of_workflow(workflow_id)
         if binding is None:
-            return
+            return False
         state = self._app.state
         user_id, agent_id = binding["manager_account_id"], binding["agent_id"]
         record = await state.storage.get_session(user_id, agent_id, binding["session_id"])
         team_id = getattr(record, "team_id", None)
         if not team_id or getattr(state, "shared_context_storage", None) is None:
-            return
+            return False
         from ...._shared_context import SharedContextService
         from ....storage._model._team_context import ContextDelta
 
@@ -915,7 +964,9 @@ class CaseRuntime:
             source_agent_id=agent_id,
             source_session_id=binding["session_id"],
             delta=ContextDelta(add_confirmed_facts=(text,)) if fact else None,
+            event_id=event_id,
         )
+        return True
 
     async def _delete_guard(self, user_id: str, agent_id: str) -> str | None:
         used = await self.store.routes_using(user_id, agent_id)
@@ -938,7 +989,8 @@ class CaseRuntime:
             return await self._member(user_id, agent_id, session_id)
         if session["agent_id"] != agent_id:
             return []
-        route = await self.store.route(session["route_id"])
+        from ._contract import route_for_workflow
+        route = await route_for_workflow(self.store, session["workflow_id"], session["route_id"])
         if route is None:
             return []
         workflow_id = session["workflow_id"]
@@ -971,7 +1023,8 @@ class CaseRuntime:
         leader = await self.store.session(team.session_id) if team is not None else None
         if leader is None:
             return []
-        route = await self.store.route(leader["route_id"])
+        from ._contract import route_for_workflow
+        route = await route_for_workflow(self.store, leader["workflow_id"], leader["route_id"])
         agents = ((route or {}).get("config") or {}).get("member_agents") or {}
         member = agents.get(agent_id)
         if member is None:
@@ -997,6 +1050,8 @@ class CaseRuntime:
         transports: dict[str, Any] = {}
         for spec in route.get("tools") or []:
             mcp_id = spec.get("mcp_id")
+            if spec.get("internal") and only is None:
+                continue
             if not mcp_id or (only is not None and spec.get("name") not in only):
                 continue
             if mcp_id not in clients:
@@ -1005,10 +1060,8 @@ class CaseRuntime:
             record = clients[mcp_id]
             if record is None or not record.enabled:
                 continue
-            raw = next(
-                (item for item in record.discovered_tools if item.get("name") == spec.get("mcp_tool")),
-                None,
-            )
+            from ._contract import tool_descriptor
+            raw = tool_descriptor(spec, record)
             if raw is None:
                 continue
             if mcp_id not in transports:

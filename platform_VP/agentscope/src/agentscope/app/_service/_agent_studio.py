@@ -11,6 +11,9 @@ One place owns the lifecycle of a business agent's :class:`AgentSpec`:
 
 from __future__ import annotations
 
+from ...model._call_observer import usage_purpose
+
+import copy
 import json
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -35,9 +38,8 @@ from .._agent_spec import (
 )
 from .._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY, governed_system_prompt
 from ..storage import AgentRecord, InviteConfig, StorageBase
-
-MAX_VERSIONS = 50
-
+from ._publish_gate import publication_blocker
+from ._agent_eval import catalog_allows_read
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -98,6 +100,8 @@ def set_draft(
 ) -> None:
     record.data.draft_spec = spec.model_dump(mode="json")
     meta = dict(record.data.draft_meta or {})
+    if meta.get("spec_hash") != spec_hash(spec):
+        meta.pop("last_test", None)
     meta.update(
         {
             "author": author,
@@ -110,8 +114,11 @@ def set_draft(
 
 
 def record_test_run(record: AgentRecord, report: dict) -> None:
+    # A slow test of an earlier draft must never replace the current evidence.
+    if report.get("spec_hash") != spec_hash(draft_spec(record)):
+        return
     meta = dict(record.data.draft_meta or {})
-    meta["last_test"] = report
+    meta["last_test"] = copy.deepcopy(report)
     record.data.draft_meta = meta
 
 
@@ -125,17 +132,20 @@ def last_test_for(record: AgentRecord, spec: AgentSpec) -> dict | None:
 def pinned_view(record: AgentRecord, version: int) -> AgentRecord:
     """The agent as it was published in ``version`` (for a running ticket).
 
-    Returns the record unchanged when that version is unknown (e.g. trimmed
-    from history), so a ticket never fails because of pinning.
+    Unknown versions fail closed: silently serving the current publication
+    would change an in-flight ticket's behavior.
     """
 
     stored = next((v for v in record.data.versions if v.get("version") == version), None)
-    if stored is None or version == record.data.published_version:
-        return record
+    if stored is None:
+        raise SpecPatchError(f"Pinned agent version {version} is unavailable")
     view = record.model_copy(deep=True)
-    view.data.system_prompt = stored.get("system_prompt") or view.data.system_prompt
+    view.data.published_version = version
+    view.data.system_prompt = stored["system_prompt"]
+    view.data.evaluation = copy.deepcopy(stored.get("evaluation") or {})
     if stored.get("spec"):
-        view.data.spec = stored["spec"]
+        view.data.spec = copy.deepcopy(stored["spec"])
+        view.data.name = AgentSpec.model_validate(stored["spec"]).name
         view.data.tool_bindings = tool_bindings(AgentSpec.model_validate(stored["spec"]))
     return view
 
@@ -151,9 +161,17 @@ def materialize(
     author: SpecSource,
     note: str,
     evaluation: dict | None,
+    trusted_provisioning: dict | None = None,
 ) -> int:
     """Make ``spec`` the served version of ``record``; return its number."""
 
+    report = trusted_provisioning if trusted_provisioning is not None else evaluation
+    blocker = publication_blocker(spec, report, allow_provisioning=trusted_provisioning is not None)
+    if trusted_provisioning is not None and trusted_provisioning.get("source") == "system_leader" \
+            and record.data.system_role != "leader":
+        blocker = "System Leader provenance cannot publish a business agent"
+    if blocker:
+        raise SpecPatchError(blocker)
     version = (max((v["version"] for v in record.data.versions), default=0)) + 1
     prompt = runtime_prompt(spec)
     record.data.name = spec.name
@@ -168,25 +186,19 @@ def materialize(
     record.data.spec = spec.model_dump(mode="json")
     record.data.draft_spec = None
     record.data.draft_meta = {}
-    if evaluation is not None:
-        record.data.evaluation = {
-            "passed": evaluation.get("publishable", False),
-            "score": evaluation.get("pass_rate", 0.0),
-            "total": evaluation.get("total", 0),
-            "spec_hash": evaluation.get("spec_hash"),
-        }
+    record.data.evaluation = copy.deepcopy(report)
     record.data.versions = [
         *record.data.versions,
         {
             "version": version,
-            "spec": record.data.spec,
+            "spec": copy.deepcopy(record.data.spec),
             "system_prompt": prompt,
             "author": author,
             "note": note[:1000],
             "created_at": _now(),
-            "evaluation": record.data.evaluation or None,
+            "evaluation": copy.deepcopy(record.data.evaluation),
         },
-    ][-MAX_VERSIONS:]
+    ]
     record.data.published_version = version
     return version
 
@@ -211,9 +223,11 @@ async def apply_bindings(
     """
 
     sessions = await storage.list_sessions(user_id, record.id)
-    if not sessions:
+    primary = next((session for session in sessions
+                    if getattr(getattr(session, "origin", None), "type", "user") == "user"
+                    and not getattr(session, "team_id", None)), None)
+    if primary is None:
         return
-    primary = sessions[0]
     workspace = await workspace_manager.get_workspace(
         user_id,
         record.id,
@@ -237,7 +251,12 @@ async def apply_bindings(
             raise SpecPatchError(f"MCP {mcp_id} không còn khả dụng")
         client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
         client.enable_tools = list(dict.fromkeys(names))
-        client.confirm_tools = confirm.get(mcp_id) or None
+        # Publishing cannot remove the server's consent requirement by editing
+        # a draft flag. Unknown tools are also confirmation-only at runtime.
+        metadata = {item.get("name"): item for item in mcp_record.discovered_tools}
+        required = set(client.confirm_tools or []) | set(confirm.get(mcp_id) or [])
+        required.update(name for name in names if not catalog_allows_read(metadata.get(name, {})))
+        client.confirm_tools = sorted(required.intersection(names)) or None
         await workspace.add_mcp(client, agent_id=record.id, session_id=primary.id)
     wanted = {item.skill_id: item for item in spec.skills}
     if install_skill is not None:
@@ -283,6 +302,11 @@ async def tool_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
             name = str(tool.get("name") or "").strip()
             if not name:
                 continue
+            read_only = tool.get("read_only") is True
+            requires_consent = (
+                tool.get("requires_consent", not read_only) is not False
+                or name in (record.client.confirm_tools or [])
+            )
             catalog[f"{record.id}:{name}"] = {
                 "tool_id": f"{record.id}:{name}",
                 "mcp_id": record.id,
@@ -290,7 +314,8 @@ async def tool_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
                 "tool_name": name,
                 "description": str(tool.get("description") or ""),
                 "input_schema": tool.get("input_schema") or {},
-                "read_only": bool(tool.get("read_only", False)),
+                "read_only": read_only,
+                "requires_consent": requires_consent,
             }
     return catalog
 
@@ -319,20 +344,37 @@ async def skill_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
 
 
 def tool_runner(storage: StorageBase, user_id: str, spec: AgentSpec):
-    """Return an async callable that runs one of the spec's tools by name."""
+    """Run catalog-approved reads only, rechecking at the connector boundary."""
 
     by_name = {tool.tool_name: tool for tool in spec.tools}
+    ambiguous = {name for name in by_name if sum(tool.tool_name == name for tool in spec.tools) != 1}
 
     async def run(name: str, arguments: dict) -> str:
-        tool = by_name[name]
+        tool = by_name.get(name)
+        if tool is None or name in ambiguous or tool.tool_id != f"{tool.mcp_id}:{name}":
+            raise RuntimeError("Sandbox tool is not uniquely bound to the server catalog")
         mcp_record = await storage.get_mcp(user_id, tool.mcp_id)
         if mcp_record is None or not mcp_record.enabled:
             raise RuntimeError(f"MCP {tool.mcp_id} unavailable")
+        # Fetch the current server record: the draft and the earlier eval
+        # snapshot are not authority to execute an external tool.
+        matches = [item for item in mcp_record.discovered_tools if item.get("name") == name]
+        if (
+            len(matches) != 1
+            or not catalog_allows_read(matches[0])
+            or tool.requires_consent
+            or name in (mcp_record.client.confirm_tools or [])
+        ):
+            raise RuntimeError("Sandbox only executes server-classified read-only tools without consent")
         client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
         try:
             if client.is_stateful:
                 await client.connect()
             mcp_tool = await client.get_tool(name)
+            # get_tool refreshes the provider descriptor on this isolated
+            # client. Refuse revoked/unknown classification before invoking it.
+            if getattr(mcp_tool, "is_read_only", False) is not True:
+                raise RuntimeError("Sandbox tool classification changed or requires confirmation")
             result = await mcp_tool(**arguments)
             content = getattr(result, "content", result)
             if isinstance(content, list):
@@ -406,6 +448,7 @@ How to work:
 - When creating an agent from a description, also fill name, description,
   goal, audience and tone, and add 3-5 tests (scenario + expected behaviour)
   that cover the rules, an out-of-scope request and a case needing consent.
+  Mark consent/privacy/safety cases safety_critical=true; at least one is required.
 - When the manager asks to improve tests, add tests; do not weaken rules.
 - Ask at most 3 questions, only when the answer changes behaviour (for example
   whether the agent may quote prices). Do not ask about things you can set to
@@ -433,6 +476,7 @@ def _normalize_items(operations: list[CopilotOperation]) -> list[SpecOperation]:
     return normalized
 
 
+@usage_purpose("builder_copilot")
 async def copilot_turn(
     *,
     model: ChatModelBase,
@@ -450,7 +494,10 @@ async def copilot_turn(
     """
 
     tools = [
-        {k: v for k, v in tool.items() if k in {"tool_id", "mcp_name", "tool_name", "description", "read_only"}}
+        {
+            k: v for k, v in tool.items()
+            if k in {"tool_id", "mcp_name", "tool_name", "description", "read_only", "requires_consent"}
+        }
         for tool in catalog.values()
     ]
     context = (
@@ -478,8 +525,12 @@ async def copilot_turn(
             meta = catalog.get(str(operation.value.get("tool_id") or ""))
             if meta is not None:
                 operation.value = {
-                    "read_only": meta["read_only"],
                     **operation.value,
+                    "read_only": meta["read_only"] is True,
+                    "requires_consent": (
+                        meta.get("requires_consent", meta["read_only"] is not True) is not False
+                        or operation.value.get("requires_consent") is True
+                    ),
                     "mcp_id": meta["mcp_id"],
                     "mcp_name": meta["mcp_name"],
                     "tool_name": meta["tool_name"],
@@ -516,6 +567,20 @@ async def copilot_turn(
             rejected.append(str(exc))
     if rejected:
         reply.assistant_message += " (Bỏ qua: " + "; ".join(rejected[:5]) + ")"
+    # A model can also replace the whole tools list. Normalize every binding,
+    # so that path cannot bypass the catalog checks for add/update operations.
+    patched = patched.model_copy(deep=True)
+    for tool in patched.tools:
+        meta = catalog.get(tool.tool_id, {})
+        tool.read_only = meta.get("read_only") is True
+        tool.requires_consent = (
+            tool.requires_consent
+            or meta.get("requires_consent", not tool.read_only) is not False
+        )
+        if meta:
+            tool.mcp_id = meta["mcp_id"]
+            tool.mcp_name = meta["mcp_name"]
+            tool.tool_name = meta["tool_name"]
     changes = [change.model_dump(mode="json") for change in diff_specs(spec, patched)]
     return reply, patched, changes
 
@@ -546,6 +611,7 @@ which tools / knowledge / skills it should use, and which teammate it hands to.
 Write in the manager's language."""
 
 
+@usage_purpose("builder_plan")
 async def plan_composition(
     *,
     model: ChatModelBase,
@@ -562,7 +628,10 @@ async def plan_composition(
             mode="single", reason="", agents=[PlannedAgent(name="Agent mới", role="", brief=description)],
         )
     tools = [
-        {k: v for k, v in tool.items() if k in {"tool_id", "tool_name", "description", "read_only"}}
+        {
+            k: v for k, v in tool.items()
+            if k in {"tool_id", "tool_name", "description", "read_only", "requires_consent"}
+        }
         for tool in catalog.values()
     ]
     context = (

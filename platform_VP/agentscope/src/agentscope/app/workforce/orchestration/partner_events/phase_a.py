@@ -103,6 +103,7 @@ class WorkflowNeedsAttentionPayload(WorkforceModel):
 
 
 class WorkflowClosedPayload(WorkforceModel):
+    stop_tracking_only: bool = False
     state: Literal["closed"]
     revision: int = Field(ge=1, strict=True)
     reason: str = Field(min_length=1, max_length=200)

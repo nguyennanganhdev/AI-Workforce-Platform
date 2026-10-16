@@ -1436,6 +1436,32 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
 
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
+    async def test_invitation_preserves_server_consent_and_ignores_borrowed_primary(self):
+        from agentscope.app.storage import MCPRecord
+        from agentscope.mcp import HttpMCPConfig, MCPClient
+
+        mcp = MCPRecord(user_id=self.user_id, client=MCPClient(name="registered", is_stateful=False,
+            mcp_config=HttpMCPConfig(url="http://unused.test/mcp"), confirm_tools=["flagged"]),
+            discovered_tools=[{"name": "read", "read_only": True}, {"name": "write", "read_only": False},
+                              {"name": "flagged", "read_only": True}])
+        await self.storage.upsert_mcp(self.user_id, mcp)
+        self.monday_agent.data.tool_bindings = [
+            {"mcp_id": mcp.id, "tool_name": name, "requires_consent": False}
+            for name in ["read", "write", "flagged", "unknown"]]
+        await self.storage.upsert_agent(self.user_id, self.monday_agent)
+        await self.storage.upsert_session(user_id=self.user_id, agent_id=self.monday_agent.id,
+            config=SessionConfig(workspace_id="wrong-borrowed-workspace"), origin=TeamOrigin())
+        answer = await AgentInvite(storage=self.storage, message_bus=self.bus,
+            workspace_manager=self.workspace_manager, user_id=self.user_id,
+            session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent])(
+                target=f"Monday@{self.monday_agent.id[:8]}", prompt="Inspect safely")
+        self.assertNotEqual(answer.state, ToolResultState.ERROR)
+        client = self.invite_workspace.add_mcp.call_args.args[0]
+        self.assertEqual(client.confirm_tools, ["flagged", "unknown", "write"])
+        sessions = await self.storage.list_sessions(self.user_id, self.monday_agent.id)
+        self.assertEqual(sessions[0].config.workspace_id, "ws-monday")
+
     async def test_batch_preserves_all_four_members_and_dispatches_once(self):
         pool = [self.monday_agent]
         for name in ("Search specialist", "Resource specialist", "Calculator"):

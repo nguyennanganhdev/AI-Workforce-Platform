@@ -433,8 +433,29 @@ class ChatLeaderTurnRunner:
     async def invoke_turn(self, scope, trigger, context, execution_guard) -> TurnDecision:
         await execution_guard.check("read")
         if self._case is not None:
-            route = await self._case.store.route(context.workflow.route_id)
+            from ._contract import route_for_workflow
+            route = await route_for_workflow(self._case.store, context.workflow.workflow_id,
+                                             context.workflow.route_id)
             if route is not None:
+                from ._readiness import route_readiness
+
+                readiness = await route_readiness(self._state().storage, route)
+                if not readiness["ready"]:
+                    workflow = context.workflow
+                    await self._case.store.append(workflow.workflow_id, "attention", "TEAM_NOT_READY",
+                                                  trigger_id=trigger["trigger_id"])
+                    return TurnDecision(
+                        candidate=RuntimeTurnResult(
+                            trigger_id=trigger["trigger_id"], expected_state_revision=workflow.revision,
+                            checkpoint=context.checkpoint.model_copy(update={"state_revision": workflow.revision + 1}),
+                            result=RequestResult(messages=(AssistantMessage(
+                                message_id=f"{trigger['trigger_id']}:team-not-ready",
+                                workflow_id=workflow.workflow_id,
+                                text="Ban quản lý đang kiểm tra đội hỗ trợ cho yêu cầu này. Yêu cầu của bạn đã được ghi nhận.",
+                                created_at=self._clock(),
+                            ),), data={"outcome": "needs_attention", "error_code": "TEAM_NOT_READY"}),
+                        ), next_state=WorkflowState.NEEDS_ATTENTION,
+                    )
                 return await self._case_turn(scope, trigger, context, route)
         state = self._state()
         user_id = scope.manager_account_id
@@ -585,6 +606,17 @@ class ChatLeaderTurnRunner:
             await storage.upsert_team(user_id, team)
             await storage.set_session_team_id(user_id, session.id, team.id)
             session = await storage.get_session(user_id, leader.id, session.id)
+        if session.state.middle_context.get("workflow_id") != workflow.workflow_id:
+            session.state.middle_context["workflow_id"] = workflow.workflow_id
+            session = await storage.upsert_session(user_id=user_id, agent_id=leader.id,
+                config=session.config, state=session.state, session_id=session.id)
+        if route.get("contract_frozen"):
+            versions = {agent_id: int(binding["version"]) for agent_id, binding in
+                        ((route.get("config") or {}).get("member_agents") or {}).items()}
+            if session.state.middle_context.get("partner_agent_versions") != versions:
+                session.state.middle_context["partner_agent_versions"] = versions
+                session = await storage.upsert_session(user_id=user_id, agent_id=leader.id,
+                    config=session.config, state=session.state, session_id=session.id)
         return session
 
     async def _wait_for_say(self, workflow_id: str, trigger_id: str) -> None:

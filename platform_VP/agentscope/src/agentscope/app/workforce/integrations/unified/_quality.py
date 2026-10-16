@@ -1,45 +1,20 @@
 """Quality and cost of a manager's partner tickets, from what is stored.
 
 Outcomes come from the workflow and its close reason, message quality from
-the case log (CaseSay accepted / refused), and cost from the provider usage
-the ticket's room recorded per agent (with cached input).
+the case log (CaseSay accepted / refused), and cost from owner-scoped,
+per-provider-attempt evidence with immutable operator-supplied prices.
 """
 
 from __future__ import annotations
 
-import json
-import os
 from datetime import UTC, datetime, timedelta
+import os
 from typing import Any
 
 from sqlalchemy import select
 
 from ...orchestration._tables import public_events, workflows
 from ._tables import case_entries, case_sessions
-
-# USD per 1M tokens (input, cached input, output), OpenAI Standard tier,
-# https://developers.openai.com/api/docs/pricing as read on 15/10/2026.
-# Override with WORKFORCE_MODEL_PRICES='{"model": [in, cached, out]}'.
-DEFAULT_PRICES = {
-    "gpt-5.5": (5.00, 0.50, 30.00),
-    "gpt-5.4-mini": (0.75, 0.075, 4.50),
-}
-
-
-def _prices() -> dict[str, tuple[float, float, float]]:
-    prices = dict(DEFAULT_PRICES)
-    raw = os.getenv("WORKFORCE_MODEL_PRICES", "").strip()
-    if raw:
-        prices.update({name: tuple(map(float, value)) for name, value in json.loads(raw).items()})
-    return prices
-
-
-def _cost(model: str, input_tokens: int, cached: int, output_tokens: int, prices: dict) -> float | None:
-    price = prices.get(model)
-    if price is None:
-        return None
-    return ((input_tokens - cached) * price[0] + cached * price[1] + output_tokens * price[2]) / 1_000_000
-
 
 async def ticket_quality(
     uows: Any,
@@ -54,7 +29,7 @@ async def ticket_quality(
     async with uows() as uow:
         rows = (
             await uow.execute(
-                select(workflows.c.id, workflows.c.state).where(
+                select(workflows.c.id, workflows.c.state, workflows.c.created_at).where(
                     workflows.c.manager_account_id == manager_account_id,
                     workflows.c.created_at >= since,
                 ),
@@ -84,10 +59,18 @@ async def ticket_quality(
                 ),
             )
         ).all() if ids else []
-    states = {workflow_id: state for workflow_id, state in rows}
+    states = {workflow_id: state for workflow_id, state, _created_at in rows}
+    try:
+        boundary = datetime.fromisoformat(os.environ["WORKFORCE_LEDGER_STARTED_AT"])
+        if boundary.tzinfo is None:
+            raise ValueError
+    except (KeyError, ValueError):
+        boundary = None
+    covered = {wid for wid, _state, at in rows if boundary and
+               (at.replace(tzinfo=UTC) if at.tzinfo is None else at) >= boundary}
     # The column stores the whole public event; its own payload has the reason.
     reason = {workflow_id: ((event or {}).get("payload") or {}).get("reason") for workflow_id, event in closes}
-    confirmed = [w for w in ids if reason.get(w) in success_reasons]
+    confirmed = [w for w in ids if states[w] == "closed" and reason.get(w) in success_reasons]
     invitations: dict[str, int] = {}
     says = rejected = 0
     for workflow_id, kind, expects in entries:
@@ -98,24 +81,28 @@ async def ticket_quality(
         else:
             rejected += 1
 
-    prices = _prices()
-    tokens = {"input": 0, "cached": 0, "output": 0}
-    cost, priced = 0.0, True
-    for _workflow_id, session_id in bindings:
-        session = await storage.get_session(manager_account_id, "", session_id)
-        team_id = getattr(session, "team_id", None)
-        record = await shared_storage.get_team_shared_context(manager_account_id, team_id) if team_id else None
-        if record is None:
-            continue
-        for usage in record.state.metrics.provider_usage.values():
-            tokens["input"] += usage.input_tokens
-            tokens["cached"] += usage.cached_input_tokens
-            tokens["output"] += usage.output_tokens
-            value = _cost(usage.model, usage.input_tokens, usage.cached_input_tokens, usage.output_tokens, prices)
-            if value is None:
-                priced = False
-            else:
-                cost += value
+    from ...._model_ledger import aggregate, recording_failures
+    calls = await storage.list_model_calls(manager_account_id, since=since.isoformat(), limit=20001)
+    truncated = len(calls) > 20000
+    calls = calls[:20000]
+    session_workflows = dict((sid, wid) for wid, sid in bindings)
+    team_workflows = {}
+    for wid, sid in bindings:
+        session = await storage.get_session(manager_account_id, "", sid)
+        if session and session.team_id:
+            team_workflows[session.team_id] = wid
+    grouped = {wid: [] for wid in ids}
+    for call in calls:
+        wid = call.get("workflow_id") or team_workflows.get(call.get("team_id")) or session_workflows.get(call.get("session_id"))
+        if wid in grouped:
+            grouped[wid].append(call)
+    metrics = aggregate([call for values in grouped.values() for call in values])
+    success_calls = [call for wid in confirmed for call in grouped[wid]]
+    success_metrics = aggregate(success_calls)
+    successful_complete = bool(confirmed) and all(wid in covered and grouped[wid] for wid in confirmed) and success_metrics["cost_complete"] and not truncated and not recording_failures()
+    all_complete = bool(ids) and all(wid in covered and grouped[wid] for wid in ids) and not truncated and not recording_failures()
+    # No historical backfill: tickets without per-call evidence remain unknown.
+    tokens = {"input": metrics["input_tokens"], "cached": metrics["cached_input_tokens"], "output": metrics["output_tokens"]}
     return {
         "days": days,
         "tickets": len(ids),
@@ -132,6 +119,10 @@ async def ticket_quality(
         "cached_input_tokens": tokens["cached"],
         "output_tokens": tokens["output"],
         "cache_rate": round(tokens["cached"] / tokens["input"], 3) if tokens["input"] else 0.0,
-        "est_cost_usd": round(cost, 4) if priced else None,
-        "cost_per_confirmed_usd": round(cost / len(confirmed), 4) if priced and confirmed else None,
+        "est_cost_usd": metrics["est_cost_usd"] if all_complete else None,
+        "usage_complete": metrics["usage_complete"] and all_complete,
+        "cost_complete": metrics["cost_complete"] and all_complete,
+        "before_ledger_unknown": True,
+        "successful_ticket_cost_usd": success_metrics["est_cost_usd"] if successful_complete else None,
+        "cost_per_confirmed_usd": success_metrics["est_cost_usd"] / len(confirmed) if successful_complete else None,
     }

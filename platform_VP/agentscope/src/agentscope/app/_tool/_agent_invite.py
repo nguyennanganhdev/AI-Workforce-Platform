@@ -552,6 +552,14 @@ class AgentInvite(_TeamToolBase):
                     f"longer invitable as a published business agent.",
                 )
             invited = fresh
+            leader_for_pin = await self._storage.get_session(self._user_id, self._agent_id, self._session_id)
+            contract_versions = (leader_for_pin.state.middle_context.get("partner_agent_versions") or {}) if leader_for_pin else {}
+            if contract_versions:
+                version = contract_versions.get(invited.id)
+                if version is None:
+                    return _error("AgentInvite: agent is outside this ticket's frozen team contract.")
+                from .._service._agent_studio import pinned_view
+                invited = pinned_view(invited, int(version))
 
             # Duplicate-borrow guard — one team, one borrow per agent.
             existing_members = await _ensure_team_members(
@@ -598,6 +606,8 @@ class AgentInvite(_TeamToolBase):
                 self._user_id,
                 invited.id,
             )
+            invited_sessions = [session for session in invited_sessions
+                                if session.origin.type == "user" and not session.team_id]
             if invited_sessions:
                 primary = invited_sessions[0]
                 borrowed_workspace_id = primary.config.workspace_id
@@ -641,6 +651,9 @@ class AgentInvite(_TeamToolBase):
                 # session — the invited agent's main-session state
                 # stays with its own session.
             )
+            # Accounting metadata only; permissions and conversation stay private.
+            if leader_for_pin and leader_for_pin.state.middle_context.get("workflow_id"):
+                worker_state.middle_context["workflow_id"] = leader_for_pin.state.middle_context["workflow_id"]
             if invited.data.published_version:
                 # Pin the Agent Studio version for this ticket: a version
                 # published while the ticket runs applies to new tickets only.
@@ -713,7 +726,13 @@ class AgentInvite(_TeamToolBase):
                             record.client.model_dump(mode="json"),
                         )
                         spec.enable_tools = list(dict.fromkeys(enabled_tools))
-                        spec.confirm_tools = confirm.get(mcp_id) or None
+                        from .._service._agent_eval import catalog_allows_read
+
+                        metadata = {item.get("name"): item for item in record.discovered_tools}
+                        required = set(spec.confirm_tools or []) | set(confirm.get(mcp_id) or [])
+                        required.update(name for name in enabled_tools
+                                        if not catalog_allows_read(metadata.get(name, {})))
+                        spec.confirm_tools = sorted(required.intersection(enabled_tools)) or None
                         mcp_specs.append(spec)
                 else:
                     # Compatibility for manually-authored invitable agents

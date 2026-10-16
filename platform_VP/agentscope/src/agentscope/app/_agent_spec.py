@@ -83,6 +83,8 @@ class SpecTest(BaseModel):
     must_not_include: list[str] = Field(default_factory=list, max_length=10)
     expect_tool: str = Field(default="", max_length=200)
     """Tool name the agent should call for this scenario, if any."""
+    safety_critical: bool = False
+    """A failed consent, privacy or safety scenario always blocks publication."""
 
 
 class AgentSpec(BaseModel):

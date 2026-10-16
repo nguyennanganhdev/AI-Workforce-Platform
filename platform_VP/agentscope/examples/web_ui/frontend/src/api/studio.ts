@@ -196,7 +196,7 @@ export interface AgentMemory {
 	agent_id: string;
 	kind: 'lesson' | 'fact' | 'preference';
 	content: string;
-	status: 'active' | 'superseded' | 'rejected';
+	status: 'active' | 'superseded' | 'rejected' | 'expired';
 	source_ticket: string;
 	source_event_ids: string[];
 	confidence: number;
@@ -253,6 +253,11 @@ const base = '/workforce/console/studio';
 const agentPath = (id: string) => `${base}/agents/${encodeURIComponent(id)}`;
 
 export const studioApi = {
+	observability: (days = 30) => client.get<ModelObservability>(`${base}/observability`, { days: String(days) }),
+	modelCalls: (since: string, until: string, offset = 0) =>
+		client.get<{ calls: Record<string, unknown>[]; next_offset: number | null }>(`${base}/model-calls`, {
+			since, until, offset: String(offset), limit: '1000',
+		}),
 	listAgents: () => client.get<AgentSummary[]>(`${base}/agents`),
 	activity: () => client.get<AgentActivity[]>(`${base}/activity`),
 	quality: (days = 30) => client.get<TicketQuality>(`${base}/quality`, { days: String(days) }),
@@ -291,3 +296,38 @@ export const studioApi = {
 	retireMemory: (id: string, memoryId: string) =>
 		client.post<AgentMemory>(`${agentPath(id)}/memories/${encodeURIComponent(memoryId)}/retire`),
 };
+
+export interface CallMetrics {
+	calls: number;
+	completed_calls: number;
+	failed_calls: number;
+	cancelled_calls: number;
+	pending_calls: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	output_tokens: number;
+	p50_ms: number | null;
+	p95_ms: number | null;
+	failure_rate: number | null;
+	cache_hit_ratio: number | null;
+	usage_complete: boolean;
+	cost_complete: boolean;
+	calls_missing_usage: number;
+	calls_unpriced: number;
+	calls_costed: number;
+	calls_unknown_purpose: number;
+	known_cost_usd: number;
+	est_cost_usd: number | null;
+}
+
+export interface ModelObservability extends CallMetrics {
+	days: number;
+	window_since: string;
+	by_model: (CallMetrics & { provider: string; endpoint_id: string; model: string; service_tier: string })[];
+	by_purpose: (CallMetrics & { purpose: string })[];
+	successful_tickets?: number;
+	successful_ticket_cost_usd?: number | null;
+	cost_per_successful_ticket_usd?: number | null;
+	backlog: { model_calls_started: number; tickets_open?: number; tickets_need_attention?: number };
+	coverage: { truncated: boolean; before_ledger_unknown: boolean; recording_failures_current_process: number; scope: string };
+}

@@ -32,6 +32,21 @@ from ._model import (
 )
 
 
+class AgentRevisionConflict(RuntimeError):
+    """Another writer changed this agent; reload before retrying the operation."""
+
+
+def validate_agent_history(current: AgentRecord | None, candidate: AgentRecord) -> None:
+    """Published entries are append-only, including writes outside Studio."""
+    if current is None:
+        return
+    history = current.data.versions
+    if candidate.data.versions[:len(history)] != history:
+        raise AgentRevisionConflict("IMMUTABLE_AGENT_VERSION_CHANGED")
+    if candidate.data.published_version < current.data.published_version:
+        raise AgentRevisionConflict("AGENT_VERSION_REGRESSION")
+
+
 class StorageBase(ABC):
     """The storage abstract base class."""
 
@@ -50,6 +65,15 @@ class StorageBase(ABC):
 
     async def aclose(self) -> None:
         """Release underlying connection resources. Default is a no-op."""
+
+    async def claim_builder_publish(self, user_id: str, conversation_id: str, proposal_id: str) -> bool:
+        """Durably reserve a proposal once, before any publication side effects.
+
+        A claim never expires: after a worker crash an operator must review
+        partial publication rather than retrying side effects blindly.
+        Unsupported backends must fail closed, never fall back to RAM locks.
+        """
+        raise NotImplementedError("Storage does not support durable Builder publication claims")
 
     @abstractmethod
     async def upsert_credential(
@@ -1154,6 +1178,15 @@ class StorageBase(ABC):
         """List an agent's memories, newest first."""
         raise NotImplementedError("this storage does not keep agent memory")
 
+    async def compare_and_swap_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+        expected_revision: int | None,
+    ) -> bool:
+        """Insert (None) or update a memory only at the expected revision."""
+        raise NotImplementedError("this storage does not support atomic agent memory")
+
     async def get_agent_memory(
         self,
         user_id: str,
@@ -1539,3 +1572,12 @@ class StorageBase(ABC):
             `list[KnowledgeDocumentRecord]`:
                 Orphan ``pending`` documents to redispatch.
         """
+
+    async def record_model_call(self, user_id: str, record: dict) -> None:
+        """Persist a started/final projection; terminal evidence is immutable."""
+        raise NotImplementedError
+
+    async def list_model_calls(self, user_id: str, *, since: str, limit: int = 1000,
+                               offset: int = 0, until: str | None = None) -> list[dict]:
+        """Owner-scoped call evidence, in stable ascending start/id order."""
+        raise NotImplementedError

@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from .platform import (ACTIVE, PROGRESS, RETRY_CODES, SILENT_TEXT, STOP_TRACKING, TENANT, TIMEZONE, Platform,
                        PlatformError, apply_event, apply_result, apply_snapshot, event_body, fail_link, post_chat,
-                       provider_events, quote_card, retryable)
+                       provider_events, quote_card, retryable, completion_acceptance)
 
 log = logging.getLogger("vinhomes_api.platform_sync")
 EVERY_SECONDS = 1.0
@@ -78,6 +78,7 @@ async def _deliver(client: Platform, link, command) -> dict:
     if kind == "close":
         return await client.close(link["workflow_id"], {
             **base, "expected_revision": body["sent_revision"], "reason": body["reason"],
+            **({"domain_acceptance": body["domain_acceptance"]} if body.get("domain_acceptance") else {}),
             **({"stop_tracking_only": True} if body.get("stop_tracking_only") else {})})
     return await client.request({
         **base, "command_type": kind, "external_management_ref": link["management_ref"], "timezone": TIMEZONE,
@@ -122,6 +123,24 @@ async def _send(engine: AsyncEngine, client: Platform, tenant: str, ticket: str)
                 await kept.execute(text("update platform_commands set body=cast(:body as jsonb) where id=:id"),
                                    {"id": command["id"], "body": json.dumps(body, ensure_ascii=False)})
         try:
+            if command["kind"] == "close" and not body.get("stop_tracking_only"):
+                # Revalidate at send as well: a queued command may outlive a reopen
+                # or a new work order. Enrich old queued closes without a migration.
+                accepted = await completion_acceptance(db, link["ticket_id"])
+                if accepted is None or accepted["external_user_id"] != link["user_id"]:
+                    raise PlatformError(409, "DOMAIN_ACCEPTANCE_NOT_READY", retryable=True)
+                prior = body.get("domain_acceptance")
+                if prior is not None and any(prior[key] != accepted[key] for key in (
+                    "external_ticket_id", "external_user_id", "approval_id", "decided_event_id", "work_order_ids",
+                )):
+                    raise PlatformError(409, "DOMAIN_ACCEPTANCE_CHANGED", retryable=True)
+                if prior is None:
+                    body = {**body, "domain_acceptance": accepted}
+                    # Keep the exact request evidence before the first network
+                    # attempt, just as sent_revision above, for timeout replay.
+                    async with _scoped(engine, tenant) as kept:
+                        await kept.execute(text("update platform_commands set body=cast(:body as jsonb) where id=:id"),
+                                           {"id": command["id"], "body": json.dumps(body, ensure_ascii=False)})
             if body.get("file_ids"):
                 from .platform_assets import prepare
                 body = await prepare(engine, client, tenant, link, {**command, "body": body})

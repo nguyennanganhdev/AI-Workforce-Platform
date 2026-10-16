@@ -1,0 +1,20 @@
+{
+  "memories": [
+    {"id":"water","owner":"bql-a","agent":"technical","source_ticket":"training-water","content":"Rò nước: xác minh van tổng trong tài liệu trước khi đề xuất cô lập nguồn nước."},
+    {"id":"electric","owner":"bql-a","agent":"technical","source_ticket":"training-electric","content":"Chập điện: báo điều phối kiểm tra nguồn điện và chuyển chuyên môn đúng phạm vi."},
+    {"id":"clean","owner":"bql-a","agent":"cleaning","source_ticket":"training-clean","content":"Rác hành lang: xác minh vị trí và chuyển điều phối vệ sinh."},
+    {"id":"wrong-owner","owner":"bql-b","agent":"technical","source_ticket":"training-b","content":"Mùi gas: quy trình chỉ thuộc BQL B."},
+    {"id":"expired","owner":"bql-a","agent":"technical","source_ticket":"training-old","ttl_days":-1,"content":"Giá kiểm tra máy lạnh là 100 đồng."},
+    {"id":"legacy","owner":"bql-a","agent":"technical","source_ticket":"unverified","verified":false,"content":"Đặt sân tennis luôn được xác nhận ngay."}
+  ],
+  "cases": [
+    {"id":"water-new","owner":"bql-a","agent":"technical","ticket":"heldout-1","query":"Tìm quy trình rò nước van tổng","expected_memory_ids":["water"]},
+    {"id":"electric-new","owner":"bql-a","agent":"technical","ticket":"heldout-2","query":"Chập điện kiểm tra nguồn điện","expected_memory_ids":["electric"]},
+    {"id":"clean-new","owner":"bql-a","agent":"cleaning","ticket":"heldout-3","query":"Rác hành lang vệ sinh","expected_memory_ids":["clean"]},
+    {"id":"other-owner","owner":"bql-a","agent":"technical","ticket":"heldout-4","query":"Mùi gas BQL B","expected_memory_ids":[]},
+    {"id":"other-agent","owner":"bql-a","agent":"cleaning","ticket":"heldout-5","query":"Chập điện nguồn điện","expected_memory_ids":[]},
+    {"id":"expired-price","owner":"bql-a","agent":"technical","ticket":"heldout-6","query":"Giá máy lạnh 100 đồng","expected_memory_ids":[]},
+    {"id":"legacy-unverified","owner":"bql-a","agent":"technical","ticket":"heldout-7","query":"Đặt sân tennis","expected_memory_ids":[]},
+    {"id":"source-is-not-heldout","owner":"bql-a","agent":"technical","ticket":"training-water","query":"rò nước van tổng","expected_memory_ids":[]}
+  ]
+}

@@ -12,6 +12,8 @@ that wants them subscribes through the
 ``GET /sessions/{sid}/stream`` SSE endpoint.
 """
 
+from ...model._call_observer import usage_purpose
+
 import asyncio
 import inspect
 import json
@@ -594,6 +596,7 @@ class ChatService:
             return ""
         return self._learning.memory.render(memories)
 
+    @usage_purpose("session_title")
     async def _auto_name_session(
         self,
         user_id: str,
@@ -1551,6 +1554,11 @@ class ChatService:
                     str((agent_record.data.spec or {}).get("model_tier", "standard")),
                 )
                 model = await get_model(user_id, model_cfg, self._access)
+                attribution = {"user_id": user_id, "agent_id": agent_id, "session_id": session_id,
+                               "team_id": team.id if team is not None else None,
+                               "workflow_id": session_record.state.middle_context.get("workflow_id"),
+                               "purpose": "runtime"}
+                model._usage_attributes = attribution
                 # History summaries are bookkeeping: when this agent runs on
                 # the strong model, write them with the session's base model.
                 summary_model = (
@@ -1558,6 +1566,8 @@ class ChatService:
                     if model_cfg is not base_model_cfg
                     else None
                 )
+                if summary_model is not None:
+                    summary_model._usage_attributes = {**attribution, "purpose": "private_summary"}
                 _apply_prompt_cache_key(model, agent_id)
                 _apply_reasoning_effort(model, agent_record.data.system_role)
 
@@ -1722,6 +1732,8 @@ class ChatService:
                     if fallback_cfg is not None
                     else None
                 )
+                if fallback_model is not None:
+                    fallback_model._usage_attributes = attribution
 
                 # -------------------------------------------------------------
                 # 5. Assemble the Agent.

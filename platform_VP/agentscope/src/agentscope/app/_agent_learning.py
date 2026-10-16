@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from .._logging import logger
 from ..message import UserMsg
 from ..model import ChatModelBase
+from ..model._call_observer import usage_purpose
 from ._agent_memory import AgentMemoryService, MemoryCandidate, fold_tokens
 from ._agent_spec import AgentSpec, SpecOperation, apply_operations
 from ._service._agent_eval import MIN_TESTS_TO_PUBLISH, run_spec_tests
@@ -47,7 +48,6 @@ ModelFactory = Callable[[], Awaitable[tuple[ChatModelBase, ChatModelBase]]]
 SELF_UPDATE_COOLDOWN = timedelta(hours=24)
 _SUCCESS = {"verified", "accepted"}
 # Events whose content the platform verified: tool results and the customer.
-_VERIFIED_KINDS = {"external_event", "customer_message"}
 _BLOCKING = {"queued", "assigned", "challenged", "stopped", "failed"}
 
 
@@ -60,6 +60,7 @@ class _LearnedMemory(BaseModel):
 class _LearnedRule(BaseModel):
     text: str = Field(min_length=1, max_length=400)
     reason: str = Field(default="", max_length=400)
+    evidence_event_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class _Learning(BaseModel):
@@ -158,6 +159,7 @@ class AgentLearningService:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    @usage_purpose("learning")
     async def learn(self, user_id: str, team_id: str, models: ModelFactory) -> dict:
         record = await self._shared_storage.get_team_shared_context(user_id, team_id)
         task = (
@@ -171,6 +173,9 @@ class AgentLearningService:
         if task.learned_revision >= latest:
             return {"learned": False, "reason": "already learned"}
         working_model, strong_model = await models()
+        for selected in (working_model, strong_model):
+            underlying = getattr(selected, "_model", selected)
+            underlying._usage_attributes = {"user_id": user_id, "team_id": team_id, "purpose": "learning"}
         outcome: dict[str, Any] = {"learned": True, "agents": {}}
         for session_id, assignment in task.assignments.items():
             if not assignment.agent_id:
@@ -182,6 +187,14 @@ class AgentLearningService:
             spec = AgentSpec.model_validate(agent.data.spec)
             if not (spec.memory_enabled or spec.self_improve):
                 continue
+            for selected in (working_model, strong_model):
+                underlying = getattr(selected, "_model", selected)
+                underlying._usage_attributes.update(agent_id=agent.id, session_id=session_id)
+            if hasattr(self._storage, "get_session"):
+                session = await self._storage.get_session(user_id, agent.id, session_id)
+                if session and session.state.middle_context.get("workflow_id"):
+                    for selected in (working_model, strong_model):
+                        getattr(selected, "_model", selected)._usage_attributes["workflow_id"] = session.state.middle_context["workflow_id"]
             digest, event_ids = _ticket_digest(record.state, task, agent.id, session_id)
             try:
                 response = await strong_model.generate_structured_output(
@@ -209,7 +222,7 @@ class AgentLearningService:
                     MemoryCandidate(
                         kind=item.kind,
                         content=item.content,
-                        evidence_event_ids=[i for i in item.evidence_event_ids if i in event_ids],
+                        evidence_event_ids=item.evidence_event_ids,
                     )
                     for item in learning.memories
                 ]
@@ -217,20 +230,21 @@ class AgentLearningService:
                 # and a fact must rest on a tool result or the customer's own
                 # words, never on an agent's report (a wrong fact is copied
                 # into later tickets).
-                verified = {e.id for e in record.state.events if e.kind in _VERIFIED_KINDS}
-                candidates = [
-                    c for c in candidates
-                    if c.evidence_event_ids
-                    and (c.kind != "fact" or all(i in verified for i in c.evidence_event_ids))
-                ]
                 result["memories"] = await self._memory.consolidate(
                     user_id,
                     agent.id,
                     candidates,
                     ticket_id=team_id,
-                    model=working_model,
+                    model=strong_model,
                 )
             if spec.self_improve and learning.rule is not None:
+                rule_evidence = await self._memory._evidence(user_id, agent.id, team_id,
+                    MemoryCandidate(kind="lesson", content=learning.rule.text,
+                                    evidence_event_ids=learning.rule.evidence_event_ids), strong_model)
+                if not rule_evidence:
+                    result["rule"] = {"applied": False, "reason": "rule evidence not verified"}
+                    outcome["agents"][agent.id] = result
+                    continue
                 result["rule"] = await self._self_improve(
                     user_id,
                     agent.id,
@@ -299,7 +313,7 @@ class AgentLearningService:
             discovered=await tool_catalog(self._storage, user_id),
             run_tool=tool_runner(self._storage, user_id, candidate),
         )
-        baseline = float((agent.data.evaluation or {}).get("score") or 0.0)
+        baseline = float((agent.data.evaluation or {}).get("pass_rate") or (agent.data.evaluation or {}).get("score") or 0.0)
         if not report["publishable"] or report["pass_rate"] < baseline:
             return {
                 "applied": False,
@@ -310,8 +324,12 @@ class AgentLearningService:
         if agent is None or (agent.data.draft_spec is not None and agent.data.draft_meta.get("author") != "agent"):
             return {"applied": False, "reason": "manager edited meanwhile"}
         version = materialize(agent, candidate, author="agent", note=note, evaluation=report)
+        from .storage._base import AgentRevisionConflict
+        try:
+            await self._storage.upsert_agent(user_id, agent)
+        except AgentRevisionConflict:
+            return {"applied": False, "reason": "agent changed while publishing"}
         await apply_bindings(self._storage, self._workspace_manager, user_id, agent, candidate)
-        await self._storage.upsert_agent(user_id, agent)
         return {"applied": True, "version": version}
 
 

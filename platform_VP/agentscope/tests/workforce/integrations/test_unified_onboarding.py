@@ -364,12 +364,36 @@ class PartnerOnboardingTest(UnifiedOnboardingTest):
                 "mcp_token": "t" * 40,
                 "management_refs": ["local-management"],
                 "environment": "sandbox",
+                "trusted_provisioning_reason": "Explicit operator-approved fixture provisioning",
                 **extra,
             },
         )
 
     async def test_admin_verify_manager_grant_partner_confirm_then_route_resolves(self):
         """Covered by the parent class; not repeated here."""
+
+    async def test_team_readiness_is_owner_scoped_and_never_treats_provisioning_as_model_eval(self):
+        from agentscope.app.deps import get_current_principal
+        response = await self._onboard()
+        route = response.json()["routes"][0]
+        path = f"/workforce/v1/manager/partner-routes/{route['route_id']}"
+        readiness = await self.partner_app.get(path + "/readiness")
+        self.assertEqual(200, readiness.status_code, readiness.text)
+        self.assertFalse(readiness.json()["ready"])
+        codes = [issue["code"] for issue in readiness.json()["issues"]]
+        self.assertIn("ROUTE_NOT_ACTIVE", codes)
+        self.assertIn("AGENT_EVALUATION_REQUIRED", codes)
+        self.assertEqual(404, (await self.partner_app.get(
+            "/workforce/v1/manager/partner-routes/not-owned/readiness")).status_code)
+
+    async def test_default_onboarding_creates_drafts_without_restoring_published_presets(self):
+        response = await self._onboard(trusted_provisioning_reason=None)
+        self.assertEqual(200, response.status_code, response.text)
+        self.assertEqual(0, response.json()["leader_version"])
+        self.assertTrue(self.storage.agents)
+        for record in self.storage.agents.values():
+            self.assertEqual("draft", record.data.lifecycle_state)
+            self.assertFalse(record.data.invite_config.invitable)
 
     async def test_declaration_onboards_once_and_reruns_without_new_keys(self):
         import hashlib
@@ -475,9 +499,10 @@ class PartnerOnboardingTest(UnifiedOnboardingTest):
                 coordinator: {
                     "name": DECLARATION["profiles"][0]["name"],
                     "tools": ["vh_ticket_get", "vh_work_order_dispatch"],
+                    "version": 1,
                     "coordinator": True,
                 },
-                member["agent_id"]: {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]},
+                member["agent_id"]: {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"], "version": 1},
             },
             config["member_agents"],
         )

@@ -300,6 +300,10 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     job = answer["external_job_id"]
     # The same reference again: the stored answer, and nothing done twice.
     assert call(database, work.dispatch, ticket, description, None, None, dispatch) == answer
+    assert call(database, work.operation_get, ticket, dispatch) == {
+        "found": True, "client_reference": dispatch, "result": answer,
+    }
+    assert call(database, work.operation_get, ticket, ref())["found"] is False
     # The reference of one call answers that call only: another tool gets no stored answer and does nothing.
     stray = call(database, work.add_note, ticket, "Gọi trước khi đến", dispatch)
     assert stray["status"] == "failed" and "external_job_id" not in stray and events(database, ticket, "ticket.note_added") == []
@@ -921,7 +925,7 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
         for name, tool in tools.items():
             # A look-up says it only reads; an action declares the reference the platform fills in.
             assert bool(tool.annotations and tool.annotations.readOnlyHint) == (name in looks)
-            assert ("client_reference" in tool.inputSchema["properties"]) == (name in acts) and "ticket_id" in tool.inputSchema["required"]
+            assert ("client_reference" in tool.inputSchema["properties"]) == (name in acts or name == "vh_operation_get") and "ticket_id" in tool.inputSchema["required"]
             assert "$ref" not in json.dumps(tool.inputSchema) and len(tool.description) <= 1000
 
         seen = asyncio.run(session(lambda client: client.call_tool("vh_ticket_get", {"ticket_id": ticket})))

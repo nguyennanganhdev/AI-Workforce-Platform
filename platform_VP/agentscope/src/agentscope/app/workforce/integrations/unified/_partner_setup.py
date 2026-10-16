@@ -53,6 +53,7 @@ class OnboardingRequest(BaseModel):
     management_refs: list[str] = Field(min_length=1, max_length=50)
     environment: Literal["sandbox", "production"] = "sandbox"
     new_keys: bool = False
+    trusted_provisioning_reason: str | None = Field(default=None, min_length=8, max_length=1000)
 
 
 class OnboardingError(Exception):
@@ -173,8 +174,8 @@ class PartnerOnboarding:
         agent_id, version = await self._agent(
             body, leader, tools, mcp_record, storage, workspace_manager, invitable=True,
         )
-        coordinator = {"agent_id": agent_id, "name": str(leader["name"])[:100],
-                       "tools": [t["name"] for t in tools], "coordinator": True}
+        coordinator = {"agent_id": agent_id, "name": str(leader["name"])[:100], "version": version,
+                       "tools": [t["name"] for t in tools if not t.get("internal")], "coordinator": True}
         members = []
         for profile in (p for p in profiles if p.get("role") == "member"):
             member_tools = self._tools(declaration, mcp_record, profile.get("tools_allow") or [])
@@ -186,7 +187,7 @@ class PartnerOnboarding:
                 body, profile, member_tools, mcp_record, storage, workspace_manager, invitable=True,
             )
             members.append({"agent_id": member_id, "name": str(profile["name"])[:100], "version": member_version,
-                            "tools": [t["name"] for t in member_tools]})
+                            "tools": [t["name"] for t in member_tools if not t.get("internal")]})
         await self._schema(scope, client_id, integration_id, declaration)
 
         operations = [
@@ -358,6 +359,8 @@ class PartnerOnboarding:
         catalog = {tool["name"]: tool for tool in mcp_record.discovered_tools}
         tools, missing = [], []
         for tool in declaration.get("tools") or []:
+            if tool.get("internal"):
+                continue
             if not allowed(tool["name"], patterns):
                 continue
             mcp_tool = tool.get("mcp_tool") or tool["name"]
@@ -367,14 +370,29 @@ class PartnerOnboarding:
             tools.append({**tool, "mcp_tool": mcp_tool, "mcp_id": mcp_record.id})
         if missing:
             raise OnboardingError(422, "TOOL_NOT_FOUND", missing)
+        # Recovery readers stay outside the model roster but inside the frozen
+        # route and its ticket-scoped MCP grant.
+        readers = {tool["name"]: tool for tool in declaration.get("tools") or [] if tool.get("internal")}
+        for tool in list(tools):
+            recovery = readers.get(tool.get("reconcile_tool"))
+            if recovery is None:
+                continue
+            raw = catalog.get(recovery.get("mcp_tool") or recovery["name"])
+            if recovery.get("read_only") is not True or raw is None or raw.get("read_only") is not True:
+                raise OnboardingError(422, "RECONCILE_READER_INVALID", recovery["name"])
+            if not any(item["name"] == recovery["name"] for item in tools):
+                tools.append({**recovery, "mcp_tool": recovery.get("mcp_tool") or recovery["name"], "mcp_id": mcp_record.id})
         return tools
 
     async def _agent(
         self, body, profile, tools, mcp_record, storage, workspace_manager, *, invitable: bool = False,
     ) -> tuple[str, int]:
-        from ...._agent_spec import AgentSpec, SpecEscalation, SpecTool
+        from ...._agent_spec import AgentSpec, SpecEscalation, SpecTool, SpecTest
         from ...._router._workforce_studio import _create_record
         from ...._service._agent_studio import materialize, set_draft
+        from ...._service._publish_gate import trusted_publication
+
+        tools = [tool for tool in tools if not tool.get("internal")]
 
         tier = profile.get("model_tier") if profile.get("model_tier") in ("standard", "strong") else "standard"
         spec = AgentSpec(
@@ -407,6 +425,7 @@ class PartnerOnboarding:
             # (a rerun of the declaration would overwrite self-made rules).
             memory_enabled=bool(profile.get("memory", True)),
             self_improve=False,
+            tests=[SpecTest.model_validate(test) for test in profile.get("tests", [])][:30],
         )
         agents = await storage.list_agents(body.manager_account_id)
         record = next(
@@ -421,12 +440,22 @@ class PartnerOnboarding:
         current = record.data.spec if record.data.published_version else None
         if current != spec.model_dump(mode="json"):
             set_draft(record, spec, author="manager", note="Onboarding đối tác")
-            materialize(record, spec, author="manager", note="Onboarding đối tác", evaluation=None)
+            if body.trusted_provisioning_reason:
+                materialize(record, spec, author="manager", note="Onboarding đối tác", evaluation=None,
+                            trusted_provisioning=trusted_publication(
+                                spec, source="approved_provisioning",
+                                reason=body.trusted_provisioning_reason,
+                                actor=f"partner-onboarding:{body.manager_account_id}",
+                            ))
         # Every partner agent works in a ticket's room, invited by the Leader.
         if invitable:
             record.data.invite_config.invite_description = spec.description or spec.name
-        record.data.invite_config.invitable = invitable
-        await storage.upsert_agent(body.manager_account_id, record)
+        record.data.invite_config.invitable = invitable and record.data.lifecycle_state == "published"
+        from ....storage._base import AgentRevisionConflict
+        try:
+            await storage.upsert_agent(body.manager_account_id, record)
+        except AgentRevisionConflict as exc:
+            raise OnboardingError(409, "AGENT_REVISION_CONFLICT", "Reload agent before onboarding again") from exc
         return record.id, int(record.data.published_version)
 
     async def _schema(self, scope: Scope, client_id: str, integration_id: str, declaration: dict) -> None:
@@ -491,7 +520,7 @@ class PartnerOnboarding:
             "config": {
                 **(route_decl.get("config") or {}),
                 "member_agents": {
-                    m["agent_id"]: {"name": m["name"], "tools": m["tools"], **({"coordinator": True} if m.get("coordinator") else {})}
+                    m["agent_id"]: {"name": m["name"], "tools": m["tools"], "version": m["version"], **({"coordinator": True} if m.get("coordinator") else {})}
                     for m in members
                 },
             },

@@ -285,7 +285,8 @@ class UnifiedPartnerModeTest(unittest.IsolatedAsyncioTestCase):
                     "external_ticket_id": "ticket-1",
                     "external_conversation_id": "chat-1",
                     "expected_revision": second.json()["workflow_revision"],
-                    "reason": "resolved",
+                    "reason": "resident_requested_stop_tracking",
+                    "stop_tracking_only": True,
                 },
                 headers=headers,
             )
@@ -392,6 +393,7 @@ class UnifiedPartnerModeTest(unittest.IsolatedAsyncioTestCase):
                 reply="Căn S1-1205",
                 timeout=20,
                 output=out,
+                stop_tracking_only=True,
             )
             code = await script.run(args, transport=ASGITransport(app=app))
             evidence = next(Path(out).glob("*/evidence.json")).read_text(encoding="utf-8")

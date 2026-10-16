@@ -251,6 +251,8 @@ async def update_agent(
     )
 
     updates = body.model_dump(exclude_none=True)
+    if existing.data.system_role == "leader" or existing.data.published_version:
+        raise HTTPException(status_code=409, detail="Edit versioned agents through Agent Studio and run evaluation before publication")
     # ``model_copy(update=...)`` skips validators; re-run
     # ``AgentData.model_validate`` on the merged shape so the
     # ``invite_config`` sub-model's ``invitable ⇒ non-empty description``

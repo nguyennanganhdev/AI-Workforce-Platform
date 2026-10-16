@@ -361,6 +361,8 @@ class OpenAIChatModel(ChatModelBase):
                 # Update the response ID if exists
                 response_id = getattr(chunk, "id", None) or response_id
                 delta_res.id = response_id
+                from .._call_observer import provider_metadata
+                delta_res.metadata.update(provider_metadata(chunk, stream))
 
                 if chunk.usage:
                     u = chunk.usage
@@ -567,6 +569,9 @@ class OpenAIChatModel(ChatModelBase):
         response_id = getattr(response, "id", None)
         if response_id:
             resp_kwargs["id"] = response_id
+
+        from .._call_observer import provider_metadata
+        resp_kwargs["metadata"] = provider_metadata(response)
 
         return ChatResponse(**resp_kwargs)
 

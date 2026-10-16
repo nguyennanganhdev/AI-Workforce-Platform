@@ -1,13 +1,14 @@
 """Long-term memory of one business agent, learned from verified tickets."""
 
-from typing import Literal
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import Field
 
 from ._base import _RecordBase
 
 MemoryKind = Literal["lesson", "fact", "preference"]
-MemoryStatus = Literal["active", "superseded", "rejected"]
+MemoryStatus = Literal["active", "superseded", "rejected", "expired"]
 
 
 class AgentMemoryRecord(_RecordBase):
@@ -28,8 +29,8 @@ class AgentMemoryRecord(_RecordBase):
     source_event_ids: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     uses: int = Field(default=0, ge=0)
-    used_in: list[str] = Field(default_factory=list, max_length=20)
-    """The latest tickets (team ids) this item was recalled in."""
+    used_in: list[str] = Field(default_factory=list)
+    """Durable ticket exposure identities; do not evict before outcome scoring."""
     successes: int = Field(default=0, ge=0)
     """Recalled in a ticket the end user confirmed at the first invitation."""
     failures: int = Field(default=0, ge=0)
@@ -37,6 +38,12 @@ class AgentMemoryRecord(_RecordBase):
     supersedes: str | None = Field(default=None, max_length=255)
     reason: str = Field(default="", max_length=1000)
     """Why it was added, superseded or retired."""
+    revision: int = Field(default=0, ge=0)
+    expires_at: datetime | None = None
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    """Task, trusted evidence digest and entailment verdict; absent on legacy items."""
+    outcomes: dict[str, bool] = Field(default_factory=dict)
+    """Durable ticket outcome tombstones; never truncate or replay can rescore."""
 
 
 __all__ = ["AgentMemoryRecord", "MemoryKind", "MemoryStatus"]

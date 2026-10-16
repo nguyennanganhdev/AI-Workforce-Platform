@@ -161,5 +161,8 @@ class AgentRecord(_RecordBase):
       :class:`SessionRecord.team_id`.
     """
 
+    storage_revision: SkipJsonSchema[int] = Field(default=0, ge=0)
+    """Storage CAS token. Callers must read fresh before updating an agent."""
+
     data: AgentData
     """The agent data"""

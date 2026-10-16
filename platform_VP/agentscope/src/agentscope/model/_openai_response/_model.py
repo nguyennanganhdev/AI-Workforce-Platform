@@ -414,6 +414,8 @@ class OpenAIResponseModel(ChatModelBase):
 
                 elif event_type == "response.completed":
                     resp = event.response
+                    from .._call_observer import provider_metadata
+                    delta_res.metadata.update(provider_metadata(resp, stream))
                     if resp.usage:
                         u = resp.usage
                         details = getattr(u, "input_tokens_details", None)
@@ -543,6 +545,9 @@ class OpenAIResponseModel(ChatModelBase):
         response_id = getattr(response, "id", None)
         if response_id:
             resp_kwargs["id"] = response_id
+
+        from .._call_observer import provider_metadata
+        resp_kwargs["metadata"] = provider_metadata(response)
 
         return ChatResponse(**resp_kwargs)
 

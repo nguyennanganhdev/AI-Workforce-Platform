@@ -18,7 +18,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from sqlalchemy import insert, select, update
 
-from ...contracts import ActorContext
+from ...contracts import ActorContext, ActorKind, CredentialPurpose
+from ...orchestration._tables import workflows as workflow_rows
+from ...orchestration.workflows._models import parse_aggregate
 from ._tables import approvals
 
 DEFAULT_TTL_SECONDS = 86_400
@@ -60,9 +62,10 @@ class ApprovalError(Exception):
 class CaseApprovals:
     """Approval rows of partner workflows and their public events."""
 
-    def __init__(self, uows: Callable[[], Any], events: Any = None) -> None:
+    def __init__(self, uows: Callable[[], Any], events: Any = None, jobs: Any = None) -> None:
         self._uows = uows
         self._events = events
+        self._jobs = jobs
 
     def attach_events(self, events: Any) -> None:
         self._events = events
@@ -93,9 +96,12 @@ class CaseApprovals:
         for action in actions:
             call = action.tool_call
             approval_id = self.approval_id(workflow.workflow_id, call.id)
-            ids.append(approval_id)
-            if await self.get(approval_id) is not None:
+            existing = await self.get(approval_id)
+            if existing is not None:
+                if existing["status"] == "pending":
+                    ids.append(approval_id)
                 continue
+            ids.append(approval_id)
             try:
                 arguments = json.loads(call.input or "{}")
             except ValueError:
@@ -135,8 +141,54 @@ class CaseApprovals:
                         uow,
                         approval_id,
                     )
+                if self._jobs is not None:
+                    await self._jobs.enqueue(workflow.scope, "workforce.unified.approval_expiry",
+                        {"approval_id": approval_id}, "unified-approval-expiry:" + approval_id,
+                        uow, not_before=expires_at)
                 await uow.commit()
         return ids
+
+    async def expire(self, approval_id: str, workflows: Any, requests: Any) -> bool:
+        """Expire and wake atomically, so the parked write resumes as denied."""
+        now = _now()
+        async with self._uows() as uow:
+            row = (await uow.execute(select(approvals).where(
+                approvals.c.approval_id == approval_id,
+            ).with_for_update())).mappings().first()
+            if row is None or row["status"] != "pending":
+                return False
+            expires_at = row["expires_at"]
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at > now:
+                raise RuntimeError("approval expiry job ran before its deadline")
+            payload = await uow.scalar(select(workflow_rows.c.payload).where(
+                workflow_rows.c.id == row["workflow_id"],
+            ))
+            aggregate = parse_aggregate(payload)
+            workflow = aggregate.workflow
+            moved = await uow.execute(update(approvals).where(
+                approvals.c.approval_id == approval_id, approvals.c.status == "pending",
+            ).values(status="expired", decided_at=now))
+            if moved.rowcount != 1:
+                return False
+            if self._events is not None:
+                await self._events.write(workflow, "approval.resolved",
+                    {"approval_id": approval_id, "status": "expired"}, uow, approval_id)
+            if workflow.state.value != "closed":
+                audience = workflow.audience
+                actor = ActorContext(kind=ActorKind.PARTNER,
+                    actor_id=f"{audience.partner_client_id}:{audience.external_user_id}"[:200],
+                    partner_client_id=audience.partner_client_id, external_user_id=audience.external_user_id,
+                    credential_id=approval_id, credential_purpose=CredentialPurpose.CUSTOMER_API,
+                    authentication_source="approval_expiry")
+                claim = await requests.claim_or_read(actor, "expiry-" + approval_id, "approval_expiry",
+                    workflow.workflow_id, hashlib.sha256(approval_id.encode()).hexdigest(), uow)
+                await workflows.enqueue_trigger(workflow.scope, {"trigger_id": "expiry-" + approval_id,
+                    "workflow_id": workflow.workflow_id,
+                    "cause": {"kind": "approval", "request_id": claim.request_id, "approval_id": approval_id}}, uow)
+            await uow.commit()
+            return True
 
     async def decide(
         self,
@@ -192,7 +244,8 @@ class CaseApprovals:
         async with self._uows() as uow:
             moved = await uow.execute(
                 update(approvals)
-                .where(approvals.c.approval_id == approval_id, approvals.c.status == "pending")
+                .where(approvals.c.approval_id == approval_id, approvals.c.status == "pending",
+                       approvals.c.expires_at > now)
                 .values(status=status, decided_at=now),
             )
             if moved.rowcount != 1:

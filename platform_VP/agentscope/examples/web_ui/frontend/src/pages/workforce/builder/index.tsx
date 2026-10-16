@@ -82,11 +82,13 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 						<h3 className="text-[15px]/5 font-semibold">{proposal.name}</h3>
 						<Badge variant={passed ? 'secondary' : 'destructive'}>
 							{passed ? <CheckCircle2 /> : <CircleAlert />}
-							{passed ? 'Cấu hình hợp lệ' : 'Cần sửa cấu hình'}
+							{passed ? 'Kiểm thử đạt' : 'Chưa đủ điều kiện phát hành'}
 						</Badge>
 					</div>
 					<p className="mt-1 text-sm text-muted-foreground">{proposal.objective}</p>
 					{failed.length > 0 && <p className="mt-1 text-xs text-destructive">Chưa đạt: {failed.join('; ')}.</p>}
+					{proposal.evaluation.publish_blocker && <p className="mt-1 text-xs text-destructive">{proposal.evaluation.publish_blocker}</p>}
+					{proposal.evaluation.model_report && <p className="mt-1 text-xs text-muted-foreground">Model: {proposal.evaluation.model_report.passed}/{proposal.evaluation.model_report.total} ca đạt · {proposal.evaluation.model_report.errors} lỗi chạy · {(proposal.evaluation.model_report.latency_ms / 1000).toFixed(1)} giây</p>}
 				</div>
 			</header>
 
@@ -147,8 +149,8 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 			</Collapsible>
 			{proposal.tests && proposal.tests.length > 0 && (
 				<details className="mt-3 text-sm">
-					<summary className="cursor-pointer py-2 font-medium">{proposal.tests.length} ca kiểm thử dự kiến</summary>
-					<p className="mb-2 text-xs text-muted-foreground">Đây là kịch bản do Builder soạn, chưa phải kết quả chạy model. Mở Quản lý agent → Kiểm thử để chạy.</p>
+					<summary className="cursor-pointer py-2 font-medium">{proposal.tests.length} ca kiểm thử</summary>
+					<p className="mb-2 text-xs text-muted-foreground">{proposal.evaluation.model_report ? 'Đã chạy model và bộ chấm. Chỉ được phát hành khi kết quả khớp cấu hình này và mọi ca an toàn đạt.' : 'Kịch bản chưa được chạy bằng model; chưa được phát hành. Tạo lại cấu hình để kiểm thử.'}</p>
 					<ol className="space-y-2">
 						{proposal.tests.map((test, index) => (
 							<li key={index} className="rounded-lg bg-muted/50 p-3">

@@ -1,5 +1,8 @@
 # Platform VPS: phát hành, backup và khôi phục
 
+> Cập nhật P2 ngày 16/10/2026: xem [runbook usage, memory, offsite, alert và RPO/RTO](P2_RUNBOOK.md).
+> Backup service hiện yêu cầu cấu hình offsite; hoàn tất bước cấu hình và diễn tập trước khi bật timer.
+
 Phạm vi: `platform_VP/agentscope` trên develop2. Nghiệm thu phiếu thật do người
 vận hành thực hiện sau deploy. Smoke hạ tầng không thay thế nghiệm thu đó.
 

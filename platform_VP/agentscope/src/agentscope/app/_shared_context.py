@@ -7,6 +7,8 @@ it never deletes source data or makes a business decision.
 
 from __future__ import annotations
 
+from ..model._call_observer import usage_purpose
+
 import asyncio
 import hashlib
 import json
@@ -2301,6 +2303,7 @@ class SharedContextService:
         old = [event for event in events if event.id not in recent_ids]
         return old, recent
 
+    @usage_purpose("shared_summary")
     async def _summarize(
         self,
         model: ChatModelBase,
@@ -2989,16 +2992,20 @@ class SharedContextService:
                 ProviderUsage(),
             )
             entry.agent_name = agent_name[:255]
-            entry.model = model[:255]
-            entry.calls += 1
-            if usage is not None:
-                entry.calls_with_usage += 1
-                entry.input_tokens += max(0, int(getattr(usage, "input_tokens", 0)))
-                entry.cached_input_tokens += max(
+            entry.model = model[:255] if not entry.model or entry.model == model[:255] else "mixed (legacy aggregate)"
+            per_model = record.state.metrics.provider_usage_by_model.setdefault(
+                json.dumps([agent_id, model], ensure_ascii=False), ProviderUsage(agent_name=agent_name[:255], model=model[:255]))
+            for item in (entry, per_model):
+                item.calls += 1
+                if usage is None:
+                    continue
+                item.calls_with_usage += 1
+                item.input_tokens += max(0, int(getattr(usage, "input_tokens", 0)))
+                item.cached_input_tokens += max(
                     0,
                     int(getattr(usage, "cache_input_tokens", 0) or 0),
                 )
-                entry.output_tokens += max(0, int(getattr(usage, "output_tokens", 0)))
+                item.output_tokens += max(0, int(getattr(usage, "output_tokens", 0)))
             await self._commit_mutation(user_id, record)
 
     @staticmethod

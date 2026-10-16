@@ -228,6 +228,10 @@ def test_template_agent_lifecycle_test_publish_copilot_rollback(env) -> None:
     assert rolled["published_version"] == 3
     assert "Không báo giá khi chưa có ảnh" not in storage.agents[agent_id].data.system_prompt
     assert [v["version"] for v in rolled["versions"]] == [3, 2, 1]
+    restored = storage.agents[agent_id]
+    assert restored.data.evaluation["spec_hash"] == report["spec_hash"]
+    assert restored.data.versions[2]["evaluation"] == restored.data.versions[0]["evaluation"]
+    assert restored.data.versions[1]["evaluation"]["spec_hash"] != report["spec_hash"]
 
 
 def test_an_agent_is_removed_unless_something_still_uses_it(env) -> None:
@@ -283,7 +287,7 @@ def test_a_description_can_become_a_tested_team(env) -> None:
         ],
     }
     model.copilot_operations = [
-        {"op": "add", "field": "tests", "value": {"scenario": f"Tình huống {i}", "expected": "Làm đúng vai"}}
+        {"op": "add", "field": "tests", "value": {"scenario": f"Tình huống {i}", "expected": "Làm đúng vai", "safety_critical": i == 0}}
         for i in range(3)
     ]
     composed = client.post(
@@ -441,7 +445,7 @@ async def _scenario_runs_read_tools_and_simulates_writes() -> None:
         spec=spec,
         model=Model(),
         judge_model=None,
-        discovered={},
+        discovered={"m:lookup": {"read_only": True}},
         run_tool=run_tool,
     )
 
@@ -485,5 +489,7 @@ def test_running_ticket_keeps_the_version_it_was_invited_with(env) -> None:
     assert record.data.published_version == 2
     assert "Luật mới của phiên bản 2" in record.data.system_prompt
     assert "Luật mới của phiên bản 2" not in pinned_view(record, 1).data.system_prompt
-    assert pinned_view(record, 2) is record
-    assert pinned_view(record, 99) is record
+    assert pinned_view(record, 2) == record
+    assert pinned_view(record, 2) is not record
+    with pytest.raises(ValueError, match="unavailable"):
+        pinned_view(record, 99)

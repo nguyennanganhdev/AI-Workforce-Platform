@@ -42,7 +42,7 @@ REQUEST_FIELDS = {"schema_version", "command_type", "external_request_id", "exte
 DECISION_FIELDS = {"schema_version", "external_request_id", "external_user_id", "external_ticket_id",
                    "external_conversation_id", "workflow_id", "decision", "expected_revision", "arguments_hash", "quote_ref"}
 CLOSE_FIELDS = {"schema_version", "external_request_id", "external_user_id", "external_ticket_id",
-                "external_conversation_id", "expected_revision", "reason", "stop_tracking_only"}
+                "external_conversation_id", "expected_revision", "reason", "stop_tracking_only", "domain_acceptance"}
 EVENT_FIELDS = {"schema_version", "external_event_id", "external_job_id", "client_reference", "event_type",
                 "provider_version", "occurred_at", "data"}
 STATE_EVENT = {"closed": "workflow.closed", "awaiting_user": "workflow.awaiting_user", "needs_attention": "workflow.needs_attention"}
@@ -849,12 +849,42 @@ def test_confirming_completion_closes_the_ticket_and_the_workflow_at_its_current
         first, sent = fake.posts("/close")[-2:]
         assert first["external_request_id"] == sent["external_request_id"] == str(close["id"])
         assert sent["expected_revision"] == flow["revision"] - 1 and sent["reason"] == "resident_confirmed"
+        acceptance = sent["domain_acceptance"]
+        assert acceptance["external_ticket_id"] == ticket and acceptance["external_user_id"] == flow["user"]
+        assert acceptance["approval_id"] == approval and acceptance["ticket_status"] == "closed"
+        assert acceptance["work_order_ids"] and acceptance["decided_event_id"]
+        assert first["domain_acceptance"] == sent["domain_acceptance"]
         row = link(database, ticket)
         assert (flow["state"], row["status"], row["state"], row["next_action"]) == ("closed", "closed", "closed", "none")
         sync(database, fake)
         assert [(x["kind"], x["status"], x["last_error"]) for x in commands(database, ticket)][1:] == [
             ("close", "done", None), ("workflow_reply", "failed", "the link is closed")]
         assert FAILED_TEXT not in [m["text"] for m in chat(database, channel)] and asked() is False
+
+
+@pytest.mark.parametrize("broken_evidence", ["pending_work", "wrong_resident", "reopened"])
+def test_queued_completion_close_rechecks_domain_evidence(database, on, turns, broken_evidence):
+    fake = FakePlatform()
+    with resident(database) as c:
+        channel, ticket, flow = started(database, c, fake)
+        approval, version = resolved_with_a_completion_request(database, ticket)
+        fake.move(flow, "awaiting_confirmation", "operation_completed")
+        sync(database, fake)
+        response = c.post(f"/resident/approvals/{approval}/decision", headers=key(), json={
+            "version": version, "approved": True, "note": "Accepted"})
+        assert response.status_code == 200, response.text
+        if broken_evidence == "pending_work":
+            sql(database, """insert into work_orders(tenant_id,ticket_id,category_id,required_specialty_id,description,status)
+                values($1,$2,$3,$3,'New unfinished work','queued') returning id""", TENANT, UUID(ticket), UUID(CATEGORY))
+        elif broken_evidence == "wrong_resident":
+            sql(database, "update work_approvals set decided_by='local-v3-management' where id=$1 returning id", UUID(approval))
+        else:
+            sql(database, "update tickets set status='open',closed_at=null where id=$1 returning id", UUID(ticket))
+        sync(database, fake)
+        assert fake.posts("/close") == []
+        close = next(x for x in commands(database, ticket) if x["kind"] == "close")
+        assert close["status"] == "pending" and close["last_error"].startswith("DOMAIN_ACCEPTANCE_NOT_READY")
+        assert flow["state"] != "closed"
 
 
 class LastWords(FakePlatform):

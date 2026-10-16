@@ -1,0 +1,26 @@
+{
+  "offsite": {
+    "host": "103.238.235.156",
+    "user": "awp-offsite",
+    "port": 22,
+    "directory": "/var/lib/awp-offsite/platform",
+    "ssh_identity": "/etc/awp-platform/backup_ssh",
+    "known_hosts": "/etc/awp-platform/offsite_known_hosts",
+    "recipients_file": "/etc/awp-platform/recipients.txt",
+    "environment": "production-platform",
+    "source_revision": "2b9de30f-dirty"
+  },
+  "monitor": {
+    "environment": "production-platform",
+    "source_revision": "2b9de30f-dirty",
+    "backup_root": "/var/backups/awp-platform",
+    "offsite_receipt": "/var/lib/awp-platform/offsite-receipt.json",
+    "restore_evidence": "/var/lib/awp-platform/offsite-restore.json",
+    "disk_path": "/opt/awp-platform",
+    "health_url": "http://127.0.0.1:5173/api/health",
+    "rpo_hours": 26,
+    "rto_seconds": 3600,
+    "restore_max_age_days": 7,
+    "min_disk_free_ratio": 0.20
+  }
+}

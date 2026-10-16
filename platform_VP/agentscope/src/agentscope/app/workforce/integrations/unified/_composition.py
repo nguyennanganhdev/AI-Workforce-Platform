@@ -62,9 +62,12 @@ from ...orchestration.workflows import WorkflowContinuation, WorkflowService
 from ..async_runtime._bootstrap import WorkforceFoundation, WorkforceRuntimeAssembly
 from ._approvals import ApprovalError, CaseApprovals, DecisionBody
 from ._case import CaseRuntime, CaseStore
+from ._close import guard_case_close
+from ._contract import ContractPinnedBootstrap
 from ._partner_setup import OnboardingError, OnboardingRequest, PartnerOnboarding
 from ._provider import ProviderError, UnifiedProviderEvents
 from ._runner import LEADER_VERSION_ID, ChatLeaderTurnRunner
+from ._recovery import UnifiedRecovery
 
 UNIFIED_JOB_WORKER = "workforce-unified"
 
@@ -380,6 +383,8 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
                 status_code=exc.status,
             )
 
+    from ._team_routes import team_routes_router
+    router.include_router(team_routes_router(foundation))
     return router
 
 
@@ -487,13 +492,14 @@ def build_unified_runtime(
         uows,
         heartbeat_seconds=heartbeat_seconds,
     )
-    store = CaseStore(uows)
-    approvals = CaseApprovals(uows)
+    store = CaseStore(uows, foundation.jobs)
+    approvals = CaseApprovals(uows, jobs=foundation.jobs)
     case_runtime = CaseRuntime(store)
     runner.attach_case(case_runtime, approvals)
     workflow_service = WorkflowService(
         workflows,
-        LeaderWorkflowBootstrap(UnifiedBootstrapResolver(ids), clock=clock, ids=ids),
+        ContractPinnedBootstrap(LeaderWorkflowBootstrap(UnifiedBootstrapResolver(ids), clock=clock, ids=ids),
+                                storage_provider=lambda: runner._state().storage),
         authorization,
         ExecutionOperationReader(create_execution_repository(uow_factory=uows)),
         foundation.jobs,
@@ -502,6 +508,7 @@ def build_unified_runtime(
         uows,
         clock,
         ids,
+        completion_close_guard=guard_case_close,
     )
     # One Leader turn may wait for its whole team; keep the workflow lease
     # longer than that wait so another worker never takes over mid-turn.
@@ -549,7 +556,10 @@ def build_unified_runtime(
         ids,
         requests=requests,
         share=case_runtime.share_progress,
+        jobs=foundation.jobs,
     )
+    recovery = UnifiedRecovery(store, case_runtime, provider, approvals, workflow_service,
+                               requests, foundation.jobs, foundation.identity)
     customer = partner_customer_dependency()
     router = create_router(
         ingress,
@@ -567,14 +577,18 @@ def build_unified_runtime(
             "ingress": ingress,
             "event_service": event_service,
             "runner": runner,
+            "recovery": recovery,
+            "provider": provider,
+            "approvals": approvals,
         },
         routers=(
             router,
             onboarding_router(foundation),
             partner_case_router(ingress, workflow_service, approvals, provider, customer, ids),
         ),
-        job_handlers={handler.job_type: handler},
+        job_handlers={handler.job_type: handler, **recovery.handlers()},
         worker_id=UNIFIED_JOB_WORKER,
+        startup=(recovery.resume_pending,),
     )
 
 

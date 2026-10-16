@@ -5,6 +5,8 @@ context, ReAct and invitation policy are owned by the server so an LLM cannot
 silently weaken runtime limits while generating an agent.
 """
 
+from ...model._call_observer import usage_purpose
+
 import asyncio
 import io
 import json
@@ -27,6 +29,8 @@ from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
 from .._service import ResourceAccessService, get_model
+from .._agent_spec import AgentSpec, spec_hash
+from .._service._publish_gate import publication_blocker, publish_blocker, trusted_publication
 from .._workforce_policy import (
     WORKFORCE_LEADER_PROMPT,
     governed_system_prompt,
@@ -47,12 +51,20 @@ from ..storage import (
     SessionRecord,
     StorageBase,
 )
+from ..storage._base import AgentRevisionConflict
 from ..workspace_manager import WorkspaceManagerBase
 
 workforce_console_router = APIRouter(
     prefix="/workforce/console",
     tags=["workforce-console"],
 )
+
+
+async def _save_agent(storage: StorageBase, user_id: str, record: AgentRecord) -> None:
+    try:
+        await storage.upsert_agent(user_id, record)
+    except AgentRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail="Agent changed concurrently; reload before publishing.") from exc
 
 # These are platform policy, not Builder output and not UI-editable fields.
 _FIXED_CONTEXT = ContextConfig(
@@ -94,6 +106,7 @@ class GeneratedTest(BaseModel):
 
     scenario: str = Field(min_length=1, max_length=2000)
     expected: str = Field(min_length=1, max_length=2000)
+    safety_critical: bool = Field(default=False, description="Mark consent/privacy/safety cases; at least one is required.")
 
 
 class GeneratedAgent(BaseModel):
@@ -210,6 +223,8 @@ class ProposedAgentView(BaseModel):
     knowledge: list[dict] = Field(default_factory=list)
     library_skills: list[dict] = Field(default_factory=list)
     evaluation: dict
+    spec: dict = Field(default_factory=dict)
+    """Frozen AgentSpec that was actually evaluated; never regenerated at publish."""
     reuse_agent_id: str | None = None
     reuse_agent_name: str | None = None
 
@@ -472,6 +487,7 @@ async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
     return catalog
 
 
+@usage_purpose("builder")
 async def _builder_structured_call(
     model: ChatModelBase,
     messages: list[Msg],
@@ -646,7 +662,7 @@ exactly those reusable independent business agents; do not merge their
 capabilities into one agent. A team request is only a batch creation shortcut;
 do not pre-bind a permanent team or a ticket. You may author ONLY: name, objective,
 system_prompt, selected_tool_ids, knowledge_ids, library_skill_ids, one reusable
-SKILL.md and 3 tests per agent
+SKILL.md and 3 tests per agent (at least one safety_critical=true consent/privacy/safety case)
 (scenario = what a customer says; expected = the behaviour to check, covering a
 normal request, an out-of-scope request and a case that needs consent or
 escalation). Tests run with the real model before the agent can change later. Select only exact
@@ -729,10 +745,7 @@ def _seed_spec(
     if not (tests or knowledge or skills):
         return
     if tests:
-        record.data.spec["tests"] = [
-            {"scenario": test["scenario"], "expected": test["expected"]}
-            for test in tests
-        ]
+        record.data.spec["tests"] = tests
     if knowledge:
         record.data.spec["knowledge"] = [{"kb_id": item["kb_id"], "name": item.get("name", "")} for item in knowledge]
     if skills:
@@ -1022,10 +1035,12 @@ async def _prepare_builder_memory(
             break
         try:
             model_calls += 1
-            response = await model.generate_structured_output(
-                compact_messages,
-                _BuilderMemorySummary,
-            )
+            from ...model._call_observer import usage_scope
+            with usage_scope(purpose="builder_summary"):
+                response = await model.generate_structured_output(
+                    compact_messages,
+                    _BuilderMemorySummary,
+                )
             summary = _BuilderMemorySummary.model_validate(response.content)
             cited = set(summary.source_message_ids)
             if cited != allowed_sources:
@@ -1344,6 +1359,40 @@ def _library_note(knowledge: dict[str, dict], skills: dict[str, dict]) -> str:
     )
 
 
+async def _evaluate_proposed_agent(item: ProposedAgentView, storage: StorageBase, user_id: str, model: ChatModelBase) -> None:
+    from .._service._agent_eval import run_spec_tests
+    from .._service._agent_studio import tool_catalog, tool_runner
+
+    temporary = AgentRecord(user_id=user_id, data=AgentData(
+        name=item.name, system_prompt=item.system_prompt,
+        context_config=_FIXED_CONTEXT.model_copy(deep=True),
+        react_config=_FIXED_REACT.model_copy(deep=True),
+        build_description=item.objective,
+        tool_bindings=[tool.model_dump(mode="json") for tool in item.selected_tools],
+    ))
+    _seed_spec(temporary, item.tests, item.knowledge, item.library_skills)
+    spec = AgentSpec.model_validate(temporary.data.spec)
+    # Bind the generated skill body into the evaluated artifact hash as well.
+    spec.extra_instructions = item.skill_markdown
+    item.spec = spec.model_dump(mode="json")
+    item.tests = [test.model_dump(mode="json") for test in spec.tests]
+    from ...model._call_observer import usage_scope
+    with usage_scope(operation_id=spec_hash(spec)):
+        report = await run_spec_tests(
+            spec=spec, model=model, judge_model=model,
+            discovered=await tool_catalog(storage, user_id),
+            run_tool=tool_runner(storage, user_id, spec),
+        )
+    blocker = publish_blocker(spec, report)
+    static_passed = all(item.evaluation["checks"].values())
+    item.evaluation.update({
+        "passed": static_passed and not blocker,
+        "score": report.get("pass_rate", 0.0),
+        "model_report": report,
+        "publish_blocker": blocker,
+    })
+
+
 @workforce_console_router.post("/builder/prepare", response_model=ProposalView)
 async def prepare_builder(
     body: PrepareRequest,
@@ -1366,6 +1415,7 @@ async def prepare_builder(
     knowledge, skills = await _library(storage, user_id)
     library = _library_note(knowledge, skills)
     model = await get_model(user_id, body.chat_model_config, access)
+    model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "builder"}
     transcript = await _prepare_builder_memory(
         model=model,
         storage=storage,
@@ -1558,8 +1608,7 @@ async def prepare_builder(
             else 0.0
         )
         checks = _agent_checks(agent, selected, invalid, duplicate_tool_ids, reused_skills, unknown)
-        passed = all(checks.values()) or reuse_score >= 0.72
-        any_blocked = any_blocked or not passed
+        passed = all(checks.values())
         views.append(
             ProposedAgentView(
                 name=agent.name,
@@ -1582,14 +1631,10 @@ async def prepare_builder(
                     "duplicate_tool_ids": duplicate_tool_ids,
                     "reuse_similarity": round(reuse_score, 2),
                 },
-                reuse_agent_id=(reuse.id if reuse_score >= 0.72 else None),
-                reuse_agent_name=(
-                    reuse.data.name
-                    if reuse is not None and reuse_score >= 0.72
-                    else None
-                ),
             ),
         )
+        await _evaluate_proposed_agent(views[-1], storage, user_id, model)
+        any_blocked = any_blocked or not views[-1].evaluation["passed"]
     if not views:
         any_blocked = True
     proposal = ProposalView(
@@ -1659,6 +1704,20 @@ async def publish_builder(
                 status_code=409,
                 detail="Proposal chưa đạt điều kiện phát hành",
             )
+        for item in proposal.agents:
+            if not item.spec:
+                raise HTTPException(status_code=409, detail="Proposal cũ chưa được kiểm thử bằng model; hãy tạo lại.")
+            spec = AgentSpec.model_validate(item.spec)
+            blocker = publish_blocker(spec, item.evaluation.get("model_report"))
+            if blocker or not all(item.evaluation.get("checks", {}).values()):
+                raise HTTPException(status_code=409, detail=blocker or "Cấu hình agent chưa đạt.")
+            if item.reuse_agent_id:
+                reused = await storage.get_agent(user_id, item.reuse_agent_id)
+                if (reused is None or reused.data.lifecycle_state != "published"
+                        or not reused.data.invite_config.invitable or not reused.data.spec
+                        or spec_hash(AgentSpec.model_validate(reused.data.spec)) != spec_hash(spec)
+                        or publish_blocker(spec, reused.data.evaluation)):
+                    raise HTTPException(status_code=409, detail="Agent tái sử dụng chưa có kiểm thử hợp lệ cho đúng spec.")
         assigned_tools: set[str] = set()
         duplicate_tools: set[str] = set()
         for item in proposal.agents:
@@ -1675,7 +1734,12 @@ async def publish_builder(
                     + ", ".join(sorted(duplicate_tools))
                 ),
             )
-        proposal.status = "published"
+        try:
+            claimed = await storage.claim_builder_publish(user_id, body.conversation_id, body.proposal_id)
+        except (NotImplementedError, AttributeError) as exc:
+            raise HTTPException(status_code=503, detail="Storage chưa hỗ trợ phát hành an toàn; không có agent nào được tạo.") from exc
+        if not claimed:
+            raise HTTPException(status_code=409, detail="Proposal đã được giữ để phát hành. Kiểm tra kết quả trước khi thử cấu hình mới.")
 
     model_config = proposal.chat_model_config
     result: list[PublishedAgent] = []
@@ -1689,7 +1753,10 @@ async def publish_builder(
                 ),
             )
             continue
-        bindings = [tool.model_dump(mode="json") for tool in item.selected_tools]
+        from .._service._agent_studio import apply_bindings, materialize
+        from ._workforce_studio import _skill_installer
+
+        spec = AgentSpec.model_validate(item.spec)
         record = AgentRecord(
             user_id=user_id,
             data=AgentData(
@@ -1700,20 +1767,15 @@ async def publish_builder(
                 ),
                 context_config=_FIXED_CONTEXT.model_copy(deep=True),
                 react_config=_FIXED_REACT.model_copy(deep=True),
-                invite_config=InviteConfig(
-                    invitable=True,
-                    invite_description=item.objective,
-                ),
+                invite_config=InviteConfig(invitable=False, invite_description=item.objective),
                 system_role="business",
-                lifecycle_state="published",
+                lifecycle_state="draft",
                 build_description=item.objective,
-                tool_bindings=bindings,
+                spec=spec.model_dump(mode="json"),
                 generated_skill=item.skill_markdown,
-                evaluation=item.evaluation,
             ),
         )
-        _seed_spec(record, item.tests, item.knowledge, item.library_skills)
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
         session = await _primary_session(
             storage,
             workspace_manager,
@@ -1728,28 +1790,10 @@ async def publish_builder(
             session.id,
             session.config.workspace_id,
         )
-        # Builder agents use an explicit effective tool set. Materialise an
-        # empty declaration first so deployment-wide demo MCPs do not leak
-        # into every published business agent.
-        for default_mcp in workspace.default_mcps:
-            await workspace.remove_mcp(
-                default_mcp.name,
-                agent_id=record.id,
-                session_id=session.id,
-            )
-        selected_by_mcp: dict[str, list[str]] = defaultdict(list)
-        for tool in item.selected_tools:
-            selected_by_mcp[tool.mcp_id].append(tool.tool_name)
-        for mcp_id, enabled_tools in selected_by_mcp.items():
-            mcp_record = await storage.get_mcp(user_id, mcp_id)
-            if mcp_record is None or not mcp_record.enabled:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"MCP {mcp_id} không còn khả dụng",
-                )
-            client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
-            client.enable_tools = list(dict.fromkeys(enabled_tools))
-            await workspace.add_mcp(client, agent_id=record.id, session_id=session.id)
+        await apply_bindings(
+            storage, workspace_manager, user_id, record, spec,
+            install_skill=_skill_installer(request, storage, user_id, record.id),
+        )
         if item.skill_markdown.strip():
             await workspace.add_skill_archive(
                 _archive(item.skill_name, item.skill_markdown),
@@ -1757,12 +1801,9 @@ async def publish_builder(
                 item.skill_name,
                 agent_id=record.id,
             )
-        if item.library_skills:
-            from ._workforce_studio import _skill_installer
-
-            install = _skill_installer(request, storage, user_id, record.id)
-            for skill in item.library_skills:
-                await install(workspace, skill["skill_id"])
+        materialize(record, spec, author="builder", note="Builder model evaluation",
+                    evaluation=item.evaluation["model_report"])
+        await _save_agent(storage, user_id, record)
         result.append(
             PublishedAgent(
                 agent_id=record.id,
@@ -1770,6 +1811,7 @@ async def publish_builder(
                 name=item.name,
             ),
         )
+    proposal.status = "published"
     await storage.upsert_message(
         user_id,
         body.conversation_id,
@@ -1834,6 +1876,10 @@ async def change_agent_lifecycle(
     from .._service._agent_studio import ensure_spec
 
     ensure_spec(record)
+    if body.state == "published":
+        blocker = publish_blocker(AgentSpec.model_validate(record.data.spec), record.data.evaluation)
+        if blocker:
+            raise HTTPException(status_code=409, detail=blocker)
     if body.state == "published" and not record.data.published_version:
         # Only re-activation of an already published, versioned agent is a
         # toggle. A first publication must go through Agent Studio, where it
@@ -1850,7 +1896,7 @@ async def change_agent_lifecycle(
         invitable=body.state == "published",
         invite_description=record.data.build_description,
     )
-    await storage.upsert_agent(user_id, record)
+    await _save_agent(storage, user_id, record)
     return WorkforceAgentView(
         agent_id=record.id,
         name=record.data.name,
@@ -1888,11 +1934,20 @@ async def _leader(
                 build_description="Fixed platform ticket orchestrator",
             ),
         )
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
     elif record.data.system_prompt != _LEADER_PROMPT:
         # The Leader is platform-owned, so bootstrap also upgrades old records.
         record.data.system_prompt = _LEADER_PROMPT
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
+    leader_spec = AgentSpec(name=_LEADER_NAME, description="Fixed platform ticket orchestrator",
+                            prompt_override=_LEADER_PROMPT, model_tier="strong", self_improve=False)
+    if (record.data.spec != leader_spec.model_dump(mode="json")
+            or record.data.evaluation.get("source") != "system_leader"
+            or publication_blocker(leader_spec, record.data.evaluation, allow_provisioning=True)):
+        record.data.spec = leader_spec.model_dump(mode="json")
+        record.data.evaluation = trusted_publication(leader_spec, source="system_leader",
+            actor="platform:leader-bootstrap", reason="Server-owned fixed Workforce Leader; not a business agent")
+        await _save_agent(storage, user_id, record)
     session = await _primary_session(
         storage,
         workspace_manager,

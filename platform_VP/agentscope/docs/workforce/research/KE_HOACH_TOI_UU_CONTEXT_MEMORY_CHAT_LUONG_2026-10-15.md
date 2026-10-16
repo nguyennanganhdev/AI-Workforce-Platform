@@ -1,5 +1,9 @@
 # Tối ưu context, memory, chất lượng và chi phí token — hiện trạng và kế hoạch
 
+> Cập nhật thực thi P2 ngày 16/10: [báo cáo kết quả](../BAO_CAO_HOAN_THANH_P2_2026-10-16.md)
+> và [runbook](../../../deploy/vps/P2_RUNBOOK.md). Số liệu dưới đây giữ nguyên là
+> snapshot ngày 15/10; giá mặc định cũ không dùng để tính chi phí endpoint hiện tại.
+
 15/10/2026 · `develop2` + PR #87 · Người đọc: PM
 
 Tài liệu này trả lời câu hỏi: những phần context, Shared Context, bộ nhớ dài hạn,

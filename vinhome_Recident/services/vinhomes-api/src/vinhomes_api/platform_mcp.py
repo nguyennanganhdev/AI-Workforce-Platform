@@ -179,6 +179,11 @@ def build(app) -> FastMCP:
         is free, it is offered automatically later. failed: not dispatched, see reason. Progress follows as events."""
         return await run(True,'vh_work_order_dispatch',work.dispatch,ticket_id,description,staff_id,appointment_at,client_reference,expected_ticket_version)
 
+    @mcp.tool(annotations=READ)
+    async def vh_operation_get(ticket_id: Ticket, client_reference: Reference) -> ToolReply:
+        """Read the durable result of an earlier client_reference; never dispatch or retry a mutation."""
+        return await run(False, 'vh_operation_get', work.operation_get, ticket_id, client_reference)
+
     @mcp.tool()
     async def vh_work_order_reschedule(
             ticket_id: Ticket, client_reference: Reference,
