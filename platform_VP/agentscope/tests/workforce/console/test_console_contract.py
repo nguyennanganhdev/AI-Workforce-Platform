@@ -26,7 +26,6 @@ from agentscope.app._router._workforce_console import (
     _resolve_selected_tools,
     _response_language,
     _select_model_name,
-    _similarity,
     _stored_proposal,
 )
 from agentscope.app._workforce_policy import (
@@ -98,20 +97,6 @@ def test_skill_normalisation_adds_safe_front_matter() -> None:
     assert skill.startswith("---\nname: hotel-search\n")
     assert 'description: "Tìm phòng: theo ngân sách của khách"' in skill
     assert "# Workflow" in skill
-
-
-def test_reuse_similarity_prefers_same_business_capability() -> None:
-    same = _similarity(
-        "Agent tìm khách sạn và kiểm tra phòng theo ngân sách",
-        "Agent kiểm tra phòng khách sạn theo ngân sách và đề xuất lựa chọn",
-    )
-    unrelated = _similarity(
-        "Agent tìm khách sạn và kiểm tra phòng theo ngân sách",
-        "Agent chẩn đoán sự cố điện và điều phối kỹ thuật viên",
-    )
-
-    assert same > unrelated
-    assert unrelated < 0.3
 
 
 def test_workforce_model_default_does_not_depend_on_card_order() -> None:

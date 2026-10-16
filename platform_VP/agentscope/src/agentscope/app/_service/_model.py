@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Model service: builds a ChatModelBase from stored credential + config."""
+from fastapi import HTTPException
+
 from ._access import ResourceAccessService
 from ..storage import ChatModelConfig
-from ...credential import CredentialFactory
-from ...model import ChatModelBase
+from ...credential import CredentialFactory, OpenAICredential
+from ...model import ChatModelBase, OpenAIResponseModel
 from ..._logging import logger
 
 
@@ -46,6 +48,19 @@ async def get_model(
 
     credential = CredentialFactory.from_dict(credential_record.data)
     model_cls = credential.get_chat_model_class()
+    if isinstance(credential, OpenAICredential) and config.model == "gpt-6-luna":
+        # Luna requires Responses for tool calls with reasoning enabled.
+        model_cls = OpenAIResponseModel
+        if config.parameters.get("reasoning_effort") not in (
+            None, "none", "low", "medium", "high", "xhigh", "max",
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "gpt-6-luna reasoning_effort must be one of: "
+                    "none, low, medium, high, xhigh, max."
+                ),
+            )
     parameters = (
         model_cls.Parameters(**config.parameters)
         if config.parameters

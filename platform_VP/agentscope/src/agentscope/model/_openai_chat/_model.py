@@ -64,7 +64,7 @@ class OpenAIChatModel(ChatModelBase):
         )
 
         reasoning_effort: (
-            Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None
+            Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
         ) = Field(
             default=None,
             title="Reasoning Effort",
@@ -72,7 +72,7 @@ class OpenAIChatModel(ChatModelBase):
                 "Controls the depth of reasoning for reasoning models "
                 "(e.g. o3, o4-mini, gpt-5.5). Supported values are "
                 "model-dependent and may include: none, minimal, low, "
-                "medium, high, xhigh."
+                "medium, high, xhigh, max."
             ),
         )
 
@@ -258,7 +258,7 @@ class OpenAIChatModel(ChatModelBase):
         if self.parameters.top_p is not None:
             kwargs["top_p"] = self.parameters.top_p
 
-        if self.parameters.thinking_enable and self.parameters.reasoning_effort:
+        if self.parameters.reasoning_effort is not None:
             kwargs["reasoning_effort"] = self.parameters.reasoning_effort
 
         if self.parameters.voice is not None:

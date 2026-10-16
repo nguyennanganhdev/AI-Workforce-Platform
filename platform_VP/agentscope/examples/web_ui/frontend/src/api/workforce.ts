@@ -29,7 +29,7 @@ export interface ProposedAgent {
 		score?: number;
 		checks?: Record<string, boolean>;
 		invalid_tool_ids?: string[];
-		reuse_similarity?: number;
+		reuse_probability?: number;
 	};
 	reuse_agent_id: string | null;
 	reuse_agent_name: string | null;
@@ -41,6 +41,9 @@ export interface PlannedAgent {
 	suggested_tools: BuilderTool[];
 	suggested_knowledge_bases: BuilderKnowledgeBase[];
 	missing_resources?: string[];
+	reuse_agent_id?: string | null;
+	reuse_agent_name?: string | null;
+	reuse_probability?: number | null;
 }
 
 export interface BuilderProposal {
@@ -48,7 +51,7 @@ export interface BuilderProposal {
 	proposal_id: string | null;
 	revision: number;
 	resources_locked?: boolean;
-	resource_selection?: 'jev' | 'llm' | null;
+	resource_selection?: 'jev' | 'llm' | 'hybrid' | null;
 	status: 'needs_input' | 'ready' | 'blocked' | 'published';
 	assistant_message: string;
 	clarification_question: string | null;

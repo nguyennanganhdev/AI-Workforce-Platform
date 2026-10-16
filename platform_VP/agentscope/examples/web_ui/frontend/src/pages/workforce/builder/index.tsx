@@ -21,7 +21,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { workforceApi } from '@/api';
+import { agentApi, workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
 	BuilderMessage,
@@ -115,7 +115,7 @@ function AgentProposalCard({
 			<CardContent className="grid gap-5 p-5 xl:grid-cols-2">
 				<section className="xl:col-span-2">
 					<div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-						<Bot className="size-3.5" /> System prompt do Builder sinh
+						<Bot className="size-3.5" /> {reused ? 'System prompt của agent có sẵn' : 'System prompt do Builder sinh'}
 					</div>
 					<pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border bg-background p-3 text-xs leading-5">
 						{proposal.system_prompt}
@@ -241,6 +241,7 @@ export function AgentBuilderPage() {
 	const [deleteConversationOpen, setDeleteConversationOpen] = useState(false);
 	const [conversationToDelete, setConversationToDelete] =
 		useState<BuilderConversationSummary | null>(null);
+	const [agentToDelete, setAgentToDelete] = useState<WorkforceAgent | null>(null);
 
 	const loadAgents = useCallback(async () => {
 		setAgents(await workforceApi.listAgents());
@@ -580,6 +581,11 @@ export function AgentBuilderPage() {
 												{' · '}
 												{proposal.fixed_config.runtime_note}
 											</p>
+											{proposal.resource_selection && (
+												<p className="mt-1 text-xs text-muted-foreground">
+													Chọn tool/KB: {proposal.resource_selection === 'jev' ? 'Jev' : proposal.resource_selection === 'hybrid' ? 'Jev + LLM' : 'LLM (fallback)'}
+												</p>
+											)}
 										</div>
 										{proposal.status === 'ready' && (
 											<Button onClick={publish} disabled={working}>
@@ -599,8 +605,10 @@ export function AgentBuilderPage() {
 														)
 													}
 												>
-													<CheckCircle2 /> Chốt định hướng và sinh cấu
-													hình
+													<CheckCircle2 />{' '}
+													{proposal.planned_agents.every((agent) => agent.reuse_agent_id)
+														? 'Chốt định hướng và dùng agent có sẵn'
+														: 'Chốt định hướng và sinh cấu hình'}
 												</Button>
 											)}
 										{proposal.status === 'published' && (
@@ -620,6 +628,9 @@ export function AgentBuilderPage() {
 													<div className="flex items-center gap-2">
 														<Bot className="size-4 text-primary" />
 														<p className="font-medium">{agent.name}</p>
+														<Badge variant={agent.reuse_agent_id ? 'default' : 'secondary'}>
+															{agent.reuse_agent_id ? `Dùng lại: ${agent.reuse_agent_name}` : 'Tạo mới'}
+														</Badge>
 													</div>
 													<p className="mt-2 text-sm text-muted-foreground">
 														{agent.objective}
@@ -725,17 +736,29 @@ export function AgentBuilderPage() {
 											{agent.objective}
 										</p>
 									</div>
-									<Button
-										size="icon-sm"
-										variant="ghost"
-										onClick={() => toggleLifecycle(agent)}
-									>
-										{agent.lifecycle_state === 'published' ? (
-											<Power />
-										) : (
-											<PowerOff />
-										)}
-									</Button>
+									<div className="flex shrink-0 items-center gap-1">
+										<Button
+											size="icon-sm"
+											variant="ghost"
+											onClick={() => toggleLifecycle(agent)}
+										>
+											{agent.lifecycle_state === 'published' ? (
+												<Power />
+											) : (
+												<PowerOff />
+											)}
+										</Button>
+										<Button
+											size="icon-sm"
+											variant="ghost"
+											className="text-destructive hover:text-destructive"
+										aria-label={`Xóa agent ${agent.name}`}
+											title="Xóa agent"
+											onClick={() => setAgentToDelete(agent)}
+										>
+											<Trash2 />
+										</Button>
+									</div>
 								</div>
 								<div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
 									<span>
@@ -758,6 +781,23 @@ export function AgentBuilderPage() {
 					</div>
 				</aside>
 			</div>
+			<DeleteDialog
+				open={agentToDelete !== null}
+				onOpenChange={(open) => {
+					if (!open) setAgentToDelete(null);
+				}}
+				title={`Xóa agent “${agentToDelete?.name ?? ''}”?`}
+				description="Agent cùng toàn bộ phiên chat, lịch sử và lịch chạy của agent sẽ bị xóa vĩnh viễn. Thao tác này không thể hoàn tác."
+				confirmLabel="Xóa agent"
+				onConfirm={async () => {
+					if (!agentToDelete) return;
+					await agentApi.delete(agentToDelete.agent_id);
+					setAgents((current) =>
+						current.filter((agent) => agent.agent_id !== agentToDelete.agent_id),
+					);
+					toast.success(`Đã xóa agent “${agentToDelete.name}”.`);
+				}}
+			/>
 			<DeleteDialog
 				open={deleteConversationOpen}
 				onOpenChange={setDeleteConversationOpen}
