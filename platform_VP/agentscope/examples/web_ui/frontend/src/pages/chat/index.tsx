@@ -19,6 +19,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
 import { sessionApi, type AgentView, type SessionRecord, type SessionSourceKind } from '@/api';
+import { ApiError } from '@/api/client';
 import { GroupAvatar } from '@/components/chat/GroupAvatar';
 import { NewChatMenu } from '@/components/chat/NewChatMenu';
 import { SearchPalette } from '@/components/chat/SearchPalette';
@@ -105,15 +106,17 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	}>();
 	const { t } = useTranslation();
 	const queryClient = useQueryClient();
-	const { agents, refetch: refetchAgents } = useAgents();
+	const { agents, loading: agentsLoading, error: agentsError, refetch: refetchAgents } = useAgents();
+	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const {
 		sessions,
 		loading: sessionsLoading,
+		error: sessionsError,
 		refetch: refetchSessions,
 		create: createSession,
 		update: updateSession,
 		remove: removeSession,
-	} = useSessions(urlAgentId ?? null);
+	} = useSessions(selectedAgent?.id ?? null);
 
 	const { isMobile, setOpen, setOpenMobile } = useSidebar();
 	/** The agent an edit / delete from a row's menu applies to. */
@@ -129,7 +132,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	const [groupToDelete, setGroupToDelete] = useState<GroupChat | null>(null);
 	const groupChats = useGroupChats();
 
-	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
 	// Show a per-origin icon only when sessions actually mix sources —
 	// a uniform list needs no disambiguation.
@@ -145,7 +147,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		? (currentView?.team?.members.find((m) => m.agent.id === urlMemberId) ?? null)
 		: null;
 	const effectiveAgentId =
-		focusedMember && focusedMember.session_id ? focusedMember.agent.id : (urlAgentId ?? null);
+		focusedMember && focusedMember.session_id ? focusedMember.agent.id : (selectedAgent?.id ?? null);
 	const effectiveSessionId =
 		focusedMember && focusedMember.session_id
 			? focusedMember.session_id
@@ -162,15 +164,28 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		localStorage.setItem(LAST_SESSION_KEY, urlSessionId);
 	}, [urlAgentId, urlSessionId]);
 
-	// Redirect: URL is missing an agent → reopen the last one viewed,
+	// A different client may have deleted the agent after our list loaded.
+	useEffect(() => {
+		if (sessionsError instanceof ApiError && sessionsError.status === 404) {
+			void refetchAgents();
+		}
+	}, [sessionsError, refetchAgents]);
+
+	// Redirect: URL is missing an agent, or it was deleted → reopen the last one viewed,
 	// falling back to the first, and rewrite the URL in-place (replace
 	// so we don't pollute history).
 	useEffect(() => {
-		if (urlAgentId || agents.length === 0) return;
+		if (agentsLoading || agentsError || selectedAgent) return;
+		if (agents.length === 0) {
+			localStorage.removeItem(LAST_AGENT_KEY);
+			localStorage.removeItem(LAST_SESSION_KEY);
+			if (urlAgentId) navigate('/chat', { replace: true });
+			return;
+		}
 		const remembered = localStorage.getItem(LAST_AGENT_KEY);
 		const agent = agents.find((a) => a.id === remembered) ?? agents[0];
 		navigate(`/chat/${agent.id}`, { replace: true });
-	}, [agents, urlAgentId, navigate]);
+	}, [agents, agentsLoading, agentsError, selectedAgent, urlAgentId, navigate]);
 
 	// Redirect: URL has an agent but no session, or its sessionId no
 	// longer exists for this agent → reopen the last session viewed
@@ -219,13 +234,13 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	// list to pick from. Once per agent, so a failure does not loop.
 	const autoStarted = useRef<Set<string>>(new Set());
 	useEffect(() => {
-		if (!urlAgentId || !selectedAgent || sessionsLoading || sessions.length > 0)
+		if (!urlAgentId || !selectedAgent || sessionsLoading || sessionsError || sessions.length > 0)
 			return;
 		if (autoStarted.current.has(urlAgentId)) return;
 		autoStarted.current.add(urlAgentId);
 		void handleCreateSession();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [urlAgentId, selectedAgent, sessionsLoading, sessions.length]);
+	}, [urlAgentId, selectedAgent, sessionsLoading, sessionsError, sessions.length]);
 
 	// The Builder's draft opens in agent management; the list here just refreshes.
 	const handleAgentCreated = async () => {

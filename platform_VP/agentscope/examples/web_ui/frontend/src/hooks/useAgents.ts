@@ -9,7 +9,7 @@ import type { AgentView, CreateAgentRequest, UpdateAgentRequest } from '../api';
  */
 export function useAgents() {
 	const [agents, setAgents] = useState<AgentView[]>([]);
-	const [loading, setLoading] = useState(false);
+	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<Error | null>(null);
 
 	const refetch = useCallback(async () => {

@@ -465,38 +465,54 @@ export function TestsEditor({
 		<div className="space-y-2">
 			{tests.map((test, index) => (
 				<div key={test.id || index} className="space-y-2 rounded-xl border border-border/70 p-3">
-					<div className="flex gap-2">
+					<div className="flex items-center justify-between gap-2">
+						<h4 className="text-sm font-medium">Tình huống {index + 1}</h4>
+						<RemoveButton onClick={() => onChange(tests.filter((_, i) => i !== index))} />
+					</div>
+					<label className="block space-y-1.5 text-xs text-muted-foreground">
+						<span>Yêu cầu gửi cho agent</span>
 						<Textarea
 							value={test.scenario}
 							rows={2}
 							placeholder="Khách nói gì trong kịch bản"
 							onChange={(event) => update(index, { scenario: event.target.value })}
 						/>
-						<RemoveButton onClick={() => onChange(tests.filter((_, i) => i !== index))} />
-					</div>
+					</label>
+					<label className="block space-y-1.5 text-xs text-muted-foreground">
+						<span>Agent cần làm gì để được chấm đạt?</span>
 					<Textarea
 						value={test.expected}
 						rows={2}
 						placeholder="Hành vi mong đợi (agent phải làm/không được làm gì)"
 						onChange={(event) => update(index, { expected: event.target.value })}
 					/>
+					</label>
+					<details className="space-y-2">
+						<summary className="cursor-pointer text-xs font-medium">Điều kiện kiểm tra bổ sung (tuỳ chọn)</summary>
 					<div className="grid gap-2 md:grid-cols-3">
+						<label className="space-y-1.5 text-xs text-muted-foreground"><span>Từ/cụm từ phải có</span>
 						<Input
 							value={test.must_include.join(', ')}
 							placeholder="Phải có (cách nhau dấu phẩy)"
 							onChange={(event) => update(index, { must_include: splitList(event.target.value) })}
 						/>
+						</label>
+						<label className="space-y-1.5 text-xs text-muted-foreground"><span>Từ/cụm từ bị cấm</span>
 						<Input
 							value={test.must_not_include.join(', ')}
 							placeholder="Không được có"
 							onChange={(event) => update(index, { must_not_include: splitList(event.target.value) })}
 						/>
+						</label>
+						<label className="space-y-1.5 text-xs text-muted-foreground"><span>Công cụ phải gọi</span>
 						<Input
 							value={test.expect_tool}
 							placeholder="Tool phải gọi (tuỳ chọn)"
 							onChange={(event) => update(index, { expect_tool: event.target.value })}
 						/>
+						</label>
 					</div>
+					</details>
 				</div>
 			))}
 			<AddButton

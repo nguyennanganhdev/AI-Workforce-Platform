@@ -10,6 +10,7 @@ export interface BuilderTool {
 }
 
 export interface ProposedAgent {
+	tests?: { scenario: string; expected: string }[];
 	name: string;
 	objective: string;
 	system_prompt: string;
@@ -71,6 +72,8 @@ export interface BuilderConversation {
 	title: string;
 	messages: BuilderMessage[];
 	proposal: BuilderProposal | null;
+	context_messages?: number;
+	context_summarized?: boolean;
 }
 
 export interface WorkforceAgent {

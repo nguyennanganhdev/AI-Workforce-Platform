@@ -26,7 +26,6 @@ import type {
 	WorkforceAgent,
 } from '@/api';
 import robotStill from '@/assets/images/stickers/robot-still.webp';
-import robotSticker from '@/assets/images/stickers/robot.webp';
 import { sessionTime } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
@@ -41,6 +40,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
+import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
@@ -82,7 +82,7 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 						<h3 className="text-[15px]/5 font-semibold">{proposal.name}</h3>
 						<Badge variant={passed ? 'secondary' : 'destructive'}>
 							{passed ? <CheckCircle2 /> : <CircleAlert />}
-							{passed ? 'Eval đạt' : 'Eval chưa đạt'}
+							{passed ? 'Cấu hình hợp lệ' : 'Cần sửa cấu hình'}
 						</Badge>
 					</div>
 					<p className="mt-1 text-sm text-muted-foreground">{proposal.objective}</p>
@@ -145,6 +145,20 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 					)}
 				</CollapsibleContent>
 			</Collapsible>
+			{proposal.tests && proposal.tests.length > 0 && (
+				<details className="mt-3 text-sm">
+					<summary className="cursor-pointer py-2 font-medium">{proposal.tests.length} ca kiểm thử dự kiến</summary>
+					<p className="mb-2 text-xs text-muted-foreground">Đây là kịch bản do Builder soạn, chưa phải kết quả chạy model. Mở Quản lý agent → Kiểm thử để chạy.</p>
+					<ol className="space-y-2">
+						{proposal.tests.map((test, index) => (
+							<li key={index} className="rounded-lg bg-muted/50 p-3">
+								<p className="font-medium">Ca {index + 1}: {String(test.scenario ?? '')}</p>
+								<p className="mt-1 text-muted-foreground">Mong đợi: {String(test.expected ?? '')}</p>
+							</li>
+						))}
+					</ol>
+				</details>
+			)}
 		</article>
 	);
 }
@@ -160,6 +174,9 @@ export function AgentBuilderPage() {
 	const [proposal, setProposal] = useState<BuilderProposal | null>(null);
 	const [agents, setAgents] = useState<WorkforceAgent[]>([]);
 	const [working, setWorking] = useState(false);
+	const [task, setTask] = useState({ label: '', startedAt: 0 });
+	const [lastLatency, setLastLatency] = useState<number | null>(null);
+	const [contextInfo, setContextInfo] = useState({ messages: 0, summarized: false });
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
@@ -180,6 +197,7 @@ export function AgentBuilderPage() {
 			setConversationId(nextId);
 			setConversation(stored.messages);
 			setProposal(stored.proposal);
+			setContextInfo({ messages: stored.context_messages ?? stored.messages.length, summarized: stored.context_summarized ?? false });
 			if (stored.proposal) setSelectedModel(stored.proposal.chat_model_config);
 			setSearchParams({ conversation_id: nextId }, { replace: true });
 		},
@@ -205,6 +223,8 @@ export function AgentBuilderPage() {
 		setConversation([]);
 		setProposal(null);
 		setMessage('');
+		setLastLatency(null);
+		setContextInfo({ messages: 0, summarized: false });
 		setSearchParams({}, { replace: true });
 	};
 
@@ -219,6 +239,8 @@ export function AgentBuilderPage() {
 		setConversation((current) => [...current, { role: 'user', text: userText }]);
 		setMessage('');
 		setWorking(true);
+		const startedAt = Date.now();
+		setTask({ label: 'Builder đang xử lý yêu cầu…', startedAt });
 		try {
 			const nextProposal = await workforceApi.prepare(
 				userText,
@@ -228,6 +250,7 @@ export function AgentBuilderPage() {
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
+			setLastLatency(Date.now() - startedAt);
 			setWorking(false);
 		}
 	};
@@ -238,6 +261,8 @@ export function AgentBuilderPage() {
 			.reverse()
 			.find((item) => item.role === 'user')?.text ?? '';
 		setWorking(true);
+		const startedAt = Date.now();
+		setTask({ label: 'Đang sinh prompt, công cụ và ca kiểm thử…', startedAt });
 		try {
 			const nextProposal = await workforceApi.prepare(
 				prefersVietnamese(lastUserMessage)
@@ -249,6 +274,7 @@ export function AgentBuilderPage() {
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
+			setLastLatency(Date.now() - startedAt);
 			setWorking(false);
 		}
 	};
@@ -256,6 +282,8 @@ export function AgentBuilderPage() {
 	const publish = async () => {
 		if (!proposal?.proposal_id) return;
 		setWorking(true);
+		const startedAt = Date.now();
+		setTask({ label: 'Đang lưu và phát hành agent…', startedAt });
 		try {
 			const result = await workforceApi.publish(
 				proposal.conversation_id,
@@ -267,6 +295,7 @@ export function AgentBuilderPage() {
 			await loadAgents();
 			toast.success(`Đã sẵn sàng ${result.agents.length} agent trong platform.`);
 		} finally {
+			setLastLatency(Date.now() - startedAt);
 			setWorking(false);
 		}
 	};
@@ -394,12 +423,13 @@ export function AgentBuilderPage() {
 							),
 						)}
 						{working && (
-							<div className="flex items-center gap-3 motion-safe:animate-in motion-safe:fade-in">
-								<img src={robotSticker} alt="" className="size-10" />
-								<p className="shimmer text-[13px]/[18px] text-muted-foreground">
-									Builder đang soạn cấu hình, đội nhiều agent có thể mất vài phút…
-								</p>
-							</div>
+							<TaskProgress key={task.startedAt} {...task} />
+						)}
+						{conversation.length > 0 && (
+							<p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-testid="builder-metrics">
+								<span>Ngữ cảnh: {contextInfo.messages} tin nhắn{contextInfo.summarized ? ' · đã tóm tắt lịch sử dài' : ''}</span>
+								{lastLatency !== null && <span>Thời gian phản hồi: {(lastLatency / 1000).toFixed(1)} giây</span>}
+							</p>
 						)}
 
 						{proposal && (
@@ -407,13 +437,7 @@ export function AgentBuilderPage() {
 								<ProposalSteps status={proposal.status} />
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div className="min-w-0 flex-1">
-										<p className="text-[15px]/6 font-medium">{proposal.assistant_message}</p>
-										{proposal.clarification_question &&
-											proposal.clarification_question !== proposal.assistant_message && (
-												<p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
-													{proposal.clarification_question}
-												</p>
-											)}
+										<h2 className="text-[15px]/6 font-medium">{proposal.agents.length ? 'Cấu hình chờ duyệt' : 'Dàn ý hiện tại'} · {proposal.agents.length || proposal.planned_agents.length} agent</h2>
 										<p className="mt-1 text-xs text-muted-foreground">
 											Model <span className="font-mono">{proposal.chat_model_config.model}</span>
 										</p>
@@ -602,7 +626,7 @@ function BuilderWelcome({ onPick }: { onPick: (text: string) => void }) {
 
 const STEPS = [
 	{ key: 'outline', label: 'Định hướng' },
-	{ key: 'config', label: 'Cấu hình và eval' },
+	{ key: 'config', label: 'Kiểm tra cấu hình' },
 	{ key: 'publish', label: 'Phát hành' },
 ] as const;
 

@@ -5,11 +5,14 @@ SSE/history của platform. Platform không gọi webhook ngược sang đối t
 
 ## Điều kiện trước khi mở traffic
 
-1. Backup PostgreSQL hoàn tất và restore rehearsal sang database tách biệt pass.
-2. Alembic có đúng một head `0011_workforce_releases`.
+1. Backup đủ PostgreSQL, Redis, MinIO và workspace; restore rehearsal tách biệt pass
+   theo [runbook VPS](../../vps/README.md).
+2. Alembic có đúng một head, khớp image đang phát hành; bản develop2 ngày 16/10/2026
+   là `0017_unified_partner_case`.
 3. API/worker chạy cùng image và commit; không trộn schema/code khác commit.
-4. Redis chỉ dùng signal/fan-out. PostgreSQL là nguồn chuẩn cho inbox, workflow,
-   checkpoint, public event và durable job.
+4. Với entrypoint `examples/agent_service/main.py`, Redis lưu agent, credential,
+   MCP và session cùng signal/fan-out. PostgreSQL lưu auth, shared context,
+   inbox, workflow, checkpoint, public event và durable job. Phải giữ cả hai.
 5. Proxy SSE áp dụng [proxy.example.conf](proxy.example.conf); kiểm tra
    `X-Accel-Buffering: no`, heartbeat và `Last-Event-ID` qua proxy thật.
 6. Metrics adapter phải xuất đúng tên metric trong
@@ -31,12 +34,17 @@ mới và tắt nhận request mới bằng feature flag; worker/provider ingres
 
 ## Backup và restore rehearsal
 
-- Dùng `pg_dump --format=custom` trên database nguồn.
+- Chạy `deploy/vps/backup.sh` để lấy đủ bốn kho khi application dừng ghi.
+  Script dùng `pg_dump --format=custom`, archive Redis AOF/RDB, MinIO và
+  workspace (gồm Qdrant trên đĩa); lưu cấu hình/secret với quyền hạn chế.
 - Restore bằng `pg_restore --exit-on-error --no-owner --no-privileges` vào một
   database kiểm tra rỗng, tuyệt đối không restore đè database nguồn.
-- Chạy `alembic current`, xác nhận `0011_workforce_releases`, sau đó chạy smoke
+- Chạy `alembic current`, xác nhận head khớp manifest backup và image (hiện tại
+  `0017_unified_partner_case`), sau đó chạy smoke
   Customer request/history và kiểm tra số workflow/inbox/public event.
-- CI thực hiện rehearsal này trong PostgreSQL service trước khi tạo D7 report.
+- CI diễn tập phần PostgreSQL trước D7 report. `deploy/vps/verify-restore.sh`
+  kiểm tra đủ PostgreSQL, Redis, MinIO và workspace trong tài nguyên tạm cô lập,
+  không khởi động ứng dụng/model hay gửi lại phiếu sang đối tác.
 
 ## Worker restart
 

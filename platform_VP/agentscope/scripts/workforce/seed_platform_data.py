@@ -26,15 +26,38 @@ import httpx
 
 STANDARD = {
     "vinhomes": ("Vinhomes", [
-        ("ocean-park-1", "Ocean Park 1"),
-        ("ocean-park-2", "Ocean Park 2"),
-        ("ocean-park-3", "Ocean Park 3"),
+        ("ocean-park-1", "Vinhomes Ocean Park 1"),
+        ("ocean-park-2", "Vinhomes Ocean Park 2 – The Empire"),
+        ("ocean-park-3", "Vinhomes Ocean Park 3 – The Crown"),
         ("smart-city", "Smart City"),
         ("times-city", "Times City"),
     ]),
     "vinpearl": ("Vinpearl", [("vinpearl-phu-quoc", "Vinpearl Phú Quốc"), ("vinpearl-nha-trang", "Vinpearl Nha Trang")]),
     "vinwonders": ("VinWonders", [("vinwonders-phu-quoc", "VinWonders Phú Quốc"), ("vinwonders-nha-trang", "VinWonders Nha Trang")]),
 }
+
+ACCOUNT_REALMS = {"vinhomes": "vinhome", "vinpearl": "vinpearl", "vinwonders": "vinwonders"}
+AREA_LOGIN_CODES = {
+    "ocean-park-1": "op1", "ocean-park-2": "op2", "ocean-park-3": "op3",
+    "smart-city": "smartcity", "times-city": "timescity",
+    "vinpearl-phu-quoc": "phuquoc", "vinpearl-nha-trang": "nhatrang",
+    "vinwonders-phu-quoc": "phuquoc", "vinwonders-nha-trang": "nhatrang",
+}
+
+
+def account_identity(role: str, domain_id: str | None = None, area_id: str | None = None) -> tuple[str, str]:
+    """Stable login names; .test addresses are identifiers, not mailboxes."""
+    if role == "PLATFORM_ADMIN" and domain_id is None and area_id is None:
+        return "platform.admin", "admin@accounts.vagen.test"
+    if domain_id not in ACCOUNT_REALMS:
+        raise ValueError("unknown account domain")
+    realm = ACCOUNT_REALMS[domain_id]
+    if role == "DOMAIN_ADMIN" and area_id is None:
+        return f"{realm}.admin", f"admin@accounts.{realm}.test"
+    if role != "AREA_MANAGER" or area_id not in {a for a, _ in STANDARD[domain_id][1]}:
+        raise ValueError("account role or area does not match the domain")
+    code = AREA_LOGIN_CODES[area_id]
+    return f"{realm}.{code}.bql", f"{code}.bql@accounts.{realm}.test"
 
 
 def ok(response: httpx.Response, *codes: int) -> dict | list:
@@ -50,7 +73,7 @@ def password(prefix: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--platform", default="http://127.0.0.1:8000")
-    parser.add_argument("--admin", default="admin@platform.local", help="platform admin login")
+    parser.add_argument("--admin", default="admin@accounts.vagen.test", help="platform admin login")
     parser.add_argument("--access", default=".artifacts/demo-access/ACCESS.md")
     parser.add_argument("--tenant", default="default")
     args = parser.parse_args()
@@ -75,10 +98,11 @@ def main() -> int:
                     print(f"area {area_id}: added")
             if not any(a["role"] == "DOMAIN_ADMIN" and a["domain_id"] == domain_id for a in accounts):
                 secret = password("Dm")
+                username, email = account_identity("DOMAIN_ADMIN", domain_id)
                 ok(http.post("/admin/domain-admins", headers=admin, json={
-                    "email": f"admin.{domain_id}@example.com", "username": f"{domain_id}_admin",
+                    "email": email, "username": username,
                     "password": secret, "domain_id": domain_id}), 201)
-                created.append(f"- Quản trị domain {domain_name}: `admin.{domain_id}@example.com` / `{secret}`")
+                created.append(f"- Quản trị domain {domain_name}: `{email}` / `{secret}`")
                 print(f"domain admin {domain_id}: created")
         directory = {d["id"]: d for d in ok(http.get("/admin/directory", headers=admin), 200)}
         for domain_id, (_name, areas) in STANDARD.items():
@@ -86,9 +110,10 @@ def main() -> int:
             for area_id, area_name in areas:
                 if by_id[area_id]["managers"]:
                     continue
-                secret, email = password("Bql"), f"bql.{area_id}@example.com"
+                secret = password("Bql")
+                username, email = account_identity("AREA_MANAGER", domain_id, area_id)
                 ok(http.post("/auth/register", json={
-                    "email": email, "username": "bql_" + area_id.replace("-", "_"), "password": secret,
+                    "email": email, "username": username, "password": secret,
                     "domain_id": domain_id, "area_id": area_id}), 201)
                 pending = ok(http.get("/admin/accounts", headers=admin, params={"status_filter": "pending"}), 200)
                 account = next(a for a in pending if a["email"] == email)

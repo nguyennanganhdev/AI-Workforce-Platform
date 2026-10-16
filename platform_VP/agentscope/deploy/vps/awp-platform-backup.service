@@ -1,0 +1,14 @@
+[Unit]
+Description=Consistent backup of all Platform stores
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+WorkingDirectory=/opt/awp-platform/app
+EnvironmentFile=-/etc/awp-platform-backup.env
+ExecStart=/bin/bash /opt/awp-platform/app/deploy/vps/backup.sh awp-platform /var/backups/awp-platform
+ExecStartPost=/usr/bin/curl --retry 30 --retry-delay 2 --retry-connrefused --fail --silent --show-error http://127.0.0.1:5173/api/health
+TimeoutStartSec=900

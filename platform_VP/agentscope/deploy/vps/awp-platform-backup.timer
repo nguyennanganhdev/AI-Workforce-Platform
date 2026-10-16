@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Platform backup at 03:30 Vietnam time
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Ho_Chi_Minh
+Persistent=true
+Unit=awp-platform-backup.service
+
+[Install]
+WantedBy=timers.target

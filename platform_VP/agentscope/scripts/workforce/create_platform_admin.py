@@ -1,7 +1,7 @@
 """Create the platform's administrator (one-time setup, run where the database is reachable).
 
     docker compose exec -e ADMIN_PASSWORD='...' app \\
-        python scripts/workforce/create_platform_admin.py --email admin@example.com --username admin
+        python scripts/workforce/create_platform_admin.py --email admin@accounts.vagen.test --username platform.admin
 
 The password is read from $ADMIN_PASSWORD (never a command-line argument). The
 platform admin approves management board (BQL) registrations, adds integrated

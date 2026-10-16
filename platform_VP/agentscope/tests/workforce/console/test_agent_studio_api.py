@@ -449,6 +449,7 @@ async def _scenario_runs_read_tools_and_simulates_writes() -> None:
     result = report["results"][0]
     assert result["passed"] is True
     assert {c["name"]: c["executed"] for c in result["tool_calls"]} == {"lookup": True, "create_order": False}
+    assert {c["name"]: c["mode"] for c in result["tool_calls"]} == {"lookup": "read_only", "create_order": "simulated"}
 
 
 def test_legacy_toggle_only_reactivates_a_versioned_agent(env) -> None:

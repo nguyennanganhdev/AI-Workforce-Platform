@@ -39,6 +39,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
 
 
@@ -67,6 +68,7 @@ export function AgentDetailPage() {
 	const [spec, setSpec] = useState<AgentSpec | null>(null);
 	const [dirty, setDirty] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
+	const [taskStartedAt, setTaskStartedAt] = useState(0);
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [catalog, setCatalog] = useState<CatalogTool[]>([]);
 	const [bases, setBases] = useState<KnowledgeBaseView[]>([]);
@@ -104,7 +106,8 @@ export function AgentDetailPage() {
 		setDirty(true);
 	}, []);
 
-	const run = async <T,>(label: string, task: () => Promise<T>) => {
+	const run = useCallback(async <T,>(label: string, task: () => Promise<T>) => {
+		setTaskStartedAt(Date.now());
 		setBusy(label);
 		try {
 			return await task();
@@ -114,7 +117,7 @@ export function AgentDetailPage() {
 		} finally {
 			setBusy(null);
 		}
-	};
+	}, []);
 
 	const saveDraft = async () => {
 		if (!spec) return undefined;
@@ -389,6 +392,16 @@ export function AgentDetailPage() {
 						</TabsContent>
 
 						<TabsContent value="tests" className="space-y-4">
+							<div className="space-y-3 rounded-xl border bg-muted/30 p-4 text-sm">
+								<h2 className="font-semibold">Sandbox: thử agent trước khi phát hành</h2>
+								<ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+									<li>Xem hoặc sửa yêu cầu và hành vi mong đợi của từng tình huống bên dưới.</li>
+										<li>Bấm “Chạy kiểm thử”. Model trả lời theo cấu hình bản nháp; AI đối chiếu câu trả lời với tiêu chí.</li>
+										<li>Xem tình huống nào đạt, chưa đạt hoặc lỗi chạy; sửa cấu hình rồi thử lại.</li>
+									</ol>
+								<p className="text-xs text-muted-foreground">Công cụ chỉ đọc, không cần xác nhận được gọi thật. Công cụ ghi dữ liệu hoặc cần xác nhận được mô phỏng. Đây là kiểm thử từng agent; luồng nhiều agent xử lý ticket cần nghiệm thu riêng.</p>
+							</div>
+							{busy === 'tests' && <TaskProgress label={`Đang chạy và chấm ${spec.tests.length} tình huống`} startedAt={taskStartedAt} />}
 							<Section title="Kịch bản kiểm thử" hint="Cần ít nhất 3 kịch bản và 80% đạt trên đúng bản nháp này mới phát hành được.">
 								{spec.tests.length < 3 && (
 									<div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 p-3 text-xs">

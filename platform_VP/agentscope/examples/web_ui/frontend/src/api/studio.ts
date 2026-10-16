@@ -93,19 +93,22 @@ export interface SpecChange {
 }
 
 export interface TestResult {
+	error?: string;
 	test_id: string;
 	scenario: string;
 	expected?: string;
+	latency_ms?: number;
 	passed: boolean;
 	checks: Array<{ name: string; passed: boolean }>;
 	judge: { passed: boolean; reason: string } | null;
 	answer: string;
-	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean }>;
+	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'error' }>;
 }
 
 export interface TestReport {
 	spec_hash: string;
 	ran_at: string;
+	latency_ms?: number;
 	total: number;
 	passed: number;
 	pass_rate: number;

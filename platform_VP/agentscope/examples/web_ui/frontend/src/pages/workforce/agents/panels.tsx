@@ -188,7 +188,11 @@ export function TestReportView({ report }: { report: TestReport }) {
 					{report.model_error}
 				</p>
 			)}
-			{report.results.map((result) => (
+			<p className="text-xs text-muted-foreground">
+				{report.latency_ms !== undefined && `Thời gian cả lượt: ${(report.latency_ms / 1000).toFixed(1)} giây · `}
+				Đạt khi có ít nhất 3 tình huống, tỷ lệ đạt từ 80% và không có lỗi chạy model.
+			</p>
+			{report.results.map((result, resultIndex) => (
 				<div key={result.test_id} className="space-y-2 rounded-xl border border-border/70 p-3 text-sm">
 					<div className="flex items-start gap-2">
 						{result.passed ? (
@@ -197,6 +201,13 @@ export function TestReportView({ report }: { report: TestReport }) {
 							<CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
 						)}
 						<div className="min-w-0 space-y-1">
+							<div className="flex flex-wrap items-center gap-2 text-xs">
+								<span className="font-medium">Tình huống {resultIndex + 1}</span>
+								<Badge variant={result.passed ? 'secondary' : 'destructive'}>
+									{result.error ? 'Lỗi chạy' : result.passed ? 'Đạt' : 'Chưa đạt'}
+								</Badge>
+								{result.latency_ms !== undefined && <span className="text-muted-foreground">{(result.latency_ms / 1000).toFixed(1)} giây</span>}
+							</div>
 							<p className="font-medium">{result.scenario}</p>
 							{result.expected && (
 								<p className="text-xs text-muted-foreground">Mong đợi: {result.expected}</p>
@@ -207,14 +218,16 @@ export function TestReportView({ report }: { report: TestReport }) {
 						<div className="flex flex-wrap gap-1.5">
 							{result.tool_calls.map((call, index) => (
 								<Badge key={index} variant="outline">
-									<Wrench /> {call.name} {call.executed ? '' : '(mô phỏng)'}
+									<Wrench /> {call.name} ({call.mode === 'error' ? 'lỗi gọi' : call.executed ? 'đọc thật' : 'mô phỏng'})
 								</Badge>
 							))}
 						</div>
 					)}
-					<p className="whitespace-pre-wrap rounded-lg bg-muted/50 p-2 text-xs">
-						{result.answer || '(không có câu trả lời)'}
-					</p>
+					<details open={!result.passed} className="space-y-2">
+						<summary className="cursor-pointer text-xs font-medium">Câu trả lời và bằng chứng chấm điểm</summary>
+						<p className="whitespace-pre-wrap rounded-lg bg-muted/50 p-3 text-sm leading-relaxed">
+							{result.answer || result.error || '(không có câu trả lời)'}
+						</p>
 					{result.checks.map((check) => (
 						<p key={check.name} className={`text-xs ${check.passed ? 'text-muted-foreground' : 'text-destructive'}`}>
 							{check.passed ? '✓' : '✗'} {check.name}
@@ -225,6 +238,7 @@ export function TestReportView({ report }: { report: TestReport }) {
 							Người chấm (AI): {result.judge.reason}
 						</p>
 					)}
+					</details>
 				</div>
 			))}
 		</div>

@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agentscope-local:latest
+    image: ${APP_IMAGE:-agentscope-local:latest}
     restart: unless-stopped
     environment:
       AGENTSCOPE_SQL_URL: ${AGENTSCOPE_SQL_URL:-postgresql+asyncpg://agentscope:agentscope@postgres:5432/agentscope}
@@ -91,7 +91,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_BASE_URL: ${WEB_API_BASE_URL:-http://localhost:8000}
-    image: agentscope-web-local:latest
+    image: ${WEB_IMAGE:-agentscope-web-local:latest}
     restart: unless-stopped
     ports:
       - "${BIND_HOST:-127.0.0.1}:${WEB_PORT:-5173}:80"
@@ -102,7 +102,7 @@ services:
   # Start with `--profile demo`; add it in the MCP page as
   # http://demo-mcp:8765/mcp.
   demo-mcp:
-    image: agentscope-local:latest
+    image: ${APP_IMAGE:-agentscope-local:latest}
     profiles: ["demo"]
     restart: unless-stopped
     working_dir: /app
@@ -111,7 +111,7 @@ services:
       - app
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
@@ -125,7 +125,7 @@ services:
       retries: 10
 
   postgres:
-    image: pgvector/pgvector:pg17
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg17}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-agentscope}

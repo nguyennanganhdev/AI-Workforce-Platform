@@ -22,3 +22,14 @@ examples/agent_service/workspaces
 .env
 .env.*
 *.log
+.artifacts
+.tmp
+backups
+releases
+*.secret.*
+ACCESS.md
+**/ACCESS.md
+*.pem
+*.key
+*.tar
+*.tar.gz

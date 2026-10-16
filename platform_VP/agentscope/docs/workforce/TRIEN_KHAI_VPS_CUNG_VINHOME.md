@@ -1,5 +1,10 @@
 # Triển khai platform trên cùng VPS với Vinhome
 
+> VPS platform riêng triển khai ngày 16/10/2026: `103.238.234.172`,
+> `https://vagen-platform.duckdns.org`. Xem [runbook VPS mới](../../deploy/vps/README.md).
+> Vinhome vẫn ở `103.238.235.156`; hai bên kết nối HTTPS. Phần dưới là hướng dẫn
+> lịch sử cho bố trí cùng host, không áp dụng nguyên lệnh Docker network cho VPS mới.
+
 Người đọc: người vận hành platform · VPS `103.238.235.156` (Vinhome:
 `https://vinhome-platform.duckdns.org`).
 
@@ -84,7 +89,7 @@ ssh -i ~/.ssh/vinhomes_vps_103_238_235_156 -N -L 5173:127.0.0.1:5173 -L 8000:127
 ```
 
 Tài khoản quản lý demo và các khoá nằm trong
-`/opt/awp-platform/app/ACCESS.md` (`chmod 600`), không commit.
+`/opt/awp-platform/ACCESS.secret.md` (`chmod 600`), không commit.
 
 ## Đổi khoá, cập nhật, gỡ
 

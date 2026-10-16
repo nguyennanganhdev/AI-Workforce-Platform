@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import unicodedata
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -139,16 +140,19 @@ async def run_scenario(
                 try:
                     output = await run_tool(call.name, args)
                     executed = True
+                    mode = "read_only"
                 except Exception as exc:  # noqa: BLE001 - reported in transcript
                     output = f"TOOL ERROR: {exc}"
                     executed = False
+                    mode = "error"
             else:
                 output = (
                     "SIMULATED: this action was NOT executed during testing. "
                     "In production it needs the customer's explicit consent first."
                 )
                 executed = False
-            calls.append({"name": call.name, "arguments": args, "executed": executed})
+                mode = "simulated"
+            calls.append({"name": call.name, "arguments": args, "executed": executed, "mode": mode})
             blocks.append(
                 ToolResultBlock(
                     id=call.id,
@@ -224,9 +228,11 @@ async def run_spec_tests(
         and not tool.requires_consent
     }
     semaphore = asyncio.Semaphore(concurrency)
+    started_at = time.monotonic()
 
     async def one(test: SpecTest) -> dict:
         async with semaphore:
+            scenario_started_at = time.monotonic()
             try:
                 transcript = await run_scenario(
                     spec=spec,
@@ -242,6 +248,8 @@ async def run_spec_tests(
                 return {
                     "test_id": test.id,
                     "scenario": test.scenario,
+                    "expected": test.expected,
+                    "latency_ms": round((time.monotonic() - scenario_started_at) * 1000),
                     "passed": False,
                     "error": error,
                     "checks": [],
@@ -264,6 +272,7 @@ async def run_spec_tests(
                 "test_id": test.id,
                 "scenario": test.scenario,
                 "expected": test.expected,
+                "latency_ms": round((time.monotonic() - scenario_started_at) * 1000),
                 "passed": passed,
                 "checks": checks,
                 "judge": verdict,
@@ -279,6 +288,7 @@ async def run_spec_tests(
     return {
         "spec_hash": spec_hash(spec),
         "ran_at": datetime.now(UTC).isoformat(),
+        "latency_ms": round((time.monotonic() - started_at) * 1000),
         "total": total,
         "passed": passed,
         "pass_rate": rate,

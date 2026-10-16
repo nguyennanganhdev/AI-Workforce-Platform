@@ -134,6 +134,11 @@ class PlannedAgent(BaseModel):
 class BuilderOutline(BaseModel):
     """The reviewable agent/team direction shown before generation."""
 
+    kind: Literal["outline", "reply"] = Field(
+        default="outline",
+        description="outline for a new/revised plan; reply for discussion that preserves the current plan.",
+    )
+    assistant_message: str = Field(default="", max_length=8000)
     agents: list[PlannedAgent] = Field(default_factory=list, max_length=12)
     clarification_question: str | None = Field(
         default=None,
@@ -145,8 +150,10 @@ class BuilderOutline(BaseModel):
 
     @model_validator(mode="after")
     def _agents_or_question(self) -> "BuilderOutline":
-        if not self.agents and not (self.clarification_question or "").strip():
-            raise ValueError("propose at least one agent or ask a question")
+        if self.kind == "reply" and (self.agents or not self.assistant_message.strip()):
+            raise ValueError("a discussion reply needs a message and must not replace the agent plan")
+        if not self.agents and not (self.clarification_question or self.assistant_message).strip():
+            raise ValueError("propose agents, answer the user, or ask a question")
         return self
 
 
@@ -272,6 +279,8 @@ class BuilderConversationView(BaseModel):
     title: str
     messages: list[BuilderMessageView]
     proposal: ProposalView | None = None
+    context_messages: int = 0
+    context_summarized: bool = False
 
 
 _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -507,8 +516,19 @@ async def _outline(
         [tool.model_dump(mode="json") for tool in tools],
         ensure_ascii=False,
     )
-    instructions = """You are the planning stage of Agent Builder.
-Propose agent names and narrowly-scoped reusable business objectives only.
+    instructions = """You are Agent Builder, helping the user design agents through a conversation.
+Respond to the latest user message in context, rather than treating every turn
+as a request for an agent list. When the user checks your understanding, asks
+why, or gives unclear feedback, use kind="reply", answer directly in
+assistant_message and leave agents empty. Ask one specific clarification if
+needed. The application preserves the current plan for a reply; do not repeat
+or rewrite it. Do not claim to have created, published or tested anything.
+When the user actually asks for a new plan or changes the requirements, use
+kind="outline" and propose agent names and narrowly-scoped business objectives.
+Use assistant_message to acknowledge the requested changes and explain the
+choices in at most three short sentences; never repeat the full agent list or
+objectives in assistant_message, because the interface displays them separately. Follow
+explicit changes to agent count, responsibilities and scope over older requests.
 Do not generate system prompts or skills yet. Respect whether the user asked
 for one agent or a team. For a team request, split independent business
 capabilities into separate agents instead of creating one monolithic agent.
@@ -576,7 +596,12 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
             f"Model '{config.model}' không phản hồi trong {_builder_timeout():.0f} giây. "
             "Hãy thử lại hoặc chọn model khác trên Agent Builder."
         )
-    elif error_name in {"AuthenticationError", "PermissionDeniedError"}:
+    elif error_name == "AuthenticationError":
+        detail = (
+            "API key của nhà cung cấp model không hợp lệ hoặc đã hết hiệu lực. "
+            "Hãy cập nhật API key trong credential; đổi model không khắc phục lỗi xác thực này."
+        )
+    elif error_name == "PermissionDeniedError":
         detail = (
             f"Credential không có quyền sử dụng model '{config.model}'. "
             "Hãy cấp quyền cho model hoặc chọn model khác mà project "
@@ -778,6 +803,12 @@ def _builder_transcript(messages: list[Msg], current: str | None = None) -> str:
         for message in messages
         if message.role in {"user", "assistant"}
     ]
+    proposal = _stored_proposal(messages)
+    if proposal and proposal.planned_agents:
+        plan = [{"name": agent.name, "objective": agent.objective,
+                 "suggested_tool_ids": [tool.id for tool in agent.suggested_tools]}
+                for agent in proposal.planned_agents]
+        lines.append("Current reviewed agent outline (structured state):\n" + json.dumps(plan, ensure_ascii=False))
     if current:
         lines.append(f"Area manager: {current}")
     return "\n\n".join(lines)
@@ -1247,13 +1278,27 @@ async def get_builder_conversation(
         messages=[
             BuilderMessageView(
                 role="user" if message.role == "user" else "builder",
-                text=message.get_text_content() or "",
+                text=_builder_display_text(message),
             )
             for message in messages
             if message.role in {"user", "assistant"}
         ],
         proposal=_stored_proposal(messages),
+        context_messages=len(messages),
+        context_summarized=bool(session.state.summary),
     )
+
+
+def _builder_display_text(message: Msg) -> str:
+    """Keep old verbose outlines available in their plan, not repeated in chat."""
+    text = message.get_text_content() or ""
+    payload = (message.structured_output or {}).get("workforce_builder_proposal")
+    if message.role == "assistant" and payload and text.startswith((
+        "Mình đề xuất các agent như sau:", "Here’s the agent setup I’d suggest:",
+    )):
+        count = len(payload.get("planned_agents") or [])
+        return f"Đã đề xuất {count} agent. Xem dàn ý hiện tại bên dưới." if _response_language(text) == "vi" else f"Proposed {count} agents. See the current outline below."
+    return text
 
 
 def _agent_checks(
@@ -1358,11 +1403,24 @@ async def prepare_builder(
             reserved_output_tokens,
             model.context_size,
         )
+        if outline.kind == "reply":
+            previous = _stored_proposal(messages)
+            updates = {
+                "assistant_message": outline.assistant_message,
+                "clarification_question": outline.clarification_question,
+                "chat_model_config": body.chat_model_config,
+            }
+            proposal = previous.model_copy(update=updates) if previous else ProposalView(
+                conversation_id=session.id, status="needs_input",
+                fixed_config=_fixed_config(), **updates,
+            )
+            await _persist_builder_turn(storage, user_id, session.id, body.message, proposal)
+            return proposal
         if not outline.agents:
             proposal = ProposalView(
                 conversation_id=session.id,
                 status="needs_input",
-                assistant_message=outline.clarification_question or "",
+                assistant_message=outline.assistant_message or outline.clarification_question or "",
                 clarification_question=outline.clarification_question,
                 chat_model_config=body.chat_model_config,
                 fixed_config=_fixed_config(),
@@ -1391,28 +1449,16 @@ async def prepare_builder(
                     suggested_tools=[by_id[tool_id] for tool_id in tool_ids],
                 ),
             )
-        summary = "\n".join(
-            [
-                "Mình đề xuất các agent như sau:"
-                if reply_language == "vi"
-                else "Here’s the agent setup I’d suggest:"
-            ]
-            + [
-                f"{index}. {agent.name}: {agent.objective}"
-                for index, agent in enumerate(planned_agents, start=1)
-            ]
+        summary = outline.assistant_message or (
+            f"Đã cập nhật dàn ý {len(planned_agents)} agent theo yêu cầu của bạn."
+            if reply_language == "vi"
+            else f"Updated the outline for {len(planned_agents)} agents."
         )
         proposal = ProposalView(
             conversation_id=session.id,
             status="needs_input",
             assistant_message=summary,
-            clarification_question=(
-                "Bạn xem hướng này đã đúng ý chưa nhé. Nếu muốn thay đổi, cứ "
-                "nhắn thêm; nếu ổn, bấm “Chốt định hướng và sinh cấu hình”."
-                if reply_language == "vi"
-                else "Does this look right? Tell me what you’d like to change, "
-                "or confirm the outline in the interface to continue."
-            ),
+            clarification_question=outline.clarification_question,
             planned_agents=planned_agents,
             chat_model_config=body.chat_model_config,
             fixed_config=_fixed_config(),

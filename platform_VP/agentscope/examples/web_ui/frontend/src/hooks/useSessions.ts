@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 
 import { sessionApi } from '../api';
 import type { SessionView, CreateSessionRequest, UpdateSessionRequest } from '../api';
+import { ApiError } from '../api/client';
 
 /** Stable empty list, so `sessions` keeps its identity between renders. */
 const NO_SESSIONS: SessionView[] = [];
@@ -41,6 +42,7 @@ export function useSessions(agentId: string | null) {
 		queryKey: [...SESSIONS_KEY, agentId],
 		queryFn: () => sessionApi.list(agentId as string).then((res) => res.sessions),
 		enabled: agentId !== null,
+		retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 3,
 		// This list carries `is_running` and team membership, both of
 		// which move underneath the page. Sharing one copy between the
 		// two mounts is the point here, not skipping the read — so a
