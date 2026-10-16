@@ -6,6 +6,7 @@ silently weaken runtime limits while generating an agent.
 """
 
 import asyncio
+import hashlib
 import io
 import json
 import os
@@ -71,6 +72,7 @@ _BUILDER_GENERATION_TIMEOUT_SECONDS = 180
 _BUILDER_REPAIR_TIMEOUT_SECONDS = 180
 _BUILDER_SEMANTIC_REPAIR_ATTEMPTS = 2
 _BUILDER_AUTHORED_PROMPT_MAX_CHARS = 5_000
+_BUILDER_BACKFILL_KEY = "builder_contract_backfill_v1"
 # Builder prompts also carry the MCP catalog plus a large output schema, so
 # compact earlier than runtime private memory's 80% hard threshold.
 _BUILDER_SUMMARY_TRIGGER_RATIO = 0.60
@@ -132,8 +134,15 @@ class PlannedAgent(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=1, max_length=4000)
+    required_capabilities: list[str] = Field(default_factory=list, max_length=20)
+    request_modes: list[Literal["advice", "lookup", "action"]] = Field(
+        default_factory=list,
+        max_length=3,
+    )
+    effect: Literal["read", "write", "external_operation"] | None = None
     suggested_tool_ids: list[str] = Field(default_factory=list)
     suggested_knowledge_base_ids: list[str] = Field(default_factory=list)
+    reuse_agent_id: str | None = None
 
 
 class BuilderOutline(BaseModel):
@@ -181,8 +190,15 @@ class PrepareRequest(BaseModel):
 class PlannedAgentView(BaseModel):
     name: str
     objective: str
+    required_capabilities: list[str] = Field(default_factory=list)
+    request_modes: list[Literal["advice", "lookup", "action"]] = Field(
+        default_factory=list,
+    )
+    effect: Literal["read", "write", "external_operation"] | None = None
     suggested_tools: list[BuilderTool] = Field(default_factory=list)
     suggested_knowledge_bases: list[BuilderKnowledgeBase] = Field(default_factory=list)
+    reuse_agent_id: str | None = None
+    reuse_agent_name: str | None = None
 
 
 class ProposedAgentView(BaseModel):
@@ -330,6 +346,295 @@ def _similarity(left: str, right: str) -> float:
     if not a or not b:
         return 0.0
     return len(a & b) / len(a | b)
+
+
+def _stored_behavior_contract(record: AgentRecord) -> AgentBehaviorContract | None:
+    """Return only canonical contracts persisted by this Builder."""
+
+    if not record.data.builder_contract:
+        return None
+    try:
+        return AgentBehaviorContract.model_validate(record.data.builder_contract)
+    except ValidationError:
+        return None
+
+
+def _record_tool_ids(record: AgentRecord) -> set[str]:
+    return {
+        str(binding.get("id") or "")
+        or f"{binding.get('mcp_id', '')}:{binding.get('tool_name', '')}"
+        for binding in record.data.tool_bindings
+    }
+
+
+def _stored_contract_objective(record: AgentRecord) -> str:
+    contract = _stored_behavior_contract(record)
+    return contract.requirement.business_profile.objective if contract else ""
+
+
+def _text_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _builder_contract_digest(contract: AgentBehaviorContract) -> str:
+    payload = json.dumps(
+        contract.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return _text_digest(payload)
+
+
+def _record_contract_artifacts_match(
+    record: AgentRecord,
+    generated: GeneratedAgent,
+) -> bool:
+    compiled = bool(
+        record.data.system_prompt
+        == governed_system_prompt("business", _compile_system_prompt(generated))
+        and record.data.generated_skill == _normalise_skill(generated)
+    )
+    if compiled:
+        return True
+    snapshot = record.data.evaluation.get(_BUILDER_BACKFILL_KEY)
+    return bool(
+        isinstance(snapshot, dict)
+        and snapshot.get("contract_sha256")
+        == _builder_contract_digest(generated.behavior_contract)
+        and snapshot.get("system_prompt_sha256")
+        == _text_digest(record.data.system_prompt)
+        and snapshot.get("generated_skill_sha256")
+        == _text_digest(record.data.generated_skill)
+    )
+
+
+def _existing_agent_covers(
+    planned: PlannedAgent,
+    record: AgentRecord,
+    available_tool_ids: set[str],
+    available_knowledge_ids: set[str],
+) -> bool:
+    """Conservatively prove that a published agent covers one planned agent."""
+
+    contract = _stored_behavior_contract(record)
+    if (
+        contract is None
+        or record.source != "user"
+        or record.data.system_role != "business"
+        or record.data.lifecycle_state != "published"
+        or not planned.required_capabilities
+        or not planned.request_modes
+        or planned.effect is None
+    ):
+        return False
+    existing_tools = _record_tool_ids(record)
+    existing_knowledge = set(record.data.knowledge_base_ids)
+    required_capabilities = {
+        item.capability
+        for item in contract.requirement.capabilities
+        if item.required
+    }
+    generated = GeneratedAgent(
+        name=record.data.name,
+        execution_mode=record.data.execution_mode or "context_only",
+        behavior_contract=contract,
+        selected_tool_ids=sorted(existing_tools),
+        selected_knowledge_base_ids=record.data.knowledge_base_ids,
+    )
+    return bool(
+        set(planned.required_capabilities).issubset(required_capabilities)
+        and set(planned.request_modes).issubset(contract.request_modes)
+        and planned.effect == contract.requirement.effect.value
+        and set(planned.suggested_tool_ids).issubset(existing_tools)
+        and set(planned.suggested_knowledge_base_ids).issubset(existing_knowledge)
+        and existing_tools.issubset(available_tool_ids)
+        and existing_knowledge.issubset(available_knowledge_ids)
+        and _record_contract_artifacts_match(record, generated)
+    )
+
+
+def _resolve_reuse_candidate(
+    planned: PlannedAgent,
+    existing: list[AgentRecord],
+    available_tool_ids: set[str],
+    available_knowledge_ids: set[str],
+) -> AgentRecord | None:
+    eligible = [
+        record
+        for record in existing
+        if _existing_agent_covers(
+            planned,
+            record,
+            available_tool_ids,
+            available_knowledge_ids,
+        )
+    ]
+    if planned.reuse_agent_id:
+        return next(
+            (record for record in eligible if record.id == planned.reuse_agent_id),
+            None,
+        )
+    semantic_matches = [
+        record
+        for record in eligible
+        if _similarity(
+            planned.objective,
+            _stored_contract_objective(record),
+        )
+        >= 0.35
+    ]
+    return max(
+        semantic_matches,
+        key=lambda record: (
+            _similarity(
+                planned.objective,
+                _stored_contract_objective(record),
+            ),
+            -len(_record_tool_ids(record)),
+            record.id,
+        ),
+        default=None,
+    )
+
+
+def _legacy_duplicate_candidates(
+    planned: PlannedAgent,
+    existing: list[AgentRecord],
+    available_tool_ids: set[str],
+    available_knowledge_ids: set[str],
+) -> list[AgentRecord]:
+    """Block duplicates of older Builder agents that lack a canonical contract."""
+
+    requested_tools = set(planned.suggested_tool_ids)
+    requested_knowledge = set(planned.suggested_knowledge_base_ids)
+    if not requested_tools:
+        return []
+    return [
+        record
+        for record in existing
+        if _stored_behavior_contract(record) is None
+        and record.source == "user"
+        and record.data.system_role == "business"
+        and record.data.lifecycle_state == "published"
+        and record.data.execution_mode is not None
+        and requested_tools.issubset(_record_tool_ids(record))
+        and requested_knowledge.issubset(set(record.data.knowledge_base_ids))
+        and _record_tool_ids(record).issubset(available_tool_ids)
+        and set(record.data.knowledge_base_ids).issubset(available_knowledge_ids)
+    ]
+
+
+def _existing_agent_catalog(existing: list[AgentRecord]) -> list[dict]:
+    """Expose compact business contracts, never runtime prompts or skills."""
+
+    catalog: list[dict] = []
+    for record in existing:
+        contract = _stored_behavior_contract(record)
+        if record.data.lifecycle_state != "published":
+            continue
+        if contract is None:
+            if record.data.execution_mode is not None:
+                catalog.append(
+                    {
+                        "agent_id": record.id,
+                        "name": record.data.name,
+                        "objective": record.data.build_description,
+                        "canonical_contract": False,
+                        "tool_ids": sorted(_record_tool_ids(record)),
+                        "knowledge_base_ids": record.data.knowledge_base_ids,
+                    },
+                )
+            continue
+        profile = contract.requirement.business_profile
+        catalog.append(
+            {
+                "agent_id": record.id,
+                "name": record.data.name,
+                "objective": profile.objective,
+                "canonical_contract": True,
+                "business_scope": profile.business_scope,
+                "capabilities": [
+                    item.capability
+                    for item in contract.requirement.capabilities
+                    if item.required
+                ],
+                "request_modes": list(contract.request_modes),
+                "effect": contract.requirement.effect.value,
+                "input_contract": profile.input_contract,
+                "output_contract": profile.output_contract,
+                "tool_ids": sorted(_record_tool_ids(record)),
+                "knowledge_base_ids": record.data.knowledge_base_ids,
+                "exclusions": list(contract.exclusions),
+            },
+        )
+    return catalog
+
+
+def _planned_agent_from_view(agent: PlannedAgentView) -> PlannedAgent:
+    return PlannedAgent(
+        name=agent.name,
+        objective=agent.objective,
+        required_capabilities=agent.required_capabilities,
+        request_modes=agent.request_modes,
+        effect=agent.effect,
+        suggested_tool_ids=[tool.id for tool in agent.suggested_tools],
+        suggested_knowledge_base_ids=[
+            knowledge.id for knowledge in agent.suggested_knowledge_bases
+        ],
+        reuse_agent_id=agent.reuse_agent_id,
+    )
+
+
+def _reused_proposal_view(
+    record: AgentRecord,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> ProposedAgentView:
+    contract = _stored_behavior_contract(record)
+    if contract is None:
+        raise ValueError("Reusable agent is missing its canonical Builder contract")
+    tool_ids = _record_tool_ids(record)
+    selected_tools = [tool for tool in tools if tool.id in tool_ids]
+    selected_knowledge = [
+        knowledge
+        for knowledge in knowledge_bases
+        if knowledge.id in set(record.data.knowledge_base_ids)
+    ]
+    generated = GeneratedAgent(
+        name=record.data.name,
+        execution_mode=record.data.execution_mode or "context_only",
+        behavior_contract=contract,
+        selected_tool_ids=[tool.id for tool in selected_tools],
+        selected_knowledge_base_ids=[item.id for item in selected_knowledge],
+    )
+    checks = _contract_checks(generated)
+    return ProposedAgentView(
+        name=record.data.name,
+        objective=_agent_objective(generated),
+        execution_mode=generated.execution_mode,
+        system_prompt=record.data.system_prompt,
+        selected_tools=selected_tools,
+        selected_knowledge_bases=selected_knowledge,
+        skill_name=_slug(record.data.name),
+        skill_markdown=record.data.generated_skill,
+        evaluation={
+            "passed": all(checks.values()),
+            "score": round(sum(checks.values()) / len(checks), 2),
+            "checks": checks,
+            "execution_mode": generated.execution_mode,
+            "semantic_issues": [],
+            "contract_compiled": True,
+            "reused": True,
+            "artifact_snapshot_valid": _record_contract_artifacts_match(
+                record,
+                generated,
+            ),
+        },
+        behavior_contract=contract,
+        reuse_agent_id=record.id,
+        reuse_agent_name=record.data.name,
+    )
 
 
 def _claim_exclusive_tool_ids(
@@ -577,6 +882,24 @@ def _generation_issues(
                 )
             if _agent_objective(agent) != expected.objective:
                 issues.append(f"{prefix}: objective phải giữ nguyên theo outline.")
+            generated_capabilities = {
+                item.capability
+                for item in agent.behavior_contract.requirement.capabilities
+                if item.required
+            }
+            if expected.required_capabilities and generated_capabilities != set(
+                expected.required_capabilities,
+            ):
+                issues.append(f"{prefix}: capability phải giữ nguyên theo outline.")
+            if expected.request_modes and set(
+                agent.behavior_contract.request_modes,
+            ) != set(expected.request_modes):
+                issues.append(f"{prefix}: request mode phải giữ nguyên theo outline.")
+            if (
+                expected.effect is not None
+                and agent.behavior_contract.requirement.effect.value != expected.effect
+            ):
+                issues.append(f"{prefix}: effect phải giữ nguyên theo outline.")
             if set(agent.selected_tool_ids) != set(expected.suggested_tool_ids):
                 issues.append(f"{prefix}: tool phải giữ nguyên theo outline.")
             if set(agent.selected_knowledge_base_ids) != set(
@@ -814,6 +1137,7 @@ async def _outline(
     transcript: str,
     tools: list[BuilderTool],
     knowledge_bases: list[BuilderKnowledgeBase],
+    existing_agents: list[AgentRecord],
     model: ChatModelBase,
     config: ChatModelConfig,
 ) -> tuple[BuilderOutline, int, int]:
@@ -826,8 +1150,12 @@ async def _outline(
         [knowledge.model_dump(mode="json") for knowledge in knowledge_bases],
         ensure_ascii=False,
     )
+    existing_json = json.dumps(
+        _existing_agent_catalog(existing_agents),
+        ensure_ascii=False,
+    )
     instructions = """You are the planning stage of Agent Builder.
-Propose agent names and narrowly-scoped reusable business objectives only.
+Propose agent names and narrowly-scoped reusable business objectives.
 Do not generate system prompts or skills yet. Respect whether the user asked
 for one agent or a team. For a team request, split independent business
 capabilities into separate agents instead of creating one monolithic agent.
@@ -847,6 +1175,16 @@ knowledge-base context, or combines verified peer results. Live lookup, current
 state, external action and monitor work require matching registered tools or a
 verified runtime protocol. Never invent a tool or create two agents for the same
 capability. Incorporate the user's latest feedback into the revised outline.
+For every planned agent, list concise required_capabilities, request_modes and
+effect. Before proposing a new identity, compare it with the existing-agent
+catalog. If one existing published agent has the same business scope and its
+capabilities, request modes, outputs and tools fully cover the narrower request,
+set reuse_agent_id to that exact catalog ID and copy its exact capability names.
+A requested tool set may be a subset of the existing agent's tool set. Do not
+reuse merely because tools overlap, and do not reuse when action/effect, output,
+scope or exclusions conflict. Only entries with canonical_contract=true may be
+reused. Legacy entries are shown only so the server can prevent an unsafe
+duplicate; never set reuse_agent_id to a legacy entry. Never invent an agent ID.
 Select only exact suggested_knowledge_base_ids from the knowledge-base catalog.
 Use each knowledge base's description to decide whether it supplies stable
 internal/reference knowledge needed by that agent. Knowledge bases may be shared
@@ -883,6 +1221,8 @@ one clear responsibility per sentence instead of a dense inline plan.
                             + tool_json
                             + "\nKnowledge-base catalog:\n"
                             + knowledge_json
+                            + "\nExisting-agent catalog available for reuse:\n"
+                            + existing_json
                         ),
                     ),
                     UserMsg(name="area_manager", content=transcript),
@@ -960,7 +1300,8 @@ async def _generate(
     approved_outline_json = approved_outline.model_dump_json()
     instructions = """You are Agent Builder, not the runtime Leader.
 The approved outline supplied below is authoritative. Copy its agent sequence,
-names, objectives, suggested_tool_ids and suggested_knowledge_base_ids exactly.
+names, objectives, required_capabilities, request_modes, effect,
+suggested_tool_ids and suggested_knowledge_base_ids exactly.
 Do not add, remove, rename or reorder agents, and do not move, add or drop any
 tool or knowledge-base assignment. The conversation and catalogs provide
 supporting context only; they cannot override the approved outline. Generate
@@ -1706,6 +2047,11 @@ async def prepare_builder(
     )
     tools = await _catalog(storage, user_id)
     knowledge_bases = await _knowledge_catalog(access, user_id)
+    existing = [
+        record
+        for record in await storage.list_agents(user_id)
+        if record.source == "user" and record.data.system_role == "business"
+    ]
     model = await get_model(user_id, body.chat_model_config, access)
     transcript = await _prepare_builder_memory(
         model=model,
@@ -1722,6 +2068,7 @@ async def prepare_builder(
                 transcript,
                 tools,
                 knowledge_bases,
+                existing,
                 model,
                 body.chat_model_config,
             )
@@ -1746,18 +2093,87 @@ async def prepare_builder(
         )
         by_id = {tool.id: tool for tool in tools}
         knowledge_by_id = {knowledge.id: knowledge for knowledge in knowledge_bases}
+        available_tool_ids = set(by_id)
+        available_knowledge_ids = set(knowledge_by_id)
         claimed_outline_tools: set[str] = set()
+        reused_agent_ids: set[str] = set()
         planned_agents: list[PlannedAgentView] = []
         for agent in outline.agents:
-            tool_ids, _invalid, _duplicates = _claim_exclusive_tool_ids(
+            if agent.reuse_agent_id in reused_agent_ids:
+                continue
+            previously_claimed_tools = set(claimed_outline_tools)
+            tool_ids, invalid_tool_ids, duplicate_tool_ids = _claim_exclusive_tool_ids(
                 agent.suggested_tool_ids,
                 set(by_id),
                 claimed_outline_tools,
             )
+            if invalid_tool_ids or duplicate_tool_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Outline chứa tool không hợp lệ hoặc đã được giao cho agent "
+                        "khác. Hãy tạo lại outline."
+                    ),
+                )
+            reuse = _resolve_reuse_candidate(
+                agent,
+                existing,
+                available_tool_ids,
+                available_knowledge_ids,
+            )
+            legacy_duplicates = _legacy_duplicate_candidates(
+                agent,
+                existing,
+                available_tool_ids,
+                available_knowledge_ids,
+            )
+            if reuse is None and legacy_duplicates:
+                names = ", ".join(
+                    sorted({record.data.name for record in legacy_duplicates}),
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Đã có agent Builder cũ sở hữu toàn bộ tập tool được yêu cầu: "
+                        f"{names}. Builder không tạo bản sao khi chưa có canonical "
+                        "contract; hãy migrate hoặc phát hành lại agent cũ trước."
+                    ),
+                )
+            if reuse is not None and reuse.id in reused_agent_ids:
+                continue
+            reuse_conflicts = (
+                (_record_tool_ids(reuse) - set(tool_ids)) & previously_claimed_tools
+                if reuse is not None
+                else set()
+            )
+            if reuse_conflicts:
+                if agent.reuse_agent_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=(
+                            "Agent được đề xuất tái sử dụng sở hữu tool đã được giao "
+                            "cho agent khác trong outline. Hãy tạo lại outline."
+                        ),
+                    )
+                reuse = None
+            if agent.reuse_agent_id and reuse is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Builder không thể xác minh agent được đề xuất tái sử dụng. "
+                        "Hãy tạo lại outline để tránh sinh agent trùng hoặc reuse sai."
+                    ),
+                )
+            if reuse is not None:
+                claimed_outline_tools.update(_record_tool_ids(reuse))
+                reused_agent_ids.add(reuse.id)
             planned_agents.append(
                 PlannedAgentView(
                     name=agent.name,
                     objective=agent.objective,
+                    required_capabilities=agent.required_capabilities,
+                    request_modes=agent.request_modes,
+                    effect=agent.effect,
                     suggested_tools=[by_id[tool_id] for tool_id in tool_ids],
                     suggested_knowledge_bases=[
                         knowledge_by_id[kb_id]
@@ -1766,10 +2182,17 @@ async def prepare_builder(
                         )
                         if kb_id in knowledge_by_id
                     ],
+                    reuse_agent_id=reuse.id if reuse else None,
+                    reuse_agent_name=reuse.data.name if reuse else None,
                 ),
             )
         summary = "Mình đề xuất đội ngũ như sau:\n\n" + "\n\n".join(
             f"{index}. **{agent.name}**\n{agent.objective}"
+            + (
+                f"\nTái sử dụng agent hiện có: **{agent.reuse_agent_name}**."
+                if agent.reuse_agent_id
+                else ""
+            )
             for index, agent in enumerate(planned_agents, start=1)
         )
         proposal = ProposalView(
@@ -1806,27 +2229,42 @@ async def prepare_builder(
                 "Hãy tạo hoặc chỉnh lại đề xuất trước khi build."
             ),
         )
-    approved_outline = BuilderOutline(
-        agents=[
-            PlannedAgent(
-                name=agent.name,
-                objective=agent.objective,
-                suggested_tool_ids=[tool.id for tool in agent.suggested_tools],
-                suggested_knowledge_base_ids=[
-                    knowledge.id for knowledge in agent.suggested_knowledge_bases
-                ],
+    approved_plans = [
+        _planned_agent_from_view(agent) for agent in approved_proposal.planned_agents
+    ]
+    available_tool_ids = {tool.id for tool in tools}
+    available_knowledge_ids = {knowledge.id for knowledge in knowledge_bases}
+    reuse_by_index: dict[int, AgentRecord] = {}
+    for index, plan in enumerate(approved_plans):
+        if not plan.reuse_agent_id:
+            continue
+        reuse = _resolve_reuse_candidate(
+            plan,
+            existing,
+            available_tool_ids,
+            available_knowledge_ids,
+        )
+        if reuse is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Agent được đề xuất tái sử dụng đã thay đổi hoặc không còn "
+                    "bao phủ yêu cầu. Hãy tạo lại outline."
+                ),
             )
-            for agent in approved_proposal.planned_agents
-        ],
-    )
+        reuse_by_index[index] = reuse
+    create_plans = [
+        plan for index, plan in enumerate(approved_plans) if index not in reuse_by_index
+    ]
+    approved_outline = BuilderOutline(agents=create_plans) if create_plans else None
     approved_tool_ids = {
         tool_id
-        for agent in approved_outline.agents
+        for agent in approved_plans
         for tool_id in agent.suggested_tool_ids
     }
     approved_knowledge_ids = {
         knowledge_id
-        for agent in approved_outline.agents
+        for agent in approved_plans
         for knowledge_id in agent.suggested_knowledge_base_ids
     }
     missing_tool_ids = approved_tool_ids - {tool.id for tool in tools}
@@ -1848,34 +2286,42 @@ async def prepare_builder(
             ),
         )
 
-    try:
-        generation, prompt_tokens, reserved_output_tokens = await _generate(
-            transcript,
-            approved_outline,
-            tools,
-            knowledge_bases,
-            model,
-            body.chat_model_config,
-        )
-    except _BuilderPromptBudgetError as exc:
+    if approved_outline is not None:
+        try:
+            generation, prompt_tokens, reserved_output_tokens = await _generate(
+                transcript,
+                approved_outline,
+                tools,
+                knowledge_bases,
+                model,
+                body.chat_model_config,
+            )
+        except _BuilderPromptBudgetError as exc:
+            await _record_builder_prompt_measurement(
+                storage,
+                user_id,
+                session,
+                exc.prompt_tokens,
+                exc.reserved_output_tokens,
+                model.context_size,
+                budget_exceeded=True,
+            )
+            raise
         await _record_builder_prompt_measurement(
             storage,
             user_id,
             session,
-            exc.prompt_tokens,
-            exc.reserved_output_tokens,
+            prompt_tokens,
+            reserved_output_tokens,
             model.context_size,
-            budget_exceeded=True,
         )
-        raise
-    await _record_builder_prompt_measurement(
-        storage,
-        user_id,
-        session,
-        prompt_tokens,
-        reserved_output_tokens,
-        model.context_size,
-    )
+    else:
+        generation = BuilderGeneration(
+            assistant_message=(
+                "Các nghiệp vụ đã được agent hiện có bao phủ; "
+                "Builder sẽ tái sử dụng thay vì tạo bản sao."
+            ),
+        )
     if generation.clarification_question and not generation.agents:
         proposal = ProposalView(
             conversation_id=session.id,
@@ -1895,19 +2341,18 @@ async def prepare_builder(
         return proposal
 
     by_id = {tool.id: tool for tool in tools}
-    existing = [
-        record
-        for record in await storage.list_agents(user_id)
-        if record.source == "user" and record.data.system_role == "business"
-    ]
-    views: list[ProposedAgentView] = []
+    created_views: list[ProposedAgentView] = []
     any_blocked = False
     claimed_tool_ids: set[str] = set()
-    semantic_issues = _generation_issues(
-        generation,
-        tools,
-        knowledge_bases,
-        approved_outline,
+    semantic_issues = (
+        _generation_issues(
+            generation,
+            tools,
+            knowledge_bases,
+            approved_outline,
+        )
+        if approved_outline is not None
+        else []
     )
     for agent in generation.agents:
         objective = _agent_objective(agent)
@@ -1923,22 +2368,6 @@ async def prepare_builder(
             knowledge_bases,
             agent.selected_knowledge_base_ids,
         )
-        reuse = max(
-            existing,
-            key=lambda item: _similarity(
-                objective,
-                item.data.build_description or item.data.system_prompt,
-            ),
-            default=None,
-        )
-        reuse_score = (
-            _similarity(
-                objective,
-                reuse.data.build_description or reuse.data.system_prompt,
-            )
-            if reuse is not None
-            else 0.0
-        )
         checks = {
             **_contract_checks(agent),
             "registered_tools": not invalid,
@@ -1953,16 +2382,8 @@ async def prepare_builder(
             "semantic_generation": not semantic_issues,
         }
         passed = all(checks.values())
-        reuse_ready = bool(
-            reuse is not None
-            and reuse_score >= 0.72
-            and reuse.data.evaluation.get("contract_compiled") is True
-            and reuse.data.system_prompt
-            == governed_system_prompt("business", compiled_prompt)
-            and reuse.data.generated_skill == compiled_skill
-        )
         any_blocked = any_blocked or not passed
-        views.append(
+        created_views.append(
             ProposedAgentView(
                 name=agent.name,
                 objective=objective,
@@ -1982,26 +2403,41 @@ async def prepare_builder(
                     "invalid_tool_ids": invalid,
                     "duplicate_tool_ids": duplicate_tool_ids,
                     "invalid_knowledge_base_ids": invalid_knowledge_ids,
-                    "reuse_similarity": round(reuse_score, 2),
                     "execution_mode": agent.execution_mode,
                     "semantic_issues": semantic_issues,
                     "contract_compiled": True,
                 },
                 behavior_contract=agent.behavior_contract,
-                reuse_agent_id=(reuse.id if reuse_ready else None),
-                reuse_agent_name=(reuse.data.name if reuse_ready else None),
             ),
         )
+    created_view_iter = iter(created_views)
+    views: list[ProposedAgentView] = []
+    for index in range(len(approved_plans)):
+        if index in reuse_by_index:
+            reused_view = _reused_proposal_view(
+                reuse_by_index[index],
+                tools,
+                knowledge_bases,
+            )
+            any_blocked = any_blocked or not reused_view.evaluation["passed"]
+            views.append(reused_view)
+        else:
+            views.append(next(created_view_iter))
     if not views:
         any_blocked = True
+    assistant_message = generation.assistant_message or (
+        "Mình đã tạo và đánh giá cấu hình. Bạn xem lại trước khi phát hành nhé."
+    )
+    if reuse_by_index and generation.agents:
+        assistant_message += (
+            f" {len(reuse_by_index)} agent hiện có sẽ được tái sử dụng; "
+            "Builder chỉ sinh cấu hình cho phần chưa được bao phủ."
+        )
     proposal = ProposalView(
         conversation_id=session.id,
         proposal_id=_generate_id(),
         status="blocked" if any_blocked else "ready",
-        assistant_message=(
-            generation.assistant_message
-            or "Mình đã tạo và đánh giá cấu hình. Bạn xem lại trước khi phát hành nhé."
-        ),
+        assistant_message=assistant_message,
         clarification_question=generation.clarification_question,
         agents=views,
         chat_model_config=body.chat_model_config,
@@ -2074,12 +2510,28 @@ async def publish_builder(
                 _compile_system_prompt(generated),
             )
             expected_skill = _normalise_skill(generated)
+            artifacts_valid = bool(
+                item.system_prompt == expected_prompt
+                and item.skill_markdown == expected_skill
+            )
+            if item.reuse_agent_id:
+                reused_record = await storage.get_agent(
+                    user_id,
+                    item.reuse_agent_id,
+                )
+                artifacts_valid = bool(
+                    reused_record is not None
+                    and reused_record.data.builder_contract
+                    == item.behavior_contract.model_dump(mode="json")
+                    and reused_record.data.system_prompt == item.system_prompt
+                    and reused_record.data.generated_skill == item.skill_markdown
+                    and _record_contract_artifacts_match(reused_record, generated)
+                )
             if (
                 item.evaluation.get("contract_compiled") is not True
                 or item.evaluation.get("passed") is not True
                 or not all(_contract_checks(generated).values())
-                or item.system_prompt != expected_prompt
-                or item.skill_markdown != expected_skill
+                or not artifacts_valid
             ):
                 break
             validated_agents.append(generated)
@@ -2154,11 +2606,42 @@ async def publish_builder(
     result: list[PublishedAgent] = []
     for item in proposal.agents:
         if item.reuse_agent_id:
-            reused_record = await storage.get_agent(user_id, item.reuse_agent_id)
-            if reused_record is None:
+            if item.behavior_contract is None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="Agent được đề xuất tái sử dụng không còn tồn tại.",
+                    detail="Agent tái sử dụng thiếu canonical contract.",
+                )
+            reused_record = await storage.get_agent(user_id, item.reuse_agent_id)
+            reused_generated = GeneratedAgent(
+                name=item.name,
+                execution_mode=item.execution_mode,
+                behavior_contract=item.behavior_contract,
+                selected_tool_ids=[tool.id for tool in item.selected_tools],
+                selected_knowledge_base_ids=[
+                    knowledge.id for knowledge in item.selected_knowledge_bases
+                ],
+            )
+            if (
+                reused_record is None
+                or reused_record.data.lifecycle_state != "published"
+                or item.behavior_contract is None
+                or reused_record.data.builder_contract
+                != item.behavior_contract.model_dump(mode="json")
+                or _record_tool_ids(reused_record)
+                != {tool.id for tool in item.selected_tools}
+                or reused_record.data.system_prompt != item.system_prompt
+                or reused_record.data.generated_skill != item.skill_markdown
+                or not _record_contract_artifacts_match(
+                    reused_record,
+                    reused_generated,
+                )
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Agent được đề xuất tái sử dụng đã thay đổi hoặc không còn "
+                        "khả dụng. Hãy tạo lại outline."
+                    ),
                 )
             reused_record.data.knowledge_base_ids = [
                 knowledge.id for knowledge in item.selected_knowledge_bases
@@ -2202,6 +2685,7 @@ async def publish_builder(
                 ],
                 execution_mode=item.execution_mode,
                 generated_skill=item.skill_markdown,
+                builder_contract=item.behavior_contract.model_dump(mode="json"),
                 evaluation=item.evaluation,
             ),
         )

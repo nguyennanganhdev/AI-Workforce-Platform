@@ -131,6 +131,9 @@ class AgentData(BaseModel):
     generated_skill: SkipJsonSchema[str] = ""
     """Builder-generated SKILL.md body installed into the agent workspace."""
 
+    builder_contract: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Canonical Builder behavior contract used for safe reuse matching."""
+
     evaluation: SkipJsonSchema[dict] = Field(default_factory=dict)
     """Latest immutable Builder readiness result shown before publish."""
 

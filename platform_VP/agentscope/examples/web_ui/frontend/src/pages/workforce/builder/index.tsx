@@ -604,10 +604,19 @@ export function AgentBuilderPage() {
 													<div className="flex items-center gap-2">
 														<Bot className="size-4 text-primary" />
 														<p className="font-medium">{agent.name}</p>
+														{agent.reuse_agent_id && (
+															<Badge variant="secondary">Tái sử dụng</Badge>
+														)}
 													</div>
 													<p className="mt-2 text-sm text-muted-foreground">
 														{agent.objective}
 													</p>
+													{agent.reuse_agent_name && (
+														<p className="mt-2 text-xs text-amber-700">
+															Đã có {agent.reuse_agent_name} bao phủ nghiệp vụ này;
+															Builder sẽ không tạo agent mới.
+														</p>
+													)}
 													<div className="mt-3 flex flex-wrap gap-1.5">
 														{agent.suggested_tools.map((tool) => (
 															<Badge

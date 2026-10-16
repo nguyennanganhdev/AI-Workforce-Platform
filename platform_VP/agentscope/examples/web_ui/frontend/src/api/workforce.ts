@@ -38,8 +38,13 @@ export interface ProposedAgent {
 export interface PlannedAgent {
 	name: string;
 	objective: string;
+	required_capabilities: string[];
+	request_modes: Array<'advice' | 'lookup' | 'action'>;
+	effect: 'read' | 'write' | 'external_operation' | null;
 	suggested_tools: BuilderTool[];
 	suggested_knowledge_bases: BuilderKnowledgeBase[];
+	reuse_agent_id: string | null;
+	reuse_agent_name: string | null;
 }
 
 export interface BuilderProposal {

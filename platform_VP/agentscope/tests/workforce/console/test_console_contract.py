@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._router._schema import MCPView
 from agentscope.app._router._workforce_console import (
+    _BUILDER_BACKFILL_KEY,
     _LEADER_PROMPT,
     BuilderGeneration,
     BuilderKnowledgeBase,
@@ -19,30 +20,36 @@ from agentscope.app._router._workforce_console import (
     PrepareRequest,
     ProposalView,
     _agent_tool_settings,
+    _builder_contract_digest,
     _claim_exclusive_tool_ids,
     _compile_skill_body,
     _compile_system_prompt,
     _contract_checks,
     _execution_mode_matches_tools,
+    _existing_agent_covers,
     _generate,
     _generation_issues,
     _group_tool_catalog,
+    _legacy_duplicate_candidates,
     _normalise_skill,
     _outline,
     _replace_agent_session_knowledge,
     _replace_agent_workspace_mcps,
+    _resolve_reuse_candidate,
     _resolve_selected_knowledge_bases,
     _resolve_selected_tools,
+    _reused_proposal_view,
     _select_model_name,
     _similarity,
     _stored_proposal,
+    _text_digest,
 )
 from agentscope.app._workforce_policy import (
     BUSINESS_AGENT_EVIDENCE_POLICY,
     WORKFORCE_LEADER_PROMPT,
     governed_system_prompt,
 )
-from agentscope.app.storage import AgentData, ChatModelConfig, MCPRecord
+from agentscope.app.storage import AgentData, AgentRecord, ChatModelConfig, MCPRecord
 from agentscope.mcp import HttpMCPConfig, MCPClient
 from agentscope.message import AssistantMsg
 
@@ -142,11 +149,51 @@ def _approved_outline_for(*agents: GeneratedAgent) -> BuilderOutline:
                 objective=(
                     agent.behavior_contract.requirement.business_profile.objective
                 ),
+                required_capabilities=[
+                    item.capability
+                    for item in agent.behavior_contract.requirement.capabilities
+                    if item.required
+                ],
+                request_modes=list(agent.behavior_contract.request_modes),
+                effect=agent.behavior_contract.requirement.effect.value,
                 suggested_tool_ids=agent.selected_tool_ids,
                 suggested_knowledge_base_ids=agent.selected_knowledge_base_ids,
             )
             for agent in agents
         ],
+    )
+
+
+def _published_agent_record(agent: GeneratedAgent) -> AgentRecord:
+    return AgentRecord(
+        user_id="user-1",
+        data=AgentData(
+            id="existing-agent",
+            name=agent.name,
+            system_prompt=governed_system_prompt(
+                "business",
+                _compile_system_prompt(agent),
+            ),
+            context_config=ContextConfig(),
+            react_config=ReActConfig(),
+            lifecycle_state="published",
+            build_description=(
+                agent.behavior_contract.requirement.business_profile.objective
+            ),
+            tool_bindings=[
+                {
+                    "id": tool_id,
+                    "mcp_id": tool_id.split(":", 1)[0],
+                    "tool_name": tool_id.split(":", 1)[-1],
+                }
+                for tool_id in agent.selected_tool_ids
+            ],
+            knowledge_base_ids=agent.selected_knowledge_base_ids,
+            execution_mode=agent.execution_mode,
+            generated_skill=_normalise_skill(agent),
+            builder_contract=agent.behavior_contract.model_dump(mode="json"),
+            evaluation={"passed": True, "contract_compiled": True},
+        ),
     )
 
 
@@ -159,6 +206,7 @@ def test_agent_schema_does_not_expose_server_owned_builder_fields() -> None:
     assert "knowledge_base_ids" not in schema["properties"]
     assert "execution_mode" not in schema["properties"]
     assert "evaluation" not in schema["properties"]
+    assert "builder_contract" not in schema["properties"]
     assert "context_config" in schema["properties"]
     assert "react_config" in schema["properties"]
     assert ContextConfig().trigger_ratio == 0.8
@@ -510,6 +558,62 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
         )
 
 
+class TestBuilderReuseOutline(IsolatedAsyncioTestCase):
+    async def test_outline_receives_compact_existing_agent_catalog(self) -> None:
+        existing_agent = _generated_agent(name="Agent hiện có")
+        record = _published_agent_record(existing_agent)
+        expected = BuilderOutline(
+            agents=[
+                PlannedAgent(
+                    name="Agent yêu cầu mới",
+                    objective=(
+                        existing_agent.behavior_contract.requirement.business_profile.objective
+                    ),
+                    required_capabilities=["recommend"],
+                    request_modes=["advice", "lookup"],
+                    effect="read",
+                    reuse_agent_id=record.id,
+                ),
+            ],
+        )
+
+        class _Model:
+            context_size = 100_000
+
+            def __init__(self):
+                self.messages = []
+
+            async def count_tokens(self, messages, tools):
+                del messages, tools
+                return 100
+
+            async def generate_structured_output(self, messages, schema):
+                assert isinstance(schema, dict)
+                self.messages = messages
+                return SimpleNamespace(content=expected.model_dump(mode="json"))
+
+        model = _Model()
+        outline, _tokens, _reserve = await _outline(
+            "Tạo agent có nghiệp vụ đã tồn tại",
+            [],
+            [],
+            [record],
+            model,  # type: ignore[arg-type]
+            ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4.1",
+                parameters={},
+            ),
+        )
+
+        self.assertEqual(outline.agents[0].reuse_agent_id, record.id)
+        prompt = str(model.messages[0].content)
+        self.assertIn(record.id, prompt)
+        self.assertIn("tool_ids", prompt)
+        self.assertNotIn("WORKFORCE RUNTIME EXECUTION POLICY", prompt)
+
+
 def test_reuse_similarity_prefers_same_business_capability() -> None:
     same = _similarity(
         "Agent tìm khách sạn và kiểm tra phòng theo ngân sách",
@@ -522,6 +626,80 @@ def test_reuse_similarity_prefers_same_business_capability() -> None:
 
     assert same > unrelated
     assert unrelated < 0.3
+
+
+def test_reuse_accepts_a_narrower_tool_subset_only_with_contract_coverage() -> None:
+    existing_agent = _generated_agent(
+        name="Agent A",
+        execution_mode="tool_backed",
+        selected_tool_ids=[f"travel:{name}" for name in ("a", "b", "c", "d", "e")],
+    )
+    record = _published_agent_record(existing_agent)
+    planned = PlannedAgent(
+        name="Agent B",
+        objective=existing_agent.behavior_contract.requirement.business_profile.objective,
+        required_capabilities=["recommend"],
+        request_modes=["advice", "lookup"],
+        effect="read",
+        suggested_tool_ids=["travel:b", "travel:d", "travel:e"],
+        reuse_agent_id=record.id,
+    )
+    available = {f"travel:{name}" for name in ("a", "b", "c", "d", "e")}
+
+    assert _existing_agent_covers(planned, record, available, set())
+    assert _resolve_reuse_candidate(planned, [record], available, set()) is record
+
+    record.data.system_prompt = "Legacy prompt đã phát hành"
+    record.data.generated_skill = "Legacy skill đã phát hành"
+    record.data.evaluation[_BUILDER_BACKFILL_KEY] = {
+        "contract_sha256": _builder_contract_digest(
+            existing_agent.behavior_contract,
+        ),
+        "system_prompt_sha256": _text_digest(record.data.system_prompt),
+        "generated_skill_sha256": _text_digest(record.data.generated_skill),
+    }
+    assert _existing_agent_covers(planned, record, available, set())
+    record.data.system_prompt += " đã bị sửa"
+    assert not _existing_agent_covers(planned, record, available, set())
+    record.data.system_prompt = "Legacy prompt đã phát hành"
+
+    specific_agent = _generated_agent(
+        name="Agent B chuyên biệt",
+        execution_mode="tool_backed",
+        selected_tool_ids=["travel:b", "travel:d", "travel:e"],
+    )
+    specific_record = _published_agent_record(specific_agent)
+    specific_record.data.id = "existing-agent-specific"
+    automatic_plan = planned.model_copy(update={"reuse_agent_id": None})
+    assert (
+        _resolve_reuse_candidate(
+            automatic_plan,
+            [record, specific_record],
+            available,
+            set(),
+        )
+        is specific_record
+    )
+
+    tools = [
+        BuilderTool(
+            id=tool_id,
+            mcp_id="travel",
+            mcp_name="Travel",
+            tool_name=tool_id.split(":", 1)[1],
+        )
+        for tool_id in sorted(available)
+    ]
+    reused_view = _reused_proposal_view(record, tools, [])
+    assert reused_view.reuse_agent_id == record.id
+    assert {tool.id for tool in reused_view.selected_tools} == available
+    assert reused_view.evaluation["reused"] is True
+
+    record.data.builder_contract = {}
+    assert not _existing_agent_covers(planned, record, available, set())
+    assert _legacy_duplicate_candidates(planned, [record], available, set()) == [
+        record,
+    ]
 
 
 def test_workforce_model_default_does_not_depend_on_card_order() -> None:
