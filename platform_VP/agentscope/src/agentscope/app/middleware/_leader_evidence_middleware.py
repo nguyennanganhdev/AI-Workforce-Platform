@@ -23,6 +23,7 @@ from ...message import (
 from ...middleware import MiddlewareBase
 from ...types import ReplyFinishedReason
 from .._chat_consent import pending_chat_actions
+from .._evidence_claims import ClaimValidation, validate_claims
 from .._shared_context import SharedContextService
 from ..storage import StorageBase
 
@@ -40,6 +41,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         *,
         wait_seconds: float | None = None,
         max_nudges: int = 2,
+        max_repairs: int = 2,
         max_rounds: int = 4,
         on_verified_answer: Callable[[str], None] | None = None,
     ) -> None:
@@ -59,6 +61,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             else wait_seconds
         )
         self._max_nudges = max_nudges
+        self._max_repairs = max_repairs
         self._max_rounds = max_rounds
         self._safety_poll_seconds = 5.0
 
@@ -238,13 +241,13 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id
         )
 
-    async def _unsupported_claims(self, content: str) -> tuple[str, ...]:
+    async def _claim_validation(self, content: str) -> ClaimValidation:
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
         )
         if session is None or session.team_id is None:
-            return ()
-        return await self._shared_context.unsupported_customer_reply_claims(
+            return validate_claims(content, ())
+        return await self._shared_context.validate_customer_reply_claims(
             self._user_id,
             session.team_id,
             content,
@@ -304,6 +307,33 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         if any(ord(char) > 127 for char in latest):
             return "Nhóm chưa hoàn tất yêu cầu trong giới hạn xử lý hiện tại và chưa có đủ kết quả đã xác minh. Vui lòng thử lại; hệ thống sẽ tiếp tục trong đúng ticket này và không giả định kết quả còn thiếu."
         return "The team did not finish within this processing window and has insufficient verified results. Please retry; the system will continue in this ticket without inventing missing outcomes."
+
+    async def _partial_text(self, agent: Agent, *candidates: str) -> str:
+        """Revalidate retained text before returning an explicitly partial answer."""
+
+        for candidate in candidates:
+            if not candidate:
+                continue
+            report = await self._claim_validation(candidate)
+            if report.supported_text and report.has_concrete_claims:
+                # The supported subset can lose its entity/unit context when
+                # pruning a mixed answer. Check the subset independently too.
+                subset = await self._claim_validation(report.supported_text)
+                if subset.unsupported or not subset.has_concrete_claims:
+                    continue
+                latest = next(
+                    (m.get_text_content() or "" for m in reversed(agent.state.context)
+                     if m.role == "user"), "",
+                )
+                notice = (
+                    "Kết quả trên mới là một phần đã xác minh. Các chi tiết còn lại "
+                    "chưa đủ căn cứ hoặc chưa được nhóm hoàn tất review."
+                    if any(ord(char) > 127 for char in latest)
+                    else "These are partial verified results. Remaining details "
+                    "are unverified or still awaiting team review."
+                )
+                return subset.supported_text + "\n\n" + notice
+        return self._incomplete_text(agent)
 
     @staticmethod
     def _buffered_text(events: list[object]) -> str:
@@ -458,7 +488,10 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
     ) -> AsyncGenerator:
         """Buffer customer text and retry after worker evidence arrives."""
 
-        nudges = 0
+        review_nudges = 0
+        refresh_nudges = 0
+        repair_nudges = 0
+        supported_partial = ""
         rounds = 0
         dispatched_seen = 0
         deadline = asyncio.get_running_loop().time() + self._wait_seconds
@@ -527,7 +560,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     # Never promise a later update unless a durable workflow
                     # owns that delivery. A bounded timeout is incomplete.
                     for replacement in self._replacement(
-                        agent, event, self._incomplete_text(agent)
+                        agent, event, await self._partial_text(agent, supported_partial)
                     ):
                         yield replacement
                     continue
@@ -544,9 +577,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 continue
 
             review = await self._review()
-            if review and nudges < self._max_nudges:
+            if review and review_nudges < self._max_nudges:
                 discard_text()
-                nudges += 1
+                review_nudges += 1
                 self._nudge(
                     agent,
                     "Review incoming results/proposals/conflicts with TeamSay(kind='review', decision='accept'|'challenge'|'stop'), or request concrete missing work. Approve only genuine customer questions. Do not forward a worker's internal dependency to the customer.",
@@ -555,19 +588,20 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             if review:
                 discard_text()
                 for replacement in self._replacement(
-                    agent, event, self._incomplete_text(agent)
+                    agent, event, await self._partial_text(agent, current_text, supported_partial)
                 ):
                     yield replacement
                 continue
             if await self._has_unseen_evidence():
                 discard_text()
-                if nudges >= self._max_nudges:
+                supported_partial = ""
+                if refresh_nudges >= self._max_nudges:
                     for replacement in self._replacement(
                         agent, event, self._incomplete_text(agent)
                     ):
                         yield replacement
                     continue
-                nudges += 1
+                refresh_nudges += 1
                 self._nudge(
                     agent,
                     "New verified team evidence arrived after the previous "
@@ -582,28 +616,32 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             # concrete anchors for every non-empty reply.  The support set also
             # contains customer-confirmed messages, so repeating dates/budgets
             # while asking a real clarification remains valid.
-            unsupported = (
-                await self._unsupported_claims(current_text)
-                if current_text
-                else ()
-            )
-            if unsupported:
+            validation = await self._claim_validation(current_text)
+            if validation.unsupported:
+                partial = validation.supported_text
+                if supported_partial:
+                    prior = (await self._claim_validation(supported_partial)).supported_text
+                    if prior and prior not in partial:
+                        partial = prior + "\n\n" + partial
+                supported_partial = (
+                    (await self._claim_validation(partial)).supported_text if partial else ""
+                )
                 discard_text()
-                if nudges >= self._max_nudges:
+                if repair_nudges >= self._max_repairs:
                     for replacement in self._replacement(
-                        agent, event, self._incomplete_text(agent)
+                        agent, event, await self._partial_text(agent, supported_partial)
                     ):
                         yield replacement
                     continue
-                nudges += 1
+                repair_nudges += 1
                 self._nudge(
                     agent,
-                    "Evidence Gate rejected unsupported concrete names or "
-                    "numbers: "
-                    + ", ".join(unsupported[:12])
-                    + ". Rewrite the customer answer using only exact names, "
-                    "numbers and facts present in current verified reports. "
-                    "Do not add examples from model memory.",
+                    "Repair only the unsupported concrete claims: "
+                    + ", ".join(validation.unsupported[:12])
+                    + ". Match entity, field, value and unit to one current source. "
+                    "Keep the supported result below; do not restart team review "
+                    "unless the evidence itself conflicts. Do not invent missing details. "
+                    "Supported result: " + supported_partial,
                 )
                 continue
             if has_current_evidence or safe_without_evidence:
@@ -623,14 +661,14 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 continue
 
             discard_text()
-            if nudges >= self._max_nudges:
+            if review_nudges >= self._max_nudges:
                 for replacement in self._replacement(
-                    agent, event, self._incomplete_text(agent)
+                    agent, event, await self._partial_text(agent, supported_partial)
                 ):
                     yield replacement
                 continue
 
-            nudges += 1
+            review_nudges += 1
             self._nudge(
                 agent,
                 (

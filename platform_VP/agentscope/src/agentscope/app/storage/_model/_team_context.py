@@ -170,6 +170,10 @@ class CollaborationBranch(BaseModel):
     active_seconds: float = 0
     verifications: int = 0
     evidence_rejections: int = 0
+    supported_partial: str = Field(default="", max_length=100_000)
+    """Validated report text retained while unsupported claims are repaired."""
+    needs_claim_review: bool = False
+    """Partial output must be explicitly reviewed, never auto-completed."""
     signatures: dict[str, int] = Field(default_factory=dict)
     receipts: dict[str, dict] = Field(default_factory=dict)
 

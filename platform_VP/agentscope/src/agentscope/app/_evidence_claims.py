@@ -11,6 +11,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Iterable
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from itertools import combinations
 
@@ -127,6 +128,7 @@ _NON_ENTITY_PREFIXES = (
     "budget assessment",
     "estimated cost",
     "source event",
+    "proposed action plan",
 )
 
 
@@ -151,11 +153,16 @@ def _is_generic_name(anchor: str) -> bool:
 def _proper_name_anchors(text: str) -> set[str]:
     anchors: set[str] = set()
     text = _ITINERARY_CODE_RE.sub(" ", text)
+    text = _IDENTIFIER_RE.sub(lambda match: " " if _identifier(match.group(0)) else match.group(0), text)
     for quoted in _QUOTED_RE.findall(text):
         normalized = _normalize(quoted)
         # A quoted name is a few words; a quoted sentence (a proposed reply
         # to the user) is not a name, its own words are checked below.
-        if len(normalized) >= 3 and not normalized.isdigit() and len(normalized.split()) <= 6:
+        words = _WORD_RE.findall(quoted)
+        looks_named = sum(_is_title_word(word) for word in words) >= 2 or (
+            bool(words) and _normalize(words[0]) in _ENTITY_PREFIXES
+        )
+        if looks_named and len(normalized.split()) <= 6:
             anchors.add(normalized)
 
     # A number ends a name: "Hotel A 1200000 VND" must not become the name
@@ -185,7 +192,7 @@ def _proper_name_anchors(text: str) -> set[str]:
                 continue
             while selected and _normalize(selected[0]) in _LEADING_GENERIC:
                 selected.pop(0)
-            while selected and _normalize(selected[-1]) in _CONNECTORS:
+            while selected and _normalize(selected[-1]) in _CONNECTORS and not _is_title_word(selected[-1]):
                 selected.pop()
             while selected and _normalize(selected[-1]) in _TRAILING_GENERIC:
                 selected.pop()
@@ -295,83 +302,6 @@ def _numeric_anchors(text: str) -> set[str]:
     return anchors
 
 
-def _derived_amount_anchors(anchors: set[str]) -> set[str]:
-    """Validate one-step total/remainder arithmetic without trusting prose.
-
-    Only amount-sized values participate. Dates, times, ratings and counts are
-    never derived. This admits auditable sums/differences such as
-    ``budget - reserve`` and ``budget - verified total``.
-    """
-
-    values: set[Decimal] = set()
-    for anchor in anchors:
-        if not anchor.startswith("number:"):
-            continue
-        try:
-            value = Decimal(anchor.removeprefix("number:"))
-        except InvalidOperation:
-            continue
-        if abs(value) >= 10_000:
-            values.add(value)
-
-    originals = sorted(values)[:40]
-    first_level: set[Decimal] = set()
-    for left, right in combinations(originals, 2):
-        first_level.add(left + right)
-        first_level.add(abs(left - right))
-
-    # A reserve margin is commonly a two-step derivation:
-    # ``(budget - reserve) - verified_total``.  Permit exactly that depth,
-    # bounded against the original evidence values rather than an unbounded
-    # arithmetic closure.
-    second_level = {
-        abs(derived - original)
-        for derived in first_level
-        for original in originals
-    }
-    # Unit price x evidenced quantity: "1.200.000 per night" for "2 nights"
-    # (and rooms x nights) gives 2.400.000, then plus one other evidenced
-    # amount (a car) gives the trip total. Quantities are small evidenced
-    # integers only, so a model cannot multiply arbitrary numbers into
-    # support for an invented figure.
-    counts = sorted(
-        {
-            int(value)
-            for value in _evidenced_numbers(anchors)
-            if 1 < value <= 31 and value == value.to_integral_value()
-        },
-    )[:8]
-    factors = set(counts)
-    factors.update(a * b for a, b in combinations(counts, 2) if a * b <= 200)
-    factors.update(count * count for count in counts if count * count <= 200)
-    products = {
-        amount * factor
-        for amount in originals
-        for factor in sorted(factors)[:30]
-    }
-    with_one_more = {
-        product + original for product in products for original in originals
-    }
-    derived = {
-        _number_key(value)
-        for value in (*first_level, *second_level, *products, *with_one_more)
-        if value != 0
-    }
-    return derived
-
-
-def _evidenced_numbers(anchors: set[str]) -> set[Decimal]:
-    numbers: set[Decimal] = set()
-    for anchor in anchors:
-        if not anchor.startswith("number:"):
-            continue
-        try:
-            numbers.add(Decimal(anchor.removeprefix("number:")))
-        except InvalidOperation:
-            continue
-    return numbers
-
-
 def _date_parts(anchor: str) -> tuple[int | None, int, int] | None:
     """Parse supported date anchors without assuming one display format."""
 
@@ -416,35 +346,646 @@ def _date_is_supported(anchor: str, candidates: set[str]) -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class EvidenceSource:
+    """One trusted source; facts from separate records are never combined."""
+
+    content: str
+    source_id: str
+
+
+@dataclass(frozen=True)
+class ClaimValidation:
+    unsupported: tuple[str, ...]
+    supported_text: str
+    rejected_texts: tuple[str, ...]
+    has_concrete_claims: bool = False
+
+
+@dataclass(frozen=True)
+class _Fact:
+    entity: str
+    field: str
+    value: str
+    currency: str = ""
+    unit: str = ""
+    source_id: str = ""
+
+
+_AMOUNT = r"(?:\d{1,3}(?:[ .,]\d{3})+|\d+(?:[.,]\d+)?)"
+_CURRENCIES = r"USD|EUR|VND|GBP|JPY|CNY|AUD|CAD|SGD|KRW|THB"
+_MONEY_RE = re.compile(
+    rf"(?<![\w/:])(?:(?P<prefix>{_CURRENCIES}|\$|€|₫)\s*)?"
+    rf"(?P<amount>{_AMOUNT})\s*"
+    r"(?P<scale>triệu|million|nghìn|ngàn|thousand|tr|k)?\s*"
+    rf"(?P<currency>đồng|{_CURRENCIES}|đ|₫|\$|€)?(?!\w)",
+    re.IGNORECASE,
+)
+_UNIT_RE = re.compile(
+    r"\s*(?:/|\bper\b|\bmỗi\b|\btrên\b)\s*"
+    r"(?:(?P<count>\d+)\s*)?"
+    r"(?P<unit>đêm|night|người|person|guest|khách|phòng|room|ngày|day|tuần|week|tháng|month|giờ|hour|năm|year|[^\W\d_]+)s?\b",
+    re.IGNORECASE,
+)
+_UNIT_NAMES = {
+    "đêm": "night",
+    "người": "person",
+    "guest": "person",
+    "khách": "person",
+    "phòng": "room",
+    "ngày": "day",
+    "tuần": "week",
+    "tháng": "month",
+    "giờ": "hour",
+    "năm": "year",
+}
+_FIELD_RE = re.compile(
+    r"\b(?P<price>price|costs?|giá|phí|ngân sách|budget|reserve|dự phòng|tổng|total)\b"
+    r"|\b(?P<rating>rating|rated|đánh giá|sao|stars?)\b"
+    r"|\b(?P<departure>khởi hành|có chuyến|depart(?:ure|s)?|travel[ _]date)\b"
+    r"|\b(?P<checkin>check[ _-]?in|nhận phòng)\b"
+    r"|\b(?P<checkout>check[ _-]?out|trả phòng)\b"
+    r"|\b(?P<arrival>arrival|arrives?|đến lúc|eta)\b",
+    re.IGNORECASE,
+)
+_RATING_RE = re.compile(
+    r"(?:\b(?:rating|rated|đánh giá)\s*[:=]?\s*(\d+(?:[.,]\d+)?)"
+    r"|(\d+(?:[.,]\d+)?)\s*(?:sao|stars?)\b)",
+    re.IGNORECASE,
+)
+_COUNT_FACT_RE = re.compile(
+    r"(?<![\d/:])(\d+)\s*(người|khách|phòng|đêm|ngày|people|guests|rooms|nights|days)\b",
+    re.IGNORECASE,
+)
+
+
+def _currency(value: str) -> str:
+    value = value.casefold()
+    return {"đồng": "vnd", "đ": "vnd", "₫": "vnd", "$": "usd", "€": "eur"}.get(
+        value, value
+    )
+
+
+def _unit_key(text: str, start: int = 0) -> str:
+    dimensions: list[str] = []
+    while match := _UNIT_RE.match(text, start):
+        unit = match.group("unit").casefold().removesuffix("s")
+        dimensions.append(
+            _UNIT_NAMES.get(unit, unit) + ":" + (match.group("count") or "1")
+        )
+        start = match.end()
+    return ";".join(sorted(dimensions))
+
+
+def _claim_units(text: str) -> list[str]:
+    """Keep clauses together: removing half a sentence can change its meaning."""
+
+    units: list[str] = []
+    for line in text.splitlines():
+        # Decimal points, dates and sentence punctuation inside quoted prose
+        # must not create a supported fragment of a contradictory statement.
+        if '"' in line or "“" in line or "'" in line:
+            parts = [line]
+        else:
+            parts = re.split(r"(?<!\d\.)(?<=[.!?])\s+(?=[A-ZÀ-Ỹ])", line)
+        units.extend(part.strip() for part in parts if part.strip())
+    return units
+
+
+def _plain_unit(text: str) -> str:
+    text = re.sub(r"^\s*(?:>\s*)+", "", text)
+    text = re.sub(r"^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)", "", text)
+    return text.replace("**", "").replace("__", "").replace("`", "")
+
+
+def _field_before(text: str, start: int, default: str) -> str:
+    # A label does not carry across a sentence/semicolon or another numeric
+    # value: 'price 100 USD, rating 5' binds each field independently.
+    prefix = re.split(r"[;\n!?]", text[:start])[-1]
+    labels = list(_FIELD_RE.finditer(prefix))
+    if labels:
+        field = labels[-1].lastgroup or default
+        if default in {"date", "time"} and field in {
+            "checkin",
+            "checkout",
+            "departure",
+            "arrival",
+        }:
+            return f"{field}_{default}"
+        if default == "number" and field in {"price", "rating"}:
+            if re.search(r"\d", prefix[labels[-1].end() :]):
+                return default
+            return field
+    return default
+
+
+def _entity_at(text: str, start: int, names: set[str]) -> str:
+    prefix = _normalize(text[:start])
+    hits = [
+        (prefix.rfind(name), name)
+        for name in names
+        if re.search(rf"(?<!\w){re.escape(name)}(?!\w)", prefix)
+    ]
+    if hits:
+        position, name = max(hits, key=lambda hit: (hit[0], len(hit[1])))
+        # Two entities joined without an intervening value are ambiguous.
+        preceding = prefix[:position].rstrip()
+        if preceding.endswith((" and", " và", " or", " hoặc")):
+            return "?"
+        return name
+    suffix = _normalize(text[start:])
+    after = [
+        (suffix.find(name), name)
+        for name in names
+        if re.search(rf"(?<!\w){re.escape(name)}(?!\w)", suffix)
+    ]
+    return min(after)[1] if after else ""
+
+
+def _prose_facts(text: str, source_id: str, names: set[str]) -> list[_Fact]:
+    facts: list[_Fact] = []
+    for original in _claim_units(text):
+        unit = _plain_unit(original)
+        occupied = [
+            match.span()
+            for match in _IDENTIFIER_RE.finditer(unit)
+            if _identifier(match.group(0))
+        ]
+        for pattern, field in ((_DATE_RE, "date"), (_TIME_RE, "time")):
+            for match in pattern.finditer(unit):
+                value = match.group(0)
+                if field == "time":
+                    hour, minute = value.split(":")
+                    value = f"{int(hour)}:{minute}"
+                facts.append(
+                    _Fact(
+                        _entity_at(unit, match.start(), names),
+                        _field_before(unit, match.start(), field),
+                        value,
+                        source_id=source_id,
+                    )
+                )
+                occupied.append(match.span())
+        for match in _RATING_RE.finditer(unit):
+            value = _decimal_number(match.group(1) or match.group(2))
+            if value is not None:
+                facts.append(
+                    _Fact(
+                        _entity_at(unit, match.start(), names),
+                        "rating",
+                        _number_key(value)[7:],
+                        source_id=source_id,
+                    )
+                )
+                occupied.append(match.span())
+        for match in _MONEY_RE.finditer(unit):
+            if any(left <= match.start() < right for left, right in occupied):
+                continue
+            value = _decimal_number(match.group("amount"))
+            currency = _currency(match.group("currency") or match.group("prefix") or "")
+            scale = (match.group("scale") or "").casefold()
+            field = _field_before(unit, match.start(), "number")
+            if not currency and not scale and field != "price":
+                if (
+                    field == "number"
+                    and value is not None
+                    and value >= 10
+                    and _entity_at(unit, match.start(), names)
+                ):
+                    facts.append(
+                        _Fact(
+                            _entity_at(unit, match.start(), names),
+                            "number",
+                            _number_key(value)[7:],
+                            source_id=source_id,
+                        )
+                    )
+                continue
+            # Explicit currency/scale identifies money, never ratings/counts.
+            if value is None or (field == "rating" and not currency and not scale):
+                continue
+            if scale:
+                value *= 1_000_000 if scale in {"triệu", "tr", "million"} else 1_000
+                if not currency and scale in {"triệu", "tr", "nghìn", "ngàn"}:
+                    currency = "vnd"
+            denominator = _unit_key(unit, match.end())
+            facts.append(
+                _Fact(
+                    _entity_at(unit, match.start(), names),
+                    "price",
+                    _number_key(value)[7:],
+                    currency,
+                    denominator,
+                    source_id,
+                )
+            )
+        for match in _COUNT_FACT_RE.finditer(unit):
+            if any(left <= match.start() < right for left, right in occupied):
+                continue
+            dimension = match.group(2).casefold().removesuffix("s")
+            dimension = {"people": "person", "guest": "person", **_UNIT_NAMES}.get(
+                dimension, dimension
+            )
+            facts.append(
+                _Fact(
+                    _entity_at(unit, match.start(), names),
+                    "count",
+                    match.group(1),
+                    unit=dimension,
+                    source_id=source_id,
+                )
+            )
+    return facts
+
+
+def _json_facts(text: str, source_id: str) -> tuple[list[_Fact], set[str]]:
+    facts: list[_Fact] = []
+    names: set[str] = set()
+
+    def visit(value: object, entity: str = "", depth: int = 0) -> None:
+        if depth > 10:
+            return
+        if isinstance(value, str):
+            nested = _read_json(value)
+            if nested is not None:
+                visit(nested, entity, depth + 1)
+            else:
+                text_names = _proper_name_anchors(value)
+                names.update(text_names)
+                for fact in _prose_facts(value, source_id, names):
+                    facts.append(
+                        _Fact(
+                            fact.entity or entity,
+                            fact.field,
+                            fact.value,
+                            fact.currency,
+                            fact.unit,
+                            source_id,
+                        )
+                    )
+            return
+        if isinstance(value, list):
+            for child in value:
+                visit(child, entity, depth + 1)
+            return
+        if not isinstance(value, dict):
+            return
+        identity = next(
+            (
+                value[key]
+                for key in (
+                    "name",
+                    "hotel",
+                    "hotel_name",
+                    "entity",
+                    "label",
+                    "staff_name",
+                )
+                if isinstance(value.get(key), str)
+            ),
+            entity,
+        )
+        entity = _normalize(identity)
+        if entity:
+            names.add(entity)
+        currency = _currency(str(value.get("currency", "")))
+        for key, child in value.items():
+            normalized = re.sub(r"[_-]", " ", key).casefold()
+            number = (
+                _decimal_number(str(child))
+                if isinstance(child, (int, float, str)) and not isinstance(child, bool)
+                else None
+            )
+            money_field = any(
+                word in normalized.split()
+                for word in ("price", "cost", "amount", "budget", "reserve", "total")
+            )
+            if money_field and (number is not None or isinstance(child, str)):
+                own_currency = next(
+                    (
+                        part.casefold()
+                        for part in _CURRENCIES.split("|")
+                        if part.casefold() in normalized.split()
+                    ),
+                    currency,
+                )
+                measure = _UNIT_RE.search(normalized)
+                denominator = ""
+                if measure:
+                    denominator = _unit_key(normalized, measure.start())
+                elif isinstance(value.get("unit", value.get("per")), str):
+                    measure_text = re.sub(
+                        r"[_-]", " ", value.get("unit", value.get("per"))
+                    )
+                    denominator = _unit_key(
+                        measure_text
+                        if re.match(r"(?:per|mỗi|/)", measure_text)
+                        else "/" + measure_text
+                    )
+                if number is not None:
+                    facts.append(
+                        _Fact(
+                            entity,
+                            "price",
+                            _number_key(number)[7:],
+                            own_currency,
+                            denominator,
+                            source_id,
+                        )
+                    )
+                else:
+                    for fact in _prose_facts(f"{normalized} {child}", source_id, set()):
+                        if fact.field == "price":
+                            facts.append(
+                                _Fact(
+                                    entity,
+                                    "price",
+                                    fact.value,
+                                    fact.currency or own_currency,
+                                    fact.unit or denominator,
+                                    source_id,
+                                )
+                            )
+            elif (
+                normalized in {"rating", "stars", "star rating"} and number is not None
+            ):
+                facts.append(
+                    _Fact(
+                        entity, "rating", _number_key(number)[7:], source_id=source_id
+                    )
+                )
+            elif (
+                normalized
+                in {"people", "guests", "rooms", "nights", "days", "quantity"}
+                and number is not None
+            ):
+                dimension = {"people": "person", "guests": "person"}.get(
+                    normalized, normalized.removesuffix("s")
+                )
+                facts.append(
+                    _Fact(
+                        entity,
+                        "count",
+                        _number_key(number)[7:],
+                        unit=dimension,
+                        source_id=source_id,
+                    )
+                )
+            elif isinstance(child, str) and (
+                _DATE_RE.search(child) or _TIME_RE.search(child)
+            ):
+                for fact in _prose_facts(f"{normalized} {child}", source_id, names):
+                    facts.append(
+                        _Fact(
+                            entity,
+                            fact.field,
+                            fact.value,
+                            fact.currency,
+                            fact.unit,
+                            source_id,
+                        )
+                    )
+            if isinstance(child, (dict, list, str)):
+                visit(child, entity, depth + 1)
+
+    value = _read_json(text)
+    if value is not None:
+        visit(value)
+    return facts, names
+
+
+def _read_json(text: str) -> object:
+    # Runtime prefixes such as 'E3: {...}' retain record boundaries.
+    stripped = text.strip()
+    match = re.match(r"(?:E\d+\s*:\s*)?([\[{].*)", stripped, re.DOTALL)
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+
+def _entity_key(value: str) -> str:
+    return re.sub(r"^(?:nhà xe|xe|limousine)\s+", "", value)
+
+
+def _matching_fact(claim: _Fact, evidence: _Fact) -> bool:
+    # A general party/room/night constraint (often customer supplied) applies
+    # to a selected option too. A count explicitly tied to another entity does
+    # not. Monetary values and unit prices always retain entity binding.
+    general_count = claim.field == evidence.field == "count" and not evidence.entity
+    if (
+        claim.entity
+        and _entity_key(claim.entity) != _entity_key(evidence.entity)
+        and not general_count
+    ):
+        return False
+    # An unlabeled date/time may abbreviate a typed source, never vice versa.
+    if claim.field != evidence.field and (
+        claim.field not in {"date", "time"}
+        or not evidence.field.endswith("_" + claim.field)
+    ):
+        return False
+    if claim.currency and claim.currency != evidence.currency:
+        return False
+    if claim.unit and claim.unit != evidence.unit:
+        return False
+    # An omitted denominator can summarize a price, but an explicitly claimed
+    # denominator must be present in the same evidence record.
+    if claim.field.endswith("date"):
+        return _date_is_supported("date:" + claim.value, {"date:" + evidence.value})
+    return claim.value == evidence.value
+
+
+def _conflicting_fact(candidate: _Fact, facts: list[_Fact]) -> bool:
+    """Do not choose among contradictory scalar prices/ratings.
+
+    Dates, departure times and counts can describe valid sets of options. The
+    anchor check binds them to their entity/field without assuming uniqueness.
+    """
+
+    if (
+        candidate.field not in {"price", "rating"}
+        or not candidate.entity
+        or candidate.entity == "?"
+    ):
+        return False
+    for other in facts:
+        if (
+            _entity_key(candidate.entity) != _entity_key(other.entity)
+            or candidate.field != other.field
+            or candidate.currency != other.currency
+            or candidate.unit != other.unit
+        ):
+            continue
+        if candidate.value != other.value:
+            return True
+    return False
+
+
+def _derived_money(facts: list[_Fact]) -> dict[str, set[str]]:
+    """Bounded arithmetic uses monetary operands of one currency only."""
+
+    result: dict[str, set[str]] = {}
+    currencies = {
+        fact.currency for fact in facts if fact.field == "price" and fact.currency
+    }
+    counts: dict[str, set[Decimal]] = {}
+    for fact in facts:
+        if (
+            fact.field == "count"
+            and fact.unit in {"person", "room", "night", "day"}
+            and 1 <= Decimal(fact.value) <= 31
+            and not _conflicting_fact(fact, facts)
+        ):
+            counts.setdefault(fact.unit, set()).add(Decimal(fact.value))
+    for currency in currencies:
+        monetary = [
+            fact
+            for fact in facts
+            if fact.field == "price"
+            and fact.currency == currency
+            and not _conflicting_fact(fact, facts)
+        ]
+        products: set[Decimal] = set()
+        for fact in monetary:
+            if not fact.unit:
+                continue
+            factors = {Decimal(1)}
+            for dimension in fact.unit.split(";"):
+                name, denominator = dimension.split(":")
+                factors = {
+                    left * right / Decimal(denominator)
+                    for left in factors
+                    for right in counts.get(name, set())
+                    if left * right <= 200
+                }
+            products.update(Decimal(fact.value) * factor for factor in factors)
+        values = sorted(
+            {Decimal(fact.value) for fact in monetary if not fact.unit} | products
+        )[:40]
+        first = {
+            value
+            for left, right in combinations(values, 2)
+            for value in (left + right, abs(left - right))
+        }
+        derived = first | {abs(left - right) for left in first for right in values}
+        derived |= products
+        result[currency] = {_number_key(value)[7:] for value in derived if value > 0}
+    return result
+
+
+def validate_claims(
+    claim: str,
+    supporting_texts: Iterable[str | EvidenceSource],
+) -> ClaimValidation:
+    """Validate bounded, deterministic anchors, retaining whole valid units.
+
+    This checks explicit names/numbers and common typed fields, not arbitrary
+    semantics or whether a trusted source is true. Unknown associations do not
+    gain support by borrowing another entity's number or another record's unit.
+    """
+
+    sources = [
+        source
+        if isinstance(source, EvidenceSource)
+        else EvidenceSource(source, f"source:{index}")
+        for index, source in enumerate(supporting_texts)
+        if source
+        and (source.content if isinstance(source, EvidenceSource) else source).strip()
+    ]
+    normalized_support = [_normalize(source.content) for source in sources]
+    supported_numbers: set[str] = set()
+    facts: list[_Fact] = []
+    names: set[str] = set()
+    for source in sources:
+        supported_numbers.update(_numeric_anchors(source.content))
+        structured, structured_names = _json_facts(source.content, source.source_id)
+        names.update(structured_names)
+        names.update(_proper_name_anchors(source.content))
+        facts.extend(structured)
+    for source in sources:
+        if _read_json(source.content) is None:
+            facts.extend(_prose_facts(source.content, source.source_id, names))
+    derived = _derived_money(facts)
+    unsupported: set[str] = set()
+    supported: list[str] = []
+    rejected: list[str] = []
+    has_concrete_claims = False
+    for original in _claim_units(claim):
+        text = _plain_unit(original)
+        failures: set[str] = set()
+        own_names = _proper_name_anchors(text)
+        for anchor in own_names:
+            if not any(
+                re.search(rf"(?<!\w){re.escape(anchor)}(?!\w)", source)
+                for source in normalized_support
+            ):
+                failures.add(f"name:{anchor}")
+        claim_facts = _prose_facts(text, "claim", names | own_names)
+        has_concrete_claims |= bool(own_names or claim_facts or _numeric_anchors(text))
+        typed_anchors = {_fact_anchor(fact) for fact in claim_facts}
+        for fact in claim_facts:
+            matching = [
+                candidate for candidate in facts if _matching_fact(fact, candidate)
+            ]
+            if matching and not any(
+                _conflicting_fact(candidate, facts) for candidate in matching
+            ):
+                continue
+            # Arithmetic support is for generic totals/remainders, never a
+            # named entity's stated price, rating, unit price or individual ID.
+            calculating = re.search(
+                r"\b(?:total|tổng|còn|budget|ngân sách|reserve|dự phòng|trần chi)\b",
+                text,
+                re.IGNORECASE,
+            ) or any(candidate.field == "count" for candidate in claim_facts)
+            if (
+                calculating
+                and fact.field == "price"
+                and not fact.entity
+                and not fact.unit
+                and fact.value in derived.get(fact.currency, set())
+            ):
+                continue
+            failures.add(_fact_anchor(fact))
+        for anchor in _numeric_anchors(text) - typed_anchors:
+            if anchor not in supported_numbers and not (
+                anchor.startswith("date:")
+                and _date_is_supported(anchor, supported_numbers)
+            ):
+                failures.add(anchor)
+        unsupported.update(failures)
+        (rejected if failures else supported).append(original)
+    return ClaimValidation(
+        tuple(sorted(unsupported)),
+        "\n".join(supported),
+        tuple(rejected),
+        has_concrete_claims,
+    )
+
+
+def _fact_anchor(fact: _Fact) -> str:
+    if fact.field.endswith("date"):
+        return "date:" + fact.value
+    if fact.field.endswith("time"):
+        return "time:" + fact.value
+    return "number:" + fact.value
+
+
 def unsupported_claim_anchors(
     claim: str,
-    supporting_texts: Iterable[str],
+    supporting_texts: Iterable[str | EvidenceSource],
 ) -> tuple[str, ...]:
-    """Return concrete claim anchors absent from all supplied evidence."""
+    """Compatibility facade for callers that only need rejected anchors."""
 
-    supports = [text for text in supporting_texts if text and text.strip()]
-    normalized_support = [_normalize(text) for text in supports]
-    supported_numbers: set[str] = set()
-    for text in supports:
-        supported_numbers.update(_numeric_anchors(text))
-    supported_numbers.update(_derived_amount_anchors(supported_numbers))
-
-    unsupported: set[str] = set()
-    for anchor in _proper_name_anchors(claim):
-        if not any(anchor in text for text in normalized_support):
-            unsupported.add(f"name:{anchor}")
-    for anchor in _numeric_anchors(claim):
-        supported = anchor in supported_numbers
-        if anchor.startswith("date:"):
-            # A day/month mention is an abbreviation of the same fully
-            # evidenced date, including an ISO-formatted source value.
-            supported = supported or _date_is_supported(
-                anchor,
-                supported_numbers,
-            )
-        if not supported:
-            unsupported.add(anchor)
-    return tuple(sorted(unsupported))
+    return validate_claims(claim, supporting_texts).unsupported
 
 
-__all__ = ["unsupported_claim_anchors"]
+__all__ = [
+    "ClaimValidation",
+    "EvidenceSource",
+    "unsupported_claim_anchors",
+    "validate_claims",
+]

@@ -36,6 +36,7 @@ from .....middleware import MiddlewareBase
 from .....model import ChatResponse
 from .....permission import PermissionBehavior, PermissionDecision
 from .....tool import MCPTool, ParamsBase, ToolBase, ToolChunk
+from ...._evidence_claims import ClaimValidation, EvidenceSource, validate_claims
 from ...contracts import Scope
 from ...orchestration._tables import partner_requests, workflow_inputs, workflows
 from ._tables import case_entries, case_sessions, operations, routes
@@ -50,20 +51,18 @@ MAX_TEAM_ROUNDS = 4
 MAX_TEXT = 4000
 EVIDENCE_TEXT = 6000
 LABEL = re.compile(r"^E(\d+)$")
-# Digits with the separators that make one figure: 09:30, 150.000, 20/10/2026.
-FIGURE = re.compile(r"\d+(?:[.,:/]\d+)*")
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _digits(value: str) -> str:
-    return re.sub(r"\D", "", value)
-
-
-def _figures(text: str) -> set[str]:
-    return {_digits(match) for match in FIGURE.findall(text)}
+def _say_claims(text: str, cited: dict[str, str], trusted: list[str]) -> ClaimValidation:
+    return validate_claims(
+        text,
+        [EvidenceSource(content=value, source_id=label) for label, value in cited.items()]
+        + [EvidenceSource(content=value, source_id=f"customer:{index}") for index, value in enumerate(trusted)],
+    )
 
 
 def check_say(
@@ -72,13 +71,15 @@ def check_say(
     rules: dict,
     cited: dict[str, str],
     trusted: list[str],
+    *,
+    claim_validation: ClaimValidation | None = None,
 ) -> list[str]:
     """Why ``text`` may not reach the end user (empty list: it may).
 
     * a phrase the route forbids (``rules.phrase_rules``); a rule's
       ``unless`` phrases lift it when a cited source says them;
-    * a figure (time, amount, count, phone) that no cited evidence and no
-      message of the end user contains — single digits are free;
+    * a factual claim that does not match its entity, field, value and unit
+      within cited evidence or the end user's messages;
     * a cited label that does not exist.
     """
 
@@ -99,16 +100,12 @@ def check_say(
             if str(phrase).lower() in lowered:
                 problems.append(f'Không được viết "{phrase}": {rule.get("reason", "")}'.strip())
                 break
-    known = _figures(" ".join([*cited.values(), *trusted]))
-    unknown = sorted(
-        figure for figure in _figures(text)
-        if figure and len(figure) > 1 and figure not in known
-    )
-    if unknown:
+    claims = claim_validation if claim_validation is not None else _say_claims(text, cited, trusted)
+    if claims.unsupported:
         problems.append(
-            "Các con số/giờ/số tiền sau không có trong bằng chứng đã trích (cites) "
-            "hay lời của người dùng: " + ", ".join(unknown)
-            + ". Thêm mã E.. chứa đúng con số đó vào cites, hoặc bỏ con số."
+            "Các chi tiết sau chưa khớp với bằng chứng đã trích (cites) hay lời của người dùng: "
+            + ", ".join(claims.unsupported)
+            + ". Kiểm tra đúng đối tượng, trường dữ liệu, giá trị và đơn vị; chỉ sửa phần chưa khớp."
         )
     return problems
 
@@ -437,6 +434,7 @@ class _CaseTool(ToolBase):
         ]
         text = (text or "").strip()
         problems: list[str] = []
+        claims: ClaimValidation | None = None
         if trigger_id == "unknown":
             # A late wake-up (a member's report after the turn ended) has no
             # turn to deliver through; the next turn reads the report.
@@ -451,18 +449,32 @@ class _CaseTool(ToolBase):
             problems.append('expects phải là "none", "reply" hoặc "confirmation".')
         if not problems:
             cited = await case.store.labelled(case.workflow_id, cites)
+            trusted = await case.store.customer_texts(case.workflow_id)
+            claims = _say_claims(text, cited, trusted)
             problems = check_say(
                 text,
                 list(cites),
                 case.rules,
                 cited,
-                await case.store.customer_texts(case.workflow_id),
+                trusted,
+                claim_validation=claims,
             )
         if problems:
             await case.store.append(case.workflow_id, "rejected", text or "-", trigger_id=trigger_id)
+            message = f"{self.name} bị từ chối, chưa gửi gì cho người dùng:\n- " + "\n- ".join(problems)
+            metadata = {}
+            if claims is not None and claims.unsupported:
+                metadata["evidence_validation"] = {
+                    "unsupported": list(claims.unsupported),
+                    "supported_text": claims.supported_text,
+                    "rejected_texts": list(claims.rejected_texts),
+                }
+                if claims.supported_text:
+                    message += "\nPhần đã có căn cứ (giữ lại khi sửa, chưa gửi):\n" + claims.supported_text
             return ToolChunk(
-                content=[TextBlock(text=f"{self.name} bị từ chối, chưa gửi gì cho người dùng:\n- " + "\n- ".join(problems))],
+                content=[TextBlock(text=message)],
                 state=ToolResultState.ERROR,
+                metadata=metadata,
             )
         await case.store.append(
             case.workflow_id,

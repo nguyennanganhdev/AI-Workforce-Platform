@@ -139,7 +139,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             team_id="ticket-1",
             task_id=self.task,
             kind="external_event",
-            content="Verified provider data",
+            content="Verified provider data: option A",
             event_id="peer-tool-result",
             source_session_id="peer-session",
         )

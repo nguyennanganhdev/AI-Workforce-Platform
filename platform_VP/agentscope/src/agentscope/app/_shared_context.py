@@ -7,8 +7,6 @@ it never deletes source data or makes a business decision.
 
 from __future__ import annotations
 
-from ..model._call_observer import usage_purpose
-
 import asyncio
 import hashlib
 import json
@@ -25,8 +23,9 @@ from .._logging import logger
 from .._utils._common import _generate_id
 from ..message import Msg, SystemMsg, UserMsg
 from ..model import ChatModelBase
+from ..model._call_observer import usage_purpose
 from ._bus_ops import deliver_to_inbox
-from ._evidence_claims import unsupported_claim_anchors
+from ._evidence_claims import ClaimValidation, EvidenceSource, validate_claims
 from .message_bus import MessageBus, MessageBusKeys
 from .storage import (
     ContextDelta,
@@ -1296,11 +1295,11 @@ class SharedContextService:
         sender: str | None = None,
         references: tuple[str, ...] = (),
         customer_reply: bool = False,
-    ) -> list[str]:
-        """Build exact source text allowed to support concrete claim anchors."""
+    ) -> list[EvidenceSource]:
+        """Keep each authoritative source separate, with its durable event id."""
 
         support = [
-            event.content
+            EvidenceSource(event.content, event.id)
             for event in record.state.events
             if event.task_id == task.id
             and not event.stale
@@ -1338,26 +1337,38 @@ class SharedContextService:
                         if candidate.kind == "external_event"
                         and candidate.source_session_id == event.source_session_id
                     )
-        support.extend(current[event_id].content for event_id in selected)
-        support.extend(assignment.agent_name for assignment in task.assignments.values())
+        # Peer prose may synthesize a result, but must not become a new
+        # independent source for entity/value associations. Its raw lineage
+        # is already selected above and remains authoritative.
+        support.extend(
+            EvidenceSource(current[event_id].content, event_id)
+            for event_id in sorted(selected)
+            if current[event_id].kind == "external_event"
+        )
+        support.extend(
+            EvidenceSource(assignment.agent_name, "roster:" + session_id)
+            for session_id, assignment in task.assignments.items()
+        )
         return support
 
-    async def unsupported_customer_reply_claims(
+    async def validate_customer_reply_claims(
         self,
         user_id: str,
         team_id: str,
         content: str,
-    ) -> tuple[str, ...]:
+        *,
+        task_id: str | None = None,
+    ) -> ClaimValidation:
         """Check a Leader reply against current trusted task evidence."""
 
         record = await self._storage.get_team_shared_context(user_id, team_id)
         task = (
-            record.state.tasks.get(record.state.active_task_id)
-            if record and record.state.active_task_id
+            record.state.tasks.get(task_id or record.state.active_task_id)
+            if record
             else None
         )
         if record is None or task is None:
-            return ()
+            return validate_claims(content, ())
         current = {
             event.id: event
             for event in record.state.events
@@ -1371,7 +1382,14 @@ class SharedContextService:
             current,
             customer_reply=True,
         )
-        return unsupported_claim_anchors(content, support)
+        return validate_claims(content, support)
+
+    async def unsupported_customer_reply_claims(
+        self, user_id: str, team_id: str, content: str,
+    ) -> tuple[str, ...]:
+        """Compatibility view of the detailed customer-reply validation."""
+
+        return (await self.validate_customer_reply_claims(user_id, team_id, content)).unsupported
 
     async def collaboration_pause(
         self, user_id: str, team_id: str, session_id: str, task_id: str | None = None
@@ -1443,7 +1461,7 @@ class SharedContextService:
                     if event.source_session_id == sid
                     and event.kind in {"answer", "result"}
                 ]
-                if any(event.id in trusted for event in reports):
+                if not branch.needs_claim_review and any(event.id in trusted for event in reports):
                     branch.status = "completed"
                     branch.reason = "current evidence-backed result accepted by runtime"
                     assignment = task.assignments.get(sid)
@@ -1571,32 +1589,48 @@ class SharedContextService:
                 and not e.stale
                 and e.revision > task.latest_customer_revision
             }
-            claim_rejection_reason = ""
+            claim_feedback = ""
             if kind in {"result", "answer"} and sender != owner:
-                unsupported = unsupported_claim_anchors(
-                    content,
-                    self._claim_support_texts(
-                        record,
-                        task,
-                        current,
-                        sender=sender,
-                        references=effective_references,
-                    ),
+                support = self._claim_support_texts(
+                    record, task, current, sender=sender,
+                    references=effective_references,
                 )
-                if unsupported:
+                validation = validate_claims(content, support)
+                if validation.unsupported:
                     branch.evidence_rejections += 1
-                    detail = ", ".join(unsupported[:12])
+                    # Recheck a retained partial against the current sources;
+                    # a later tool update must not resurrect an obsolete fact.
+                    prior = validate_claims(branch.supported_partial, support).supported_text
+                    partial = validation.supported_text
+                    if prior and prior not in partial:
+                        partial = prior + "\n\n" + partial
+                    branch.supported_partial = validate_claims(partial, support).supported_text
+                    branch.needs_claim_review = True
+                    detail = ", ".join(validation.unsupported[:12])
                     if branch.evidence_rejections < 2:
                         await self._commit_mutation(user_id, record)
                         raise ValueError(
                             "Evidence gate rejected unsupported concrete claims: "
                             + detail
-                            + ". Retry once using only exact customer, MCP, or cited peer evidence.",
+                            + ". Repair only those claims; keep the supported result: "
+                            + branch.supported_partial
                         )
-                    claim_rejection_reason = (
-                        "evidence gate rejected unsupported concrete claims twice: "
-                        + detail
-                    )
+                    claim_feedback = "Unsupported details were omitted; review the partial result."
+                    if branch.supported_partial:
+                        content = branch.supported_partial + "\n\n" + claim_feedback
+                    else:
+                        kind, content = "error", "No supported result is available after claim repair."
+                else:
+                    # A focused repair may return only the corrected line.
+                    # Preserve the previous valid portion when it still fits
+                    # the current sources and independently validates together.
+                    prior = validate_claims(branch.supported_partial, support).supported_text
+                    if prior and prior not in content:
+                        combined = prior + "\n\n" + content
+                        if not validate_claims(combined, support).unsupported:
+                            content = combined
+                    branch.supported_partial = ""
+                    branch.needs_claim_review = False
             released = []
             if kind == "conflict" and (
                 len(set(effective_references)) < 2
@@ -1653,6 +1687,8 @@ class SharedContextService:
                 else:
                     raise ValueError("Unknown resolution")
                 target.reason = content
+                if resolution in {"complete", "stop"}:
+                    target.needs_claim_review = False
                 target.waiting_for.clear()
                 if target.status == "stopped":
                     for sid, waiting in task.collaboration.items():
@@ -1698,7 +1734,7 @@ class SharedContextService:
             ).hexdigest()
             branch.signatures[signature] = branch.signatures.get(signature, 0) + 1
             branch.exchanges += 1
-            reason = claim_rejection_reason
+            reason = ""
             if branch.exchanges > self.config.collaboration_max_exchanges:
                 reason = "exchange limit exceeded"
             elif branch.signatures[signature] > 2:
@@ -1738,8 +1774,7 @@ class SharedContextService:
                         target.waiting_for.clear()
             routed = [*recipients, *released]
             if (
-                not claim_rejection_reason
-                and kind in {"result", "answer", "error"}
+                kind in {"result", "answer", "error"}
                 and sender != owner
             ):
                 if in_reply_to and in_reply_to not in current and not any(
@@ -1816,6 +1851,7 @@ class SharedContextService:
                 "recipients": list(dict.fromkeys(s for s in routed if s != sender)),
                 "status": branch.status,
                 "reference_event_ids": list(effective_references),
+                **({"claim_feedback": claim_feedback, "partial_result": True} if claim_feedback else {}),
             }
             branch.receipts[handoff_id] = receipt
             await self._commit_mutation(user_id, record)

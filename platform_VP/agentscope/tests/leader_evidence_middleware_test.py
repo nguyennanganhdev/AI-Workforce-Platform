@@ -7,13 +7,14 @@ from unittest.mock import AsyncMock, patch
 
 from agentscope.agent import ReActConfig
 from agentscope.app.middleware import LeaderEvidenceMiddleware
+from agentscope.app._evidence_claims import ClaimValidation, validate_claims
 from agentscope.event import (
     ReplyEndEvent,
     TextBlockDeltaEvent,
     TextBlockEndEvent,
     TextBlockStartEvent,
 )
-from agentscope.message import ToolCallBlock, ToolResultBlock, ToolResultState
+from agentscope.message import TextBlock, ToolCallBlock, ToolResultBlock, ToolResultState
 from agentscope.state import AgentState
 
 
@@ -42,8 +43,8 @@ class _SharedContext:
     async def collaboration_review(self, *args, **_kwargs):
         return []
 
-    async def unsupported_customer_reply_claims(self, *args):
-        return ()
+    async def validate_customer_reply_claims(self, *args):
+        return ClaimValidation((), args[-1], (), bool(args[-1]))
 
     async def active_task_id(self, *args):
         return "task-1"
@@ -356,8 +357,11 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
 
     async def test_current_evidence_does_not_allow_unrelated_named_claim(self) -> None:
         shared = _SharedContext((1, 0, 1, False))
-        shared.unsupported_customer_reply_claims = AsyncMock(
-            side_effect=[("name:invented hotel",), ()],
+        shared.validate_customer_reply_claims = AsyncMock(
+            side_effect=[
+                ClaimValidation(("name:invented hotel",), "", (), True),
+                ClaimValidation((), "Verified Hotel costs 1,500,000 VND.", (), True),
+            ],
         )
         middleware = LeaderEvidenceMiddleware(
             _Storage(),  # type: ignore[arg-type]
@@ -398,8 +402,11 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         self,
     ) -> None:
         shared = _SharedContext((1, 0, 1, False))
-        shared.unsupported_customer_reply_claims = AsyncMock(
-            side_effect=[("date:16/10",), ()],
+        shared.validate_customer_reply_claims = AsyncMock(
+            side_effect=[
+                ClaimValidation(("date:16/10",), "", (), True),
+                ClaimValidation((), "Xe khởi hành 17/10. Bạn muốn chọn phương án nào?", (), True),
+            ],
         )
         middleware = LeaderEvidenceMiddleware(
             _Storage(),  # type: ignore[arg-type]
@@ -439,6 +446,121 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         )
         self.assertNotIn("16/10", streamed)
         self.assertIn("17/10", streamed)
+
+    async def test_review_refresh_and_claim_repair_have_independent_budgets(self):
+        shared = _SharedContext((1, 0, 1, False))
+        source = '{"name":"Verified Hotel","price_vnd":1500000}'
+
+        async def validate(*args):
+            return validate_claims(args[-1], [source])
+
+        shared.validate_customer_reply_claims = validate
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(), shared, "u", "leader", "session-1", wait_seconds=0,
+            max_nudges=1, max_repairs=1, max_rounds=0,
+        )
+        # Each round reads pending review twice. The first round needs one
+        # explicit review; subsequent rounds need a refresh and then a repair.
+        middleware._review = AsyncMock(side_effect=[
+            ["worker-session"], ["worker-session"], [], [], [], [], [], [],
+        ])
+        middleware._has_unseen_evidence = AsyncMock(side_effect=[True, False, False])
+        agent = self._agent(dispatched=False)
+        valid = "Verified Hotel costs 1500000 VND."
+
+        async def next_handler(**kwargs):
+            del kwargs
+            for index, text in enumerate((
+                valid, valid, valid + "\nImaginary Resort costs 900000 VND.", valid,
+            )):
+                for event in _text_round("reply-1", f"budget-{index}", text):
+                    yield event
+
+        output = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+        text = "".join(event.delta for event in output if isinstance(event, TextBlockDeltaEvent))
+        self.assertEqual(valid, text)
+        hints = "\n".join(
+            block.hint for message in agent.state.context
+            for block in message.get_content_blocks("hint")
+        )
+        self.assertIn("Review incoming", hints)
+        self.assertIn("New verified team evidence", hints)
+        self.assertIn("Repair only", hints)
+        self.assertEqual(1, hints.count("Repair only"))
+        self.assertNotIn("Imaginary Resort", text)
+
+    async def test_repair_exhaustion_returns_valid_partial_without_learning(self):
+        shared = _SharedContext((1, 0, 1, False))
+
+        async def validate(*args):
+            return validate_claims(args[-1], ['{"name":"Verified Hotel","price_vnd":1500000}'])
+
+        shared.validate_customer_reply_claims = validate
+        learned = []
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(), shared, "u", "leader", "session-1", wait_seconds=0,
+            max_repairs=1, on_verified_answer=learned.append,
+        )
+        agent = self._agent(dispatched=False)
+        valid = "Verified Hotel costs 1500000 VND."
+        mixed = valid + "\nImaginary Resort costs 900000 VND."
+
+        async def next_handler(**kwargs):
+            del kwargs
+            for index in range(2):
+                agent.state.append_context("Leader", [TextBlock(id=f"draft-{index}", text=mixed)])
+                for event in _text_round("reply-1", f"repair-{index}", mixed):
+                    yield event
+
+        output = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+        text = "".join(event.delta for event in output if isinstance(event, TextBlockDeltaEvent))
+        self.assertIn(valid, text)
+        self.assertIn("partial verified results", text)
+        self.assertNotIn("Imaginary Resort", text)
+        self.assertNotIn("900000", text)
+        self.assertEqual([], learned)
+        private_text = "\n".join(message.get_text_content() or "" for message in agent.state.context)
+        self.assertNotIn("Imaginary Resort", private_text)
+        self.assertNotIn("900000", private_text)
+        self.assertIsNone(output[-1].error)
+
+    async def test_refresh_does_not_restore_partial_from_an_old_source_revision(self):
+        shared = _SharedContext((1, 0, 1, False))
+        current_price = [1500000]
+
+        async def validate(*args):
+            source = json.dumps({"name": "Verified Hotel", "price_vnd": current_price[0]})
+            return validate_claims(args[-1], [source])
+
+        shared.validate_customer_reply_claims = validate
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(), shared, "u", "leader", "session-1", wait_seconds=0,
+            max_repairs=1,
+        )
+        agent = self._agent(dispatched=False)
+
+        async def next_handler(**kwargs):
+            del kwargs
+            for event in _text_round(
+                "reply-1", "before-update",
+                "Verified Hotel costs 1500000 VND.\nImaginary Resort costs 900000 VND.",
+            ):
+                yield event
+            current_price[0] = 1600000
+            shared.latest_revision = 2
+            for event in _text_round("reply-1", "old-snapshot", "Verified Hotel costs 1500000 VND."):
+                yield event
+            shared.seen_revision = 2
+            for event in _text_round("reply-1", "failed-repair", "Imaginary Resort costs 900000 VND."):
+                yield event
+
+        output = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+        text = "".join(event.delta for event in output if isinstance(event, TextBlockDeltaEvent))
+        self.assertNotIn("1500000", text)
+        self.assertNotIn("900000", text)
+        self.assertNotIn("Imaginary Resort", text)
+        self.assertIn("did not finish", text)
+        self.assertIsNone(output[-1].error)
 
 
 class TestLeaderLearningHook(IsolatedAsyncioTestCase):

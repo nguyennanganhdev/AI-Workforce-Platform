@@ -629,6 +629,41 @@ class UnifiedCaseCloseBarrierTest(_CaseHarness):
 
 
 class UnifiedPartnerCaseTest(_CaseHarness):
+    async def test_claim_rejection_keeps_supported_lines_for_both_delivery_tools(self):
+        valid = "Hotel Alpha costs 100 USD."
+        invalid = "Hotel Beta costs 100 USD."
+        corrected = valid + "\nHotel Beta costs 200 USD."
+
+        async def first_turn(tools):
+            case = tools["CaseSay"]._case
+            labels = []
+            for hotel, price in (("Hotel Alpha", 100), ("Hotel Beta", 200)):
+                seq = await case.store.append(
+                    case.workflow_id,
+                    "evidence",
+                    json.dumps({"hotel": hotel, "price": price, "currency": "USD"}),
+                )
+                labels.append(f"E{seq}")
+            for name, key in (("CaseSay", "text"), ("CaseFinalize", "answer")):
+                rejected = await tools[name].call(**{key: valid + "\n" + invalid, "cites": labels})
+                self.assertEqual(ToolResultState.ERROR, rejected.state)
+                validation = rejected.metadata["evidence_validation"]
+                self.assertIn(valid, validation["supported_text"])
+                self.assertNotIn(invalid, validation["supported_text"])
+                self.assertIn(invalid, validation["rejected_texts"])
+                self.assertIn(valid, rejected.content[0].text)
+                self.assertEqual([], await case.store.entries(case.workflow_id, kind="say"))
+            accepted = await tools["CaseSay"].call(text=corrected, cites=labels)
+            self.assertEqual(ToolResultState.SUCCESS, accepted.state)
+            [said] = await case.store.entries(case.workflow_id, kind="say")
+            self.assertEqual(corrected, said["text"])
+
+        self.leader.scripts = [first_turn]
+        async with self._client() as client:
+            self.assertEqual(202, (await client.post("/workforce/v1/partner/requests", json=self._start())).status_code)
+            self.assertEqual("succeeded", await self._run())
+        self.assertEqual([], self.mcp_calls)
+
     async def test_an_agent_a_partner_route_uses_cannot_be_removed(self):
         [guard] = self.runner._app.state.agent_delete_guards
         async with self.uows() as uow:
@@ -1465,6 +1500,24 @@ class CheckSayTest(unittest.TestCase):
 
     def test_unknown_labels_are_refused(self):
         self.assertTrue(check_say("Đã ghi nhận.", ["E9"], {}, {}, []))
+
+    def test_cited_prices_stay_with_their_entity(self):
+        sources = {
+            "E1": '{"hotel": "Hotel Alpha", "price": 100, "currency": "USD"}',
+            "E2": '{"hotel": "Hotel Beta", "price": 200, "currency": "USD"}',
+        }
+        self.assertEqual([], check_say("Hotel Alpha costs 100 USD.", ["E1"], {}, sources, []))
+        self.assertTrue(check_say("Hotel Alpha costs 200 USD.", ["E1", "E2"], {}, sources, []))
+
+    def test_cited_price_keeps_its_currency_and_unit(self):
+        sources = {"E1": '{"hotel": "Hotel Alpha", "price": 100, "currency": "USD", "unit": "night"}'}
+        self.assertEqual([], check_say("Hotel Alpha costs 100 USD per night.", ["E1"], {}, sources, []))
+        self.assertTrue(check_say("Hotel Alpha costs 100 EUR per night.", ["E1"], {}, sources, []))
+        self.assertTrue(check_say("Hotel Alpha costs 100 USD per guest.", ["E1"], {}, sources, []))
+
+    def test_formatting_and_quoted_instructions_do_not_need_evidence(self):
+        text_value = "## Proposed Action Plan\n> Please confirm your preference.\n12. Compare the available options."
+        self.assertEqual([], check_say(text_value, [], {}, {}, []))
 
 
 class PromptCacheOrderTest(unittest.TestCase):

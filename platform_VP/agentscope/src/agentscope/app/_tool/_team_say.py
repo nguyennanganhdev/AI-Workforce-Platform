@@ -349,6 +349,7 @@ class TeamSay(_TeamToolBase):
                 error chunk on failure.
         """
         intent = None
+        delta_feedback = ""
         try:
             if kind == "ask_customer":
                 kind, to = "requires_user_input", None
@@ -876,6 +877,22 @@ class TeamSay(_TeamToolBase):
                     )
                 wake = first_question and turn.status == "running"
 
+            if self._role == "worker" and kind in {"result", "answer"} and context_delta is not None:
+                proposed_claims = (*context_delta.add_confirmed_facts, *context_delta.add_outputs)
+                if proposed_claims:
+                    delta_validation = await shared_context.validate_customer_reply_claims(
+                        self._user_id,
+                        team.id,
+                        "\n".join(proposed_claims),
+                        task_id=effective_task_id,
+                    )
+                    if delta_validation.unsupported:
+                        context_delta = None
+                        delta_feedback = (
+                            "Unsupported context_delta details were omitted; the report is still processed. "
+                            "Submit a corrected delta using the current task evidence."
+                        )
+
             handoff_id = _handoff_id()
             # Journal before changing dependencies. The existing dispatcher
             # replays this intent after a crash between reservation and delivery.
@@ -953,6 +970,11 @@ class TeamSay(_TeamToolBase):
                 ),
             )
             kind, content = coordination["kind"], coordination["content"]
+            if coordination.get("partial_result"):
+                # The proposed delta belongs to the original report. Applying
+                # it after pruning would reintroduce its rejected facts/state.
+                # A repaired report may submit a fresh, matching delta.
+                context_delta = None
             # The server records which peer reports released this worker's
             # dependencies. Carry that lineage into a synthesized result so
             # evidence validation does not depend on an LLM reproducing opaque
@@ -1175,30 +1197,36 @@ class TeamSay(_TeamToolBase):
             return ToolChunk(
                 content=[
                     TextBlock(
-                        text=(f"Delivered to {count} recipient(s) ({target})."),
+                        text=(
+                            f"Delivered to {count} recipient(s) ({target})."
+                            + (" " + coordination["claim_feedback"] if coordination.get("partial_result") else "")
+                            + (" " + delta_feedback if delta_feedback else "")
+                        ),
                     ),
                 ],
                 metadata={
                     "handoff_id": handoff_id,
                     "kind": kind,
                     "collaboration_status": coordination["status"],
+                    **({"partial_result": True, "claim_feedback": coordination["claim_feedback"]}
+                       if coordination.get("partial_result") else {}),
+                    **({"delta_feedback": delta_feedback} if delta_feedback else {}),
                     **({"released_assignments": released} if released else {}),
                 },
             )
         except Exception as e:  # noqa: BLE001 - tool returns structured error
+            retryable = not isinstance(
+                e,
+                (ValueError, CollaborationStoppedError, SharedContextConcurrencyError),
+            )
+            if intent is not None and not retryable:
+                # A rejected report needs an agent repair. Recovery must not
+                # replay it as a second attempt against the evidence budget.
+                await shared_context.mark_handoff(intent, "cancelled", error=str(e))
             return ToolChunk(
                 content=[TextBlock(text=f"TeamSay failed: {e}")],
                 state=ToolResultState.ERROR,
-                metadata={
-                    "retryable": not isinstance(
-                        e,
-                        (
-                            ValueError,
-                            CollaborationStoppedError,
-                            SharedContextConcurrencyError,
-                        ),
-                    )
-                }
+                metadata={"retryable": retryable}
                 if intent is not None
                 else {},
             )

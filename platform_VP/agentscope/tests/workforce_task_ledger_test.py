@@ -162,7 +162,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
             "ticket-1",
             {"hotel-session": TaskAssignment(agent_id="hotel", goal="Find hotels")},
         )
-        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_vnd": 1200000}')
+        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_per_night_vnd": 1200000}')
 
         result = await self._tool("hotel-session", "hotel", "worker")(
             kind="result",
@@ -193,7 +193,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         self.assertIn("cost-session", pending)
         self.assertEqual([], await self._inbox("cost-session"))
 
-        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_vnd": 1200000}')
+        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_per_night_vnd": 1200000}')
         await self._tool("hotel-session", "hotel", "worker")(
             kind="result",
             content="DEMO Song Han 1200000 VND per night",
@@ -238,7 +238,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         self.assertNotEqual("error", asked.state, asked.content)
         await self._inbox("hotel-session")
 
-        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_vnd": 1200000}')
+        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_per_night_vnd": 1200000}')
         answer = await self._tool("hotel-session", "hotel", "worker")(
             kind="answer",
             content="DEMO Song Han 1200000 VND per night",
@@ -274,7 +274,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         feedback = await self._inbox("hotel-session")
         self.assertIn("price per night", str(feedback))
 
-        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_vnd": 1200000}')
+        await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_per_night_vnd": 1200000}')
         await hotel(kind="result", content="DEMO Song Han 1200000 VND per night")
         accepted = await leader(kind="review", to="Hotel", decision="accept", content="ok")
 
@@ -313,7 +313,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
 def test_number_ends_a_proper_name_anchor() -> None:
     from agentscope.app._evidence_claims import unsupported_claim_anchors
 
-    evidence = ['{"name": "DEMO Song Han", "price_vnd": 1200000}']
+    evidence = ['{"name": "DEMO Song Han", "price_per_night_vnd": 1200000}']
     assert unsupported_claim_anchors("DEMO Song Han 1200000 VND per night", evidence) == ()
 
 
