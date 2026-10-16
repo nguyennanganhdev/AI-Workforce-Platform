@@ -42,6 +42,7 @@ jobs:
         postgresql+asyncpg://agentscope:agentscope_test@localhost:5432/agentscope_test
       WORKFORCE_E2E_FACTORY: >-
         tests.workforce.fixtures.release_candidate_factory:factory
+      PYTEST_ADDOPTS: "--asyncio-mode=auto"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -57,7 +58,7 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: "platform_VP/agentscope/examples/web_ui/pnpm-lock.yaml"
       - name: Install Workforce test dependencies
-        run: uv pip install -q -e ".[dev,service,storage-postgres,auth]" playwright
+        run: uv pip install -q -e ".[dev,service,storage-postgres,auth]" playwright pytest-asyncio
       - name: Install frontend and browser dependencies
         run: |
           pnpm --dir examples/web_ui install --frozen-lockfile --ignore-scripts
