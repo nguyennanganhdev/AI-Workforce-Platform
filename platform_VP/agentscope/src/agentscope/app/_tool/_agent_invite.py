@@ -598,10 +598,12 @@ class AgentInvite(_TeamToolBase):
             # model. The lookup is caller-scoped, so a cross-owner borrow
             # never reuses the owner's session, MCPs, skills, or cache.
             # The workspace is created lazily on first chat.
-            invited_sessions = await self._storage.list_sessions(
-                self._user_id,
-                invited.id,
-            )
+            invited_sessions = [
+                session for session in await self._storage.list_sessions(
+                    self._user_id, invited.id,
+                )
+                if not isinstance(session.origin, TeamOrigin)
+            ]
             if invited_sessions:
                 primary = invited_sessions[0]
                 borrowed_workspace_id = primary.config.workspace_id
@@ -684,16 +686,13 @@ class AgentInvite(_TeamToolBase):
                     borrowed.id,
                     borrowed_workspace_id,
                 )
-                # A borrowed Builder agent has an explicit tool allowlist.
-                # Materialise the new team session without deployment-wide
-                # default MCPs before adding those selected declarations.
-                if invited.data.execution_mode is not None:
-                    for default_mcp in workspace.default_mcps:
-                        await workspace.remove_mcp(
-                            default_mcp.name,
-                            agent_id=invited.id,
-                            session_id=borrowed.id,
-                        )
+                # Both saved allowlists and legacy session copies replace defaults.
+                for default_mcp in workspace.default_mcps:
+                    await workspace.remove_mcp(
+                        default_mcp.name,
+                        agent_id=invited.id,
+                        session_id=borrowed.id,
+                    )
                 mcp_specs: list[MCPClient] = []
                 if invited.data.execution_mode is not None:
                     selected: dict[str, list[str]] = {}

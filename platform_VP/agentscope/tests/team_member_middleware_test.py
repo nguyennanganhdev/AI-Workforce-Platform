@@ -17,7 +17,7 @@ from utils import MockModel
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
 from agentscope.app._tool._team_say import STALE_CONTEXT_RESULT
 from agentscope.app.middleware import TeamMemberLoopMiddleware
-from agentscope.event import ReplyEndEvent, TextBlockDeltaEvent
+from agentscope.event import ReplyEndEvent, TextBlockDeltaEvent, ToolResultTextDeltaEvent
 from agentscope.message import TextBlock, ToolCallBlock, ToolResultState, UserMsg
 from agentscope.model import ChatResponse
 from agentscope.permission import (
@@ -171,6 +171,24 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
         )
 
+    async def test_pause_during_model_call_streams_the_tool_blocker(self):
+        checks = 0
+
+        async def question():
+            nonlocal checks
+            checks += 1
+            return None if checks == 1 else "awaiting_user_input"
+
+        items = await self._run(
+            [_call("TeamSay", to="Peer", kind="question", content="Find options")],
+            pending_question=question,
+        )
+        self.assertEqual([], self.team_say.calls)
+        self.assertTrue(any(
+            "waiting for customer input" in str(event.delta)
+            for event in items if isinstance(event, ToolResultTextDeltaEvent)
+        ))
+
     async def test_progress_is_not_a_terminal_report(self):
         items = await self._run(
             [
@@ -305,6 +323,17 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 {"to": "Leader", "content": "done"},
             ],
         )
+
+    async def test_explicit_peer_answer_result_and_error_end_without_leader_report(self):
+        for kind in ("answer", "result", "error"):
+            with self.subTest(kind=kind):
+                self.team_say = _FakeTeamSay()
+                await self._run([
+                    _call("TeamSay", to="Peer", kind=kind, content="Bounded response"),
+                    _call("TeamSay", to="Leader", content="Must not repeat the peer report"),
+                ])
+                self.assertEqual(len(self.team_say.calls), 1)
+                self.assertEqual(self.team_say.calls[0]["to"], "Peer")
 
     async def test_failed_report_is_not_accepted(self) -> None:
         """A ``TeamSay`` that errored does not count as a report."""

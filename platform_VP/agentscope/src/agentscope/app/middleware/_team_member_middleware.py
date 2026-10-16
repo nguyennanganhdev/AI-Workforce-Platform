@@ -24,7 +24,7 @@ from ...message import (
     ToolResultState,
 )
 from ...middleware import MiddlewareBase
-from ...tool import ToolChoice, ToolResponse
+from ...tool import ToolChoice, ToolChunk, ToolResponse
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from .._tool._team_say import STALE_CONTEXT_RESULT
 from ._leader_evidence_middleware import LeaderEvidenceMiddleware
@@ -33,8 +33,8 @@ from ._leader_evidence_middleware import LeaderEvidenceMiddleware
 class TeamMemberLoopMiddleware(MiddlewareBase):
     """The team member loop engineering middleware, that requires:
 
-    1. The member should end its reply by calling `TeamSay` to report to the
-     current reply owner (normally the team leader).
+    1. The member should end its reply with a successful bounded `TeamSay`
+     request or response, reporting to its assignment requester.
     2. When exceeds the max iteration numbers, the agent is guided to send
     reply owner a message to ask for permission to continue the operation.
 
@@ -55,9 +55,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
 
         Args:
             leader_name (`str`):
-                The current reply owner's routable team name, i.e. the only
-                valid
-                ``TeamSay(to=...)`` target that counts as a report.
+                The customer reply owner's routable name, used when work was
+                assigned directly by that owner. Explicit peer responses may
+                target their assignment requester instead.
             max_nudges (`int`, defaults to 3):
                 How many times one reply may be forced to continue
                 before it is failed instead.
@@ -148,8 +148,10 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                             "Repeated tool calls returned identical results with no progress. "
                             "Call TeamSay(to=null, kind='requires_user_input') "
                             "for genuinely customer-owned missing information, or "
-                            f"TeamSay(to={self._leader_name!r}, kind='result') "
-                            "to report the blocker. "
+                            "TeamSay to report the blocker to the original assignment "
+                            "requester using its request id. Use kind='answer' for a peer "
+                            "question, result/error for a handoff. Report to "
+                            f"{self._leader_name!r} only for work assigned by that owner. "
                             "Do not retry tools or invent an external identifier/outcome."
                         ),
                     )
@@ -173,7 +175,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         except (ValueError, TypeError):
             args = call.input
         if paused or (call.name, args) in self._repeated_calls(agent):
-            yield ToolResponse(
+            result = ToolChunk(
                 content=[
                     TextBlock(
                         text=(
@@ -185,6 +187,8 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 ],
                 state=ToolResultState.ERROR,
             )
+            yield result
+            yield ToolResponse(content=result.content, state=result.state)
             return
         async for result in next_handler(**input_kwargs):
             yield result
@@ -200,9 +204,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         Returns:
             `bool`:
                 ``True`` when the reply's last tool call is a
-                ``TeamSay`` explicitly addressed to the reply owner that
-                returned ``SUCCESS``. Worker broadcasts are never valid
-                reports.
+                successful bounded ``TeamSay`` to a concrete collaborator or
+                the registered customer-clarification request. Worker
+                broadcasts and progress-only messages never finish a run.
         """
         for msg in reversed(agent.state.context):
             if (
@@ -224,9 +228,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             if last_tool_call is None:
                 continue
 
-            # The last tool action must be a successful TeamSay addressed to
-            # the reply owner. A later non-TeamSay tool therefore invalidates
-            # an earlier progress report.
+            # A later non-TeamSay tool invalidates an earlier delivered report.
             if last_tool_call.name != "TeamSay":
                 return False
             try:
@@ -259,6 +261,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 "question",
                 "answer",
                 "result",
+                "error",
             }:
                 return False
             return True
@@ -477,7 +480,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                         type=ErrorType.INTERNAL,
                         message=(
                             f"{agent.name} ended {nudges} replies in a row "
-                            f"without reporting to {self._leader_name} via "
+                            "without reporting to its assignment requester via "
                             f"TeamSay; giving up on this turn."
                         ),
                     ),
@@ -489,15 +492,18 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 instruction = (
                     "<system-reminder>You have reached the maximum number "
                     f"of ReAct iterations ({agent.react_config.max_iters}). "
-                    "Call `TeamSay` now to report to the reply owner "
-                    f"{self._leader_name!r} and ask for "
-                    "permission to continue.</system-reminder>"
+                    "Call `TeamSay` now to report the incomplete work/blocker to "
+                    "its assignment requester using the original request id, then stop. "
+                    f"Use {self._leader_name!r} only for work assigned by that owner."
+                    "</system-reminder>"
                 )
             else:
                 instruction = (
                     "<system-reminder>You MUST call the tool `TeamSay` "
-                    "to report to the reply owner "
-                    f"{self._leader_name!r} with kind=result/error to finish your task. "
+                    "to report to the original assignment requester: kind=answer with "
+                    "in_reply_to=the incoming question id for a peer question, or "
+                    "kind=result/error with the original request id for a handoff. "
+                    f"Use {self._leader_name!r} only for work assigned by that owner. "
                     "If missing another agent's output, use TeamSay(to=that peer, kind=question, content=a specific task) and wait. "
                     "Progress alone is not a completed assignment. For genuinely customer-owned missing information, "
                     "use TeamSay(to=null, kind=requires_user_input) and ask the customer directly."

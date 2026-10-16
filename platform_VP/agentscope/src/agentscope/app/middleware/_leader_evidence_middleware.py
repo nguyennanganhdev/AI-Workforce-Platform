@@ -1,6 +1,7 @@
 """Coordinate Workforce Leader turns without validating business claims."""
 
 import json
+import re
 from collections.abc import AsyncGenerator, Callable
 
 from ..._utils._common import _generate_id
@@ -138,12 +139,15 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id
         )
         task = record.state.tasks.get(record.state.active_task_id) if record else None
-        return bool(task and any(
-            sid != self._session_id
-            and branch.customer_revision == task.latest_customer_revision
-            and branch.status in {"running", "waiting_peer"}
-            for sid, branch in task.collaboration.items()
-        ))
+        return bool(
+            task
+            and any(
+                sid != self._session_id
+                and branch.customer_revision == task.latest_customer_revision
+                and branch.status in {"running", "waiting_peer"}
+                for sid, branch in task.collaboration.items()
+            )
+        )
 
     async def on_reasoning(self, agent, input_kwargs, next_handler):
         """Stop this run after delegation; a peer reply starts a fresh run."""
@@ -239,18 +243,50 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         )
 
     @staticmethod
-    def _incomplete_text(agent: Agent) -> str:
-        latest = next(
-            (
-                m.get_text_content() or ""
-                for m in reversed(agent.state.context)
-                if m.role == "user"
-            ),
-            "",
+    def _incomplete_text(agent: Agent, partial_text: str = "") -> str:
+        del agent
+        partial = LeaderEvidenceMiddleware._usable_partial_text(partial_text)
+        limitation = (
+            "Phần còn thiếu chưa có đủ bằng chứng để xác minh, nên tôi không "
+            "suy đoán. Không có tác vụ nền nào được cam kết sau câu trả lời này."
         )
-        if any(ord(char) > 127 for char in latest):
-            return "Nhóm chưa hoàn tất yêu cầu trong giới hạn xử lý hiện tại. Vui lòng thử lại; hệ thống sẽ tiếp tục trong đúng ticket này."
-        return "The team did not finish within this processing window. Please retry; the system will continue in this ticket."
+        if partial:
+            return f"{partial}\n\n{limitation}"
+        return (
+            "Hiện chưa có đủ kết quả đã xác minh để đưa ra một phương án hoàn "
+            f"chỉnh. {limitation}"
+        )
+
+    @staticmethod
+    def _usable_partial_text(text: str) -> str:
+        """Keep useful synthesis, never a promise/status placeholder."""
+
+        forbidden = (
+            "hãy chờ",
+            "xin chờ",
+            "vui lòng chờ",
+            "đang chờ",
+            "sẽ tiếp tục",
+            "sẽ cập nhật",
+            "tôi sẽ",
+            "nhóm chưa hoàn tất",
+            "xin leader",
+            "leader cho hướng",
+            "cho hướng xử lý",
+            "please wait",
+            "will continue",
+            "will update",
+        )
+        chunks = re.split(r"(?<=[.!?])\s+|[\r\n]+", text.strip())
+        useful = [
+            chunk.strip()
+            for chunk in chunks
+            if chunk.strip()
+            and not any(
+                marker in " ".join(chunk.casefold().split()) for marker in forbidden
+            )
+        ]
+        return " ".join(useful)
 
     @staticmethod
     def _buffered_text(events: list[object]) -> str:
@@ -278,15 +314,19 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         """Return whether the fixed Leader is asking for customer input."""
 
         normalized = " ".join(text.casefold().split())
-        return "?" in text or any(
+        return any(
             marker in normalized
             for marker in (
                 "bạn cung cấp",
                 "bạn cho biết",
+                "bạn xuất phát từ đâu",
                 "vui lòng cung cấp",
                 "vui lòng cho biết",
                 "hãy cung cấp",
                 "hãy cho biết",
+                "where will you depart",
+                "where are you departing",
+                "how many people",
                 "please provide",
                 "please tell me",
                 "could you provide",
@@ -294,7 +334,6 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             )
         )
 
-    @staticmethod
     @staticmethod
     def _nudge(agent: Agent, message: str) -> None:
         agent.state.cur_iter = min(
@@ -396,13 +435,19 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 nudges += 1
                 self._nudge(
                     agent,
-                    "Review incoming peer results/proposals/conflicts. Resolve assignments with TeamSay resolution=complete/stop/verify, or request concrete missing work. Approve only genuine user questions. Do not forward a worker's internal dependency to the customer.",
+                    "Review incoming peer results/proposals/conflicts. Resolve "
+                    "assignments with TeamSay resolution=complete/stop/verify, "
+                    "then synthesize every useful verified partial result. Do "
+                    "not ask the customer or Leader to choose a routine next "
+                    "step and do not forward an internal dependency.",
                 )
                 continue
             if review:
                 discard_text()
                 for replacement in self._replacement(
-                    agent, event, self._incomplete_text(agent)
+                    agent,
+                    event,
+                    self._incomplete_text(agent, current_text),
                 ):
                     yield replacement
                 continue
@@ -427,7 +472,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 discard_text()
                 if nudges >= self._max_nudges:
                     for replacement in self._replacement(
-                        agent, event, self._incomplete_text(agent)
+                        agent,
+                        event,
+                        self._incomplete_text(agent, current_text),
                     ):
                         yield replacement
                     continue
@@ -435,8 +482,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 self._nudge(
                     agent,
                     "The team state changed before finalization or still "
-                    "contains open work. Re-read Shared Context, wait for "
-                    "settled assignments, then synthesize again.",
+                    "contains open work. Re-read Shared Context. Resolve or "
+                    "stop each assignment, then synthesize verified results "
+                    "and explicit limitations without promising future work.",
                 )
                 continue
             for text_event in buffered_text:

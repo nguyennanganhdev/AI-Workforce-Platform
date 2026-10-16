@@ -171,16 +171,16 @@ broadcast to all members.
 - DO NOT repeatedly call this to check on a member's progress — members \
 will automatically notify you via ``TeamSay`` when they finish their task. \
 Wait for their message instead of polling.
-- DO NOT call this right after inviting a member with ``AgentInvite``. The \
-member receives the invite ``prompt`` as its initial task and reports back \
-when done — just wait for their message. \
+- DO NOT repeat the primary assignment right after ``AgentInvite``. The primary \
+specialist receives its ``prompt`` as its task and reports back when done. \
+Other members receive role briefings and wait for a concrete TeamSay request. \
 - The session is not in a team yet (call ``TeamCreate`` first).
 - You want to talk to yourself — use your own reasoning.
 
 ## Important
-- Each invited member starts working immediately. When it finishes its task, \
-it calls ``TeamSay`` to report results back to you. You do not need to prompt \
-it again — just wait for its reply.
+- AgentInvite registers the full batch roster, then starts only the primary
+  specialist. Other members remain dormant until a concrete TeamSay question
+  or handoff wakes them. Check invitation results before relying on a member.
 - **DO NOT** reply to a member's report message unless you have further \
 questions or requirements. ``TeamSay`` is for coordination, not chit-chat — \
 your top priority is to complete the overall task.
@@ -204,21 +204,30 @@ your top priority is to complete the overall task.
 _WORKER_DESCRIPTION = """Send an internal message to one team member.
 
 ## When to Use This Tool
-- **IMPORTANT**: When you finish your assigned task, you MUST call this \
-tool to report your results back to the reply owner named in your runtime \
-instructions. The reply owner is waiting \
-for your report — do not end your turn without sending it.
+- When you finish, report to the assignment requester identified by the incoming
+  team-message, using its exact roster handle and original handoff_id when provided.
+  A peer question needs kind=answer with in_reply_to=that question's handoff_id.
+  A completed handoff needs kind=result/error. Report to Leader when Leader
+  assigned that work; do not send an extra copy just because Leader owns the
+  customer reply. Important outputs remain available through Shared Context.
+- A received answer/result supplies input to your original assignment. Continue
+  that work; do not acknowledge the response or change its requester to the
+  latest respondent.
+- If the runtime says the customer directly addressed you, you own the customer
+  reply. Ask capable peers for bounded dependencies, then answer the customer
+  directly. Do not send your terminal result/error to Leader in that turn.
 - Share intermediate findings with one specific collaborator.
 - Use ``kind="question"`` when your own work needs the peer's answer; you will
   wait for it. A peer may ask you back for clarification, and the runtime will
   wake you to answer before you return to your existing wait.
-- Use ``kind="handoff"`` for a separate remaining deliverable you do not own.
-  The selected peer becomes active and is tracked independently.
+- Use ``kind="handoff"`` for a bounded peer contribution required by your own
+  assignment. Overall team assignment and synthesis belong to Leader; do not
+  manage the whole group or take over another sub-agent's business role.
 - If genuinely customer-owned information is missing, call this exactly once
   with ``to=null`` and ``kind="requires_user_input"``. This makes you the
   temporary customer-facing owner for the clarification. Ask the same concise
   question naturally in your final reply. After the customer answers, finish
-  your task and report the result to the Leader for synthesis.
+  your task and report to its original requester. Leader owns final synthesis.
 
 ## When NOT to Use This Tool
 - You want to talk to yourself — use your own reasoning.
@@ -758,6 +767,31 @@ class TeamSay(_TeamToolBase):
 
             if (
                 self._role == "worker"
+                and turn is not None
+                and turn.mode == "direct_mention"
+                and is_reply_owner
+                and kind in {"result", "error"}
+                and len(recipients) == 1
+                and recipients[0][0] == leader.session_id
+            ):
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "Bạn đang sở hữu lượt trả lời; hãy trả lời "
+                                "khách hàng trực tiếp."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                    metadata={
+                        "kind": kind,
+                        "reason": "direct_mention_reply_owner",
+                    },
+                )
+
+            if (
+                self._role == "worker"
                 and kind == "requires_user_input"
                 and to != reply_owner_name
             ):
@@ -912,7 +946,7 @@ class TeamSay(_TeamToolBase):
                 share_report=effective_scope == "shared",
                 # A direct peer answer already wakes its requester and remains
                 # durable in Shared Context. Sending the same answer to the
-                # Leader inbox duplicates model work before the coordinator's
+                # Leader inbox duplicates model work before the requesting worker's
                 # final result arrives.
                 notify_owner=not (
                     kind == "answer"
@@ -1024,10 +1058,25 @@ class TeamSay(_TeamToolBase):
                 f"{team.id}\0{context_revision}".encode(),
             ).hexdigest()
 
+            if kind in {"question", "handoff"} and resolution not in {"complete", "stop"}:
+                response_kind = "answer" if kind == "question" else "result"
+                reply_instruction = (
+                    f"Respond to {sender_name!r} using kind={response_kind} "
+                    f"and in_reply_to={handoff_id} when this assigned work is finished."
+                )
+            elif kind in {"answer", "result", "error"}:
+                reply_instruction = (
+                    "This is a response, not a new request. Resume your original assignment "
+                    "using this output/blocker, then report to that assignment's requester "
+                    "with its original request id. Do not send acknowledgement-only replies."
+                )
+            else:
+                reply_instruction = "This is an update; do not send acknowledgement-only replies."
             hint = HintBlock(
                 hint=(
                     f'<team-message from="{sender_name}" kind="{kind}">\n'
-                    f"handoff_id={handoff_id}; task_id={effective_task_id}; reply using in_reply_to={handoff_id}\n"
+                    f"handoff_id={handoff_id}; task_id={effective_task_id}; in_reply_to={in_reply_to}\n"
+                    f"{reply_instruction}\n"
                     f"reference_event_ids={json.dumps(directive_refs)}\n"
                     f"{content}\n"
                     f"</team-message>"

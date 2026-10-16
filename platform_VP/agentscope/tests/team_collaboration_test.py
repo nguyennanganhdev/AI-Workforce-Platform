@@ -213,6 +213,13 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         question = await self.say(
             "worker", to="Peer", kind="question", content="Provide verified data"
         )
+        question_hint = next(
+            h.payload["hint"] for h in self.storage.handoffs.values()
+            if h.handoff_id == question.metadata["handoff_id"]
+            and h.recipient_session_id == "peer-session"
+        )
+        self.assertIn("Respond to 'Worker'", question_hint)
+        self.assertIn("kind=answer", question_hint)
         await self.service.append_event(
             user_id="u",
             team_id="ticket-1",
@@ -229,6 +236,13 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             content="Provider returned option A",
             in_reply_to=question.metadata["handoff_id"],
         )
+        answer_hint = next(
+            h.payload["hint"] for h in self.storage.handoffs.values()
+            if h.handoff_id == peer.metadata["handoff_id"]
+            and h.recipient_session_id == "worker-session"
+        )
+        self.assertNotIn("reply using in_reply_to", answer_hint)
+        self.assertIn("Resume your original assignment", answer_hint)
         synthesis = await self.say(
             "worker",
             to="Leader",
@@ -376,6 +390,30 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             "worker-session",
             {payload["session_id"] for _entry_id, payload in wakeups},
         )
+
+    async def test_customer_clarification_preserves_unfinished_assignments(self):
+        request = await self.say(
+            "worker", to="Peer", kind="question", content="Find available options",
+        )
+        await self.say(
+            "peer", to="null", kind="requires_user_input",
+            content="Which date should I use?",
+        )
+        answer = await self.service.append_event(
+            user_id="u", team_id="ticket-1", kind="customer_message",
+            content="Tomorrow", event_id="customer-answer",
+        )
+        self.assertEqual(answer.revision, self.branch("worker").customer_revision)
+        self.assertEqual(answer.revision, self.branch("peer").customer_revision)
+        self.assertEqual("waiting_peer", self.branch("worker").status)
+        self.assertIn(request.metadata["handoff_id"], self.branch("worker").waiting_for)
+        self.assertIn("peer-session", await self.service.collaboration_review(
+            "u", "ticket-1", "leader-session",
+        ))
+        self.assertFalse(await self.service.seal_final_answer(
+            "u", "ticket-1", "leader-session",
+            expected_event_revision=answer.revision,
+        ))
 
     async def test_fixed_workforce_leader_cannot_ask_customer_question(self):
         self.storage.agents["leader"].data.system_role = "leader"
@@ -1064,3 +1102,62 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual(
             "running", self.storage.context.state.tasks[workflow.workflow_id].status
         )
+
+    async def test_direct_mention_owner_cannot_report_terminal_result_to_leader(self):
+        from agentscope.app._team_turn import start_team_turn
+
+        await start_team_turn(
+            self.bus,
+            "ticket-1",
+            reply_owner_session_id="worker-session",
+            reply_owner_agent_id="worker",
+            customer_session_id="leader-session",
+            mode="direct_mention",
+            task_id=self.task,
+            storage=self.storage,
+            user_id="u",
+        )
+
+        question = await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Find verified options",
+        )
+        await self.bus.queue_drain(MessageBusKeys.wakeup_queue(), max_count=10)
+        await self.say(
+            "peer",
+            to="Worker",
+            kind="answer",
+            content="Two verified options are available",
+            in_reply_to=question.metadata["handoff_id"],
+        )
+        await self.bus.queue_drain(MessageBusKeys.wakeup_queue(), max_count=10)
+        handoffs_before = len(self.storage.handoffs)
+
+        for kind in ("result", "error"):
+            result = await self.tool("worker")(
+                to="Leader",
+                kind=kind,
+                content="Completed internal work",
+            )
+
+            self.assertEqual("error", result.state)
+            self.assertEqual(
+                "Bạn đang sở hữu lượt trả lời; hãy trả lời khách hàng trực tiếp.",
+                result.content[0].text,
+            )
+            self.assertEqual(
+                "direct_mention_reply_owner",
+                result.metadata["reason"],
+            )
+
+        self.assertEqual(handoffs_before, len(self.storage.handoffs))
+        self.assertEqual(
+            [],
+            await self.bus.queue_drain(
+                MessageBusKeys.wakeup_queue(),
+                max_count=10,
+            ),
+        )
+        self.assertEqual("running", self.storage.turn.status)

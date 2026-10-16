@@ -1479,6 +1479,33 @@ class ChatService:
                             ),
                             reply_owner_agent_id=agent_id,
                         )
+                        if event.in_reply_to is not None:
+                            record = await self._shared_context.storage.get_team_shared_context(
+                                user_id, team.id,
+                            )
+                            task = record.state.tasks[event.task_id]
+                            for member in await _ensure_team_members(
+                                self._storage, user_id, team,
+                            ):
+                                branch = task.collaboration.get(member.session_id)
+                                if (
+                                    member.session_id != session_id
+                                    and branch is not None
+                                    and branch.customer_revision == event.revision
+                                    and branch.status == "running"
+                                ):
+                                    await deliver_to_inbox(
+                                        self._message_bus,
+                                        user_id=user_id,
+                                        session_id=member.session_id,
+                                        agent_id=member.agent_id,
+                                        payload=HintBlock(hint=(
+                                            "Customer clarification received. Resume your "
+                                            "original assignment using the updated Shared "
+                                            "Context. Retry work that was paused before "
+                                            "execution; do not repeat completed operations."
+                                        )).model_dump(mode="json"),
+                                    )
                         if context_task_id is None:
                             context_task_id = event.task_id
                             turn_state = await set_team_turn_task(
@@ -1612,8 +1639,8 @@ class ChatService:
                             attachment += (
                                 " You temporarily own this customer clarification. "
                                 "Use the answer to finish your assigned work, then "
-                                f"send kind=result/error to {team_ctx.leader_name!r}; "
-                                "the Leader owns final synthesis. Ask another "
+                                "report to the original assignment requester using "
+                                "the original request id; Leader owns final synthesis. Ask another "
                                 "question only when genuinely required, registering "
                                 "it first with TeamSay(to=null, "
                                 "kind='requires_user_input')."
@@ -1632,8 +1659,13 @@ class ChatService:
                             " You are an internal collaborator. Never address "
                             "the customer unless you first call TeamSay(to=null, "
                             "kind='requires_user_input') for information your own "
-                            "assignment genuinely needs. Otherwise report results "
-                            "to the current reply owner "
+                            "assignment genuinely needs. Report to the assignment requester "
+                            "from the incoming team-message, using its exact roster handle "
+                            "and original handoff_id when provided; never invent an id. "
+                            "Answer peer questions with kind=answer. "
+                            "A received answer is input: resume your original assignment, "
+                            "then report to its requester rather than acknowledging the respondent. "
+                            "Only work assigned directly by the customer reply owner reports to "
                             f"{(report_target_name or team_ctx.leader_name)!r}."
                         )
 

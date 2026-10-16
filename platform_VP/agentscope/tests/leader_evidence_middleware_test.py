@@ -144,15 +144,18 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             }
         self.assertEqual(LeaderEvidenceMiddleware._expected_reports(agent), 3)
 
-    def test_batch_counts_only_the_single_started_member(self):
-        agent = self._agent(dispatched=True)
-        for block in agent.state.context[-1].get_content_blocks("tool_result"):
-            block.metadata = {
-                "invited_targets": ["Planner@1", "Search@2", "Calculator@3"],
-                "started_targets": ["Planner@1"],
-                "failed_targets": [],
-            }
-        self.assertEqual(1, LeaderEvidenceMiddleware._expected_reports(agent))
+    def test_batch_counts_all_started_subagents_and_preserves_legacy_metadata(self):
+        targets = ["Search@1", "Reviewer@2", "Calculator@3"]
+        for started in (targets[:1], targets):
+            with self.subTest(started=started):
+                agent = self._agent(dispatched=True)
+                for block in agent.state.context[-1].get_content_blocks("tool_result"):
+                    block.metadata = {
+                        "invited_targets": targets,
+                        "started_targets": started,
+                        "failed_targets": [],
+                    }
+                self.assertEqual(len(started), LeaderEvidenceMiddleware._expected_reports(agent))
 
     async def test_registered_specialist_question_ends_leader_silently(self):
         shared = _SharedContext((0, 0, 0, False))
@@ -500,7 +503,7 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         )
         self.assertEqual("Invented Hotel costs 2,000,000 VND.", streamed)
 
-    async def test_leader_question_is_blocked_from_grounded_factual_answer(
+    async def test_leader_customer_intake_is_blocked_before_factual_answer(
         self,
     ) -> None:
         shared = _SharedContext((1, 0, 1, False))
@@ -519,13 +522,13 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             for event in _text_round(
                 "reply-1",
                 "bad-date",
-                "Xe khởi hành 16/10. Bạn muốn chọn phương án nào?",
+                "Xe khởi hành 16/10. Vui lòng cung cấp nơi xuất phát.",
             ):
                 yield event
             for event in _text_round(
                 "reply-1",
                 "grounded-date",
-                "Xe khởi hành 17/10. Bạn muốn chọn phương án nào?",
+                "Xe khởi hành 17/10. Vui lòng cung cấp nơi xuất phát.",
             ):
                 yield event
             for event in _text_round(
@@ -548,3 +551,54 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         )
         self.assertNotIn("16/10", streamed)
         self.assertEqual("Xe khởi hành 17/10 theo kết quả đã xác minh.", streamed)
+
+    async def test_useful_leader_answer_is_not_removed_only_for_question_mark(
+        self,
+    ) -> None:
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(),  # type: ignore[arg-type]
+            _SharedContext((1, 0, 1, False)),  # type: ignore[arg-type]
+            "user-1",
+            "leader-agent",
+            "session-1",
+            wait_seconds=0,
+        )
+        agent = self._agent(dispatched=False)
+        answer = (
+            "Xe khởi hành 17/10 đã được xác minh và phù hợp ngân sách. "
+            "Bạn muốn chọn phương án này?"
+        )
+
+        async def next_handler(**kwargs):
+            del kwargs
+            for event in _text_round("reply-1", "useful-question", answer):
+                yield event
+
+        output = [
+            event
+            async for event in middleware.on_reply(
+                agent,  # type: ignore[arg-type]
+                {},
+                next_handler,
+            )
+        ]
+        streamed = "".join(
+            event.delta for event in output if isinstance(event, TextBlockDeltaEvent)
+        )
+
+        self.assertEqual(answer, streamed)
+
+    def test_incomplete_fallback_keeps_partial_without_future_promise(self) -> None:
+        text = LeaderEvidenceMiddleware._incomplete_text(
+            SimpleNamespace(),
+            (
+                "Đã xác minh được chuyến bay A phù hợp ngân sách. "
+                "Xin Leader cho hướng xử lý."
+            ),
+        )
+
+        self.assertIn("chuyến bay A", text)
+        self.assertIn("chưa có đủ bằng chứng", text)
+        self.assertNotIn("xin leader", text.casefold())
+        self.assertNotIn("thử lại", text.casefold())
+        self.assertNotIn("sẽ tiếp tục", text.casefold())

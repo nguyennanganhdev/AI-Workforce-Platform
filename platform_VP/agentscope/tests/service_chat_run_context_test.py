@@ -5,7 +5,7 @@
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._service import ChatService
@@ -185,6 +185,85 @@ class _SharedStorage:
 
 class TestRunContextResolution(IsolatedAsyncioTestCase):
     """Team identity is read once and shared by toolkit + middleware."""
+
+    async def test_customer_clarification_wakes_other_unfinished_workers(self):
+        from agentscope.app._team_turn import start_team_turn
+
+        agents = {name: AgentRecord(
+            id=name, user_id="u", data=AgentData(
+                name=name, context_config=ContextConfig(), react_config=ReActConfig(),
+            ),
+        ) for name in ("leader", "worker", "peer")}
+        config = SessionConfig(workspace_id="ws", chat_model_config=ChatModelConfig(
+            type="test", credential_id="cred", model="test", parameters={},
+        ))
+        sessions = {name: SessionRecord(
+            id=f"{name}-session", user_id="u", agent_id=name,
+            team_id="team", config=config,
+        ) for name in agents}
+        team = TeamRecord(
+            id="team", user_id="u", session_id="leader-session",
+            leader_agent_id="leader", data=TeamData(name="team", members=[
+                TeamMember(owner_id="u", agent_id=name,
+                           session_id=f"{name}-session", role="created")
+                for name in ("worker", "peer")
+            ]),
+        )
+        storage = _Storage(
+            sessions={s.id: s for s in sessions.values()}, agents=agents, team=team,
+        )
+        bus = InMemoryMessageBus()
+
+        class _Agent:
+            def __init__(self, **_kwargs):
+                self.state = _kwargs["state"]
+
+            async def reply_stream(self, _inputs):
+                if False:
+                    yield object()
+
+        class _Model:
+            context_size = 100_000
+
+            async def count_tokens(self, messages, _tools):
+                return sum(len(m.get_text_content() or "") for m in messages)
+
+        service = ChatService(
+            storage=storage, workspace_manager=_WorkspaceManager(),
+            scheduler_manager=object(), background_task_manager=object(),
+            message_bus=bus, custom_agent_cls=_Agent,
+            resource_access_service=SimpleNamespace(
+                resolve_agent=AsyncMock(return_value=agents["worker"]),
+            ),
+        )
+        shared = service._shared_context
+        initial = await shared.append_event(
+            user_id="u", team_id="team", kind="customer_message", content="Find options",
+        )
+        await shared.measure_collaboration("u", "team", "peer-session")
+        question = await shared.append_event(
+            user_id="u", team_id="team", kind="requires_user_input",
+            content="Which date?", source_session_id="worker-session",
+        )
+        await start_team_turn(
+            bus, "team", reply_owner_session_id="worker-session",
+            reply_owner_agent_id="worker", customer_session_id="leader-session",
+            mode="specialist_question", task_id=initial.task_id, storage=storage, user_id="u",
+        )
+        answer = UserMsg("user", "Tomorrow", metadata={
+            "shared_context_in_reply_to": question.id,
+        })
+        with (
+            patch("agentscope.app._service._chat.get_toolkit", new=AsyncMock(return_value=object())),
+            patch("agentscope.app._service._chat.get_model", new=AsyncMock(return_value=_Model())),
+        ):
+            await service._run_impl("u", "worker-session", "worker", answer)
+
+        wakes = await bus.queue_drain(MessageBusKeys.wakeup_queue())
+        self.assertIn("peer-session", [entry[1]["session_id"] for entry in wakes])
+        inbox = await bus.queue_drain(MessageBusKeys.inbox("peer-session"))
+        self.assertEqual(1, len(inbox))
+        self.assertIn("original assignment", str(inbox[0]))
 
     async def test_worker_feed_is_shared_and_racing_reply_starts_fresh_run(self):
         worker = AgentRecord(id="worker", user_id="u", data=AgentData(
@@ -495,6 +574,8 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
         self.assertIn("Finds inventory.", equipped_system_prompts[0])
         self.assertIn("Calculates and compares prices.", equipped_system_prompts[0])
         self.assertIn('"handle": "pricing"', equipped_system_prompts[0])
+        self.assertIn("assignment requester", equipped_system_prompts[0])
+        self.assertNotIn("Otherwise report results to the current reply owner", equipped_system_prompts[0])
         self.assertEqual(storage.primary_shared_reads, 0)
 
     async def test_first_leader_reply_creates_turn_without_false_customer_wait(

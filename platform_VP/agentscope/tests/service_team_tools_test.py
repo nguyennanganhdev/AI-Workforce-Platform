@@ -15,9 +15,10 @@ backed by ``fakeredis``. They assert:
   of raising.
 """
 from contextlib import AsyncExitStack
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import fakeredis.aioredis
 from utils import AnyString, FakeWorkspaceManager
@@ -53,6 +54,7 @@ from agentscope.app.storage import (
     UserOrigin,
 )
 from agentscope.mcp import HttpMCPConfig, MCPClient
+from agentscope.workspace import LocalWorkspace
 from agentscope.message import ToolResultState, UserMsg
 from agentscope.permission import (
     AdditionalWorkingDirectory,
@@ -1516,6 +1518,64 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
 
+    async def test_legacy_session_mcps_replace_defaults_without_duplicates(self):
+        with TemporaryDirectory() as workdir:
+            browser = MCPClient(
+                name="playwright", is_stateful=False,
+                mcp_config=HttpMCPConfig(url="https://example.test/browser"),
+                enable_tools=["navigate"],
+            )
+            async with LocalWorkspace(workdir=workdir, default_mcps=[browser]) as workspace:
+                await workspace.add_mcp(
+                    MCPClient(
+                        name="travel", is_stateful=False,
+                        mcp_config=HttpMCPConfig(url="https://example.test/travel"),
+                        enable_tools=["search_hotels"],
+                    ),
+                    agent_id=self.monday_agent.id, session_id=self.monday_session.id,
+                )
+                source = [m.model_dump() for m in await workspace.list_mcps(
+                    agent_id=self.monday_agent.id, session_id=self.monday_session.id,
+                )]
+                self.workspace_manager.get_workspace.return_value = workspace
+                result = await AgentInvite(
+                    storage=self.storage, message_bus=self.bus,
+                    workspace_manager=self.workspace_manager, user_id=self.user_id,
+                    session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+                    invitable_pool=[self.monday_agent],
+                )(target=f"Monday@{self.monday_agent.id[:8]}", prompt="Compare the supplied options.")
+                self.assertEqual(result.state, ToolResultState.RUNNING, result.content)
+                leader = await self.storage.get_session(
+                    self.user_id, self.leader_agent.id, self.leader_session.id,
+                )
+                team = await self.storage.get_team(self.user_id, leader.team_id)
+                borrowed = await workspace.list_mcps(
+                    agent_id=self.monday_agent.id, session_id=team.data.members[0].session_id,
+                )
+                self.assertEqual([m.model_dump() for m in borrowed], source)
+                self.assertEqual([m.model_dump() for m in await workspace.list_mcps(
+                    agent_id=self.monday_agent.id, session_id=self.monday_session.id,
+                )], source)
+
+    async def test_legacy_copy_ignores_previous_failed_team_sessions(self):
+        orphan = await self.storage.upsert_session(
+            self.user_id, self.monday_agent.id,
+            SessionConfig(workspace_id="failed-borrow"), origin=TeamOrigin(),
+        )
+        with patch.object(self.storage, "list_sessions", AsyncMock(
+            return_value=[orphan, self.monday_session],
+        )):
+            result = await AgentInvite(
+                storage=self.storage, message_bus=self.bus,
+                workspace_manager=self.workspace_manager, user_id=self.user_id,
+                session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+                invitable_pool=[self.monday_agent],
+            )(target=f"Monday@{self.monday_agent.id[:8]}", prompt="Compare the supplied options.")
+        self.assertEqual(result.state, ToolResultState.RUNNING, result.content)
+        self.invite_workspace.list_mcps.assert_awaited_once_with(
+            agent_id=self.monday_agent.id, session_id=self.monday_session.id,
+        )
+
     async def test_invited_worker_uses_shared_model_without_changing_primary(
         self,
     ):
@@ -1825,7 +1885,7 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             result.content[0].text,
         )
 
-    async def test_batch_adds_full_roster_but_starts_only_primary_member(self):
+    async def test_batch_starts_only_primary_after_full_roster(self):
         pool = [self.monday_agent]
         for name in ("Search specialist", "Resource specialist", "Calculator"):
             record = _make_agent_record(self.user_id, name)
@@ -1840,11 +1900,22 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             invitable_pool=pool,
         )
         names = [f"{a.data.name}@{a.id[:8]}" for a in pool]
-        result = await tool(
-            target=names[0], prompt="Coordinate verified findings",
-            additional_assignments=[{"target": name, "prompt": "Your distinct task"}
-                                    for name in names[1:]],
-        )
+        from agentscope.app._tool._agent_invite import enqueue_run_trigger
+
+        async def wake_after_roster(bus, **kwargs):
+            leader = await self.storage.get_session(self.user_id, "", self.leader_session.id)
+            registered = await self.storage.get_team(self.user_id, leader.team_id)
+            self.assertEqual(len(registered.data.members), len(pool))
+            await enqueue_run_trigger(bus, **kwargs)
+
+        tasks = ["Review supplied findings", "Find requested records", "Verify resources", "Calculate supplied totals"]
+        with patch("agentscope.app._tool._agent_invite.enqueue_run_trigger", side_effect=wake_after_roster) as wake:
+            result = await tool(
+                target=names[0], prompt=tasks[0],
+                additional_assignments=[{"target": name, "prompt": task}
+                                        for name, task in zip(names[1:], tasks[1:])],
+            )
+        self.assertEqual(wake.await_count, 1)
         self.assertEqual(result.state, ToolResultState.SUCCESS)
         self.assertEqual(result.metadata["invited_targets"], names)
         self.assertEqual(result.metadata["started_targets"], names[:1])
@@ -1858,13 +1929,52 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             {item["session_id"] for item in wakeups},
             {primary.session_id},
         )
+        task_by_agent = dict(zip((agent.id for agent in pool), tasks))
         for member in team.data.members:
             inbox = await self.bus.inbox_drain(member.session_id, max_count=10)
             self.assertEqual(len(inbox), 1)
+            self.assertIn(task_by_agent[member.agent_id], inbox[0][1]["hint"])
             if member.session_id == primary.session_id:
-                self.assertIn("Coordinate verified findings", inbox[0][1]["hint"])
+                self.assertNotIn("dormant", inbox[0][1]["hint"])
             else:
                 self.assertIn("dormant roster member", inbox[0][1]["hint"])
+
+        peer = next(member for member in team.data.members if member.agent_id == pool[1].id)
+        question = await TeamSay(
+            storage=self.storage, message_bus=self.bus,
+            workspace_manager=self.workspace_manager, user_id=self.user_id,
+            session_id=primary.session_id, agent_id=primary.agent_id,
+            shared_context_service=SharedContextService(self.storage, self.bus),
+            role="worker",
+        )(to=names[1], kind="question", content="Find the requested records.")
+        self.assertNotEqual(question.state, ToolResultState.ERROR, question.content)
+        wakeups = await self.bus.dequeue_wakeups(max_count=10)
+        self.assertEqual([peer.session_id], [item["session_id"] for item in wakeups])
+        inbox = await self.bus.inbox_drain(peer.session_id, max_count=10)
+        self.assertEqual(1, len(inbox))
+        self.assertIn("Find the requested records.", inbox[0][1]["hint"])
+
+    async def test_batch_keeps_peers_dormant_when_primary_invite_fails(self):
+        other = _make_agent_record(self.user_id, "Reviewer")
+        other.data.lifecycle_state = "published"
+        other.data.invite_config = self.monday_agent.data.invite_config.model_copy()
+        await self.storage.upsert_agent(self.user_id, other)
+        await self.storage.upsert_session(self.user_id, other.id, SessionConfig(workspace_id="ws-other"))
+        self.workspace_manager.get_workspace.side_effect = [RuntimeError("initialization failed"), self.invite_workspace]
+        names = [f"{a.data.name}@{a.id[:8]}" for a in (self.monday_agent, other)]
+        result = await AgentInvite(
+            storage=self.storage, message_bus=self.bus,
+            workspace_manager=self.workspace_manager, user_id=self.user_id,
+            session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent, other],
+        )(target=names[0], prompt="Review source records", additional_assignments=[
+            {"target": names[1], "prompt": "Review the supplied policy"},
+        ])
+        self.assertEqual(result.state, ToolResultState.ERROR)
+        self.assertEqual(result.metadata["failed_targets"], names[:1])
+        self.assertEqual(result.metadata["started_targets"], [])
+        wakeups = await self.bus.dequeue_wakeups(max_count=10)
+        self.assertEqual(wakeups, [])
 
     async def test_duplicate_batch_is_rejected_before_any_invite(self):
         target = f"Monday@{self.monday_agent.id[:8]}"

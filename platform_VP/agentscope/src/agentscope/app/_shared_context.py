@@ -782,6 +782,14 @@ class SharedContextService:
 
             if kind == "customer_message":
                 if not stale:
+                    if in_reply_to in task.pending_question_ids:
+                        # Clarification continues the same unfinished assignments.
+                        for branch in task.collaboration.values():
+                            if (
+                                branch.customer_revision == task.latest_customer_revision
+                                and branch.status in {"running", "waiting_peer"}
+                            ):
+                                branch.customer_revision = event.revision
                     task.status = "running"
                     task.pending_question_ids = ()
                     task.latest_customer_revision = event.revision
