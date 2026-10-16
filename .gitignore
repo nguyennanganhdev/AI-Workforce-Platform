@@ -1,0 +1,20 @@
+.uv-cache
+.uv-python
+graphify-out/
+.tmp
+.ruff_cache/
+
+# Dependencies and generated caches may remain when switching branches.
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.vite/
+dist/
+
+# Local deployment credentials; keep example templates visible.
+.env
+.env.*
+!.env.example
+deployment.env
