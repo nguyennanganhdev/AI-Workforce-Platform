@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from copy import deepcopy
 from typing import Any, Literal
 
 from pydantic import Field
@@ -271,6 +272,7 @@ class TeamSay(_TeamToolBase):
         self,
         *args: Any,
         role: str = "leader",
+        is_reply_owner: bool | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialise with role-specific description.
@@ -279,6 +281,9 @@ class TeamSay(_TeamToolBase):
             role (`str`, defaults to ``"leader"``):
                 Either ``"leader"`` or ``"worker"``. Determines which
                 description the agent sees for this tool.
+            is_reply_owner (`bool | None`):
+                Whether this turn may resolve assignments. If omitted, use
+                the role default; runtime authorization is always rechecked.
             *args:
                 Forwarded to :class:`_TeamToolBase.__init__`.
             **kwargs:
@@ -289,6 +294,15 @@ class TeamSay(_TeamToolBase):
         self.description = (
             _LEADER_DESCRIPTION if role == "leader" else _WORKER_DESCRIPTION
         )
+        self.input_schema = deepcopy(type(self).input_schema)
+        if is_reply_owner is None:
+            is_reply_owner = role == "leader"
+        if not is_reply_owner:
+            self.input_schema["properties"].pop("resolution", None)
+            self.description += (
+                "\nReport answers/results without resolution; only the current "
+                "customer reply owner resolves assignments."
+            )
 
     async def __call__(
         self,

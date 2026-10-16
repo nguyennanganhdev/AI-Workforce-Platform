@@ -151,6 +151,18 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
             role="leader",
         )
 
+    def test_resolution_schema_follows_reply_ownership_without_changing_class(self):
+        for role, owner in (("worker", False), ("worker", True), ("leader", False)):
+            tool = TeamSay(
+                storage=self.storage, message_bus=self.bus,
+                workspace_manager=object(), user_id="u",
+                session_id="worker-session", agent_id="worker",
+                role=role, is_reply_owner=owner,
+            )
+            self.assertEqual("resolution" in tool.input_schema["properties"], owner)
+        self.assertIn("resolution", self.tool.input_schema["properties"])
+        self.assertIn("resolution", TeamSay.input_schema["properties"])
+
     async def test_shared_result_is_persisted_before_recipient_wakeup(self) -> None:
         result = await self.tool(
             content="Hotel A is available",

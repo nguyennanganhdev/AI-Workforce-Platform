@@ -5,8 +5,9 @@ import os
 import tempfile
 from unittest.async_case import IsolatedAsyncioTestCase
 
-from utils import AnyString
+from utils import AnyString, MockModel
 
+from agentscope.agent import Agent
 from agentscope.skill import SkillLoaderBase, Skill
 from agentscope.tool import Toolkit, ToolChunk, ToolResponse, ToolGroup
 from agentscope.message import ToolCallBlock
@@ -41,6 +42,22 @@ class MockSkillLoader(SkillLoaderBase):
 
 class ToolkitSkillTest(IsolatedAsyncioTestCase):
     """Test cases for Toolkit skill functionality."""
+
+    async def test_loaded_skill_is_marked_without_changing_available_skills(self):
+        toolkit = Toolkit(
+            skills_or_loaders=[_make_skill("loaded"), _make_skill("new")],
+        )
+        instructions = await toolkit.get_skill_instructions(
+            loaded_skills=["loaded", "unavailable"],
+        )
+        self.assertIn("Already loaded in this session: loaded", instructions)
+        self.assertIn("Do not call", instructions)
+        self.assertIn("<name>new</name>", instructions)
+        self.assertNotIn("unavailable", instructions)
+        self.assertIn(
+            "Skill",
+            [s["function"]["name"] for s in await toolkit.get_tool_schemas()],
+        )
 
     async def test_init_with_various_types(self) -> None:
         """Test Toolkit initialization with str path, SkillLoaderBase, and
@@ -401,6 +418,14 @@ class ToolkitSkillViewerTest(IsolatedAsyncioTestCase):
             return response
 
         first = await call(toolkit, "first")
+        agent = Agent(
+            name="worker", system_prompt="Use skills", model=MockModel(),
+            toolkit=toolkit, state=state,
+        )
+        self.assertIn(
+            "Already loaded in this session: my_skill",
+            await agent._get_system_prompt(),
+        )
         repeated = await call(
             Toolkit(skills_or_loaders=[MockSkillLoader([skill])]),
             "repeated",

@@ -53,6 +53,7 @@ async def get_toolkit(
     extra_factory: AgentToolFactory | None = None,
     sub_agent_templates: dict[str, SubAgentTemplate] | None = None,
     team_role: Literal["leader", "worker"] | None = None,
+    is_reply_owner: bool | None = None,
     channel_tools: list[ToolBase] | None = None,
     sop_dispatch: str | None = None,
     shared_context_service: SharedContextService | None = None,
@@ -124,6 +125,9 @@ optional):
         team_role (`Literal["leader", "worker"] | None`, optional):
             The session's team role, resolved once by the caller.
             ``None`` means not in any team.
+        is_reply_owner (`bool | None`, optional):
+            Current turn ownership, including directly mentioned specialists.
+            Controls the advertised TeamSay resolution parameter only.
         sop_dispatch (`str | None`, optional):
             ``"<run id>:<step index>"`` when this turn is a SOP
             step's, which gives it a submit tool.
@@ -194,10 +198,11 @@ time or interval"
         "agent_id": agent_record.id,
         "shared_context_service": shared_context_service,
     }
+    team_say_kwargs = {**team_tool_kwargs, "is_reply_owner": is_reply_owner}
     if is_leader:
         tools += [
             TeamCreate(**team_tool_kwargs),
-            TeamSay(**team_tool_kwargs, role="leader"),
+            TeamSay(**team_say_kwargs, role="leader"),
             TeamDelete(**team_tool_kwargs),
         ]
         # Conditionally attach AgentInvite. Skipping construction when
@@ -234,7 +239,7 @@ time or interval"
                 ),
             )
     elif team_role is not None:
-        tools.append(TeamSay(**team_tool_kwargs, role="worker"))
+        tools.append(TeamSay(**team_say_kwargs, role="worker"))
 
     # A step's turn gets one submit tool: handover until something has
     # been handed over, verdict after.

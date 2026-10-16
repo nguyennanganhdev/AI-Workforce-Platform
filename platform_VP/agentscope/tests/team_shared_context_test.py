@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import re
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
@@ -1007,6 +1008,76 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertGreater(record.state.metrics.last_summary_output_tokens, 0)
         self.assertIn('"summary"', packet)
         self.assertIn("progress-11", packet)
+
+    async def test_represented_mcp_payload_does_not_trigger_summary(self) -> None:
+        self.service.config = SharedContextConfig()
+        raw = json.dumps({
+            "state": "success",
+            "tool_call": {
+                "id": "call-envelope-" + "x" * 24_000,
+                "name": "mcp__provider__lookup",
+                "input": '{"id":"business-1"}',
+            },
+            "tool_result": {
+                "output": [{"type": "text", "text": '{"price":123}'}],
+            },
+        })
+        events = [
+            await self.service.append_event(
+                user_id="u", team_id="ticket-1", kind="external_event",
+                content=raw, delta=ContextDelta(add_confirmed_facts=(raw,)),
+            )
+            for _ in range(2)
+        ]
+        packet, _ = await self.service.prepare_packet(
+            model=self.model, user_id="u", team_id="ticket-1",
+        )
+        self.assertEqual(self.model.summary_calls, 0)
+        self.assertIn("business-1", packet)
+        self.assertIn('\\"price\\":123', packet)
+        record = await self.storage.get_team_shared_context("u", "ticket-1")
+        self.assertEqual([event.content for event in record.state.events], [raw, raw])
+        self.assertEqual(
+            {event.id for event in events},
+            set(
+                json.loads(packet)["authoritative_state"]["items"][0]["source_event_ids"],
+            ),
+        )
+
+    async def test_valid_packet_does_not_wait_for_another_summary(self) -> None:
+        self.service.config = replace(self.service.config, packet_max_tokens=12_000)
+        started, release = asyncio.Event(), asyncio.Event()
+
+        class SlowModel(_MeasuredModel):
+            async def generate_structured_output(model, **kwargs):
+                started.set()
+                await release.wait()
+                return await super().generate_structured_output(**kwargs)
+
+        model = SlowModel()
+        for index in range(8):
+            await self.service.append_event(
+                user_id="u", team_id="ticket-1", kind="progress",
+                content=f"progress-{index} " + "detail " * 25,
+            )
+        first = asyncio.create_task(self.service.prepare_packet(
+            model=model, user_id="u", team_id="ticket-1",
+        ))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            await self.service.append_event(
+                user_id="u", team_id="ticket-1", kind="customer_message",
+                content="new requirement while summary is running",
+            )
+            packet, _ = await asyncio.wait_for(self.service.prepare_packet(
+                model=model, user_id="u", team_id="ticket-1",
+            ), timeout=0.5)
+            self.assertIn("new requirement while summary is running", packet)
+            self.assertFalse(first.done())
+        finally:
+            release.set()
+            await first
+        self.assertEqual(model.summary_calls, 1)
 
     async def test_summary_failure_preserves_sources_and_reports_metric(self) -> None:
         failing = _MeasuredModel(fail_summary=True)

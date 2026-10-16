@@ -1398,6 +1398,10 @@ class ChatService:
                     extra_factory=self._extra_agent_tools,
                     sub_agent_templates=self._sub_agent_templates,
                     team_role=team_ctx.role if team_ctx else None,
+                    is_reply_owner=(
+                        is_reply_owner if turn_state is not None
+                        else agent_record.data.system_role == "leader"
+                    ),
                     channel_tools=channel_tools,
                     sop_dispatch=sop_dispatch,
                     shared_context_service=self._shared_context,

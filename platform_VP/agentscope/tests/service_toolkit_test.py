@@ -462,7 +462,13 @@ class TestGetToolkitWorkerVariant(IsolatedAsyncioTestCase):
             middlewares=[],
             resource_access_service=_make_access(_NoOpStorage()),
             team_role="worker",
+            is_reply_owner=True,
         )
+        team_say = next(
+            schema for schema in await toolkit.get_tool_schemas()
+            if schema["function"]["name"] == "TeamSay"
+        )
+        self.assertIn("resolution", team_say["function"]["parameters"]["properties"])
         names = set(_tool_names(toolkit))
         # Only TeamSay from the team toolset.
         self.assertIn("TeamSay", names)

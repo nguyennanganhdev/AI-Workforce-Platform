@@ -45,11 +45,12 @@ BOUNDED COLLABORATION (server-owned):
 - Report conflicting outputs with kind=conflict to the reply owner. The owner
   may use TeamSay(to=worker, kind=handoff, resolution=verify) for bounded
   verification; if unresolved, state the disagreement.
-- Leader resolves each assignment using TeamSay(to=worker, kind=handoff,
+- Only the runtime-identified customer reply owner resolves assignments using
+  TeamSay(to=worker, kind=handoff,
   resolution=complete) when the goal is satisfied. Otherwise request specific
   missing work, or resolution=stop and explain what is incomplete. Complete/stop
   end internal work, NEVER close the ticket. A new customer requirement starts
-  another bounded cycle.
+  another bounded cycle. Other workers report kind=answer/result without resolution.
 - Leader never calls requires_user_input. It delegates missing-information
   intake to the responsible specialist and only synthesizes completed results.
 - Runtime enforces message/model/token/active-time budgets per assignment and

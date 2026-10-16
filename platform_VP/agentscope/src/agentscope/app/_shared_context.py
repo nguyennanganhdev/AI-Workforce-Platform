@@ -2143,6 +2143,17 @@ class SharedContextService:
         prior_summary = record.state.summaries.get(task_id)
         covered = prior_summary.covered_through_revision if prior_summary else 0
         uncovered = [event for event in events if event.revision > covered]
+        # Raw tool envelopes already represented in authoritative state need
+        # no narrative summary. Keep customer/report history and its citations.
+        projected = self._packet_value(
+            record, uncovered, mode="task", task_id=task_id,
+        )
+        visible_ids = {event["id"] for event in projected["recent_events"]}
+        uncovered = [
+            event
+            for event in uncovered
+            if event.kind != "external_event" or event.id in visible_ids
+        ]
         history_tokens = await self._history_tokens(
             model,
             prior_summary,
@@ -2406,30 +2417,49 @@ class SharedContextService:
             ]
         else:
             selected = task_id or record.state.active_task_id
-            async with self._bus.acquire_lock(
-                MessageBusKeys.team_summary_lock(team_id, selected),
-                ttl_secs=MessageBusKeys.TEAM_HISTORY_BOOTSTRAP_LOCK_TTL_SECS,
-            ):
-                # Other workers may have compacted this task while we waited.
-                record = await self._load_or_create(user_id, team_id)
-                events = [
-                    event
-                    for event in record.state.events
-                    if event.task_id == selected and event.id not in excluded
-                ]
-                try:
-                    record = await self._maybe_compact(
-                        model,
-                        user_id,
-                        team_id,
-                        record,
-                        events,
-                        selected,
-                    )
-                except SharedContextSummaryError as exc:
-                    logger.error("%s", exc)
-                    compaction_failed = True
+            summary_key = MessageBusKeys.team_summary_lock(team_id, selected)
+            use_current_packet = False
+            if await self._bus.is_locked(summary_key):
+                summary = record.state.summaries.get(selected)
+                covered = summary.covered_through_revision if summary else 0
+                current_packet = self._packet_value(
+                    record,
+                    [
+                        event
+                        for event in record.state.events
+                        if event.task_id == selected
+                        and event.id not in excluded
+                        and event.revision > covered
+                    ],
+                    mode="task",
+                    task_id=selected,
+                    excluded_event_ids=excluded,
+                )
+                use_current_packet = (
+                    await self._tokens(model, self._json(current_packet))
+                    <= self.config.packet_max_tokens
+                )
+            # A valid uncompressed snapshot need not wait for another model.
+            # Oversized packets still wait for the single task compactor.
+            if not use_current_packet:
+                async with self._bus.acquire_lock(
+                    summary_key,
+                    ttl_secs=MessageBusKeys.TEAM_HISTORY_BOOTSTRAP_LOCK_TTL_SECS,
+                ):
                     record = await self._load_or_create(user_id, team_id)
+                    events = [
+                        event
+                        for event in record.state.events
+                        if event.task_id == selected and event.id not in excluded
+                    ]
+                    try:
+                        record = await self._maybe_compact(
+                            model, user_id, team_id, record, events, selected,
+                        )
+                    except SharedContextSummaryError as exc:
+                        logger.error("%s", exc)
+                        compaction_failed = True
+                        record = await self._load_or_create(user_id, team_id)
             summary = record.state.summaries.get(selected)
             covered = summary.covered_through_revision if summary else 0
             # A customer can write while the model summarizes. Use the events
