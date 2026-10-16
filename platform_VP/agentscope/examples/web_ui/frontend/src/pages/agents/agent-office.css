@@ -1,6 +1,6 @@
 /*
- * The office view's people and props. Walking bobs, a working screen glows,
- * speech pops in. All of it stops under reduced motion.
+ * The office view's people. Walking bobs, speech pops in, the activity log
+ * slides in. All of it stops under reduced motion.
  */
 
 .of-person {
@@ -175,10 +175,6 @@
 	pointer-events: none;
 }
 
-.of-screen-on {
-	animation: of-glow 1.6s ease-in-out infinite;
-}
-
 .of-log {
 	animation: of-log-in 260ms ease-out both;
 }
@@ -203,12 +199,6 @@
 	}
 }
 
-@keyframes of-glow {
-	50% {
-		fill: #7aa5ff;
-	}
-}
-
 @keyframes of-log-in {
 	from {
 		opacity: 0;
@@ -219,7 +209,6 @@
 @media (prefers-reduced-motion: reduce) {
 	.of-walking,
 	.of-zz,
-	.of-screen-on,
 	.of-bubble,
 	.of-log {
 		animation: none;

@@ -257,6 +257,17 @@
 			"inspectorResponse": "Last active"
 		},
 		"office": {
+			"loading": "Loading the 3D office…",
+			"controls": "Office view controls",
+			"rotateLeft": "Rotate left",
+			"rotateRight": "Rotate right",
+			"zoomIn": "Zoom in",
+			"zoomOut": "Zoom out",
+			"team": "Agent team",
+			"mock": "Simulated session",
+			"emptyLog": "No activity in this session yet.",
+			"resetView": "Reset view",
+			"noWebgl": "The 3D office is unavailable. You can still select agents in Agent team and continue chatting.",
 			"phase": {
 				"idle": "Everyone at their desks",
 				"request": "New request",

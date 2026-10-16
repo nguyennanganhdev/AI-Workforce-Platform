@@ -2,49 +2,26 @@ import type { GraphAgent } from './graph-model';
 import type { SessionOfficeSnapshot } from '@/features/workforce/session-office/model';
 
 /**
- * The office view: the same agents as the graph, drawn as people in an
- * isometric office who walk to a meeting, back to their desks, and over to
+ * The office view: the same agents as the graph, drawn as people in a
+ * 3D office who walk to a meeting, back to their desks, and over to
  * each other's desks to work something out.
  *
- * A live session drives it (see `applySession`): while the session's room
- * works, its agents walk to the meeting table and the last one to speak shows
- * a bubble; when the room is done they walk back to their desks.
+ * A live session drives it (see `applySession`): the host calls the members a
+ * request needs to the meeting table once, they work at their own desks and
+ * report progress from there, a member who needs another walks over to that
+ * one's desk, and the host takes the result to your office for approval. The
+ * last one to speak shows a bubble.
  *
- * Coordinates are floor tiles: `x` runs down-right on screen, `y` down-left.
+ * Coordinates are floor tiles: `x` runs along the back wall, `y` away from it.
  */
 
 export type Point = { x: number; y: number };
 
-/* ------------------------------------------------------------------ */
-/* Projection                                                          */
-/* ------------------------------------------------------------------ */
-
-export const HALF_W = 36;
-export const HALF_H = 18;
+/** Wall height, in the design pixels the 3D view scales from (40 per tile). */
 export const WALL_H = 96;
-const PAD = 48;
 
 /** Floor width in tiles. The depth grows with the number of desk rows. */
 export const FLOOR_W = 16;
-
-export type Projection = {
-	width: number;
-	height: number;
-	at: (p: Point, lift?: number) => { sx: number; sy: number };
-};
-
-export function projection(depth: number): Projection {
-	const ox = PAD + depth * HALF_W;
-	const oy = PAD + WALL_H;
-	return {
-		width: (FLOOR_W + depth) * HALF_W + PAD * 2,
-		height: (FLOOR_W + depth) * HALF_H + WALL_H + PAD * 2,
-		at: ({ x, y }, lift = 0) => ({
-			sx: ox + (x - y) * HALF_W,
-			sy: oy + (x + y) * HALF_H - lift,
-		}),
-	};
-}
 
 /* ------------------------------------------------------------------ */
 /* Layout                                                              */
@@ -70,6 +47,8 @@ export type Seat = { at: Point; chain: Point[] };
 
 export type Layout = {
 	depth: number;
+	/** The actual session owner occupies the host desk, including UUID-based live agents. */
+	hostId: string | null;
 	desks: Map<string, Desk>;
 	leader: { desk: Point; chair: Point; chain: Point[] };
 	/** The head of the meeting table, then the seats round it. */
@@ -92,12 +71,28 @@ const ROW_GAP = 3;
 const MEETING_DOOR = 2.5;
 const SEAT_XS = [1.9, 2.7, 3.5, 4.3];
 
-export function buildLayout(agents: GraphAgent[]): Layout {
-	const rows = Math.max(2, Math.ceil(agents.length / DESK_COLUMNS.length));
+/** How long, in simulated ms, people stay at the table and at a colleague's desk. */
+const MEETING_MS = 3500;
+const COLLAB_MS = 4500;
+
+/** A spot someone can stand at, with its way out to the corridor (`chain`, spot first). */
+type Place = { key: string; chain: Point[] };
+
+/** Under reduced motion people are placed, not walked. */
+function prefersStill() {
+	return (
+		typeof window !== 'undefined' &&
+		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+	);
+}
+
+export function buildLayout(agents: GraphAgent[], hostId: string | null = LEADER_ID): Layout {
+	const members = agents.filter((agent) => agent.id !== hostId);
+	const rows = Math.max(2, Math.ceil(members.length / DESK_COLUMNS.length));
 	const depth = FIRST_ROW + (rows - 1) * ROW_GAP + 2.4;
 
 	const desks = new Map<string, Desk>();
-	agents.forEach((agent, index) => {
+	members.forEach((agent, index) => {
 		const cx = DESK_COLUMNS[index % DESK_COLUMNS.length];
 		const ry = FIRST_ROW + Math.floor(index / DESK_COLUMNS.length) * ROW_GAP;
 		const lane = ry + 1.8;
@@ -134,6 +129,7 @@ export function buildLayout(agents: GraphAgent[]): Layout {
 
 	return {
 		depth,
+		hostId,
 		desks,
 		leader: {
 			desk: { x: 8.6, y: 1.6 },
@@ -167,6 +163,16 @@ export function buildLayout(agents: GraphAgent[]): Layout {
 			reception: { x0: 0, y0: 5.6, x1: 5.6, y1: depth },
 		},
 	};
+}
+
+/** Where each room's name label sits on the floor. */
+export function roomLabels(layout: Layout): { key: string; at: Point }[] {
+	return [
+		{ key: 'meeting', at: { x: 3, y: 4.55 } },
+		{ key: 'approval', at: { x: 13.6, y: 4.1 } },
+		{ key: 'reception', at: { x: 2.8, y: layout.depth - 0.55 } },
+		{ key: 'workspace', at: { x: 11, y: 5.45 } },
+	];
 }
 
 /** A route from one place's chain out to the corridor and in along another's. */
@@ -205,11 +211,11 @@ export type Actor = {
 	carrying: boolean;
 	bubble: { text: string; until: number } | null;
 	onArrive: (() => void) | null;
-	/** -1 facing left on screen, 1 facing right. */
+	/** Which way the figure is mirrored: 1 when walking towards +x−y, else -1. */
 	facing: 1 | -1;
 };
 
-export type LogEntry = { id: number; time: number; text: string };
+export type LogEntry = { id: string | number; time: number; text: string };
 
 export type Phase =
 	| 'idle'
@@ -245,11 +251,13 @@ export class OfficeSim {
 
 	/** Replace presentation state without starting the standalone demo. */
 	applySession(snapshot: SessionOfficeSnapshot, layout: Layout) {
-		const leader = snapshot.participants.find((participant) => participant.id === LEADER_ID);
-		if (!leader) this.actors.delete(LEADER_ID);
-		else if (!this.actors.has(LEADER_ID))
+		const leader = snapshot.participants.find(
+			(participant) => participant.id === layout.hostId,
+		);
+		if (!leader && layout.hostId) this.actors.delete(layout.hostId);
+		else if (leader && !this.actors.has(leader.id))
 			this.add({
-				id: LEADER_ID,
+				id: leader.id,
 				kind: 'leader',
 				name: leader.name,
 				pos: layout.leader.chair,
@@ -257,59 +265,207 @@ export class OfficeSim {
 			});
 		for (const actor of this.actors.values()) {
 			const participant = snapshot.participants.find((p) => p.id === actor.id);
+			if (participant) actor.name = participant.name;
 			actor.status = participant?.status ?? 'idle';
 			actor.bubble = participant?.message
 				? { text: participant.message, until: Infinity }
 				: null;
 		}
-		this.gather(snapshot, layout);
+		const ended =
+			snapshot.phase !== this.phase &&
+			(snapshot.phase === 'idle' || snapshot.phase === 'done');
+		if (ended) this.cancelMoves(layout);
 		this.phase = snapshot.phase;
+		this.direct(snapshot, layout);
 		this.log = snapshot.activity
 			.slice(-6)
-			.map((entry, index) => ({ id: index, time: 0, text: entry.text }));
+			.map((entry) => ({ id: entry.id, time: 0, text: entry.text }));
 		this.publish();
 	}
 
-	/** Who is at the meeting table now, and the seat they walked to. */
-	private seated = new Map<string, Seat>();
+	/* ---------------------------------------------------------------- */
+	/* Session choreography                                             */
+	/* ---------------------------------------------------------------- */
+
+	/** Where each person stands now, as a way out to the corridor. */
+	private placeOf = new Map<string, Place>();
+	/** Each person's moves, run one after another. */
+	private queues = new Map<string, Promise<void>>();
+	private turn: string | null = null;
+	/** Called members already seated at this turn's meeting. */
+	private seated = new Set<string>();
+	/** How many of this turn's exchanges have been walked. */
+	private exchangesSeen = 0;
+	/** The meeting, open while people still gather; settles once they split up. */
+	private meeting: Promise<void> | null = null;
+	private meetingOpen = false;
+	private meetingMembers: string[] = [];
+	private atApproval = false;
 
 	/**
-	 * Walk the room's agents to the meeting table while it works (the host to
-	 * its head), and back to their desks once it is done. Under reduced motion
-	 * they are placed, not walked.
+	 * Move the room through one request: the host calls the members it needs to
+	 * the meeting table once, they go back to work at their own desks (progress
+	 * shows as speech, nobody walks to report), and a member who needs another
+	 * walks over to that one's desk to ask, then back. The host takes the result
+	 * to your office for approval. Members nobody called stay at their desks.
 	 */
-	private gather(snapshot: SessionOfficeSnapshot, layout: Layout) {
-		const still =
-			typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		const move = (actor: Actor, path: Point[]) => {
-			if (path.length === 0) return;
-			if (still) {
-				actor.pos = { ...path[path.length - 1] };
-				actor.path = [];
-			} else {
-				actor.path = path;
-			}
-		};
-		if (snapshot.meeting && this.seated.size === 0) {
-			const host = snapshot.hostId;
-			let next = 0;
-			for (const participant of snapshot.participants) {
-				const actor = this.actors.get(participant.id);
-				const desk = layout.desks.get(participant.id);
-				if (!actor || !desk) continue;
-				const seat = participant.id === host ? layout.head : layout.seats[next++];
-				if (!seat) continue;
-				this.seated.set(participant.id, seat);
-				move(actor, route(desk.chain, seat.chain));
-			}
-		} else if (!snapshot.meeting && this.seated.size > 0) {
-			for (const [id, seat] of this.seated) {
-				const actor = this.actors.get(id);
-				const desk = layout.desks.get(id);
-				if (actor && desk) move(actor, route(seat.chain, desk.chain));
-			}
+	private direct(snapshot: SessionOfficeSnapshot, layout: Layout) {
+		const host = snapshot.hostId && this.home(snapshot.hostId, layout) ? snapshot.hostId : null;
+		const turn = snapshot.turn ?? '';
+
+		if (turn !== this.turn) {
+			this.cancelMoves(layout);
+			this.turn = turn;
 			this.seated.clear();
+			this.exchangesSeen = 0;
+			this.meeting = null;
+			this.meetingOpen = false;
+			this.meetingMembers = [];
+			this.atApproval = false;
 		}
+		if (!host) return;
+
+		if (snapshot.phase === 'work') {
+			for (const id of snapshot.called ?? []) {
+				if (id === host || this.seated.has(id) || !layout.desks.has(id)) continue;
+				this.call(host, id, layout);
+			}
+		}
+		const exchanges = snapshot.exchanges ?? [];
+		for (const { from, to } of exchanges.slice(this.exchangesSeen)) {
+			if (from === to || !layout.desks.has(from) || !layout.desks.has(to)) continue;
+			this.afterMeeting(() => {
+				this.go(from, this.visit(to, layout), layout, COLLAB_MS);
+				this.go(from, this.home(from, layout), layout);
+			});
+		}
+		this.exchangesSeen = Math.max(this.exchangesSeen, exchanges.length);
+		const approval = snapshot.phase === 'approval';
+		if (approval !== this.atApproval) {
+			this.atApproval = approval;
+			this.afterMeeting(() =>
+				this.go(
+					host,
+					approval
+						? { key: 'approval', chain: layout.approval.chain }
+						: this.home(host, layout),
+					layout,
+				),
+			);
+		}
+		if (snapshot.phase === 'idle' || snapshot.phase === 'done') {
+			this.afterMeeting(() => {
+				for (const id of this.actors.keys()) this.go(id, this.home(id, layout), layout);
+			});
+		}
+	}
+
+	/**
+	 * Seat a called member at the meeting, opening it on the first call. There is
+	 * one meeting a request: called once it has split up, a member takes the work
+	 * at its own desk.
+	 */
+	private call(host: string, id: string, layout: Layout) {
+		if (!this.meeting) {
+			this.meetingOpen = true;
+			this.go(host, { key: 'head', chain: layout.head.chain }, layout);
+			this.meeting = this.meet(host, layout);
+		}
+		const seat = layout.seats[this.meetingMembers.length];
+		if (!this.meetingOpen || !seat) return;
+		this.seated.add(id);
+		this.go(id, { key: `seat:${this.meetingMembers.length}`, chain: seat.chain }, layout);
+		this.meetingMembers.push(id);
+	}
+
+	/** Hold the meeting until everyone called so far is seated, then send all back to their desks. */
+	private async meet(host: string, layout: Layout) {
+		const turn = this.turn;
+		const generation = this.generation;
+		try {
+			// Calls usually arrive one by one; wait until nobody new is on the way.
+			let seen = -1;
+			while (seen !== this.meetingMembers.length) {
+				seen = this.meetingMembers.length;
+				await Promise.all([host, ...this.meetingMembers].map((id) => this.queues.get(id)));
+				this.check(generation);
+				await this.wait(MEETING_MS);
+				if (this.turn !== turn) return;
+			}
+			this.meetingOpen = false;
+			for (const id of [host, ...this.meetingMembers])
+				this.go(id, this.home(id, layout), layout);
+			await Promise.all([host, ...this.meetingMembers].map((id) => this.queues.get(id)));
+		} catch (error) {
+			if (!OfficeSim.isAbort(error)) throw error;
+		}
+	}
+
+	/** Run `then` once the meeting (if any) has split up, unless a new request came in. */
+	private afterMeeting(then: () => void) {
+		const turn = this.turn;
+		const phase = this.phase;
+		const generation = this.generation;
+		void (this.meeting ?? Promise.resolve()).then(() => {
+			if (
+				!this.aborted &&
+				this.generation === generation &&
+				this.turn === turn &&
+				this.phase === phase
+			)
+				then();
+		});
+	}
+
+	/** Queue a walk to `place`, then an optional pause there. */
+	private go(id: string, place: Place | null, layout: Layout, hold = 0) {
+		const actor = this.actors.get(id);
+		if (!actor || !place) return;
+		const generation = this.generation;
+		const next = (this.queues.get(id) ?? Promise.resolve())
+			.then(async () => {
+				this.check(generation);
+				const from = this.placeOf.get(id) ?? this.home(id, layout);
+				if (from && from.key !== place.key) {
+					const path = route(from.chain, place.chain);
+					if (prefersStill()) {
+						actor.pos = { ...path[path.length - 1] };
+						actor.path = [];
+					} else {
+						await this.walk(id, path);
+					}
+				}
+				this.check(generation);
+				this.placeOf.set(id, place);
+				this.publish();
+				if (hold && !prefersStill()) await this.wait(hold);
+			})
+			.catch((error: unknown) => {
+				if (!OfficeSim.isAbort(error)) throw error;
+			});
+		this.queues.set(id, next);
+	}
+
+	/** Someone's own seat: an agent's desk chair, or the Leader's. */
+	private home(id: string, layout: Layout): Place | null {
+		if (id === layout.hostId) return { key: 'home', chain: layout.leader.chain };
+		const desk = layout.desks.get(id);
+		return desk ? { key: 'home', chain: desk.chain } : null;
+	}
+
+	/** Beside a colleague's chair, reached along their row. */
+	private visit(id: string, layout: Layout): Place | null {
+		const desk = layout.desks.get(id);
+		if (!desk) return null;
+		return {
+			key: `visit:${id}`,
+			chain: [
+				desk.visit,
+				{ x: desk.visit.x, y: desk.lane },
+				{ x: desk.aisle, y: desk.lane },
+				{ x: desk.aisle, y: CORRIDOR_Y },
+			],
+		};
 	}
 
 	actors = new Map<string, Actor>();
@@ -319,6 +475,8 @@ export class OfficeSim {
 	speed = 1;
 	playing = true;
 	private aborted = false;
+	private generation = 0;
+	private pending = new Set<() => void>();
 	private timers: { at: number; resolve: () => void }[] = [];
 	private logId = 0;
 
@@ -353,18 +511,50 @@ export class OfficeSim {
 
 	abort() {
 		this.aborted = true;
+		this.cancelPending();
+		this.listeners.clear();
+	}
+
+	/** Settle interrupted promises so old turns cannot retain actors or queue more walks. */
+	private cancelPending() {
+		this.generation += 1;
+		this.pending.forEach((resolve) => resolve());
+		this.pending.clear();
 		this.timers = [];
-		this.actors.forEach((actor) => (actor.onArrive = null));
+		this.queues.clear();
+		this.actors.forEach((actor) => {
+			actor.path = [];
+			actor.onArrive = null;
+		});
+	}
+
+	private cancelMoves(layout: Layout) {
+		this.cancelPending();
+		this.placeOf.clear();
+		for (const actor of this.actors.values()) {
+			const home = this.home(actor.id, layout);
+			if (home) actor.pos = { ...home.chain[0] };
+		}
 	}
 
 	/** Advance by `dt` real milliseconds. */
 	tick(dt: number) {
-		if (!this.playing || this.aborted) return;
+		if (!this.playing || this.aborted) return false;
 		const step = dt * this.speed;
 		this.time += step;
+		const still = prefersStill();
+		let changed = false;
 
 		this.actors.forEach((actor) => {
-			if (actor.bubble && actor.bubble.until <= this.time) actor.bubble = null;
+			if (actor.bubble && actor.bubble.until <= this.time) {
+				actor.bubble = null;
+				changed = true;
+			}
+			if (actor.path.length) changed = true;
+			if (still && actor.path.length) {
+				actor.pos = { ...actor.path[actor.path.length - 1] };
+				actor.path = [];
+			}
 			let budget = (actor.speed * step) / 1000;
 			while (budget > 0 && actor.path.length > 0) {
 				const next = actor.path[0];
@@ -392,33 +582,50 @@ export class OfficeSim {
 			}
 		});
 
-		const due = this.timers.filter((timer) => timer.at <= this.time);
+		const due = this.timers.filter((timer) => still || timer.at <= this.time);
 		if (due.length) {
-			this.timers = this.timers.filter((timer) => timer.at > this.time);
+			this.timers = this.timers.filter((timer) => !due.includes(timer));
 			due.forEach((timer) => timer.resolve());
 		}
+		return changed;
 	}
 
-	private check() {
-		if (this.aborted) throw new Aborted();
+	private check(generation = this.generation) {
+		if (this.aborted || generation !== this.generation) throw new Aborted();
 	}
 
 	async wait(ms: number) {
 		this.check();
-		await new Promise<void>((resolve) => this.timers.push({ at: this.time + ms, resolve }));
-		this.check();
+		if (prefersStill()) return;
+		const generation = this.generation;
+		await new Promise<void>((resolve) => {
+			const finish = () => {
+				this.pending.delete(finish);
+				resolve();
+			};
+			this.pending.add(finish);
+			this.timers.push({ at: this.time + ms, resolve: finish });
+		});
+		this.check(generation);
 	}
 
 	async walk(id: string, path: Point[], delay = 0) {
+		const generation = this.generation;
 		if (delay) await this.wait(delay);
-		this.check();
+		this.check(generation);
 		const actor = this.actors.get(id);
 		if (!actor || path.length === 0) return;
 		await new Promise<void>((resolve) => {
+			const finish = () => {
+				this.pending.delete(finish);
+				resolve();
+			};
+			this.pending.add(finish);
 			actor.path = [...path];
-			actor.onArrive = resolve;
+			actor.onArrive = finish;
+			this.publish();
 		});
-		this.check();
+		this.check(generation);
 	}
 
 	/** Show a speech bubble and wait while it is read. */
@@ -451,20 +658,24 @@ export const USER_ID = 'you';
 
 /** Seat everyone at their desk. */
 export function populate(sim: OfficeSim, layout: Layout, agents: GraphAgent[]) {
-	sim.add({
-		id: LEADER_ID,
-		kind: 'leader',
-		name: 'Leader',
-		pos: layout.leader.chair,
-		status: 'idle',
-	});
+	if (layout.hostId === LEADER_ID && !agents.some((agent) => agent.id === LEADER_ID))
+		sim.add({
+			id: LEADER_ID,
+			kind: 'leader',
+			name: 'Leader',
+			pos: layout.leader.chair,
+			status: 'idle',
+		});
 	sim.add({ id: USER_ID, kind: 'user', name: 'Bạn', pos: layout.approval.user, status: 'idle' });
 	agents.forEach((agent) =>
 		sim.add({
 			id: agent.id,
-			kind: 'agent',
+			kind: agent.id === layout.hostId ? 'leader' : 'agent',
 			name: agent.name,
-			pos: layout.desks.get(agent.id)!.chair,
+			pos:
+				agent.id === layout.hostId
+					? layout.leader.chair
+					: layout.desks.get(agent.id)!.chair,
 			status: agent.invitable ? 'idle' : 'off',
 		}),
 	);

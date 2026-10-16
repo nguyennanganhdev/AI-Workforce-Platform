@@ -3,7 +3,7 @@ export interface SessionOfficeSnapshot {
 	id: string;
 	source: 'mock' | 'preview' | 'live';
 	statusLabel?: string;
-	/** Demo preserves the original office choreography; events applies backend-derived positions/status later. */
+	/** Movement and status follow structured session events. */
 	motion: 'events';
 	participants: {
 		id: string;
@@ -13,8 +13,21 @@ export interface SessionOfficeSnapshot {
 		message?: string;
 	}[];
 	phase: 'idle' | 'work' | 'approval' | 'done';
-	/** The room is at work: its agents sit round the meeting table, the host at its head. */
-	meeting: boolean;
+	/**
+	 * The current request, so the office can tell a new one from more of the same.
+	 * Changes whenever the customer asks again.
+	 */
+	turn: string;
+	/**
+	 * Members the host called onto this request (from its `AgentInvite` calls), in
+	 * call order. They meet the host once, then work and report from their desks.
+	 */
+	called: string[];
+	/**
+	 * Members who went to another for something this turn (`from` asked `to`), in
+	 * order. Each walks to the other's desk and back. Nobody else moves.
+	 */
+	exchanges: { from: string; to: string }[];
 	/** Who leads the room (the session's owner). */
 	hostId: string | null;
 	activity: { id: string; text: string }[];

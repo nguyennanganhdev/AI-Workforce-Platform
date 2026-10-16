@@ -255,6 +255,17 @@
 			"inspectorResponse": "最近活动"
 		},
 		"office": {
+			"loading": "正在加载 3D 办公室…",
+			"controls": "办公室视角控制",
+			"rotateLeft": "向左旋转",
+			"rotateRight": "向右旋转",
+			"zoomIn": "放大",
+			"zoomOut": "缩小",
+			"team": "智能体团队",
+			"mock": "模拟会话",
+			"emptyLog": "此会话暂无活动。",
+			"resetView": "重置视角",
+			"noWebgl": "3D 办公室暂不可用。您仍可在智能体团队中选择智能体并继续聊天。",
 			"phase": {
 				"idle": "大家都在工位",
 				"request": "新请求",
