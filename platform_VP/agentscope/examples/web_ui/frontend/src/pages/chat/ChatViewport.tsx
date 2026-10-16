@@ -77,6 +77,7 @@ interface ChatViewportProps {
 	 * workspace drive every control rendered here.
 	 */
 	sessionId: string | null;
+	readOnly?: boolean;
 	/**
 	 * Optional hook invoked when a server-side change to this session
 	 * or its team arrives on the SSE stream. The outer page owns the
@@ -199,11 +200,13 @@ export function ChatViewport({
 	onOpenAgentSettings,
 	headerSlot,
 	ticketView = false,
+	readOnly = false,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
 	const { groups } = useAvailableModels();
 
+	const [selectedSubAgentModel, setSelectedSubAgentModel] = useState<ChatModelConfig | null>(null);
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
 	const [selectedFallbackModel, setSelectedFallbackModel] = useState<ChatModelConfig | null>(
 		null,
@@ -278,6 +281,9 @@ export function ChatViewport({
 		[sessionId],
 	);
 
+	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
+
 	const {
 		msgs,
 		loading: messagesLoading,
@@ -288,6 +294,8 @@ export function ChatViewport({
 		subagentHitl,
 		interrupt,
 	} = useMessages(agentId, sessionId, {
+		stream: !readOnly,
+		teamChat: isTeamChat,
 		onTeamUpdated: handleTeamUpdated,
 		onStateUpdated: handleStateUpdated,
 		onSessionUpdated: handleSessionUpdated,
@@ -303,7 +311,7 @@ export function ChatViewport({
 		uploadSkill,
 		addSkillsFromLibrary,
 		removeSkill,
-	} = useWorkspace(agentId, sessionId);
+	} = useWorkspace(readOnly ? null : agentId, readOnly ? null : sessionId);
 	const { knowledgeBases, loading: knowledgeBasesLoading } = useKnowledgeBases();
 	const { schema: kbMiddlewareSchema } = useKnowledgeBaseMiddlewareSchema();
 
@@ -357,7 +365,7 @@ export function ChatViewport({
 	 */
 	const patchConfig = useCallback(
 		async (body: UpdateSessionRequest, apply: () => void) => {
-			if (!sessionId || !agentId) return;
+			if (readOnly || !sessionId || !agentId) return;
 			setConfigPending(true);
 			try {
 				await sessionApi.update(sessionId, agentId, body);
@@ -369,7 +377,7 @@ export function ChatViewport({
 				setConfigPending(false);
 			}
 		},
-		[sessionId, agentId, refetchSessions],
+		[sessionId, agentId, refetchSessions, readOnly],
 	);
 
 	const handleKnowledgeConfigChange = useCallback(
@@ -384,7 +392,7 @@ export function ChatViewport({
 	// Declared above `panels` — the memo factory reads `view.team`
 	// eagerly on first render, so a later `const` would still be in
 	// the temporal dead zone.
-	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+
 	const isTicketView = ticketView || Boolean((view?.session.state.middle_context as Record<string, unknown> | undefined)?.workflow_id);
 	const team = view?.team;
 	const completeTeamMention = useCallback(
@@ -394,8 +402,8 @@ export function ChatViewport({
 				...(team?.leader_agent ? [team.leader_agent.data.name] : []),
 				...(team?.members.map(({ agent }) => agent.data.name) ?? []),
 			];
-			const candidate = team?.members
-				.map(({ agent }) => {
+			const candidate = [...(team?.leader_agent ? [team.leader_agent] : []), ...(team?.members.map(({ agent }) => agent) ?? [])]
+				.map((agent) => {
 					const duplicate =
 						names.filter(
 							(name) => name.toLocaleLowerCase() === agent.data.name.toLocaleLowerCase(),
@@ -435,8 +443,8 @@ export function ChatViewport({
 	const room = useRoom(team?.team.session_id ?? null);
 
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
-		agentId,
-		sessionId,
+		readOnly ? null : agentId,
+		readOnly ? null : sessionId,
 		view?.session.config.cwd ?? null,
 	);
 
@@ -588,6 +596,7 @@ export function ChatViewport({
 	// a session whose backend config doesn't actually have that model.
 	useEffect(() => {
 		setSelectedModel(null);
+		setSelectedSubAgentModel(null);
 		setSelectedFallbackModel(null);
 		setSelectedTTSModel(null);
 		setSelectedKnowledgeConfig(null);
@@ -597,7 +606,7 @@ export function ChatViewport({
 	// sent once the chat is ready to send at all: history loaded and empty,
 	// nothing running, a model chosen.
 	useEffect(() => {
-		if (!sessionId || selectedModel === null || messagesLoading) return;
+		if (readOnly || !sessionId || selectedModel === null || messagesLoading) return;
 		if (phase !== 'idle' || msgs.length > 0) return;
 		const text = takeGroupKickoff(sessionId);
 		if (!text) return;
@@ -611,7 +620,7 @@ export function ChatViewport({
 				finished_at: now,
 			} as TextBlock,
 		]);
-	}, [sessionId, selectedModel, messagesLoading, phase, msgs.length, send]);
+	}, [sessionId, selectedModel, messagesLoading, phase, msgs.length, send, readOnly]);
 
 	const selectedModelCard = useMemo(() => {
 		if (!selectedModel) return null;
@@ -689,10 +698,11 @@ export function ChatViewport({
 	useEffect(() => {
 		if (!view) return;
 		const sessionModel = view.session.config.chat_model_config;
+		setSelectedSubAgentModel(view.session.config.sub_agent_chat_model_config ?? null);
 
 		if (sessionModel) {
 			setSelectedModel(sessionModel);
-		} else {
+		} else if (!readOnly) {
 			const firstModel = getFirstAvailableModel();
 			if (firstModel) {
 				setSelectedModel(firstModel);
@@ -718,7 +728,7 @@ export function ChatViewport({
 		setSelectedFallbackModel(view.session.config.fallback_chat_model_config ?? null);
 		setSelectedTTSModel(view.session.config.tts_model_config ?? null);
 		setSelectedKnowledgeConfig(view.session.config.knowledge_config ?? null);
-	}, [view, sessionId, agentId, getFirstAvailableModel, refetchSessions]);
+	}, [view, sessionId, agentId, getFirstAvailableModel, refetchSessions, readOnly]);
 
 	// Sync selectedPermissionMode when the session changes. Same
 	// loading-window guard as above — don't reset the displayed mode
@@ -737,6 +747,11 @@ export function ChatViewport({
 	 * @param config - New chat model config; `null` is ignored
 	 *   because the primary selector does not allow clearing.
 	 */
+	const handleSubAgentLlmChange = async (config: ChatModelConfig | null) => {
+		if (!config) return;
+		await patchConfig({ sub_agent_chat_model_config: config }, () => setSelectedSubAgentModel(config));
+	};
+
 	const handleLlmChange = async (config: ChatModelConfig | null) => {
 		if (!config) return;
 		await patchConfig({ chat_model_config: config }, () => setSelectedModel(config));
@@ -791,7 +806,7 @@ export function ChatViewport({
 		// Bypasses `patchConfig`: the dialog shows the failure inline and
 		// stays open on it, so the toast would be a duplicate and the
 		// swallowed rejection would let the dialog close as if it worked.
-		if (!sessionId || !agentId) return;
+		if (readOnly || !sessionId || !agentId) return;
 		setConfigPending(true);
 		try {
 			await sessionApi.update(sessionId, agentId, { cwd: next }, { silent: true });
@@ -884,6 +899,10 @@ export function ChatViewport({
 								    name truncates instead. */}
 									<div className="flex shrink-0 flex-row items-center gap-x-1">
 										{!isTicketView && <>
+										{!readOnly && <div className="flex items-center gap-1 text-xs text-muted-foreground">
+											<span>Sub-agent</span><LlmSelect variant="ghost" className="text-[13px]" aria-label="Model chung cho sub-agent" value={selectedSubAgentModel} onAddCredential={() => setCredentialOpen(true)} refetchTrigger={credentialRefetchTrigger} onChange={(config) => void handleSubAgentLlmChange(config)} disabled={readOnly || configPending} />
+										</div>}
+										{readOnly && <Badge variant="secondary">Chỉ xem</Badge>}
 										<LlmSelect
 											id="tour-llm-select"
 											variant="ghost"
@@ -892,7 +911,7 @@ export function ChatViewport({
 											onChange={handleLlmChange}
 											onAddCredential={() => setCredentialOpen(true)}
 											refetchTrigger={credentialRefetchTrigger}
-											disabled={configPending}
+											disabled={readOnly || configPending}
 										/>
 										<ModelParametersPopover
 											selectedModel={selectedModel}
@@ -902,14 +921,14 @@ export function ChatViewport({
 											onFallbackChange={handleFallbackChange}
 											selectedTTSModel={selectedTTSModel}
 											onTTSChange={handleTTSChange}
-											disabled={configPending}
+											disabled={readOnly || configPending}
 										/>
 										<PermissionModeSelect
 											id="tour-permission-mode"
 											variant={'ghost'}
 											className="text-[13px] text-muted-foreground hover:text-foreground"
 											value={selectedPermissionMode}
-											disabled={!sessionId || configPending}
+											disabled={readOnly || !sessionId || configPending}
 											onChange={handlePermissionModeChange}
 										/>
 										</>}
@@ -1013,6 +1032,8 @@ export function ChatViewport({
 								</div>
 								<div className="relative flex min-h-0 flex-1 overflow-hidden">
 									<ChatContent
+										readOnly={readOnly}
+										teamChat={isTeamChat}
 										className="w-full"
 										showWorkspace={!isTicketView}
 										composerPlaceholder={isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
@@ -1027,7 +1048,7 @@ export function ChatViewport({
 										mentions={mentions}
 										onRefreshGit={refetchWorkspaceStatus}
 										phase={phase}
-										disabled={selectedModel === null}
+										disabled={readOnly || selectedModel === null}
 										onSend={send}
 										autoComplete={completeTeamMention}
 										onUserConfirm={onUserConfirm}

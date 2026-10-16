@@ -91,7 +91,7 @@ class OpenAIResponseModel(ChatModelBase):
         )
 
         reasoning_effort: (
-            Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None
+            Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
         ) = Field(
             default=None,
             title="Reasoning Effort",
@@ -99,7 +99,7 @@ class OpenAIResponseModel(ChatModelBase):
                 "Controls the depth of reasoning for reasoning models "
                 "(e.g. o3, o4-mini, gpt-5.5). Supported values are "
                 "model-dependent and may include: none, minimal, low, "
-                "medium, high, xhigh."
+                "medium, high, xhigh, max."
             ),
         )
 
@@ -118,6 +118,20 @@ class OpenAIResponseModel(ChatModelBase):
                 "Ask a reasoning model for a summary of its reasoning, shown "
                 "as the reply's thinking. None turns it off."
             ),
+        )
+
+        top_p: float | None = Field(
+            default=None,
+            title="Top P",
+            description="The top P value for the LLM output.",
+            gt=0,
+            le=1,
+        )
+
+        parallel_tool_calls: bool = Field(
+            default=True,
+            title="Parallel Tool Calls",
+            description="Whether to enable parallel tool calls.",
         )
 
     type: Literal["openai_response"] = "openai_response"
@@ -259,7 +273,7 @@ class OpenAIResponseModel(ChatModelBase):
             api_kwargs["temperature"] = self.parameters.temperature
 
         reasoning: dict[str, Any] = {}
-        if self.parameters.thinking_enable and self.parameters.reasoning_effort:
+        if self.parameters.reasoning_effort is not None:
             reasoning["effort"] = self.parameters.reasoning_effort
         if (
             self.parameters.reasoning_summary
@@ -271,6 +285,9 @@ class OpenAIResponseModel(ChatModelBase):
             api_kwargs["reasoning"] = reasoning
         if self.extra_body is not None:
             api_kwargs["extra_body"] = dict(self.extra_body)
+
+        if self.parameters.top_p is not None:
+            api_kwargs["top_p"] = self.parameters.top_p
 
         # The Responses API does not yet support audio output
         # (modalities / audio params).  Strip them so callers that
@@ -288,8 +305,23 @@ class OpenAIResponseModel(ChatModelBase):
         fmt_tools, fmt_tool_choice = self._format_tools(tools, tool_choice)
         if fmt_tools is not None:
             api_kwargs["tools"] = fmt_tools
+            if not self.parameters.parallel_tool_calls:
+                api_kwargs["parallel_tool_calls"] = False
         if fmt_tool_choice is not None:
             api_kwargs["tool_choice"] = fmt_tool_choice
+
+        # Luna defaults to medium reasoning, which rejects sampling controls.
+        if (
+            model_name == "gpt-6-luna"
+            and api_kwargs.get("reasoning", {}).get("effort", "medium") != "none"
+        ):
+            for parameter in ("temperature", "top_p", "top_logprobs"):
+                api_kwargs.pop(parameter, None)
+            if "include" in api_kwargs:
+                api_kwargs["include"] = [
+                    item for item in api_kwargs["include"]
+                    if item != "message.output_text.logprobs"
+                ]
 
         start_datetime = datetime.now()
         try:

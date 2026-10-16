@@ -1,6 +1,7 @@
 import { CircleAlert, Loader2, Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 
 import type { AgentView, ContextConfig, InviteConfig, ReActConfig } from '@/api';
 import { defaultAgentFormValues } from '@/components/form/agent-form-utils';
@@ -39,6 +40,8 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	const [submitting, setSubmitting] = useState(false);
 	const [values, setValues] = useState<AgentFormValues | null>(null);
 	const [errorMsg, setErrorMsg] = useState('');
+	const fixedLeader = agent.data.system_role === 'leader';
+	const protectedAgent = fixedLeader || !!agent.data.published_version;
 
 	useEffect(() => {
 		if (!open || !schema) {
@@ -73,7 +76,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	};
 
 	const handleSubmit = async () => {
-		if (!values) return;
+		if (protectedAgent || !values) return;
 		const name = (values.identity.name as string | undefined)?.trim();
 		if (!name) return;
 		setErrorMsg('');
@@ -113,11 +116,26 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 					</div>
 				</DialogHeader>
 				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6">
+					{fixedLeader ? (
+						<p className="text-sm text-muted-foreground">Leader do hệ thống quản lý; cấu hình này chỉ để xem. Bạn có thể đổi model tại thanh công cụ của hội thoại.</p>
+					) : protectedAgent ? (
+						<p className="text-sm text-muted-foreground">
+							Chỉnh sửa, kiểm thử và phát hành phiên bản mới trong{' '}
+							<Link className="text-primary underline" to={`/workforce/agents/${agent.id}`} onClick={() => onOpenChange(false)}>Agent Studio</Link>.
+						</p>
+					) : <>
+					{agent.data.execution_mode != null && (
+						<p className="mb-4 text-sm text-muted-foreground">
+							Công cụ và kho tri thức được chỉnh sửa, kiểm thử rồi phát hành trong{' '}
+							<Link className="text-primary underline" to={`/workforce/agents/${agent.id}`} onClick={() => onOpenChange(false)}>Agent Studio</Link>.
+						</p>
+					)}
 					{schema && values ? (
 						<AgentFormFields schema={schema} values={values} onChange={handleChange} />
 					) : (
 						<p className="text-muted-foreground text-sm">{t('common.loading')}</p>
 					)}
+					</>}
 				</div>
 				{errorMsg && (
 					<Alert variant="destructive">
@@ -133,15 +151,15 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 						onClick={() => onOpenChange(false)}
 						disabled={submitting}
 					>
-						{t('common.cancel')}
+						{t(protectedAgent ? 'common.close' : 'common.cancel')}
 					</Button>
-					<Button
+					{!protectedAgent && <Button
 						onClick={handleSubmit}
 						disabled={!nameValid || submitting || !schema || !values}
 					>
 						{submitting ? <Loader2 className="animate-spin" /> : <Save />}
 						{submitting ? t('common.saving') : t('dialog-agent-edit.submit')}
-					</Button>
+					</Button>}
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

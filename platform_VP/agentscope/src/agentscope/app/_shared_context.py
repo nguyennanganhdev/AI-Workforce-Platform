@@ -817,6 +817,14 @@ class SharedContextService:
                     ),
                 )
                 record.state.tasks[selected_task_id] = task
+            elif task.status == "completed" and kind not in {
+                "customer_message",
+                "customer_reply",
+            }:
+                raise CollaborationStoppedError(
+                    "This customer turn is already finalized; start a new "
+                    "customer requirement before adding more team evidence"
+                )
 
             previous_revision = record.state.revision
             record.state.revision += 1
@@ -869,6 +877,14 @@ class SharedContextService:
 
             if kind == "customer_message":
                 if not stale:
+                    if in_reply_to in task.pending_question_ids:
+                        # Clarification continues the same unfinished assignments.
+                        for branch in task.collaboration.values():
+                            if (
+                                branch.customer_revision == task.latest_customer_revision
+                                and branch.status in {"running", "waiting_peer"}
+                            ):
+                                branch.customer_revision = event.revision
                     task.status = "running"
                     task.pending_question_ids = ()
                     task.latest_customer_revision = event.revision
@@ -1077,6 +1093,92 @@ class SharedContextService:
         if next_hop > 12:
             raise ValueError("handoff hop limit (12) exceeded")
         return next_hop, parent.thread_id or in_reply_to or parent.id
+
+    async def stop_failed_branch(
+        self,
+        user_id: str,
+        team_id: str,
+        failed_session_id: str,
+        reason: str,
+        *,
+        task_id: str | None = None,
+    ) -> tuple[str, ...]:
+        """Stop a failed worker and release every branch waiting on it.
+
+        Model/provider failures happen outside TeamSay, so the normal error
+        handoff path cannot clear dependency edges. This server-owned terminal
+        transition prevents coordinators and the Leader from waiting forever.
+        Returned session ids must be woken by the caller after its failure
+        notice and evidence event are durable.
+        """
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            selected = task_id or (record.state.active_task_id if record else None)
+            task = record.state.tasks.get(selected) if record and selected else None
+            if record is None or task is None:
+                return ()
+
+            failed = self._branch(task, failed_session_id)
+            failed.status = "stopped"
+            failed.reason = reason.strip() or "worker run failed"
+            failed.waiting_for.clear()
+
+            released: list[str] = []
+            for session_id, branch in task.collaboration.items():
+                if (
+                    session_id == failed_session_id
+                    or branch.customer_revision != task.latest_customer_revision
+                ):
+                    continue
+                dependencies = [
+                    handoff_id
+                    for handoff_id, provider in branch.waiting_for.items()
+                    if provider == failed_session_id
+                ]
+                for handoff_id in dependencies:
+                    del branch.waiting_for[handoff_id]
+                if dependencies:
+                    released.append(session_id)
+                    if not branch.waiting_for and branch.status == "waiting_peer":
+                        branch.status = "running"
+                        branch.reason = (
+                            "dependency failed; resume with preserved partial "
+                            "evidence or report the blocker"
+                        )
+
+            task.updated_at = datetime.now(UTC)
+            record.updated_at = datetime.now()
+            await self._commit_mutation(user_id, record)
+            return tuple(dict.fromkeys(released))
+
+    async def current_tool_evidence_for_session(
+        self,
+        user_id: str,
+        team_id: str,
+        session_id: str,
+        *,
+        task_id: str | None = None,
+    ) -> tuple[str, ...]:
+        """Read successful current tool results retained for a failed run."""
+
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        selected = task_id or (record.state.active_task_id if record else None)
+        task = record.state.tasks.get(selected) if record and selected else None
+        if record is None or task is None:
+            return ()
+        return tuple(
+            event.content
+            for event in record.state.events
+            if event.task_id == task.id
+            and event.kind == "external_event"
+            and event.source_session_id == session_id
+            and not event.stale
+            and event.revision > task.latest_customer_revision
+        )
 
     async def register_directive(
         self,
@@ -1372,7 +1474,6 @@ class SharedContextService:
             customer_reply=True,
         )
         return unsupported_claim_anchors(content, support)
-
     async def collaboration_pause(
         self, user_id: str, team_id: str, session_id: str, task_id: str | None = None
     ) -> str | None:
@@ -1394,17 +1495,7 @@ class SharedContextService:
     async def collaboration_review(
         self, user_id: str, team_id: str, owner: str, *, working_only: bool = False
     ) -> list[str]:
-        """Finalize evidence-backed reports and return non-terminal branches.
-
-        A worker report used to leave its branch in ``review`` until the
-        Leader model remembered to issue one extra ``TeamSay`` resolution.
-        That made successful runs depend on prompt compliance and consumed a
-        model iteration per completed worker.  The runtime already owns the
-        evidence graph, so it can safely accept a report when the same worker
-        produced a current successful external event (or the report cites
-        current trusted evidence).  Unverified reports, conflicts and user
-        input proposals remain in ``review`` for an explicit Leader decision.
-        """
+        """Finalize delivered reports and return non-terminal branches."""
 
         async with self._bus.acquire_lock(
             MessageBusKeys.team_shared_context_lock(team_id),
@@ -1426,8 +1517,6 @@ class SharedContextService:
                 and not event.stale
                 and event.revision > task.latest_customer_revision
             }
-            trusted = self._trusted_event_ids(current)
-
             mutated = False
             for sid, branch in task.collaboration.items():
                 if (
@@ -1443,13 +1532,10 @@ class SharedContextService:
                     if event.source_session_id == sid
                     and event.kind in {"answer", "result"}
                 ]
-                if any(event.id in trusted for event in reports):
+                accepted_report = next(iter(reports), None)
+                if accepted_report is not None:
                     branch.status = "completed"
-                    branch.reason = "current evidence-backed result accepted by runtime"
-                    assignment = task.assignments.get(sid)
-                    if assignment is not None and assignment.status == "reported":
-                        assignment.status = "verified"
-                        assignment.updated_at = datetime.now(UTC)
+                    branch.reason = "worker result accepted by runtime"
                     mutated = True
                     continue
 
@@ -1507,6 +1593,56 @@ class SharedContextService:
             )
             return pending
 
+    async def seal_final_answer(
+        self,
+        user_id: str,
+        team_id: str,
+        owner: str,
+        *,
+        expected_event_revision: int,
+    ) -> bool:
+        """Atomically freeze a settled task before the Leader reply is emitted."""
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            task = (
+                record.state.tasks.get(record.state.active_task_id)
+                if record and record.state.active_task_id
+                else None
+            )
+            if record is None or task is None:
+                return False
+            latest_event_revision = max(
+                (
+                    event.revision
+                    for event in record.state.events
+                    if event.task_id == task.id
+                ),
+                default=0,
+            )
+            if latest_event_revision != expected_event_revision:
+                return False
+            if task.pending_question_ids or task.pending_operation_ids:
+                return False
+            if any(
+                sid != owner
+                and branch.customer_revision == task.latest_customer_revision
+                and branch.status in {"running", "waiting_peer", "review"}
+                for sid, branch in task.collaboration.items()
+            ):
+                return False
+            if task.status == "completed":
+                return True
+            if task.status != "running":
+                return False
+            task.status = "completed"
+            task.updated_at = datetime.now(UTC)
+            await self._commit_mutation(user_id, record)
+            return True
+
     async def coordinate_handoff(
         self,
         *,
@@ -1552,6 +1688,11 @@ class SharedContextService:
             branch = self._branch(task, sender)
             if handoff_id in branch.receipts:
                 return branch.receipts[handoff_id]
+            if task.status == "completed":
+                raise CollaborationStoppedError(
+                    "This customer turn is already finalized; wait for a new "
+                    "customer requirement before starting more collaboration"
+                )
             effective_references = tuple(
                 dict.fromkeys(
                     (
@@ -1571,40 +1712,7 @@ class SharedContextService:
                 and not e.stale
                 and e.revision > task.latest_customer_revision
             }
-            claim_rejection_reason = ""
-            if kind in {"result", "answer"} and sender != owner:
-                unsupported = unsupported_claim_anchors(
-                    content,
-                    self._claim_support_texts(
-                        record,
-                        task,
-                        current,
-                        sender=sender,
-                        references=effective_references,
-                    ),
-                )
-                if unsupported:
-                    branch.evidence_rejections += 1
-                    detail = ", ".join(unsupported[:12])
-                    if branch.evidence_rejections < 2:
-                        await self._commit_mutation(user_id, record)
-                        raise ValueError(
-                            "Evidence gate rejected unsupported concrete claims: "
-                            + detail
-                            + ". Retry once using only exact customer, MCP, or cited peer evidence.",
-                        )
-                    claim_rejection_reason = (
-                        "evidence gate rejected unsupported concrete claims twice: "
-                        + detail
-                    )
             released = []
-            if kind == "conflict" and (
-                len(set(effective_references)) < 2
-                or any(ref not in current for ref in effective_references)
-            ):
-                raise ValueError(
-                    "Conflicts require at least two current source references"
-                )
             if resolution:
                 if sender != owner or len(recipients) != 1:
                     raise ValueError(
@@ -1615,25 +1723,6 @@ class SharedContextService:
                     if target.waiting_for:
                         raise ValueError(
                             "Assignment still has unresolved peer dependencies"
-                        )
-                    if not effective_references or any(
-                        ref not in current for ref in effective_references
-                    ):
-                        raise ValueError(
-                            "Completion requires current-task evidence references"
-                        )
-                    evidence = [current[ref] for ref in effective_references]
-                    if not any(
-                        e.kind in {"result", "answer"}
-                        and e.source_session_id == recipients[0]
-                        for e in evidence
-                    ):
-                        raise ValueError(
-                            "Completion requires the assigned agent's result"
-                        )
-                    if not any(e.kind == "external_event" for e in evidence):
-                        raise ValueError(
-                            "Completion requires verified tool/provider evidence, not an agent assertion"
                         )
                     target.status = "completed"
                 elif resolution == "stop":
@@ -1678,7 +1767,7 @@ class SharedContextService:
                 raise CollaborationStoppedError(branch.reason or branch.status)
 
             # Count regardless of model-supplied thread/hop/idempotency keys.
-            evidence_revision = max(
+            context_revision = max(
                 (
                     e.revision
                     for e in current.values()
@@ -1692,33 +1781,22 @@ class SharedContextService:
                         kind,
                         recipients,
                         " ".join(content.casefold().split()),
-                        evidence_revision,
+                        context_revision,
                     ]
                 ).encode()
             ).hexdigest()
             branch.signatures[signature] = branch.signatures.get(signature, 0) + 1
             branch.exchanges += 1
-            reason = claim_rejection_reason
+            reason = ""
             if branch.exchanges > self.config.collaboration_max_exchanges:
                 reason = "exchange limit exceeded"
             elif branch.signatures[signature] > 2:
-                reason = "repeated exchange without new evidence"
-            if kind == "question" and sender != owner:
+                reason = "repeated exchange without new information"
+            if kind == "question":
                 if len(recipients) != 1 or recipients[0] == owner:
                     raise ValueError(
                         "Peer dependency requires one concrete non-owner collaborator"
                     )
-                visited = {sender}
-                frontier = list(recipients)
-                while frontier:
-                    peer = frontier.pop()
-                    if peer == sender:
-                        reason = "cyclic peer dependency; Leader must resolve the missing information"
-                        break
-                    if peer in visited:
-                        continue
-                    visited.add(peer)
-                    frontier.extend(self._branch(task, peer).waiting_for.values())
                 if not reason:
                     target = self._branch(task, recipients[0])
                     if target.status == "stopped":
@@ -1726,20 +1804,21 @@ class SharedContextService:
                     else:
                         branch.waiting_for[handoff_id] = recipients[0]
                         branch.status = "waiting_peer"
-                        if target.status in {"review", "completed"}:
-                            target.status = "running"
+                        # A peer may ask back through an existing dependency.
+                        # Wake it to answer, then return it to its own wait.
+                        target.status = "running"
             if kind in {"user_input_proposal", "conflict"} and sender != owner:
                 branch.status = "review"
-            if kind == "handoff" and sender == owner and not resolution:
+            if kind == "handoff" and not resolution:
                 for sid in recipients:
                     target = self._branch(task, sid)
                     if target.status != "stopped":
                         target.status = "running"
-                        target.waiting_for.clear()
+                        if sender == owner:
+                            target.waiting_for.clear()
             routed = [*recipients, *released]
             if (
-                not claim_rejection_reason
-                and kind in {"result", "answer", "error"}
+                kind in {"result", "answer", "error"}
                 and sender != owner
             ):
                 if in_reply_to and in_reply_to not in current and not any(
@@ -1777,6 +1856,8 @@ class SharedContextService:
                     routed.append(owner)
                 if not branch.waiting_for:
                     branch.status = "review"
+                elif kind == "answer":
+                    branch.status = "waiting_peer"
             if reason:
                 branch.status, branch.reason = "stopped", reason
                 branch.waiting_for.clear()
@@ -2540,6 +2621,17 @@ class SharedContextService:
         prior_summary = record.state.summaries.get(task_id)
         covered = prior_summary.covered_through_revision if prior_summary else 0
         uncovered = [event for event in events if event.revision > covered]
+        # Raw tool envelopes already represented in authoritative state need
+        # no narrative summary. Keep customer/report history and its citations.
+        projected = self._packet_value(
+            record, uncovered, mode="task", task_id=task_id,
+        )
+        visible_ids = {event["id"] for event in projected["recent_events"]}
+        uncovered = [
+            event
+            for event in uncovered
+            if event.kind != "external_event" or event.id in visible_ids
+        ]
         history_tokens = await self._history_tokens(
             model,
             prior_summary,
@@ -2857,31 +2949,50 @@ class SharedContextService:
             ]
         else:
             selected = task_id or record.state.active_task_id
-            async with self._bus.acquire_lock(
-                MessageBusKeys.team_summary_lock(team_id, selected),
-                ttl_secs=MessageBusKeys.TEAM_HISTORY_BOOTSTRAP_LOCK_TTL_SECS,
-            ):
-                # Other workers may have compacted this task while we waited.
-                record = await self._load_or_create(user_id, team_id)
-                events = [
-                    event
-                    for event in record.state.events
-                    if event.task_id == selected and event.id not in excluded
-                ]
-                try:
-                    record = await self._maybe_compact(
-                        model,
-                        user_id,
-                        team_id,
-                        record,
-                        events,
-                        selected,
-                        summary_model=summary_model,
-                    )
-                except SharedContextSummaryError as exc:
-                    logger.error("%s", exc)
-                    compaction_failed = True
+            summary_key = MessageBusKeys.team_summary_lock(team_id, selected)
+            use_current_packet = False
+            if await self._bus.is_locked(summary_key):
+                summary = record.state.summaries.get(selected)
+                covered = summary.covered_through_revision if summary else 0
+                current_packet = self._packet_value(
+                    record,
+                    [
+                        event
+                        for event in record.state.events
+                        if event.task_id == selected
+                        and event.id not in excluded
+                        and event.revision > covered
+                    ],
+                    mode="task",
+                    task_id=selected,
+                    excluded_event_ids=excluded,
+                )
+                use_current_packet = (
+                    await self._tokens(model, self._json(current_packet))
+                    <= self.config.packet_max_tokens
+                )
+            # A valid uncompressed snapshot need not wait for another model.
+            # Oversized packets still wait for the single task compactor.
+            if not use_current_packet:
+                async with self._bus.acquire_lock(
+                    summary_key,
+                    ttl_secs=MessageBusKeys.TEAM_HISTORY_BOOTSTRAP_LOCK_TTL_SECS,
+                ):
                     record = await self._load_or_create(user_id, team_id)
+                    events = [
+                        event
+                        for event in record.state.events
+                        if event.task_id == selected and event.id not in excluded
+                    ]
+                    try:
+                        record = await self._maybe_compact(
+                            model, user_id, team_id, record, events, selected,
+                            summary_model=summary_model,
+                        )
+                    except SharedContextSummaryError as exc:
+                        logger.error("%s", exc)
+                        compaction_failed = True
+                        record = await self._load_or_create(user_id, team_id)
             summary = record.state.summaries.get(selected)
             covered = summary.covered_through_revision if summary else 0
             # A customer can write while the model summarizes. Use the events
@@ -3132,7 +3243,7 @@ class SharedContextService:
             "Internal task_id, team_id, session_id and event IDs are routing "
             "references, NOT provider ticket/booking IDs. Never substitute them "
             "into MCP arguments unless an explicit external mapping exists. "
-            "Agent-reported narrative is not independently verified evidence.\n"
+            "Agent-reported narrative is shared team context.\n"
             f"{packet}\n</shared-context-packet>"
         )
 

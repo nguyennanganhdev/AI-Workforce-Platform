@@ -19,6 +19,7 @@ import {
 	FileText,
 	FileVideo2,
 	Loader2,
+	Reply,
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
@@ -403,6 +404,7 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
+	onReplyTo?: (agentId: string, name: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -428,7 +430,7 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
+function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	const ticketView = useContext(TicketViewContext);
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
@@ -438,7 +440,7 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
 		: undefined;
 
-	const isRunning = !message.finished_at;
+	const isRunning = !message.finished_at && !message.finished_reason;
 	const hasUsage =
 		!!message.usage &&
 		((message.usage.input_tokens ?? 0) > 0 || (message.usage.output_tokens ?? 0) > 0);
@@ -469,7 +471,8 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		.join('\n\n');
 
 	const startMs = new Date(message.created_at).getTime();
-	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
+	const terminalTime = message.finished_at ?? [...message.content].reverse().find((block) => block.finished_at)?.finished_at ?? message.created_at;
+	const endMs = isRunning ? now : new Date(terminalTime).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
 	const visibleBlocks = blocks.filter((block) => {
@@ -487,6 +490,7 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
+				{!isUser && typeof message.metadata?.team_agent_id === 'string' && <p className="text-xs font-medium text-muted-foreground">{message.name}</p>}
 				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
 				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
 				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
@@ -571,6 +575,9 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
+						{onReplyTo && typeof message.metadata?.team_agent_id === 'string' && (
+							<Button variant="ghost" size="xs" onClick={() => onReplyTo(message.metadata!.team_agent_id as string, message.name)} aria-label={`Trả lời ${message.name}`}><Reply className="size-3" /> Trả lời</Button>
+						)}
 					</MessageFooter>
 				)}
 			</MessageContent>

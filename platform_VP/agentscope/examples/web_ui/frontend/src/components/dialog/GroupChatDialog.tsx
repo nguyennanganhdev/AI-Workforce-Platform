@@ -1,7 +1,7 @@
 import { Check, CircleAlert, Crown, Loader2, Plus, Search } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 
-import { agentApi, sessionApi, type AgentView, type ChatModelConfig } from '@/api';
+import { sessionApi, workforceApi, type AgentView, type ChatModelConfig } from '@/api';
 import { GroupAvatar } from '@/components/chat/GroupAvatar';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -21,27 +21,10 @@ import { formatApiErrorForAlert } from '@/lib/api-error';
 import { addGroupChat, agentHandle } from '@/lib/group-chats';
 import { cn } from '@/lib/utils';
 
-/** What the leader is told to say an invited agent is for, when it has nothing set. */
-function inviteDescription(agent: AgentView): string {
-	const existing = agent.data.invite_config?.invite_description?.trim();
-	if (existing) return existing;
-	const prompt = agent.data.system_prompt?.trim().split('\n')[0] ?? '';
-	return (prompt.length > 160 ? `${prompt.slice(0, 157)}…` : prompt) || agent.data.name;
-}
-
 const isInvitable = (agent: AgentView) =>
 	!!agent.data.invite_config?.invitable && !!agent.data.invite_config?.invite_description?.trim();
 
-/**
- * Starts a group chat: a name, two or more agents, and which of them leads.
- *
- * The backend forms teams from inside a conversation — the leader calls
- * `TeamCreate`, then `AgentInvite` for each member — so creating a group
- * here opens a session on the leader and queues the instruction to do
- * exactly that, sent as soon as the chat opens. A member the leader could
- * not invite yet is switched to "can be invited" first, and the dialog says
- * so before it happens.
- */
+/** Open a fixed-Leader session and queue one full-roster invitation batch. */
 export function GroupChatDialog({
 	open,
 	onOpenChange,
@@ -54,7 +37,7 @@ export function GroupChatDialog({
 	onOpenChange: (open: boolean) => void;
 	agents: AgentView[];
 	/** The model the new chat starts on: whatever the open chat uses. */
-	modelConfig?: { chat?: ChatModelConfig | null; fallback?: ChatModelConfig | null };
+	modelConfig?: { chat?: ChatModelConfig | null; subAgent?: ChatModelConfig | null; fallback?: ChatModelConfig | null };
 	/** Offered when there are too few agents to make a group from. */
 	onCreateAgent?: () => void;
 	onCreated: (agentId: string, sessionId: string) => void | Promise<void>;
@@ -64,7 +47,7 @@ export function GroupChatDialog({
 	const [goal, setGoal] = useState('');
 	const [query, setQuery] = useState('');
 	const [picked, setPicked] = useState<string[]>([]);
-	const [leaderId, setLeaderId] = useState<string | null>(null);
+	const [primaryId, setPrimaryId] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState('');
 
@@ -74,48 +57,38 @@ export function GroupChatDialog({
 		setGoal('');
 		setQuery('');
 		setPicked([]);
-		setLeaderId(null);
+		setPrimaryId(null);
 		setError('');
 	}, [open]);
 
-	const byId = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+	const pool = useMemo(() => agents.filter((agent) =>
+		agent.data.system_role === 'business' && agent.data.lifecycle_state === 'published' && isInvitable(agent),
+	), [agents]);
+	const byId = useMemo(() => new Map(pool.map((agent) => [agent.id, agent])), [pool]);
 	const visible = useMemo(() => {
 		const q = query.trim().toLowerCase();
-		return q ? agents.filter((a) => a.data.name.toLowerCase().includes(q)) : agents;
-	}, [agents, query]);
+		return q ? pool.filter((agent) => agent.data.name.toLowerCase().includes(q)) : pool;
+	}, [pool, query]);
 
-	// The leader is the first pick until someone else is crowned.
-	const leader = leaderId && picked.includes(leaderId) ? leaderId : (picked[0] ?? null);
-	const members = picked.filter((id) => id !== leader);
-	const toEnable = members.map((id) => byId.get(id)!).filter((a) => a && !isInvitable(a));
-	const blocked = toEnable.filter((a) => !a.editable);
+	const members = picked.filter((id) => byId.has(id));
+	const primary = primaryId && members.includes(primaryId) ? primaryId : (members[0] ?? null);
 	const trimmed = name.trim();
-	const ready = !!trimmed && !!leader && members.length > 0 && blocked.length === 0;
+	const ready = !!trimmed && !!primary;
 
 	const toggle = (id: string) =>
 		setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
 	const handleSubmit = async (event: FormEvent) => {
 		event.preventDefault();
-		if (!ready || !leader || submitting) return;
+		if (!ready || !primary || submitting) return;
 		setSubmitting(true);
 		setError('');
 		try {
-			for (const agent of toEnable) {
-				await agentApi.update(
-					agent.id,
-					{
-						invite_config: {
-							invitable: true,
-							invite_description: inviteDescription(agent),
-						},
-					},
-					{ silent: true },
-				);
-			}
+			const { agent_id: leader } = await workforceApi.bootstrapLeader();
 			const { session_id } = await sessionApi.create({
 				agent_id: leader,
 				...(modelConfig?.chat ? { chat_model_config: modelConfig.chat } : {}),
+				...(modelConfig?.subAgent ? { sub_agent_chat_model_config: modelConfig.subAgent } : {}),
 				...(modelConfig?.fallback
 					? { fallback_chat_model_config: modelConfig.fallback }
 					: {}),
@@ -135,6 +108,11 @@ export function GroupChatDialog({
 					name: trimmed,
 					goal: goal.trim() ? t('groupChat.kickoffGoal', { goal: goal.trim() }) : '',
 					members: handles,
+					primary: agentHandle(byId.get(primary)!.data.name, primary),
+					assignments: JSON.stringify(members.filter((id) => id !== primary).map((id) => ({
+						target: agentHandle(byId.get(id)!.data.name, id),
+						prompt: byId.get(id)!.data.invite_config.invite_description,
+					}))),
 				}),
 			});
 			await onCreated(leader, session_id);
@@ -146,7 +124,7 @@ export function GroupChatDialog({
 		}
 	};
 
-	const preview = picked.map((id) => ({ id, name: byId.get(id)?.data.name ?? id }));
+	const preview = members.map((id) => ({ id, name: byId.get(id)?.data.name ?? id }));
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -157,7 +135,7 @@ export function GroupChatDialog({
 							<GroupAvatar members={preview} size={52} />
 						) : (
 							<span className="flex size-[52px] shrink-0 items-center justify-center rounded-[17px] border border-dashed border-[var(--cue-border,var(--border))] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
-								{picked.length}
+								{members.length}
 							</span>
 						)}
 						<div className="flex min-w-0 flex-col gap-1">
@@ -182,9 +160,9 @@ export function GroupChatDialog({
 						/>
 					</label>
 
-					{agents.length < 2 && (
+					{pool.length === 0 && (
 						<div className="flex items-center justify-between gap-3 rounded-2xl bg-[var(--cue-bg-subtle,var(--muted))] px-4 py-3 text-[13px]/[18px] text-muted-foreground">
-							<span>{t('groupChat.notEnough', { count: agents.length })}</span>
+							<span>{t('groupChat.notEnough', { count: pool.length })}</span>
 							{onCreateAgent && (
 								<Button
 									type="button"
@@ -203,7 +181,7 @@ export function GroupChatDialog({
 						<span className="flex items-baseline justify-between text-[13px]/[18px] text-muted-foreground">
 							{t('groupChat.members')}
 							<span className="tabular-nums">
-								{t('groupChat.selected', { count: picked.length })}
+								{t('groupChat.selected', { count: members.length })}
 							</span>
 						</span>
 						<div className="overflow-hidden rounded-2xl border border-[var(--cue-border,var(--border))]">
@@ -218,8 +196,8 @@ export function GroupChatDialog({
 							</div>
 							<ul className="max-h-60 overflow-y-auto p-1">
 								{visible.map((agent) => {
-									const selected = picked.includes(agent.id);
-									const isLeader = agent.id === leader;
+									const selected = members.includes(agent.id);
+									const isPrimary = agent.id === primary;
 									return (
 										<li key={agent.id} className="group/member relative">
 											<button
@@ -267,21 +245,21 @@ export function GroupChatDialog({
 													)}
 												</span>
 											</button>
-											{/* The crown: who leads. Shown on the leader; offered on
-											    hover to any other picked member. */}
+											{/* The primary specialist starts first; the fixed Leader coordinates. */}
 											{selected && (
 												<button
 													type="button"
-													onClick={() => setLeaderId(agent.id)}
+													aria-label={`${t('groupChat.makeLeader')} ${agent.data.name}`}
+													onClick={() => setPrimaryId(agent.id)}
 													className={cn(
 														'absolute top-1/2 right-11 flex h-6 -translate-y-1/2 items-center gap-1 rounded-full px-2 text-[12px] font-medium transition-opacity',
-														isLeader
+														isPrimary
 															? 'bg-[var(--amber-soft,#fdf4e3)] text-[var(--amber-ink,#8a5a00)]'
 															: 'bg-[var(--cue-bg-subtle,var(--muted))] text-muted-foreground opacity-0 group-hover/member:opacity-100 focus-visible:opacity-100',
 													)}
 												>
 													<Crown className="size-3" />
-													{isLeader
+													{isPrimary
 														? t('groupChat.leader')
 														: t('groupChat.makeLeader')}
 												</button>
@@ -310,23 +288,6 @@ export function GroupChatDialog({
 						/>
 					</label>
 
-					{toEnable.length > 0 && blocked.length === 0 && (
-						<p className="text-[13px]/[18px] text-muted-foreground">
-							{t('groupChat.willEnable', {
-								names: toEnable.map((a) => a.data.name).join(', '),
-							})}
-						</p>
-					)}
-					{blocked.length > 0 && (
-						<Alert variant="destructive">
-							<CircleAlert />
-							<AlertDescription>
-								{t('groupChat.blocked', {
-									names: blocked.map((a) => a.data.name).join(', '),
-								})}
-							</AlertDescription>
-						</Alert>
-					)}
 					{error && (
 						<Alert variant="destructive">
 							<CircleAlert />
@@ -338,7 +299,7 @@ export function GroupChatDialog({
 
 					<DialogFooter className="items-center sm:justify-between">
 						<span className="text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
-							{picked.length < 2 && t('groupChat.needTwo')}
+							{members.length === 0 && t('groupChat.needTwo')}
 						</span>
 						<div className="flex gap-2">
 							<Button

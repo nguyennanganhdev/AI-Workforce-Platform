@@ -53,6 +53,7 @@ async def get_toolkit(
     extra_factory: AgentToolFactory | None = None,
     sub_agent_templates: dict[str, SubAgentTemplate] | None = None,
     team_role: Literal["leader", "worker"] | None = None,
+    is_reply_owner: bool | None = None,
     channel_tools: list[ToolBase] | None = None,
     sop_dispatch: str | None = None,
     shared_context_service: SharedContextService | None = None,
@@ -71,9 +72,10 @@ async def get_toolkit(
        :meth:`SchedulerManager.list_tools`). Only attached when the
        session has a model configured (Schedule tools need a model to
        fire new chats with).
-    5. Team tools — by caller-resolved ``team_role``: a worker gets only
-       ``TeamSay``; anyone else can create a team and invite existing
-       published business agents. Chat runtime never creates agents.
+    5. Team tools — only the fixed Workforce Leader can create/delete a team
+       and invite published business agents. A business agent receives only
+       ``TeamSay`` while participating in a team, and no team tools while
+       standalone. Chat runtime never creates agents.
     6. Caller-supplied extras (``extra_factory``)
     7. Channel platform tools — the caller resolves them (once, shared
        with the system-prompt attachment) and passes ``channel_tools``.
@@ -123,6 +125,9 @@ optional):
         team_role (`Literal["leader", "worker"] | None`, optional):
             The session's team role, resolved once by the caller.
             ``None`` means not in any team.
+        is_reply_owner (`bool | None`, optional):
+            Current turn ownership, including directly mentioned specialists.
+            Controls the advertised TeamSay resolution parameter only.
         sop_dispatch (`str | None`, optional):
             ``"<run id>:<step index>"`` when this turn is a SOP
             step's, which gives it a submit tool.
@@ -139,7 +144,14 @@ optional):
     # Builder agents operate through their validated MCP bindings. Coding,
     # shell/task/cron tools add schemas and encourage unrelated planning loops.
     is_leader = agent_record.data.system_role == "leader"
-    business_runtime = is_leader or bool(agent_record.data.tool_bindings)
+    # The Builder execution contract identifies authored business agents even
+    # when their intentional effective MCP set is empty (for example a planner
+    # or a knowledge-base answerer). Keep them inside the restricted runtime.
+    business_runtime = (
+        is_leader
+        or bool(agent_record.data.tool_bindings)
+        or agent_record.data.execution_mode is not None
+    )
     tools = [] if business_runtime else await workspace.list_tools()
     if not business_runtime:
         tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
@@ -174,8 +186,9 @@ time or interval"
             ),
         )
 
-    # Team tools by caller-resolved role; non-team sessions get the
-    # leader set (each leader tool rechecks its precondition at call time).
+    # Team creation and membership management belong only to the fixed
+    # Workforce Leader. Business agents may communicate only after they have
+    # joined a team; standalone business agents receive no team tools.
     team_tool_kwargs: dict[str, Any] = {
         "storage": storage,
         "message_bus": message_bus,
@@ -185,12 +198,11 @@ time or interval"
         "agent_id": agent_record.id,
         "shared_context_service": shared_context_service,
     }
-    if team_role == "worker":
-        tools.append(TeamSay(**team_tool_kwargs, role="worker"))
-    else:
+    team_say_kwargs = {**team_tool_kwargs, "is_reply_owner": is_reply_owner}
+    if is_leader:
         tools += [
             TeamCreate(**team_tool_kwargs),
-            TeamSay(**team_tool_kwargs, role="leader"),
+            TeamSay(**team_say_kwargs, role="leader"),
             TeamDelete(**team_tool_kwargs),
         ]
         # Conditionally attach AgentInvite. Skipping construction when
@@ -226,6 +238,8 @@ time or interval"
                     resource_access_service=resource_access_service,
                 ),
             )
+    elif team_role is not None:
+        tools.append(TeamSay(**team_say_kwargs, role="worker"))
 
     # A step's turn gets one submit tool: handover until something has
     # been handed over, verdict after.
@@ -266,14 +280,35 @@ time or interval"
     if channel_tools:
         tools += channel_tools
 
+    workspace_mcps = [] if is_leader else await workspace.list_mcps(
+        agent_id=agent_record.id,
+        session_id=session_record.id,
+    )
+    if agent_record.data.execution_mode is not None:
+        allowed_by_mcp: dict[str, list[str]] = {}
+        for binding in agent_record.data.tool_bindings:
+            mcp_name = str(binding.get("mcp_name") or "")
+            tool_name = str(binding.get("tool_name") or "")
+            if mcp_name and tool_name:
+                allowed_by_mcp.setdefault(mcp_name, []).append(tool_name)
+        workspace_mcps = [
+            client.model_copy(
+                update={
+                    "enable_tools": [
+                        name for name in dict.fromkeys(allowed_by_mcp[client.name])
+                        if client.enable_tools is None or name in client.enable_tools
+                    ],
+                },
+            )
+            for client in workspace_mcps
+            if client.name in allowed_by_mcp
+        ]
+
     return Toolkit(
         tools=tools,
         skills_or_loaders=[] if is_leader else await workspace.list_skills(
             agent_id=agent_record.id,
         ),
-        mcps=[] if is_leader else await workspace.list_mcps(
-            agent_id=agent_record.id,
-            session_id=session_record.id,
-        ),
+        mcps=workspace_mcps,
         tool_groups=tool_groups,
     )

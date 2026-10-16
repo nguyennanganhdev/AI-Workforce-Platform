@@ -422,7 +422,7 @@ optional):
             )
             await self._storage.upsert_agent(self._user_id, worker_agent)
 
-            # 2. Build worker SessionRecord, inheriting leader's model
+            # 2. Build worker SessionRecord, using the shared worker model
             #    config. The template's permission context is the base;
             #    on top of it we merge the leader's mode and/or rules
             #    and/or working directories according to the template's
@@ -450,7 +450,8 @@ optional):
                     workspace_id=leader_session.config.workspace_id,
                     name=f"team:{team.id}/{name}",
                     chat_model_config=(
-                        leader_session.config.chat_model_config
+                        leader_session.config.sub_agent_chat_model_config
+                        or leader_session.config.chat_model_config
                     ),
                     fallback_chat_model_config=(
                         leader_session.config.fallback_chat_model_config
@@ -483,6 +484,7 @@ optional):
                     agent_id=worker_agent.id,
                     session_id=worker_session.id,
                     role="created",
+                    description=description,
                 ),
             ]
             await self._storage.upsert_team(self._user_id, team)

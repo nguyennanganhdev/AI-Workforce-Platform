@@ -122,6 +122,12 @@ class AgentData(BaseModel):
     tool_bindings: SkipJsonSchema[list[dict]] = Field(default_factory=list)
     """Builder-selected, server-validated MCP tool references."""
 
+    knowledge_base_ids: SkipJsonSchema[list[str]] = Field(default_factory=list)
+    """Builder-selected default knowledge bases inherited by new sessions."""
+
+    execution_mode: SkipJsonSchema[Literal["context_only", "tool_backed"] | None] = None
+    """Builder-owned execution contract; absent on regular user agents."""
+
     generated_skill: SkipJsonSchema[str] = ""
     """Builder-generated SKILL.md body installed into the agent workspace."""
 

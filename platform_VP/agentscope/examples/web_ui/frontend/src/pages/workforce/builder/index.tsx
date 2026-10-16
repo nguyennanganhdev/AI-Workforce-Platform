@@ -17,13 +17,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { workforceApi } from '@/api';
+import { agentApi, workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
 	BuilderMessage,
 	BuilderProposal,
 	ChatModelConfig,
 	WorkforceAgent,
+	KnowledgeBaseView,
 } from '@/api';
 import robotStill from '@/assets/images/stickers/robot-still.webp';
 import { sessionTime } from '@/components/chat/session-row-utils';
@@ -34,6 +35,7 @@ import { Markdown } from '@/components/markdown';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { ClayPortrait, type PortraitKey } from '@/components/ui/clay-portrait';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -45,6 +47,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { EvaluationProgress } from '@/components/workforce/EvaluationProgress';
 import { EvaluationReport } from '@/components/workforce/EvaluationReport';
 import { useEvaluationProgress } from '@/hooks/useEvaluationProgress';
+import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
 import { cn } from '@/lib/utils';
 
 function prefersVietnamese(text: string) {
@@ -69,7 +72,7 @@ const CHECK_LABEL: Record<string, string> = {
 	skill: 'chưa có skill',
 };
 
-function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][number] }) {
+function AgentProposalCard({ proposal, resourcesLocked, knowledgeBases, onKnowledgeChange }: { proposal: BuilderProposal['agents'][number]; resourcesLocked: boolean; knowledgeBases: KnowledgeBaseView[]; onKnowledgeChange: (ids: string[]) => void }) {
 	const passed = proposal.evaluation.passed === true;
 	const reused = proposal.reuse_agent_id !== null;
 	const failed = Object.entries((proposal.evaluation.checks ?? {}) as Record<string, boolean>)
@@ -83,6 +86,7 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 				<div className="min-w-0 flex-1">
 					<div className="flex flex-wrap items-center gap-2">
 						<h3 className="text-[15px]/5 font-semibold">{proposal.name}</h3>
+						<Badge variant="outline">{proposal.execution_mode === 'context_only' ? 'Ngữ cảnh / KB' : 'Có MCP'}</Badge>
 						<Badge variant={passed ? 'secondary' : 'destructive'}>
 							{passed ? <CheckCircle2 /> : <CircleAlert />}
 							{passed ? 'Kiểm thử đạt' : 'Chưa đủ điều kiện phát hành'}
@@ -116,12 +120,24 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 				))}
 				{proposal.selected_tools.length === 0 && (
 					<span className="text-muted-foreground">
-						{proposal.evaluation.checks?.capability_has_tools
-							? 'Điều phối đồng đội, không cần tool riêng.'
+						{proposal.execution_mode === 'context_only'
+							? 'Dùng ngữ cảnh, KB và kết quả đồng đội.'
 							: 'Chưa có tool phù hợp trong MCP đã đăng ký.'}
 					</span>
 				)}
 			</div>
+
+			{knowledgeBases.length > 0 && <fieldset className="mt-3 space-y-1 text-xs" disabled={resourcesLocked}>
+				<legend className="mb-1 font-medium">Knowledge Base</legend>
+				{knowledgeBases.map((kb) => <label key={kb.id} className="flex items-center gap-2 py-1">
+					<Checkbox checked={(proposal.knowledge ?? []).some((item) => item.kb_id === kb.id)} onCheckedChange={(checked) => {
+						const ids = new Set((proposal.knowledge ?? []).map((item) => item.kb_id));
+						if (checked === true) ids.add(kb.id); else ids.delete(kb.id);
+						onKnowledgeChange([...ids]);
+					}} />{kb.name}
+				</label>)}
+			</fieldset>}
+			{resourcesLocked && <p className="mt-2 text-xs text-muted-foreground">Tool và KB đã chốt theo plan. Nhắn yêu cầu để lập và duyệt lại plan khi cần thay đổi.</p>}
 
 			{reused && (
 				<p className="mt-3 flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
@@ -186,6 +202,8 @@ export function AgentBuilderPage() {
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
 	const [agentsOpen, setAgentsOpen] = useState(false);
+	const { knowledgeBases } = useKnowledgeBases();
+	const [deletingAgent, setDeletingAgent] = useState<WorkforceAgent | null>(null);
 	const [deleting, setDeleting] = useState<BuilderConversationSummary | null>(null);
 	const loadProgress = useCallback(() => workforceApi.builderProgress(conversationId!), [conversationId]);
 	const { progress, progressError } = useEvaluationProgress(conversationId, loadProgress, working);
@@ -254,6 +272,7 @@ export function AgentBuilderPage() {
 				selectedModel,
 				conversationId,
 				confirmOutline,
+				proposal?.revision,
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
@@ -278,6 +297,7 @@ export function AgentBuilderPage() {
 				selectedModel,
 				conversationId,
 				true,
+				proposal.revision,
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
@@ -296,6 +316,7 @@ export function AgentBuilderPage() {
 				proposal.conversation_id,
 				proposal.proposal_id,
 				proposal.revision,
+				proposal.agents.map((agent) => (agent.knowledge ?? []).map((knowledge) => knowledge.kb_id)),
 			);
 			setProposal({ ...proposal, status: 'published' });
 			await refreshConversation(proposal.conversation_id);
@@ -324,11 +345,19 @@ export function AgentBuilderPage() {
 		await loadAgents();
 	};
 
+	const deleteAgent = async () => {
+		if (!deletingAgent) return;
+		await agentApi.delete(deletingAgent.agent_id);
+		setAgents((current) => current.filter((agent) => agent.agent_id !== deletingAgent.agent_id));
+		setDeletingAgent(null);
+	};
+
 	const current = conversations.find((item) => item.conversation_id === conversationId);
-	const roster = <AgentRoster agents={agents} onToggle={(agent) => void toggleLifecycle(agent)} />;
+	const roster = <AgentRoster agents={agents} onToggle={(agent) => void toggleLifecycle(agent)} onDelete={setDeletingAgent} />;
 
 	return (
 		<>
+		<DeleteDialog open={deletingAgent !== null} onOpenChange={(open) => { if (!open) setDeletingAgent(null); }} title={`Xóa agent ${deletingAgent?.name ?? ''}?`} description="Agent sẽ bị xóa khỏi platform." confirmLabel="Xóa agent" onConfirm={deleteAgent} />
 		<div className="flex size-full min-h-0">
 			<aside className="cue-column flex w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar max-md:hidden">
 				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
@@ -455,6 +484,7 @@ export function AgentBuilderPage() {
 						{proposal && (
 							<section className="flex flex-col gap-4 rounded-3xl border border-border/70 bg-[var(--cue-bg-subtle,var(--muted))]/40 p-4 motion-safe:animate-in motion-safe:fade-in">
 								<ProposalSteps status={proposal.status} />
+								{proposal.resource_selection && <p className="text-xs text-muted-foreground">Chọn tool/KB: {proposal.resource_selection}</p>}
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div className="min-w-0 flex-1">
 										<h2 className="text-[15px]/6 font-medium">{proposal.agents.length ? 'Cấu hình chờ duyệt' : 'Dàn ý hiện tại'} · {proposal.agents.length || proposal.planned_agents.length} agent</h2>
@@ -486,6 +516,9 @@ export function AgentBuilderPage() {
 												<div className="min-w-0 flex-1">
 													<p className="text-sm font-semibold">{agent.name}</p>
 													<p className="mt-1 line-clamp-3 text-[13px]/[18px] text-muted-foreground">{agent.objective}</p>
+													{agent.suggested_knowledge_bases?.map((kb) => <p key={kb.id} className="mt-1 text-xs text-muted-foreground">KB: {kb.name}</p>)}
+													{agent.reuse_agent_id && <p className="mt-1 text-xs text-muted-foreground">Dùng lại {agent.reuse_agent_name}</p>}
+													{agent.missing_resources?.map((missing) => <p key={missing} className="mt-1 text-xs text-destructive">{missing}</p>)}
 													{agent.suggested_tools.length > 0 && (
 														<div className="mt-2 flex flex-wrap gap-1">
 															{agent.suggested_tools.map((tool) => (
@@ -506,7 +539,7 @@ export function AgentBuilderPage() {
 										className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both"
 										style={{ animationDelay: `${index * 60}ms` }}
 									>
-										<AgentProposalCard proposal={agent} />
+										<AgentProposalCard proposal={agent} resourcesLocked={proposal.resources_locked === true || proposal.status === 'published'} knowledgeBases={knowledgeBases} onKnowledgeChange={(ids) => setProposal((current) => current ? { ...current, agents: current.agents.map((item, itemIndex) => itemIndex === index ? { ...item, knowledge: knowledgeBases.filter((kb) => ids.includes(kb.id)).map((kb) => ({ kb_id: kb.id, name: kb.name, description: kb.description ?? '' })) } : item) } : current)} />
 									</div>
 								))}
 							</section>
@@ -683,7 +716,7 @@ function ProposalSteps({ status }: { status: BuilderProposal['status'] }) {
 }
 
 /** The platform's business agents as portrait cards; the switch publishes one. */
-function AgentRoster({ agents, onToggle }: { agents: WorkforceAgent[]; onToggle: (agent: WorkforceAgent) => void }) {
+function AgentRoster({ agents, onToggle, onDelete }: { agents: WorkforceAgent[]; onToggle: (agent: WorkforceAgent) => void; onDelete: (agent: WorkforceAgent) => void }) {
 	const published = agents.filter((agent) => agent.lifecycle_state === 'published').length;
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -716,9 +749,10 @@ function AgentRoster({ agents, onToggle }: { agents: WorkforceAgent[]; onToggle:
 									<div className="min-w-0 flex-1">
 										<p className="truncate text-sm font-medium">{agent.name}</p>
 										<p className="truncate text-xs text-muted-foreground">
-											{agent.tool_count} tool · {live ? 'đang phát hành' : 'bản nháp'}
+											{agent.tool_count} tool · {agent.knowledge_base_count ?? 0} KB · {live ? 'đang phát hành' : 'bản nháp'}
 										</p>
 									</div>
+									<Button variant="ghost" size="icon" aria-label={`Xóa agent ${agent.name}`} onClick={() => onDelete(agent)}><Trash2 className="size-4" /></Button>
 									<Switch
 										checked={live}
 										onCheckedChange={() => onToggle(agent)}

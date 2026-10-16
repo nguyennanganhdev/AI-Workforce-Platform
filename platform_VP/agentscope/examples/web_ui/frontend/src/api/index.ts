@@ -19,6 +19,8 @@ export { adminApi } from './admin';
 export type * from './studio';
 export type {
 	BuilderConversationSummary,
+	AgentToolSettings,
+	BuilderKnowledgeBase,
 	BuilderMessage,
 	BuilderProposal,
 	BuilderTool,

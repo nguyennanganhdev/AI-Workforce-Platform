@@ -629,6 +629,133 @@ class UnifiedCaseCloseBarrierTest(_CaseHarness):
 
 
 class UnifiedPartnerCaseTest(_CaseHarness):
+    async def test_member_clarification_stays_with_case_leader_and_reaches_casesay(self):
+        from tests.team_say_shared_context_test import _Storage as TeamStorage
+        from agentscope.app._shared_context import SharedContextService
+        from agentscope.app._team_turn import get_team_turn, start_team_turn
+        from agentscope.app._tool import TeamSay
+        from agentscope.app.message_bus import MessageBusKeys
+        from agentscope.app.middleware import TeamMemberLoopMiddleware
+        from agentscope.app.workforce.integrations.unified._case import PartnerMemberMiddleware
+        from agentscope.message import AssistantMsg, ToolCallBlock, ToolResultBlock
+        from agentscope.state import AgentState
+        from agentscope.tool import Toolkit, ToolResponse
+
+        storage, bus = TeamStorage(), InMemoryMessageBus()
+        shared = SharedContextService(storage, bus)
+        task_id = await shared.active_task_id("u", "ticket-1")
+        await start_team_turn(bus, "ticket-1", reply_owner_session_id="leader-session",
+                              reply_owner_agent_id="leader", customer_session_id="leader-session",
+                              mode="leader", task_id=task_id, storage=storage, user_id="u")
+        question = "Anh/chị muốn nhân viên đến vào buổi nào?"
+
+        member = PartnerMemberMiddleware(_unsaid_case(), [], "Leader")
+        tool = TeamSay(storage=storage, message_bus=bus, workspace_manager=object(), user_id="u",
+                       session_id="worker-session", agent_id="worker", role="worker",
+                       shared_context_service=shared)
+        call_block = ToolCallBlock(id="question", name="TeamSay", input=json.dumps({
+            "kind": "requires_user_input", "to": None, "content": question,
+        }))
+        message = AssistantMsg(id="member-reply", name="Worker", content=[call_block])
+        agent = SimpleNamespace(name="Worker", state=AgentState(reply_id="member-reply", context=[message]))
+        message = agent.state.context[-1]
+
+        toolkit = Toolkit(tools=[tool])
+
+        async def execute(tool_call):
+            async for result in toolkit.call_tool(tool_call, agent.state):
+                yield result
+
+        [proposal] = [result async for result in member.on_acting(
+            agent, {"tool_call": message.content[0]}, execute) if isinstance(result, ToolResponse)]
+        self.assertEqual(ToolResultState.SUCCESS, proposal.state, proposal.content)
+        self.assertEqual("user_input_proposal", proposal.metadata["kind"])
+        message.content.append(ToolResultBlock(id="question", name="TeamSay", output=proposal.content,
+                                              state=proposal.state, metadata=proposal.metadata))
+        self.assertTrue(TeamMemberLoopMiddleware("Leader")._last_tool_call_reports_to_leader(agent))
+        turn = await get_team_turn(bus, "ticket-1", storage=storage, user_id="u")
+        self.assertEqual("leader-session", turn.reply_owner_session_id)
+        self.assertEqual("leader", turn.mode)
+        inbox = await bus.queue_drain(MessageBusKeys.inbox("leader-session"))
+        self.assertEqual(1, len(inbox))
+        self.assertIn(question, str(inbox[0]))
+        self.assertIsNone(await shared.pending_user_question("u", "ticket-1"))
+
+        async def ask_through_leader(tools):
+            await call(tools, "CaseSay", text=question, expects="reply")
+
+        self.leader.scripts = [ask_through_leader]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("succeeded", await self._run())
+            result = (await client.get(f"/workforce/v1/partner/requests/{started['request_id']}",
+                                      params={"external_user_id": "resident-1"})).json()
+            self.assertEqual("awaiting_user", result["workflow_state"])
+            self.assertEqual(question, result["result"]["messages"][0]["text"])
+
+    async def test_domain_http_bridge_drives_actual_platform_case(self):
+        # Cross-repo smoke: install the domain API package to enable this check.
+        try:
+            from vinhomes_api.platform import Bridge, Platform
+        except ModuleNotFoundError as exc:
+            if exc.name == "vinhomes_api":
+                self.skipTest("Vinhomes API package is not installed")
+            raise
+
+        async def dispatch(tools):
+            result = await call(tools, "vh_work_order_dispatch", ticket_id="T-77", description="Sửa rò nước")
+            await call(tools, "CaseSay", text="Yêu cầu đã được gửi và đang chờ nhân viên nhận.",
+                       expects="none", cites=[result.split(":")[0]])
+
+        async def confirmation(tools):
+            await call(tools, "CaseSay", text="Nhân viên đã gửi kết quả. Anh/chị xác nhận hoàn thành giúp tôi.",
+                       expects="confirmation")
+
+        self.leader.scripts = [dispatch, confirmation]
+        async with self._client() as client:
+            bridge = Platform(Bridge("https://platform.test", "customer-key", "provider-key", "sk_1",
+                                     SIGNING_SECRET, ""), transport=client._transport)
+            try:
+                body = self._start()
+                started = await bridge.request(body)
+                self.assertEqual("accepted", started["request_status"])
+                self.assertEqual(started["request_id"], (await bridge.request(body))["request_id"])
+                self.assertEqual("succeeded", await self._run())
+                result = await bridge.result(started["request_id"], "resident-1")
+                self.assertEqual("completed", result["request_status"])
+                self.assertEqual("awaiting_user", result["workflow_state"])
+                self.assertEqual(1, len(result["result"]["messages"]))
+
+                reference = next(args["client_reference"] for name, args in self.mcp_calls
+                                 if name == "vh_work_order_dispatch")
+                event = {
+                    "schema_version": "1", "external_event_id": "domain-result-1", "external_job_id": "WO-1",
+                    "client_reference": reference, "event_type": "job.result_published", "provider_version": 9,
+                    "occurred_at": "2026-10-20T02:00:00.000000Z",
+                    "data": {"summary": "Đã thay ống xả", "photo_count": 2, "reported_by": "Bình"},
+                }
+                raw = json.dumps(event, ensure_ascii=False, separators=(",", ":")).encode()
+                receipt = await bridge.job_event(raw)
+                self.assertEqual("applied", receipt["ingestion_status"])
+                self.assertEqual("applied", (await bridge.receipt(receipt["receipt_id"]))["ingestion_status"])
+                self.assertTrue((await bridge.job_event(raw))["duplicate"])
+                self.assertEqual("succeeded", await self._run())
+
+                history = await bridge.history(started["conversation_id"], "resident-1", None)
+                self.assertTrue(any(e["event_type"] == "assistant.message" for e in history["items"]))
+                snapshot = await bridge.snapshot(started["conversation_id"], "resident-1")
+                [workflow] = snapshot["workflows"]
+                self.assertEqual("awaiting_confirmation", workflow["state"])
+                closed = await bridge.close(started["workflow_id"], {
+                    "schema_version": "1", "external_request_id": "domain-close-1",
+                    "external_user_id": "resident-1", "external_ticket_id": "T-77",
+                    "external_conversation_id": "chat-9:T-77", "expected_revision": workflow["revision"],
+                    "reason": "resident_confirmed", "domain_acceptance": self._acceptance(),
+                })
+                self.assertEqual("closed", closed["workflow_state"])
+            finally:
+                await bridge.aclose()
+
     async def test_an_agent_a_partner_route_uses_cannot_be_removed(self):
         [guard] = self.runner._app.state.agent_delete_guards
         async with self.uows() as uow:
@@ -1195,6 +1322,36 @@ def _unsaid_case(said: bool = False, route: dict | None = None):
 
 
 class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
+    async def test_legacy_untargeted_member_result_reaches_case_leader(self):
+        from tests.team_say_shared_context_test import _Storage as TeamStorage
+        from agentscope.app._shared_context import SharedContextService
+        from agentscope.app._tool import TeamSay
+        from agentscope.app.message_bus import MessageBusKeys
+        from agentscope.app.workforce.integrations.unified._case import PartnerMemberMiddleware
+        from agentscope.message import ToolCallBlock
+        from agentscope.state import AgentState
+        from agentscope.tool import Toolkit, ToolResponse
+
+        storage, bus = TeamStorage(), InMemoryMessageBus()
+        shared = SharedContextService(storage, bus)
+        await shared.active_task_id("u", "ticket-1")
+        tool = TeamSay(storage=storage, message_bus=bus, workspace_manager=object(), user_id="u",
+                       session_id="worker-session", agent_id="worker", role="worker",
+                       shared_context_service=shared)
+        toolkit, state = Toolkit(tools=[tool]), AgentState()
+        block = ToolCallBlock(id="result", name="TeamSay", input='{"kind":"result","content":"Verified result"}')
+
+        async def execute(tool_call):
+            async for result in toolkit.call_tool(tool_call, state):
+                yield result
+
+        member = PartnerMemberMiddleware(_unsaid_case(), [], "Leader")
+        [report] = [result async for result in member.on_acting(None, {"tool_call": block}, execute)
+                    if isinstance(result, ToolResponse)]
+        self.assertEqual(ToolResultState.SUCCESS, report.state, report.content)
+        self.assertEqual("Leader", json.loads(block.input)["to"])
+        self.assertEqual(1, len(await bus.queue_drain(MessageBusKeys.inbox("leader-session"))))
+
     async def test_after_the_turns_message_the_turn_ends_without_a_model_call(self):
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
         from agentscope.model import ChatResponse
@@ -1335,6 +1492,9 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
 
             async def get_team(self, user_id, team_id):
                 return SimpleNamespace(session_id="s-leader")
+
+            async def get_agent(self, user_id, agent_id):
+                return SimpleNamespace(data=SimpleNamespace(name="Leader"))
 
         async def get_workspace(*_args):
             return Workspace()
@@ -1480,6 +1640,72 @@ class PromptCacheOrderTest(unittest.TestCase):
 
 
 class RoomStepEndTest(unittest.IsolatedAsyncioTestCase):
+    async def test_partner_waiter_runs_queued_dependency_before_leader_synthesis(self):
+        import asyncio
+        from tests.workforce_task_ledger_test import _Storage as TeamStorage
+        from agentscope.app._shared_context import SharedContextService
+        from agentscope.app._tool import TeamSay
+        from agentscope.app.message_bus import MessageBusKeys
+        from agentscope.app.middleware import LeaderEvidenceMiddleware
+        from agentscope.app.storage import TaskAssignment
+        from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware, TEAM_NUDGE
+        from agentscope.event import ReplyEndEvent
+        from agentscope.message import AssistantMsg, ToolCallBlock, ToolResultBlock
+        from agentscope.state import AgentState
+
+        storage, bus = TeamStorage(), InMemoryMessageBus()
+        shared = SharedContextService(storage, bus)
+        await shared.active_task_id("u", "ticket-1")
+        await shared.record_assignments("u", "ticket-1", {
+            "hotel-session": TaskAssignment(agent_id="hotel", goal="Look up the request"),
+            "cost-session": TaskAssignment(agent_id="cost", goal="Check the result", status="queued",
+                                           depends_on=("hotel-session",),
+                                           pending_payload={"type": "hint", "hint": "Check the result"}),
+        })
+        waiter = LeaderEvidenceMiddleware(storage, shared, "u", "leader", "leader-session", wait_seconds=1)
+        case = _unsaid_case()
+        case.said = AsyncMock(return_value=False)
+        middleware = PartnerCaseMiddleware(case, [], {"Hotel": {}, "Cost": {}}, waiter)
+        reply = AssistantMsg(id="leader-reply", name="Leader", content=[
+            ToolCallBlock(id="invite", name="AgentInvite", input='{"target":"Hotel"}'),
+            ToolResultBlock(id="invite", name="AgentInvite", output="Invited", metadata={
+                "invited_targets": ["Hotel", "Cost"], "queued_targets": ["Cost"],
+            }),
+        ])
+        agent = SimpleNamespace(name="Leader", state=AgentState(reply_id=reply.id, context=[reply]),
+                                react_config=SimpleNamespace(max_iters=10))
+        self.assertEqual(2, waiter._expected_reports(agent))
+        self.assertFalse(await waiter._ready(2))
+
+        async def reports():
+            for worker in ("hotel", "cost"):
+                if worker == "cost":
+                    queued = await bus.queue_drain(MessageBusKeys.inbox("cost-session"))
+                    self.assertEqual(1, len(queued))
+                    self.assertFalse(await waiter._ready(2))
+                tool = TeamSay(storage=storage, message_bus=bus, workspace_manager=object(), user_id="u",
+                               session_id=f"{worker}-session", agent_id=worker, role="worker",
+                               shared_context_service=shared)
+                result = await tool(kind="result", to="Leader", content=f"{worker} work completed")
+                self.assertNotEqual(ToolResultState.ERROR, result.state, result.content)
+
+        async def next_handler(**_kwargs):
+            yield ReplyEndEvent(session_id="leader-session", reply_id=reply.id)
+            self.assertTrue(any(TEAM_NUDGE in block.hint for message in agent.state.context
+                                for block in message.get_content_blocks("hint")))
+            case.said.return_value = True
+            yield ReplyEndEvent(session_id="leader-session", reply_id=reply.id)
+
+        worker = asyncio.create_task(reports())
+        try:
+            output = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+            await worker
+        finally:
+            if not worker.done():
+                worker.cancel()
+        self.assertEqual(1, len(output))
+        self.assertTrue(await waiter._ready(2))
+
     async def test_after_inviting_the_step_ends_once_and_the_reports_wake_the_leader(self):
         from agentscope.app.workforce.integrations.unified._case import ROOM_WORKING, PartnerCaseMiddleware
         from agentscope.message import AssistantMsg, ToolResultBlock, ToolResultState

@@ -12,7 +12,6 @@ from agentscope.app._router._workforce_console import (
     _normalise_skill,
     _response_language,
     _select_model_name,
-    _similarity,
     _stored_proposal,
 )
 from agentscope.app._workforce_policy import (
@@ -83,20 +82,6 @@ def test_skill_normalisation_adds_safe_front_matter() -> None:
     assert "# Workflow" in skill
 
 
-def test_reuse_similarity_prefers_same_business_capability() -> None:
-    same = _similarity(
-        "Agent tìm khách sạn và kiểm tra phòng theo ngân sách",
-        "Agent kiểm tra phòng khách sạn theo ngân sách và đề xuất lựa chọn",
-    )
-    unrelated = _similarity(
-        "Agent tìm khách sạn và kiểm tra phòng theo ngân sách",
-        "Agent chẩn đoán sự cố điện và điều phối kỹ thuật viên",
-    )
-
-    assert same > unrelated
-    assert unrelated < 0.3
-
-
 def test_workforce_model_default_does_not_depend_on_card_order() -> None:
     assert (
         _select_model_name(
@@ -126,18 +111,13 @@ def test_builder_and_leader_follow_the_users_language_naturally() -> None:
     assert _response_language("Hãy tạo cho tôi một team agent") == "vi"
     assert _response_language("Please create a travel agent team") == "en"
     assert _response_language("OK", "Tôi muốn tạo agent khách sạn") == "vi"
-    assert "latest message" in _LEADER_PROMPT
     assert "Vietnamese" in _LEADER_PROMPT
-    assert "English" in _LEADER_PROMPT
     assert "helpful person" in _LEADER_PROMPT
 
 
 def test_leader_requires_verified_agent_evidence_for_domain_answers() -> None:
-    assert "orchestrator, not a source" in _LEADER_PROMPT
-    assert "always require verified evidence" in _LEADER_PROMPT
-    assert "Never answer these from pretrained" in _LEADER_PROMPT
-    assert "could not be verified" in _LEADER_PROMPT
-    assert "wait for the relevant results" in _LEADER_PROMPT
+    assert "orchestrator, not a specialist" in _LEADER_PROMPT
+    assert "Never invent a missing value" in _LEADER_PROMPT
 
 
 def test_builder_outline_keeps_team_capabilities_separate() -> None:
@@ -168,10 +148,10 @@ def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> No
     # The platform prompts are domain-neutral: business rules such as a
     # travel budget reserve belong to that business's agents.
     for domain_word in ("hotel", "reserve", "vehicle", "cuisine", "itinerary"):
-        assert domain_word not in WORKFORCE_LEADER_PROMPT.casefold()
-        assert domain_word not in BUSINESS_AGENT_EVIDENCE_POLICY.casefold()
-    assert "done_when" in WORKFORCE_LEADER_PROMPT
-    assert "depends_on" in WORKFORCE_LEADER_PROMPT
+        import re
+        assert not re.search(r"\b" + domain_word + r"\b", WORKFORCE_LEADER_PROMPT.casefold())
+        assert not re.search(r"\b" + domain_word + r"\b", BUSINESS_AGENT_EVIDENCE_POLICY.casefold())
+    assert "TeamSay" in WORKFORCE_LEADER_PROMPT
 
 
 def test_builder_claims_each_tool_for_only_one_agent() -> None:

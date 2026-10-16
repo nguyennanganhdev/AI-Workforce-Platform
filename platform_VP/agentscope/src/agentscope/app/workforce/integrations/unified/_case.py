@@ -30,6 +30,7 @@ from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
 from ....._logging import logger
+from ....._utils._common import _json_loads_with_repair
 from .....event import ReplyEndEvent, ReplyFinishedReason
 from .....message import TextBlock, ToolResultBlock, ToolResultState
 from .....middleware import MiddlewareBase
@@ -897,13 +898,27 @@ class PartnerMemberMiddleware(MiddlewareBase):
     """A member of a partner ticket's room: its share of the route's tools,
     under the ticket's grant; it reports to the leader, never to the user."""
 
-    def __init__(self, case: _Case, tools: list[ToolBase]) -> None:
+    def __init__(self, case: _Case, tools: list[ToolBase], leader_name: str) -> None:
         super().__init__()
         self._case = case
         self._tools = tools
+        self._leader_name = leader_name
 
     async def list_tools(self) -> list[ToolBase]:
         return [CaseEvidence(self._case), *self._tools]
+
+    async def on_acting(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
+        call = input_kwargs["tool_call"]
+        if call.name == "TeamSay":
+            arguments = _json_loads_with_repair(call.input)
+            if arguments.get("kind") in {"requires_user_input", "need_customer_info", "user_input_proposal"}:
+                # Only the case leader can deliver a question through CaseSay.
+                arguments.update(kind="user_input_proposal", to=self._leader_name)
+            elif arguments.get("kind", "result") in {"result", "error"} and not arguments.get("to"):
+                arguments["to"] = self._leader_name
+            call.input = json.dumps(arguments, ensure_ascii=False)
+        async for result in next_handler(**input_kwargs):
+            yield result
 
     async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
         allowed = {"TeamSay", "CaseEvidence", *(tool.name for tool in self._tools)}
@@ -1111,7 +1126,10 @@ class CaseRuntime:
             await workspace.remove_mcp(default_mcp.name, agent_id=agent_id, session_id=record.id)
         case = _Case(self.store, leader, route)
         tools = await self._tools(user_id, case, route, only=set(member.get("tools") or []))
-        return [PartnerMemberMiddleware(case, tools)]
+        leader_agent = await self._storage.get_agent(user_id, leader["agent_id"])
+        if leader_agent is None:
+            raise ValueError("Partner ticket leader is unavailable")
+        return [PartnerMemberMiddleware(case, tools, leader_agent.data.name)]
 
     async def _tools(self, user_id: str, case: _Case, route: dict, only: set[str] | None = None) -> list[ToolBase]:
         from .....mcp import MCPClient

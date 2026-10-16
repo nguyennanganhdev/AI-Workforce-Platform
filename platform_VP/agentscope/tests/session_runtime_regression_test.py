@@ -111,7 +111,7 @@ async def test_manager_console_does_not_answer_or_approve_as_resident(mention, t
 
 
 @pytest.mark.asyncio
-async def test_shared_packet_indexes_partner_history_without_model_call():
+async def test_shared_packet_keeps_partner_evidence_without_model_call():
     from team_shared_context_test import _Storage, _MeasuredModel
     from agentscope.app._shared_context import SharedContextConfig
     from agentscope.app.message_bus import InMemoryMessageBus
@@ -127,8 +127,11 @@ async def test_shared_packet_indexes_partner_history_without_model_call():
     assert tokens<=4000
     assert model.summary_calls==0
     assert len(after.state.events)==12
-    assert 'Raw sources' in packet
-    assert after.state.metrics.compactions==1
+    facts=json.loads(packet)['authoritative_state']['items']
+    assert len(facts)==12
+    assert all(f'E{index+1}:' in fact['text'] for index,fact in enumerate(facts))
+    assert all(fact['source_event_ids'] for fact in facts)
+    assert after.state.metrics.compactions==0
 
 
 @pytest.mark.asyncio

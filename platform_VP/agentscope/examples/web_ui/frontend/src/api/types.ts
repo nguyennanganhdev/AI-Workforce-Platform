@@ -49,8 +49,11 @@ export interface AgentData {
 	invite_config: InviteConfig;
 	system_role?: 'business' | 'leader';
 	lifecycle_state?: 'draft' | 'published' | 'withdrawn';
+	published_version?: number | null;
 	build_description?: string;
+	execution_mode?: 'context_only' | 'tool_backed' | null;
 	tool_bindings?: Array<{
+		id?: string;
 		mcp_id: string;
 		mcp_name: string;
 		tool_name: string;
@@ -142,6 +145,7 @@ export interface SessionConfig {
 	/** Who owns `name` — see the backend's `SessionNaming`. */
 	naming: { auto: boolean };
 	chat_model_config: ChatModelConfig;
+	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/** Fallback model used when the primary model fails. */
 	fallback_chat_model_config: ChatModelConfig | null;
 	/** TTS model configuration. null means TTS is not enabled. */
@@ -179,6 +183,7 @@ export interface CreateSessionRequest {
 	agent_id: string;
 	workspace_id?: string;
 	chat_model_config?: ChatModelConfig | null;
+	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/** Optional fallback model. Omit (or pass null) for no fallback. */
 	fallback_chat_model_config?: ChatModelConfig | null;
 	/** Optional TTS model. Omit (or pass null) for no TTS. */
@@ -198,6 +203,7 @@ export interface InterruptSessionResponse {
 export interface UpdateSessionRequest {
 	name?: string;
 	chat_model_config?: ChatModelConfig;
+	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/**
 	 * New fallback model. PATCH semantics:
 	 *   - omit the field → leave unchanged

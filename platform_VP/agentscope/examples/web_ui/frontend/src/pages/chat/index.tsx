@@ -222,6 +222,9 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 			...(seedConfig?.chat_model_config
 				? { chat_model_config: seedConfig.chat_model_config }
 				: {}),
+			...(seedConfig?.sub_agent_chat_model_config
+				? { sub_agent_chat_model_config: seedConfig.sub_agent_chat_model_config }
+				: {}),
 			...(seedConfig?.fallback_chat_model_config
 				? { fallback_chat_model_config: seedConfig.fallback_chat_model_config }
 				: {}),
@@ -279,7 +282,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		}));
 
 	const handleGroupCreated = async (agentId: string, sessionId: string) => {
-		// Members may have just been made invitable, and the leader's session
+		// The fixed Leader may have just been created, and its session
 		// list has to know the new chat before the URL points at it — the
 		// redirect above sends an unknown session back to the last one.
 		await Promise.all([
@@ -490,6 +493,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				<ChatViewport
 					agentId={effectiveAgentId}
 					sessionId={effectiveSessionId}
+					readOnly={focusedMember !== null}
 					onSessionsChanged={refetchSessions}
 					agentName={
 						focusedMember?.agent.data.name ??
@@ -580,12 +584,13 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				agents={agents}
 				modelConfig={{
 					chat: (currentView ?? sessions[0])?.session.config.chat_model_config,
+					subAgent: (currentView ?? sessions[0])?.session.config.sub_agent_chat_model_config,
 					fallback: (currentView ?? sessions[0])?.session.config
 						.fallback_chat_model_config,
 				}}
 				onCreateAgent={() => {
 					setGroupOpen(false);
-					setQuickAgentOpen(true);
+					navigate('/workforce/builder');
 				}}
 				onCreated={handleGroupCreated}
 			/>
@@ -680,7 +685,7 @@ export const ChatPage = () => {
 					agents={agents}
 					onCreateAgent={() => {
 						setGroupOpen(false);
-						setQuickAgentOpen(true);
+						navigate('/workforce/builder');
 					}}
 					onCreated={(agentId, sessionId) => {
 						navigate(`/chat/${agentId}/${sessionId}`);

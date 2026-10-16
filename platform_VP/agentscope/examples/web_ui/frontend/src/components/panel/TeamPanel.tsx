@@ -1,11 +1,14 @@
 import { Crown, UsersRound } from 'lucide-react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 
 import type { AgentView, TeamDetailResponse } from '@/api';
 import { cleanName } from '@/components/chat/teamDialogText';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { RoomActivity } from '@/components/panel/RoomActivity';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
+import { useTeamActivity } from '@/hooks/useTeamActivity';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +29,7 @@ interface TeamPanelProps {
 function AgentRow({
 	agent,
 	role,
+	status,
 	active,
 	disabled,
 	index,
@@ -33,6 +37,7 @@ function AgentRow({
 }: {
 	agent: AgentView;
 	role: string;
+	status?: string;
 	active: boolean;
 	disabled: boolean;
 	index: number;
@@ -57,7 +62,7 @@ function AgentRow({
 				<ClayAvatar id={agent.id} label={agent.data.name} size={32} />
 				<span className="flex min-w-0 flex-1 flex-col">
 					<span className="truncate text-sm font-medium text-foreground">{cleanName(agent.data.name)}</span>
-					<span className="truncate text-xs text-muted-foreground">{role}</span>
+					<span className="truncate text-xs text-muted-foreground">{status ?? role}</span>
 				</span>
 			</button>
 		</li>
@@ -74,6 +79,11 @@ function AgentRow({
 export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
+	const participants = useMemo(() => team ? [
+		...(team.leader_agent ? [{ agentId: team.leader_agent.id, sessionId: team.team.session_id, name: team.leader_agent.data.name, role: 'leader' as const }] : []),
+		...team.members.map(({ agent, session_id }) => ({ agentId: agent.id, sessionId: session_id, name: agent.data.name, role: 'member' as const })),
+	] : [], [team]);
+	const { runtimeBySession } = useTeamActivity(participants);
 
 	if (!team) {
 		return (
@@ -112,7 +122,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 							<ClayAvatar id={team.leader_agent.id} label="Leader" size={32} />
 							<span className="flex min-w-0 flex-1 flex-col">
 								<span className="truncate text-sm font-medium">Leader</span>
-								<span className="truncate text-xs text-muted-foreground">{t('common.leader')}</span>
+								<span className="truncate text-xs text-muted-foreground">{runtimeBySession[leaderSessionId]?.detail ?? t('common.leader')}</span>
 							</span>
 							<Crown className="size-3.5 shrink-0 text-muted-foreground" />
 						</button>
@@ -122,6 +132,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 					<AgentRow
 						key={member.agent.id}
 						agent={member.agent}
+						status={member.session_id ? runtimeBySession[member.session_id]?.detail : undefined}
 						role={member.agent.data.invite_config?.invite_description?.trim() || t('panel.team.member')}
 						active={member.session_id === currentSessionId}
 						disabled={member.session_id === null}

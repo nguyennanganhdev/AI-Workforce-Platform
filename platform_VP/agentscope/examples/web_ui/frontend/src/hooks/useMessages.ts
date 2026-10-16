@@ -8,12 +8,12 @@ import type {
 	ReplyStartEvent,
 	UserConfirmResultEvent,
 } from '@agentscope-ai/agentscope/event';
-import { AssistantMsg, UserMsg } from '@agentscope-ai/agentscope/message';
+import { UserMsg } from '@agentscope-ai/agentscope/message';
 import type { Msg, ContentBlock } from '@agentscope-ai/agentscope/message';
 import type { ToolCallBlock } from '@agentscope-ai/agentscope/message';
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-import { appendChatEvent } from '../utils/appendChatEvent';
+import { mergeChatEvent } from '../utils/appendChatEvent';
 import { sessionApi, takeFreshlyCreated } from '@/api';
 import { chatApi } from '@/api';
 import { useAudioManager } from '@/context/audio-context';
@@ -88,10 +88,9 @@ const INTERRUPT_TIMEOUT_MS = 10_000;
  *   produced by any chat run on this session (user-triggered,
  *   background retrigger, team member message, …).
  *
- * The hook opens the SSE connection immediately after fetching
- * history. User input and human-in-the-loop confirmations are sent
- * via ``POST /chat/`` (fire-and-forget); the resulting events arrive
- * through the already-open SSE connection.
+ * Interactive views open an SSE connection after fetching history.
+ * Read-only observer views poll history instead, so inspecting a team
+ * member does not consume another long-lived browser connection.
  *
  * ``phase`` is driven by event content, not HTTP lifecycle: it moves
  * to ``streaming`` on ``ReplyStartEvent`` and back to ``idle`` on
@@ -111,6 +110,10 @@ export function useMessages(
 	agentId: string | null,
 	sessionId: string | null,
 	options?: {
+		/** Shared team chat keeps its composer available during peer runs. */
+		teamChat?: boolean;
+		/** Open the live SSE stream. Disable for read-only observer views. */
+		stream?: boolean;
 		/**
 		 * Called when a ``CUSTOM`` event with ``name="team_updated"``
 		 * arrives — the team membership has changed (TeamCreate /
@@ -134,6 +137,7 @@ export function useMessages(
 		onSessionUpdated?: () => void;
 	},
 ) {
+	const stream = options?.stream ?? true;
 	const [msgs, setMsgs] = useState<Msg[]>([]);
 	// The (agent, session) pair `msgs` actually belongs to. Loading is
 	// derived from it rather than set inside the fetch effect: an effect
@@ -148,6 +152,7 @@ export function useMessages(
 
 	const msgsRef = useRef<Msg[]>([]);
 	const currentReplyRef = useRef<Msg | null>(null);
+	const runningRepliesRef = useRef(new Set<string>());
 	const abortRef = useRef<AbortController | null>(null);
 	const rafRef = useRef<number | null>(null);
 	// Timer that reverts ``interrupting`` back to ``idle`` if the
@@ -189,9 +194,10 @@ export function useMessages(
 						msgsRef.current = exists
 							? msgsRef.current.map((m) => m.id === message.id ? message : m)
 							: [...msgsRef.current, message];
-						if (message.role === 'assistant' && message.finished_at && currentReplyRef.current?.id === message.id) {
-							currentReplyRef.current = null;
-							setPhase('idle');
+						if (message.role === 'assistant' && (message.finished_at || message.finished_reason)) {
+							runningRepliesRef.current.delete(message.id);
+							if (currentReplyRef.current?.id === message.id) currentReplyRef.current = null;
+							setPhase(runningRepliesRef.current.size > 0 ? 'streaming' : 'idle');
 						}
 						scheduleUpdate();
 					}
@@ -217,6 +223,10 @@ export function useMessages(
 				}
 				return;
 			}
+			if (event.type === EventType.REPLY_START && !msgsRef.current.some((message) => message.id === event.reply_id)) {
+				audioManager?.stopAllPlayback();
+			}
+			msgsRef.current = mergeChatEvent(msgsRef.current, event);
 			if (event.type === EventType.REPLY_START) {
 				const e = event as ReplyStartEvent;
 				// A continuation (the run resuming after a confirmation or an
@@ -227,38 +237,15 @@ export function useMessages(
 				// running state, and hide any still-pending confirmation card
 				// — those are read off the tail msg, which would be the empty
 				// duplicate.
-				const existing = msgsRef.current.find((m) => m.id === e.reply_id);
-				if (existing) {
-					currentReplyRef.current = existing;
-				} else {
-					audioManager?.stopAllPlayback();
-					const msg = AssistantMsg({ id: e.reply_id, name: e.name, content: [] });
-					msgsRef.current = [...msgsRef.current, msg];
-					currentReplyRef.current = msg;
-				}
+				currentReplyRef.current = msgsRef.current.find((m) => m.id === e.reply_id) ?? null;
+				runningRepliesRef.current.add(e.reply_id);
 				clearInterruptTimer();
 				setPhase('streaming');
-			} else {
-				if (currentReplyRef.current) {
-					const reply = currentReplyRef.current;
-					appendChatEvent(reply, event);
-					// ``appendEvent`` mutates in place, which would leave
-					// every Msg identical across renders and force the whole
-					// list to re-render on each delta. Republish just the
-					// reply that changed under a fresh identity, so the
-					// memoised bubbles of the other messages can skip the
-					// render. Anything holding a Msg reference across events
-					// must re-read it from here — ``currentReplyRef`` below,
-					// everything else looks the reply up by id.
-					const updated = { ...reply, content: [...reply.content] };
-					msgsRef.current = msgsRef.current.map((m) => (m === reply ? updated : m));
-					currentReplyRef.current = updated;
-				}
-				if (event.type === EventType.REPLY_END) {
-					clearInterruptTimer();
-					setPhase('idle');
-					currentReplyRef.current = null;
-				}
+			} else if (event.type === EventType.REPLY_END) {
+				runningRepliesRef.current.delete(event.reply_id);
+				clearInterruptTimer();
+				setPhase(runningRepliesRef.current.size > 0 ? 'streaming' : 'idle');
+				currentReplyRef.current = null;
 			}
 
 			// Route streaming audio DataBlocks to the audio manager. They still
@@ -294,6 +281,7 @@ export function useMessages(
 		setLoadedKey(null);
 		msgsRef.current = [];
 		currentReplyRef.current = null;
+		runningRepliesRef.current.clear();
 		setMsgs([]);
 		setError(null);
 		clearInterruptTimer();
@@ -306,17 +294,47 @@ export function useMessages(
 		const controller = new AbortController();
 		abortRef.current = controller;
 		let cancelled = false;
+		let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
 		(async () => {
-			// 1. Fetch persisted history — unless this tab just created the
-			// session, in which case there is provably none.
-			if (takeFreshlyCreated(sessionId)) {
-				if (!cancelled) setLoadedKey(`${agentId}:${sessionId}`);
-			} else {
+			const loadHistory = async (silent = false, reconcile = false) => {
 				try {
-					const { messages, is_running } = await sessionApi.messages(sessionId, agentId);
+					const { messages, is_running } = await sessionApi.messages(
+						sessionId,
+						agentId,
+						undefined,
+						{ signal: controller.signal, silent },
+					);
 					if (cancelled) return;
-					msgsRef.current = messages;
+					if (reconcile) {
+						const localById = new Map(msgsRef.current.map((message) => [message.id, message]));
+						const persistedIds = new Set(messages.map((message) => message.id));
+						const newestPersisted = Math.max(
+							0,
+							...messages.map((message) => new Date(message.created_at).getTime()),
+						);
+						msgsRef.current = [
+							...messages.map((message) => {
+								const local = localById.get(message.id);
+								return !local || message.finished_at || message.finished_reason
+									? message
+									: local;
+							}),
+							...msgsRef.current.filter(
+								(message) =>
+									!persistedIds.has(message.id) &&
+									(runningRepliesRef.current.has(message.id) ||
+										new Date(message.created_at).getTime() >= newestPersisted),
+							),
+						];
+						for (const message of messages) {
+							if (message.finished_at || message.finished_reason) {
+								runningRepliesRef.current.delete(message.id);
+							}
+						}
+					} else {
+						msgsRef.current = messages;
+					}
 					// If a reply is in flight (running on a worker) OR the
 					// tail msg is parked on a pending tool_call (awaiting
 					// user confirmation / external execution), initialise the
@@ -324,9 +342,10 @@ export function useMessages(
 					// available immediately — otherwise a fresh page load
 					// while parked leaves the UI stuck on ``idle`` with no
 					// way to abort.
-					const tail = messages[messages.length - 1];
-					if (is_running || hasPendingToolCall(tail)) {
-						setPhase('streaming');
+					const tail = msgsRef.current[msgsRef.current.length - 1];
+					const inProgress = is_running || hasPendingToolCall(tail);
+					setPhase(inProgress ? 'streaming' : 'idle');
+					if (inProgress) {
 						if (hasPendingToolCall(tail)) {
 							// Prime the ref so continuation events (which
 							// arrive without a fresh REPLY_START) apply to
@@ -334,6 +353,7 @@ export function useMessages(
 							currentReplyRef.current = tail ?? null;
 						}
 					}
+					setError(null);
 					// Published synchronously, not through `scheduleUpdate`:
 					// its requestAnimationFrame batching exists for
 					// high-frequency streaming deltas, and deferring here
@@ -343,9 +363,7 @@ export function useMessages(
 					// Both setters now land in the same React batch.
 					setMsgs([...msgsRef.current]);
 				} catch (e) {
-					if (!cancelled) setError(e as Error);
-					// Keep subscribing and reconciling after a transient history
-					// failure; otherwise this tab stays offline until a reload.
+					if (!cancelled && (e as Error).name !== 'AbortError') setError(e as Error);
 				} finally {
 					// Marks the load done whether it succeeded or threw —
 					// an error surfaces through `error`, and leaving
@@ -353,67 +371,72 @@ export function useMessages(
 					// forever.
 					if (!cancelled) setLoadedKey(`${agentId}:${sessionId}`);
 				}
+			};
+
+			// 1. Fetch persisted history — unless this tab just created the
+			// session, in which case there is provably none.
+			if (takeFreshlyCreated(sessionId)) {
+				if (!cancelled) setLoadedKey(`${agentId}:${sessionId}`);
+			} else {
+				await loadHistory();
 			}
 
-			// Reconcile persisted messages after a disconnect; SSE is a live
-			// signal, so events missed while offline must be read from storage.
+			// Observer views poll instead of streaming. Team chat also reconciles
+			// periodically so a dropped terminal SSE event cannot leave a stale
+			// spinner after every member has already finished.
+			{
+				const poll = async () => {
+					await loadHistory(true, stream);
+					if (!cancelled) pollTimer = setTimeout(() => void poll(), optionsRef.current?.teamChat || !stream ? 1_500 : 5_000);
+				};
+				if (!cancelled) pollTimer = setTimeout(() => void poll(), optionsRef.current?.teamChat || !stream ? 1_500 : 5_000);
+			}
+			if (!stream) {
+				return;
+			}
+
+			// 2. Keep the live stream connected. Every reconnect first reconciles
+			// persisted history, which closes replies whose REPLY_END was missed.
 			let retry = 0;
 			while (!cancelled) {
 				try {
-					if (retry) {
-						const history = await sessionApi.messages(sessionId, agentId);
-						if (cancelled) break;
-						for (const message of history.messages) {
-							const index = msgsRef.current.findIndex((m) => m.id === message.id);
-							if (index < 0) msgsRef.current.push(message);
-							else if (currentReplyRef.current?.id !== message.id || message.finished_at) msgsRef.current[index] = message;
-							if (currentReplyRef.current?.id === message.id && message.finished_at) currentReplyRef.current = null;
-						}
-						if (!history.is_running && !hasPendingToolCall(history.messages.at(-1))) setPhase('idle');
-						scheduleUpdate();
-					}
-					setError(null);
-					for await (const event of sessionApi.streamEvents(sessionId, agentId, controller.signal)) {
+					for await (const event of sessionApi.streamEvents(
+						sessionId,
+						agentId,
+						controller.signal,
+					)) {
 						if (cancelled) break;
 						retry = 0;
 						processEvent(event);
 					}
 				} catch (e) {
-					if (cancelled || (e as Error).name === 'AbortError') break;
-					setError(new Error('Đang kết nối lại để cập nhật hội thoại…'));
+					if ((e as Error).name !== 'AbortError' && !cancelled) {
+						setError(e as Error);
+					}
 				}
 				if (cancelled) break;
+				await loadHistory(true, true);
 				retry += 1;
 				await new Promise<void>((resolve) => {
-					const done = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', done); resolve(); };
-					const timer = setTimeout(done, Math.min(1000 * retry, 10000));
-					controller.signal.addEventListener('abort', done, { once: true });
+					const finishWait = () => {
+						clearTimeout(reconnectTimer);
+						controller.signal.removeEventListener('abort', finishWait);
+						resolve();
+					};
+					const reconnectTimer = setTimeout(finishWait, Math.min(1000 * retry, 10000));
+					controller.signal.addEventListener('abort', finishWait, { once: true });
 				});
 			}
 		})();
-		// Also cover the short history/subscription race and an idle reply
-		// written by another worker. Never replace an actively streamed reply.
-		const reconcile = window.setInterval(async () => {
-			if (document.hidden || currentReplyRef.current) return;
-			try {
-				const history = await sessionApi.messages(sessionId, agentId);
-				if (cancelled || currentReplyRef.current) return;
-				const byId = new Map(msgsRef.current.map((m) => [m.id, m]));
-				for (const message of history.messages) byId.set(message.id, message);
-				msgsRef.current = [...byId.values()];
-				if (!history.is_running && !hasPendingToolCall(history.messages.at(-1))) setPhase('idle');
-				scheduleUpdate();
-			} catch { /* SSE reconnect reports connection status. */ }
-		}, 5000);
 
 		return () => {
 			cancelled = true;
-			window.clearInterval(reconcile);
 			controller.abort();
+			if (pollTimer) clearTimeout(pollTimer);
 			abortRef.current = null;
 			clearInterruptTimer();
 		};
-	}, [agentId, sessionId, scheduleUpdate, processEvent, audioManager, clearInterruptTimer]);
+	}, [agentId, sessionId, stream, scheduleUpdate, processEvent, audioManager, clearInterruptTimer]);
 
 	/**
 	 * Send a user message. Appends the message to the local list
@@ -423,7 +446,7 @@ export function useMessages(
 	 * @param content - The message content blocks.
 	 */
 	const send = useCallback(
-		async (content: ContentBlock[]) => {
+		async (content: ContentBlock[], targetAgentId?: string) => {
 			if (!agentId || !sessionId) return;
 
 			const userMsg = UserMsg({ name: 'user', content });
@@ -435,6 +458,7 @@ export function useMessages(
 					agent_id: agentId,
 					session_id: sessionId,
 					input: userMsg,
+					...(targetAgentId && { target_agent_id: targetAgentId }),
 				});
 				if (response.message) {
 					msgsRef.current = [...msgsRef.current, response.message];
@@ -615,7 +639,7 @@ export function useMessages(
 	return {
 		msgs: ownsConversation ? msgs : [],
 		loading,
-		phase: ownsConversation && !awaitingConsent ? phase : ('idle' as ReplyPhase),
+		phase: ownsConversation && !awaitingConsent && !options?.teamChat ? phase : ('idle' as ReplyPhase),
 		error: ownsConversation ? error : null,
 		send,
 		onUserConfirm,

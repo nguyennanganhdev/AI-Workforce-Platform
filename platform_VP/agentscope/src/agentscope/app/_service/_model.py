@@ -4,7 +4,9 @@ import os
 
 from ._access import ResourceAccessService
 from ..storage import ChatModelConfig
-from ...credential import CredentialFactory
+from fastapi import HTTPException
+
+from ...credential import CredentialFactory, OpenAICredential
 from ...model import ChatModelBase, OpenAIChatModel, OpenAIResponseModel
 from ..._logging import logger
 
@@ -76,6 +78,19 @@ async def get_model(
         # An OpenAI-compatible gateway (or the scripted test model) speaks
         # Chat Completions; OPENAI_CHAT_API=responses says it speaks both.
         model_cls = OpenAIChatModel
+    if isinstance(credential, OpenAICredential) and config.model == "gpt-6-luna":
+        # Luna requires Responses for tool calls with reasoning enabled.
+        model_cls = OpenAIResponseModel
+        if config.parameters.get("reasoning_effort") not in (
+            None, "none", "low", "medium", "high", "xhigh", "max",
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "gpt-6-luna reasoning_effort must be one of: "
+                    "none, low, medium, high, xhigh, max."
+                ),
+            )
     parameters = (
         model_cls.Parameters(**config.parameters)
         if config.parameters

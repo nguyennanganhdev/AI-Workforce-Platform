@@ -52,6 +52,15 @@ class TeamMember(BaseModel):
         ),
     )
 
+    description: str = Field(
+        default="",
+        description=(
+            "The member's team-visible responsibility or capability. "
+            "Every runtime member receives this in the current team roster "
+            "so it can route peer handoffs by responsibility."
+        ),
+    )
+
 
 class TeamData(BaseModel):
     """The team data model."""

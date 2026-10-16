@@ -67,6 +67,8 @@ interface ChatContentProps {
 	composerPlaceholder?: string;
 	showWorkspace?: boolean;
 	msgs: Msg[];
+	readOnly?: boolean;
+	teamChat?: boolean;
 	/**
 	 * Whether the history for the currently selected session is still on
 	 * the wire. Takes precedence over {@link msgs}, which still holds the
@@ -80,7 +82,7 @@ interface ChatContentProps {
 	 */
 	phase: ReplyPhase;
 	disabled: boolean;
-	onSend: (content: ContentBlock[]) => void;
+	onSend: (content: ContentBlock[], targetAgentId?: string) => void;
 	onUserConfirm: (
 		toolCall: ToolCallBlock,
 		confirm: boolean,
@@ -123,6 +125,8 @@ interface ChatContentProps {
 
 const ChatContentComponent: React.FC<ChatContentProps> = ({
 	msgs,
+	readOnly = false,
+	teamChat = false,
 	composerPlaceholder,
 	showWorkspace = true,
 	loading = false,
@@ -147,6 +151,13 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const ticketView = useContext(TicketViewContext);
+	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
+	useEffect(() => setReplyTarget(null), [agentId, sessionId]);
+	const sendReply = (content: ContentBlock[]) => {
+		if (readOnly) return;
+		onSend(content, replyTarget?.agentId);
+		setReplyTarget(null);
+	};
 	// Only a session that finished loading with nothing in it is empty.
 	// Treating "no messages yet" as empty would flash the greeting over
 	// every session that does have history.
@@ -255,6 +266,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 											<ASMessageBubble
 												message={message}
 												onUserConfirm={onUserConfirm}
+												onReplyTo={teamChat && !readOnly ? (agentId, name) => setReplyTarget({ agentId, name }) : undefined}
 											/>
 										</MessageScrollerItem>
 									);
@@ -262,7 +274,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 								{msgs.length > 0 &&
 									msgs[msgs.length - 1].finished_reason ===
 										ReplyFinishedReason.EXCEED_MAX_ITERS &&
-									phase === 'idle' && (
+									phase === 'idle' && !readOnly && (
 										<Alert
 											variant={'default'}
 											className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-50"
@@ -305,7 +317,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				</MessageScrollerProvider>
 			)}
 
-			{loading ? null : (
+			{loading || readOnly ? null : (
 				<div className="relative w-full px-4 pb-4">
 					{/* In flow, not overlaid: the transcript shrinks to make room, so the
 					    card never hides the message it answers. */}
@@ -330,6 +342,11 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 							footerSlot
 						)}
 					</FlipCard>
+					{replyTarget && (
+						<div className="mb-2 flex items-center justify-between rounded-xl bg-muted px-3 py-2 text-xs">
+							<span>Trả lời {replyTarget.name}</span><Button variant="ghost" size="xs" onClick={() => setReplyTarget(null)}>Hủy</Button>
+						</div>
+					)}
 					<TextInput
 						className="w-full"
 						placeholder={
@@ -338,7 +355,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 								? t('chat.messagePlaceholder', { name: agentName })
 								: undefined)
 						}
-						onSend={onSend}
+						onSend={sendReply}
 						disabled={disabled}
 						autoComplete={autoComplete}
 						mentions={mentions}

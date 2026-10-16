@@ -113,7 +113,7 @@ class ChatConsentTests(IsolatedAsyncioTestCase):
         )
 
     async def test_chat_routes_consent_to_worker_and_saves_the_user_message(self):
-        storage = SimpleNamespace(upsert_message=AsyncMock())
+        storage = SimpleNamespace(get_session=AsyncMock(return_value=None), upsert_message=AsyncMock())
         message = UserMsg(name="user", content="xác nhận 12345678")
         with (
             patch(
@@ -142,7 +142,7 @@ class ChatConsentTests(IsolatedAsyncioTestCase):
         )
 
     async def test_ambiguous_chat_returns_a_persisted_question_without_execution(self):
-        storage = SimpleNamespace(upsert_message=AsyncMock())
+        storage = SimpleNamespace(get_session=AsyncMock(return_value=None), upsert_message=AsyncMock())
         with (
             patch(
                 "agentscope.app._router._chat.pending_chat_actions",
@@ -170,6 +170,37 @@ class ChatConsentTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(response.message)
         enqueue.assert_not_awaited()
         self.assertEqual(storage.upsert_message.await_count, 2)
+
+    async def test_consent_without_pending_action_never_reaches_an_agent(self):
+        storage = SimpleNamespace(get_session=AsyncMock(return_value=None), upsert_message=AsyncMock())
+        with (
+            patch(
+                "agentscope.app._router._chat.pending_chat_actions",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "agentscope.app._router._chat.enqueue_run_trigger",
+                AsyncMock(),
+            ) as enqueue,
+        ):
+            response = await chat(
+                ChatRequest(
+                    agent_id="leader",
+                    session_id="ticket",
+                    input=UserMsg(name="user", content="Xác nhận"),
+                ),
+                "user",
+                object(),
+                object(),
+                object(),
+                storage,
+                object(),
+            )
+
+        self.assertEqual(response.status, "no_pending_confirmation")
+        self.assertIn("không có thao tác nào", response.message.get_text_content())
+        self.assertEqual(storage.upsert_message.await_count, 2)
+        enqueue.assert_not_awaited()
 
     def test_partner_chat_preserves_all_binding_and_hash_fields(self):
         body = {

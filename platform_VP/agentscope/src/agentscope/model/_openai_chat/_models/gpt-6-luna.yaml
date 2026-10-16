@@ -19,3 +19,6 @@ parameter_overrides:
     hidden: true
   voice:
     hidden: true
+  reasoning_effort:
+    enum: [none, low, medium, high, xhigh, max]
+    default: medium

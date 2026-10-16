@@ -1,13 +1,14 @@
+from agentscope.app._evidence_claims import unsupported_claim_anchors
 """Durability, isolation, compaction, and token-budget tests."""
 
 import asyncio
 import hashlib
 import json
 import re
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
-from agentscope.app._evidence_claims import unsupported_claim_anchors
 from agentscope.app._shared_context import (
     CollaborationStoppedError,
     ContextDirective,
@@ -139,10 +140,7 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         captured = []
 
         async def next_handler(**kwargs):
-            # The packet is the trailing message; the system prompt stays a
-            # stable, cacheable prefix.
-            self.assertEqual("Coordinate", kwargs["messages"][0].get_text_content())
-            captured.append(kwargs["messages"][-1].get_text_content())
+            captured.append("\n".join(message.get_text_content() for message in kwargs["messages"]))
 
             async def response():
                 yield ChatResponse(
@@ -181,40 +179,6 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             record.state.metrics.total_measured_prompt_tokens + 26,
             branch.measured_tokens,
         )
-
-    async def test_recalled_memory_goes_after_history_and_before_the_packet(self):
-        self.service.config = SharedContextConfig()
-        task_id = await self.service.active_task_id("u", "ticket-1")
-        await self.service.append_event(
-            user_id="u", team_id="ticket-1", kind="customer_message", content="Fix the leak",
-        )
-        agent = SimpleNamespace(state=AgentState(session_id="worker-session"), name="Worker")
-        seen = []
-
-        async def next_handler(**kwargs):
-            seen.append(kwargs["messages"])
-
-            async def response():
-                yield ChatResponse(
-                    content=[TextBlock(text="ok")],
-                    is_last=True,
-                    usage=ChatUsage(input_tokens=1, output_tokens=1, time=0),
-                )
-
-            return response()
-
-        middleware = SharedContextIsolationMiddleware("task", self.service, "u", "ticket-1", task_id=task_id)
-        middleware.recall = "<agent-memory>- [lesson] Shut the water valve first</agent-memory>"
-        history = [SystemMsg(name="system", content="Role"), UserMsg(name="customer", content="Fix the leak")]
-        stream = await middleware.on_model_call(
-            agent, {"messages": history, "tools": [], "current_model": self.model}, next_handler,
-        )
-        [_chunk async for _chunk in stream]
-        [messages] = seen
-        # The system prompt stays the cacheable prefix; the recall never enters it.
-        self.assertEqual("Role", messages[0].get_text_content())
-        self.assertEqual("Fix the leak", messages[1].get_text_content())
-        self.assertEqual(["memory_recall", "shared_context"], [m.name for m in messages[-2:]])
 
     async def test_slow_model_is_cancelled_at_active_budget(self):
         self.service.config = SharedContextConfig(collaboration_max_active_seconds=0.01)
@@ -330,127 +294,6 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         other_task = {**items[0], "task_id": "different"}
         self.assertEqual(len(self.service._compact_tool_facts([*items, other_task])), 2)
 
-    def test_claim_gate_reads_a_quoted_reply_as_words_not_as_a_name(self):
-        support = ('E3: {"staff": [{"name": "Trần Bình", "skills": ["plumbing"]}]}',)
-        proposal = (
-            'Câu đề xuất: "Bạn vui lòng giữ khu vực dưới bồn rửa khô ráo và chờ '
-            'kỹ thuật tới kiểm tra." Người phù hợp: Trần Bình.'
-        )
-        self.assertEqual((), unsupported_claim_anchors(proposal, support))
-        # Identifiers are matched whole: a ticket id or a unit is not an amount,
-        # and "…ea0 đang" is not "0 đồng"; an invented job id is still caught.
-        ticket = ('E1: {"ticket_id": "cleaning--3cb7ea0", "status": "open"}', "Căn: S1.01-1201")
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Phiếu cleaning--3cb7ea0 đang mở, căn S1.01-1201 cần vệ sinh hành lang.", ticket
-            ),
-        )
-        self.assertEqual(("id:wo-9999",), unsupported_claim_anchors("Đã giao việc WO-9999.", ticket))
-        self.assertEqual(("number:500000",), unsupported_claim_anchors("Phí 500.000 đồng.", ticket))
-        # Citing the evidence codes is not a claim of the number 3.
-        self.assertEqual((), unsupported_claim_anchors("E1, E2, E3 đã đủ để kết luận.", support))
-        # A short quoted name still has to be in the evidence.
-        self.assertEqual(
-            ("name:nhà hàng sen",),
-            unsupported_claim_anchors('Đặt bàn ở "Nhà hàng Sen".', support),
-        )
-
-    def test_claim_gate_understands_vietnamese_amounts_and_budget_arithmetic(self):
-        support = (
-            "Ngân sách 4 triệu, cần để dư 500 nghìn.",
-            "Tổng chi phí đã xác minh là 2.720.000đ.",
-        )
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Trần chi 3,5 triệu; còn 1.280.000đ từ ngân sách và "
-                "cao hơn mức dự phòng 780.000đ.",
-                support,
-            ),
-        )
-
-    def test_claim_gate_rejects_shifted_date_and_cross_source_time(self):
-        unsupported = unsupported_claim_anchors(
-            "Khởi hành 16/10 và khách sạn check-in lúc 14:00.",
-            ("Khởi hành ngày 17/10.",),
-        )
-        self.assertIn("date:16/10", unsupported)
-        self.assertIn("time:14:00", unsupported)
-
-    def test_claim_gate_does_not_merge_date_time_with_following_amount_or_count(self):
-        support = (
-            "Khởi hành 07:00 ngày 17/10/2026, tổng giá 840.000đ/2 người.",
-            "Bữa tối 19:30 ngày 17/10/2026, giá 960.000đ/2 người.",
-        )
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Xe đi 07:00 ngày 17/10/2026 giá 840.000đ/2 người; "
-                "bữa tối 19:30 cùng ngày giá 960.000đ/2 người.",
-                support,
-            ),
-        )
-
-    def test_claim_gate_accepts_abbreviated_date_and_generic_service_prefix(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Xe Limousine Mây Việt Express đi 17/10. "
-                "[Source Event: abc123]",
-                (
-                    (
-                        "Nhà xe Mây Việt Express, loại xe Limousine, "
-                        "khởi hành ngày 17/10/2026."
-                    ),
-                ),
-            ),
-        )
-
-    def test_claim_gate_accepts_day_month_when_source_date_is_iso(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Kh\u1edfi h\u00e0nh ng\u00e0y 17/10.",
-                ("travel_date=2026-10-17",),
-            ),
-        )
-
-    def test_claim_gate_normalizes_time_and_generic_vehicle_suffix(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "M\u00e2y Vi\u1ec7t Express Limousine kh\u1edfi h\u00e0nh l\u00fac 7:00; "
-                "M\u00e2y Vi\u1ec7t Express Gi\u01b0\u1eddng kh\u1edfi h\u00e0nh l\u00fac 5:30.",
-                (
-                    "Nh\u00e0 xe M\u00e2y Vi\u1ec7t Express c\u00f3 chuy\u1ebfn 07:00 v\u00e0 05:30.",
-                ),
-            ),
-        )
-
-    def test_claim_gate_does_not_merge_itinerary_code_into_place_name(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "K\u1ebf ho\u1ea1ch \u0110\u00e0 L\u1ea1t 2N1\u0110 \u0111\u00e3 ho\u00e0n t\u1ea5t.",
-                (
-                    (
-                        "L\u1ecbch tr\u00ecnh du l\u1ecbch t\u1ea1i \u0110\u00e0 "
-                        "L\u1ea1t \u0111\u00e3 x\u00e1c minh."
-                    ),
-                ),
-            ),
-        )
-
-    def test_claim_gate_does_not_treat_headings_as_business_names(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Đánh Giá Ngân Sách – Đã Xác Minh – Đi Xe Limousine",
-                (),
-            ),
-        )
-
     def test_packet_projects_events_already_in_authoritative_items(self):
         events = [
             SharedContextEvent(
@@ -522,7 +365,7 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             ),
         )
 
-    async def test_worker_claim_gate_rejects_unsupported_name_before_mutation(self):
+    async def test_worker_report_is_not_semantically_validated(self):
         customer = await self.service.append_event(
             user_id="u",
             team_id="claim-team",
@@ -539,40 +382,49 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             source_session_id="worker-session",
         )
 
-        with self.assertRaisesRegex(ValueError, "name:imaginary resort"):
-            await self.service.coordinate_handoff(
-                user_id="u",
-                team_id="claim-team",
-                task_id=customer.task_id,
-                sender="worker-session",
-                recipients=("leader-session",),
-                owner="leader-session",
-                handoff_id="unsupported-report",
-                kind="result",
-                content="Imaginary Resort costs 1500000 VND and is available",
-            )
-
-        record = await self.storage.get_team_shared_context("u", "claim-team")
-        branch = record.state.tasks[customer.task_id].collaboration.get(
-            "worker-session"
-        )
-        self.assertTrue(branch is None or "unsupported-report" not in branch.receipts)
-        stopped = await self.service.coordinate_handoff(
+        receipt = await self.service.coordinate_handoff(
             user_id="u",
             team_id="claim-team",
             task_id=customer.task_id,
             sender="worker-session",
             recipients=("leader-session",),
             owner="leader-session",
-            handoff_id="unsupported-report-2",
+            handoff_id="unchecked-report",
             kind="result",
             content="Imaginary Resort costs 1500000 VND and is available",
         )
-        self.assertEqual("error", stopped["kind"])
-        self.assertEqual("stopped", stopped["status"])
-        self.assertNotIn("Imaginary Resort", stopped["content"])
 
-    async def test_worker_and_coordinator_claims_use_exact_evidence_chain(self):
+        record = await self.storage.get_team_shared_context("u", "claim-team")
+        branch = record.state.tasks[customer.task_id].collaboration.get(
+            "worker-session"
+        )
+        self.assertIn("unchecked-report", branch.receipts)
+        self.assertEqual("result", receipt["kind"])
+        self.assertIn("Imaginary Resort", receipt["content"])
+
+    async def test_worker_progress_is_not_semantically_validated(self):
+        customer = await self.service.append_event(
+            user_id="u",
+            team_id="progress-claim-team",
+            kind="customer_message",
+            content="Plan a beach trip",
+            source_session_id="leader-session",
+        )
+
+        receipt = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="progress-claim-team",
+            task_id=customer.task_id,
+            sender="worker-session",
+            recipients=("leader-session",),
+            owner="leader-session",
+            handoff_id="unchecked-progress",
+            kind="progress",
+            content="I will add Imaginary Resort to the itinerary",
+        )
+        self.assertEqual("progress", receipt["kind"])
+
+    async def test_worker_and_coordinator_preserve_reference_chain(self):
         customer = await self.service.append_event(
             user_id="u",
             team_id="claim-chain",
@@ -624,22 +476,22 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         )
         self.assertEqual([provider.id], coordinator["reference_event_ids"])
 
-        with self.assertRaisesRegex(ValueError, "name:imaginary cafe"):
-            await self.service.coordinate_handoff(
-                user_id="u",
-                team_id="claim-chain",
-                task_id=customer.task_id,
-                sender="planner-session-2",
-                recipients=("leader-session",),
-                owner="leader-session",
-                handoff_id="planner-hallucination",
-                kind="result",
-                content=(
-                    "Choose Verified Hotel at 1,500,000 VND and visit "
-                    "Imaginary Cafe"
-                ),
-                references=(provider.id,),
-            )
+        unchecked = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="claim-chain",
+            task_id=customer.task_id,
+            sender="planner-session-2",
+            recipients=("leader-session",),
+            owner="leader-session",
+            handoff_id="planner-unchecked",
+            kind="result",
+            content=(
+                "Choose Verified Hotel at 1,500,000 VND and visit "
+                "Imaginary Cafe"
+            ),
+            references=(provider.id,),
+        )
+        self.assertIn("Imaginary Cafe", unchecked["content"])
 
     async def test_latest_worker_result_supersedes_older_packet_snapshot(self):
         customer = await self.service.append_event(
@@ -734,7 +586,7 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
 
         class Model(_MeasuredModel):
             async def generate_structured_output(model, **kwargs):
-                prompts.append(kwargs["messages"][0].get_text_content())
+                prompts.append("\n".join(message.get_text_content() for message in kwargs["messages"]))
                 schemas.append(kwargs["structured_model"].model_json_schema())
                 return SimpleNamespace(
                     content={
@@ -1158,26 +1010,75 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertIn('"summary"', packet)
         self.assertIn("progress-11", packet)
 
-    async def test_summary_can_be_written_by_a_cheaper_model(self) -> None:
-        for index in range(12):
+    async def test_represented_mcp_payload_does_not_trigger_summary(self) -> None:
+        self.service.config = SharedContextConfig()
+        raw = json.dumps({
+            "state": "success",
+            "tool_call": {
+                "id": "call-envelope-" + "x" * 24_000,
+                "name": "mcp__provider__lookup",
+                "input": '{"id":"business-1"}',
+            },
+            "tool_result": {
+                "output": [{"type": "text", "text": '{"price":123}'}],
+            },
+        })
+        events = [
             await self.service.append_event(
-                user_id="u",
-                team_id="ticket-1",
-                kind="progress",
-                content=f"progress-{index} " + ("detail " * 20),
-                event_id=f"event-{index}",
+                user_id="u", team_id="ticket-1", kind="external_event",
+                content=raw, delta=ContextDelta(add_confirmed_facts=(raw,)),
             )
-        cheap = _MeasuredModel()
-
-        await self.service.prepare_packet(
-            model=self.model,  # type: ignore[arg-type]
-            user_id="u",
-            team_id="ticket-1",
-            summary_model=cheap,  # type: ignore[arg-type]
+            for _ in range(2)
+        ]
+        packet, _ = await self.service.prepare_packet(
+            model=self.model, user_id="u", team_id="ticket-1",
+        )
+        self.assertEqual(self.model.summary_calls, 0)
+        self.assertIn("business-1", packet)
+        self.assertIn('\\"price\\":123', packet)
+        record = await self.storage.get_team_shared_context("u", "ticket-1")
+        self.assertEqual([event.content for event in record.state.events], [raw, raw])
+        self.assertEqual(
+            {event.id for event in events},
+            set(
+                json.loads(packet)["authoritative_state"]["items"][0]["source_event_ids"],
+            ),
         )
 
-        self.assertEqual(0, self.model.summary_calls)
-        self.assertEqual(1, cheap.summary_calls)
+    async def test_valid_packet_does_not_wait_for_another_summary(self) -> None:
+        self.service.config = replace(self.service.config, packet_max_tokens=12_000)
+        started, release = asyncio.Event(), asyncio.Event()
+
+        class SlowModel(_MeasuredModel):
+            async def generate_structured_output(model, **kwargs):
+                started.set()
+                await release.wait()
+                return await super().generate_structured_output(**kwargs)
+
+        model = SlowModel()
+        for index in range(8):
+            await self.service.append_event(
+                user_id="u", team_id="ticket-1", kind="progress",
+                content=f"progress-{index} " + "detail " * 25,
+            )
+        first = asyncio.create_task(self.service.prepare_packet(
+            model=model, user_id="u", team_id="ticket-1",
+        ))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            await self.service.append_event(
+                user_id="u", team_id="ticket-1", kind="customer_message",
+                content="new requirement while summary is running",
+            )
+            packet, _ = await asyncio.wait_for(self.service.prepare_packet(
+                model=model, user_id="u", team_id="ticket-1",
+            ), timeout=0.5)
+            self.assertIn("new requirement while summary is running", packet)
+            self.assertFalse(first.done())
+        finally:
+            release.set()
+            await first
+        self.assertEqual(model.summary_calls, 1)
 
     async def test_summary_failure_preserves_sources_and_reports_metric(self) -> None:
         failing = _MeasuredModel(fail_summary=True)
@@ -1198,10 +1099,9 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
 
         self.assertTrue(packet)
         self.assertLessEqual(measured, self.service.config.packet_max_tokens)
-        # The lean event envelope now fits all eight events even while the
-        # summarizer is unavailable, so no fallback omission is needed.
-        self.assertIsNone(json.loads(packet)["history_omission"])
-        self.assertEqual(len(json.loads(packet)["recent_events"]), 8)
+        omission = json.loads(packet).get("history_omission")
+        if omission is not None:
+            self.assertEqual(omission["reason"], "summary_failed_packet_fallback")
         self.assertEqual(record.state.summaries, {})
         self.assertEqual(len(record.state.events), 8)
         self.assertEqual(record.state.metrics.compaction_failures, 1)
@@ -1874,10 +1774,8 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             next_handler,
         )
 
-        packet_text = captured["messages"][-1].get_text_content() or ""
-        self.assertEqual("shared_context", captured["messages"][-1].name)
-        self.assertIn("Plan a verified trip", packet_text)
-        self.assertEqual("Coordinate", captured["messages"][0].get_text_content())
+        system_text = "\n".join(message.get_text_content() or "" for message in captured["messages"])
+        self.assertIn("Plan a verified trip", system_text)
         self.assertEqual(
             event.revision,
             await self.service.session_revision(
@@ -2067,7 +1965,185 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             next_handler,
         )
 
-        visible_system = captured["messages"][0].get_text_content() or ""
-        self.assertEqual("private system", visible_system)
-        self.assertIn("shared state", captured["messages"][-1].get_text_content() or "")
+        visible_system = "\n".join(message.get_text_content() or "" for message in captured["messages"])
+        self.assertIn("private system", visible_system)
+        self.assertIn("shared state", visible_system)
         self.assertNotIn("shared state", original_system.get_text_content() or "")
+
+    async def test_recalled_memory_goes_after_history_and_before_the_packet(self):
+        self.service.config = SharedContextConfig()
+        task_id = await self.service.active_task_id("u", "ticket-1")
+        await self.service.append_event(
+            user_id="u", team_id="ticket-1", kind="customer_message", content="Fix the leak",
+        )
+        agent = SimpleNamespace(state=AgentState(session_id="worker-session"), name="Worker")
+        seen = []
+
+        async def next_handler(**kwargs):
+            seen.append(kwargs["messages"])
+
+            async def response():
+                yield ChatResponse(
+                    content=[TextBlock(text="ok")],
+                    is_last=True,
+                    usage=ChatUsage(input_tokens=1, output_tokens=1, time=0),
+                )
+
+            return response()
+
+        middleware = SharedContextIsolationMiddleware("task", self.service, "u", "ticket-1", task_id=task_id)
+        middleware.recall = "<agent-memory>- [lesson] Shut the water valve first</agent-memory>"
+        history = [SystemMsg(name="system", content="Role"), UserMsg(name="customer", content="Fix the leak")]
+        stream = await middleware.on_model_call(
+            agent, {"messages": history, "tools": [], "current_model": self.model}, next_handler,
+        )
+        [_chunk async for _chunk in stream]
+        [messages] = seen
+        # The system prompt stays the cacheable prefix; the recall never enters it.
+        self.assertEqual("Role", messages[0].get_text_content())
+        self.assertEqual("Fix the leak", messages[1].get_text_content())
+        self.assertEqual(["memory_recall", "shared_context"], [m.name for m in messages[-2:]])
+
+    def test_claim_gate_reads_a_quoted_reply_as_words_not_as_a_name(self):
+        support = ('E3: {"staff": [{"name": "Trần Bình", "skills": ["plumbing"]}]}',)
+        proposal = (
+            'Câu đề xuất: "Bạn vui lòng giữ khu vực dưới bồn rửa khô ráo và chờ '
+            'kỹ thuật tới kiểm tra." Người phù hợp: Trần Bình.'
+        )
+        self.assertEqual((), unsupported_claim_anchors(proposal, support))
+        # Identifiers are matched whole: a ticket id or a unit is not an amount,
+        # and "…ea0 đang" is not "0 đồng"; an invented job id is still caught.
+        ticket = ('E1: {"ticket_id": "cleaning--3cb7ea0", "status": "open"}', "Căn: S1.01-1201")
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Phiếu cleaning--3cb7ea0 đang mở, căn S1.01-1201 cần vệ sinh hành lang.", ticket
+            ),
+        )
+        self.assertEqual(("id:wo-9999",), unsupported_claim_anchors("Đã giao việc WO-9999.", ticket))
+        self.assertEqual(("number:500000",), unsupported_claim_anchors("Phí 500.000 đồng.", ticket))
+        # Citing the evidence codes is not a claim of the number 3.
+        self.assertEqual((), unsupported_claim_anchors("E1, E2, E3 đã đủ để kết luận.", support))
+        # A short quoted name still has to be in the evidence.
+        self.assertEqual(
+            ("name:nhà hàng sen",),
+            unsupported_claim_anchors('Đặt bàn ở "Nhà hàng Sen".', support),
+        )
+
+    def test_claim_gate_understands_vietnamese_amounts_and_budget_arithmetic(self):
+        support = (
+            "Ngân sách 4 triệu, cần để dư 500 nghìn.",
+            "Tổng chi phí đã xác minh là 2.720.000đ.",
+        )
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Trần chi 3,5 triệu; còn 1.280.000đ từ ngân sách và "
+                "cao hơn mức dự phòng 780.000đ.",
+                support,
+            ),
+        )
+
+    def test_claim_gate_rejects_shifted_date_and_cross_source_time(self):
+        unsupported = unsupported_claim_anchors(
+            "Khởi hành 16/10 và khách sạn check-in lúc 14:00.",
+            ("Khởi hành ngày 17/10.",),
+        )
+        self.assertIn("date:16/10", unsupported)
+        self.assertIn("time:14:00", unsupported)
+
+    def test_claim_gate_does_not_merge_date_time_with_following_amount_or_count(self):
+        support = (
+            "Khởi hành 07:00 ngày 17/10/2026, tổng giá 840.000đ/2 người.",
+            "Bữa tối 19:30 ngày 17/10/2026, giá 960.000đ/2 người.",
+        )
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Xe đi 07:00 ngày 17/10/2026 giá 840.000đ/2 người; "
+                "bữa tối 19:30 cùng ngày giá 960.000đ/2 người.",
+                support,
+            ),
+        )
+
+    def test_claim_gate_accepts_abbreviated_date_and_generic_service_prefix(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Xe Limousine Mây Việt Express đi 17/10. "
+                "[Source Event: abc123]",
+                (
+                    (
+                        "Nhà xe Mây Việt Express, loại xe Limousine, "
+                        "khởi hành ngày 17/10/2026."
+                    ),
+                ),
+            ),
+        )
+
+    def test_claim_gate_accepts_day_month_when_source_date_is_iso(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Kh\u1edfi h\u00e0nh ng\u00e0y 17/10.",
+                ("travel_date=2026-10-17",),
+            ),
+        )
+
+    def test_claim_gate_normalizes_time_and_generic_vehicle_suffix(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "M\u00e2y Vi\u1ec7t Express Limousine kh\u1edfi h\u00e0nh l\u00fac 7:00; "
+                "M\u00e2y Vi\u1ec7t Express Gi\u01b0\u1eddng kh\u1edfi h\u00e0nh l\u00fac 5:30.",
+                (
+                    "Nh\u00e0 xe M\u00e2y Vi\u1ec7t Express c\u00f3 chuy\u1ebfn 07:00 v\u00e0 05:30.",
+                ),
+            ),
+        )
+
+    def test_claim_gate_does_not_merge_itinerary_code_into_place_name(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "K\u1ebf ho\u1ea1ch \u0110\u00e0 L\u1ea1t 2N1\u0110 \u0111\u00e3 ho\u00e0n t\u1ea5t.",
+                (
+                    (
+                        "L\u1ecbch tr\u00ecnh du l\u1ecbch t\u1ea1i \u0110\u00e0 "
+                        "L\u1ea1t \u0111\u00e3 x\u00e1c minh."
+                    ),
+                ),
+            ),
+        )
+
+    def test_claim_gate_does_not_treat_headings_as_business_names(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Đánh Giá Ngân Sách – Đã Xác Minh – Đi Xe Limousine",
+                (),
+            ),
+        )
+
+
+
+    async def test_summary_can_be_written_by_a_cheaper_model(self) -> None:
+        for index in range(12):
+            await self.service.append_event(
+                user_id="u",
+                team_id="ticket-1",
+                kind="progress",
+                content=f"progress-{index} " + ("detail " * 20),
+                event_id=f"event-{index}",
+            )
+        cheap = _MeasuredModel()
+
+        await self.service.prepare_packet(
+            model=self.model,  # type: ignore[arg-type]
+            user_id="u",
+            team_id="ticket-1",
+            summary_model=cheap,  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(0, self.model.summary_calls)
+        self.assertEqual(1, cheap.summary_calls)

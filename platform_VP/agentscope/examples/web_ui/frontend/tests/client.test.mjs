@@ -13,7 +13,7 @@ function clientWith(fetch) {
     exports: {}, require: () => ({ toast: { error() {} } }),
     URL, AbortSignal, DOMException, Event, fetch,
     localStorage: { getItem: () => null },
-    window: { dispatchEvent: (event) => events.push(event.type) },
+    window: { location: { origin: 'http://localhost:5173' }, dispatchEvent: (event) => events.push(event.type) },
   };
   vm.runInNewContext(ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },

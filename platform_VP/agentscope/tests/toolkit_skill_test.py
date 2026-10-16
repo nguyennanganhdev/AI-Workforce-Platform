@@ -5,8 +5,9 @@ import os
 import tempfile
 from unittest.async_case import IsolatedAsyncioTestCase
 
-from utils import AnyString
+from utils import AnyString, MockModel
 
+from agentscope.agent import Agent
 from agentscope.skill import SkillLoaderBase, Skill
 from agentscope.tool import Toolkit, ToolChunk, ToolResponse, ToolGroup
 from agentscope.message import ToolCallBlock
@@ -41,6 +42,22 @@ class MockSkillLoader(SkillLoaderBase):
 
 class ToolkitSkillTest(IsolatedAsyncioTestCase):
     """Test cases for Toolkit skill functionality."""
+
+    async def test_loaded_skill_is_marked_without_changing_available_skills(self):
+        toolkit = Toolkit(
+            skills_or_loaders=[_make_skill("loaded"), _make_skill("new")],
+        )
+        instructions = await toolkit.get_skill_instructions(
+            loaded_skills=["loaded", "unavailable"],
+        )
+        self.assertIn("Already loaded in this session: loaded", instructions)
+        self.assertIn("Do not call", instructions)
+        self.assertIn("<name>new</name>", instructions)
+        self.assertNotIn("unavailable", instructions)
+        self.assertIn(
+            "Skill",
+            [s["function"]["name"] for s in await toolkit.get_tool_schemas()],
+        )
 
     async def test_init_with_various_types(self) -> None:
         """Test Toolkit initialization with str path, SkillLoaderBase, and
@@ -374,6 +391,51 @@ class ToolkitSkillViewerTest(IsolatedAsyncioTestCase):
                 "metadata": {},
                 "id": "test_call_2",
             },
+        )
+
+    async def test_call_skill_viewer_loads_each_skill_once_per_session(
+        self,
+    ) -> None:
+        """A repeated Skill call reuses the session's loaded instructions."""
+        skill = _make_skill("my_skill")
+        skill.markdown = "# My Skill\nInstructions"
+        toolkit = Toolkit(skills_or_loaders=[MockSkillLoader([skill])])
+        state = AgentState()
+
+        async def call(active_toolkit: Toolkit, call_id: str) -> ToolResponse:
+            response = None
+            async for result in active_toolkit.call_tool(
+                ToolCallBlock(
+                    id=call_id,
+                    name="Skill",
+                    input=json.dumps({"skill": "my_skill"}),
+                ),
+                state,
+            ):
+                if isinstance(result, ToolResponse):
+                    response = result
+            assert response is not None
+            return response
+
+        first = await call(toolkit, "first")
+        agent = Agent(
+            name="worker", system_prompt="Use skills", model=MockModel(),
+            toolkit=toolkit, state=state,
+        )
+        self.assertIn(
+            "Already loaded in this session: my_skill",
+            await agent._get_system_prompt(),
+        )
+        repeated = await call(
+            Toolkit(skills_or_loaders=[MockSkillLoader([skill])]),
+            "repeated",
+        )
+
+        self.assertEqual(first.content[0].text, "# My Skill\nInstructions")
+        self.assertEqual(
+            repeated.content[0].text,
+            "Skill 'my_skill' is already loaded in this session. "
+            "Reuse its previous instructions.",
         )
 
     async def test_skill_viewer_uses_active_tool_group_skills(self) -> None:

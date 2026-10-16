@@ -861,7 +861,8 @@
 			"running": "Đang chạy",
 			"idle": "Đang chờ",
 			"missingSession": "(chưa có phiên)",
-			"member": "Thành viên phòng"
+			"member": "Thành viên phòng",
+			"membersHeading": "Thành viên"
 		}
 	},
 	"channel": {
@@ -1084,25 +1085,25 @@
 		"menuAgent": "Tạo agent",
 		"menuGroup": "Tạo nhóm chat",
 		"title": "Nhóm chat mới",
-		"description": "Chọn các agent sẽ cùng làm việc. Trưởng nhóm điều phối và giao việc cho các thành viên.",
+		"description": "Leader của platform điều phối nhóm. Chọn các chuyên viên đã phát hành và người bắt đầu trước.",
 		"name": "Tên nhóm",
 		"namePlaceholder": "Ví dụ: Đội chăm sóc cư dân",
 		"members": "Thành viên",
 		"selected": "Đã chọn {{count}}",
 		"searchPlaceholder": "Tìm agent…",
-		"leader": "Trưởng nhóm",
-		"makeLeader": "Đặt làm trưởng nhóm",
+		"leader": "Chuyên viên chính",
+		"makeLeader": "Chọn làm chính",
 		"goal": "Nhóm này làm gì? (không bắt buộc)",
 		"goalPlaceholder": "Mục tiêu chung của nhóm, ví dụ: tiếp nhận và xử lý yêu cầu sửa chữa của cư dân.",
 		"willEnable": "Sẽ bật “Cho phép được mời” cho {{names}} để trưởng nhóm mời được vào nhóm.",
 		"blocked": "Không mời được {{names}}: agent chưa bật “Cho phép được mời” và bạn không có quyền sửa.",
-		"notEnough": "Cần ít nhất 2 agent để lập nhóm, bạn đang có {{count}}.",
-		"needTwo": "Chọn ít nhất 2 agent",
+		"notEnough": "Chưa có chuyên viên đã phát hành và cho phép được mời. Hãy tạo và phát hành agent trong Builder hoặc Agent Studio.",
+		"needTwo": "Chọn ít nhất một chuyên viên đã phát hành",
 		"create": "Tạo nhóm",
 		"creating": "Đang tạo…",
 		"delete": "Xóa nhóm",
 		"entity": "nhóm chat",
-		"kickoff": "Đây là nhóm chat “{{name}}”.{{goal}} Hãy dùng TeamCreate để lập nhóm với bạn là trưởng nhóm, rồi dùng AgentInvite để mời các thành viên: {{members}}. Khi đủ thành viên, hãy giới thiệu ngắn gọn nhóm và chờ yêu cầu của tôi.",
+		"kickoff": "Đây là nhóm chat “{{name}}”.{{goal}} Hãy dùng TeamCreate trước, với bạn là Leader cố định. Sau đó gọi AgentInvite một lần với target={{primary}} và additional_assignments={{assignments}} để đăng ký đủ thành viên: {{members}}. Chỉ khởi động chuyên viên chính; các thành viên khác chờ TeamSay. Hãy giới thiệu ngắn gọn nhóm và chờ yêu cầu của tôi.",
 		"kickoffGoal": " Mục tiêu: {{goal}}.",
 		"headerNote": "Trưởng nhóm {{leader}} · {{count}} agent"
 	}

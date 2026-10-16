@@ -77,6 +77,10 @@ class CreateSessionRequest(BaseModel):
         description="Model provider and parameters. "
         "Can be set later via PATCH.",
     )
+    sub_agent_chat_model_config: ChatModelConfig | None = Field(
+        default=None,
+        description="Shared model for all sub-agents in this session's team.",
+    )
     fallback_chat_model_config: ChatModelConfig | None = Field(
         default=None,
         description="Fallback model used when the primary model fails. "
@@ -117,6 +121,11 @@ class UpdateSessionRequest(BaseModel):
         description="New model configuration. "
         "Replaces the existing one entirely. "
         "Pass null to clear; omit to leave unchanged.",
+    )
+    sub_agent_chat_model_config: ChatModelConfig | None = Field(
+        default=None,
+        description="Shared sub-agent model, independent of the leader model. "
+        "Pass null to restore worker-specific models; omit to leave unchanged.",
     )
     fallback_chat_model_config: ChatModelConfig | None = Field(
         default=None,

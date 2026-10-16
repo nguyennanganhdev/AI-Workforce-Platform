@@ -28,7 +28,7 @@ def test_discussion_answers_the_latest_message_without_replacing_the_reviewed_pl
     with patch.multiple(console,
                         _builder_session=AsyncMock(return_value=SimpleNamespace(id="builder-1")),
                         _list_all_builder_messages=AsyncMock(return_value=[message]),
-                        _catalog=AsyncMock(return_value=[]), _library=AsyncMock(return_value=({}, {})),
+                        _catalog=AsyncMock(return_value=[]), _knowledge_catalog=AsyncMock(return_value=[]), _library=AsyncMock(return_value=({}, {})),
                         get_model=AsyncMock(), _prepare_builder_memory=AsyncMock(return_value="Full conversation"),
                         _outline=AsyncMock(return_value=(outline, 100, 100)),
                         _record_builder_prompt_measurement=AsyncMock(), _persist_builder_turn=persist):

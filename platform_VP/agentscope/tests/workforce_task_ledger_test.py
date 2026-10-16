@@ -156,7 +156,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         record = await self.storage.get_team_shared_context("u", "ticket-1")
         return record.state.tasks[self.task_id].assignments
 
-    async def test_untargeted_worker_result_reaches_leader_and_updates_ledger(self) -> None:
+    async def test_worker_result_reaches_explicit_requester_and_updates_ledger(self) -> None:
         await self.shared.record_assignments(
             "u",
             "ticket-1",
@@ -166,6 +166,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
 
         result = await self._tool("hotel-session", "hotel", "worker")(
             kind="result",
+            to="Leader",
             content="DEMO Song Han 1200000 VND per night",
         )
 
@@ -196,6 +197,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_vnd": 1200000}')
         await self._tool("hotel-session", "hotel", "worker")(
             kind="result",
+            to="Leader",
             content="DEMO Song Han 1200000 VND per night",
         )
 
@@ -221,6 +223,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         )
         await self._tool("car-session", "car", "worker")(
             kind="error",
+            to="Leader",
             content="No car matches the route",
         )
 
@@ -258,7 +261,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         )
         await self._tool_fact("hotel", '{"name": "DEMO Song Han"}')
         hotel = self._tool("hotel-session", "hotel", "worker")
-        await hotel(kind="result", content="DEMO Song Han is available")
+        await hotel(kind="result", to="Leader", content="DEMO Song Han is available")
         leader = self._tool("leader-session", "leader", "leader")
 
         challenge = await leader(
@@ -275,7 +278,7 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         self.assertIn("price per night", str(feedback))
 
         await self._tool_fact("hotel", '{"name": "DEMO Song Han", "price_vnd": 1200000}')
-        await hotel(kind="result", content="DEMO Song Han 1200000 VND per night")
+        await hotel(kind="result", to="Leader", content="DEMO Song Han 1200000 VND per night")
         accepted = await leader(kind="review", to="Hotel", decision="accept", content="ok")
 
         self.assertNotEqual("error", accepted.state, accepted.content)
@@ -299,15 +302,17 @@ class TaskLedgerTest(IsolatedAsyncioTestCase):
         self.assertIn("registered", first.content[0].text)
         self.assertIn("already registered", second.content[0].text)
 
-    def test_model_facing_schema_is_small_per_role(self) -> None:
+    def test_schema_exposes_resolution_only_to_reply_owner(self) -> None:
         leader = self._tool("leader-session", "leader", "leader")
         worker = self._tool("hotel-session", "hotel", "worker")
 
-        self.assertEqual(
-            {"kind", "to", "content", "done_when", "decision"},
-            set(leader.input_schema["properties"]),
-        )
-        self.assertEqual({"kind", "to", "content"}, set(worker.input_schema["properties"]))
+        self.assertIn("resolution", leader.input_schema["properties"])
+        self.assertNotIn("resolution", worker.input_schema["properties"])
+        self.assertIn("to", worker.input_schema["properties"])
+        for tool in (leader, worker):
+            self.assertIn("context_mode", tool.input_schema["properties"])
+            self.assertIn("reference_event_ids", tool.input_schema["properties"])
+            self.assertNotIn("status", tool.input_schema["$defs"]["ContextDelta"]["properties"])
 
 
 def test_number_ends_a_proper_name_anchor() -> None:

@@ -66,6 +66,8 @@ def ensure_spec(record: AgentRecord) -> bool:
         bindings=record.data.tool_bindings,
         policy=BUSINESS_AGENT_EVIDENCE_POLICY,
     )
+    from .._agent_spec import SpecKnowledge
+    spec.knowledge = [SpecKnowledge(kb_id=kb_id) for kb_id in record.data.knowledge_base_ids]
     record.data.spec = spec.model_dump(mode="json")
     if record.data.lifecycle_state == "published" and not record.data.versions:
         record.data.versions = [
@@ -147,6 +149,8 @@ def pinned_view(record: AgentRecord, version: int) -> AgentRecord:
         view.data.spec = copy.deepcopy(stored["spec"])
         view.data.name = AgentSpec.model_validate(stored["spec"]).name
         view.data.tool_bindings = tool_bindings(AgentSpec.model_validate(stored["spec"]))
+        view.data.knowledge_base_ids = [kb.kb_id for kb in AgentSpec.model_validate(stored["spec"]).knowledge]
+        view.data.execution_mode = "tool_backed" if view.data.tool_bindings else "context_only"
     return view
 
 
@@ -178,6 +182,8 @@ def materialize(
     record.data.system_prompt = prompt
     record.data.build_description = spec.description or spec.goal
     record.data.tool_bindings = tool_bindings(spec)
+    record.data.knowledge_base_ids = [kb.kb_id for kb in spec.knowledge]
+    record.data.execution_mode = "tool_backed" if spec.tools else "context_only"
     record.data.invite_config = InviteConfig(
         invitable=True,
         invite_description=(spec.description or spec.goal or spec.name)[:1000],

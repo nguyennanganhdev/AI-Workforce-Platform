@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { officeFromSession } from '../src/features/workforce/session/presentation.ts';
-import { liveSessionPresentation } from '../src/features/workforce/session/live-adapter.ts';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+const modules = {};
+function load(path) {
+  const context = { exports: {}, require: (id) => modules[id] };
+  vm.runInNewContext(ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, context);
+  return context.exports;
+}
+modules['@/components/chat/teamDialogText'] = load('../src/components/chat/teamDialogText.ts');
+modules['./presentation.ts'] = load('../src/features/workforce/session/presentation.ts');
+const { officeFromSession } = modules['./presentation.ts'];
+const { liveSessionPresentation } = load('../src/features/workforce/session/live-adapter.ts');
 
 const msg = (id, content, extra = {}) => ({ id, name: 'Same name', role: 'assistant', metadata: {}, created_at: '2026-01-01T00:00:00Z', content, ...extra });
 const text = (value) => ({ id: 'text', type: 'text', text: value, created_at: '2026-01-01T00:00:00Z' });
@@ -21,7 +34,7 @@ test('same names never attribute another member work or speech', () => {
 test('reconnect upserts messages and loading a new session exposes no old transcript', () => {
 	const model = live({ messages: [msg('r', [text('old')]), msg('r', [text('new')])] });
 	assert.equal(model.messages.length, 1);
-	assert.equal(officeFromSession(model).activity[0].text, 'new');
+	assert.equal(officeFromSession(model).activity[0].text, 'Same name: new');
 	const next = live({ id: 'b', loading: true, messages: model.messages });
 	assert.notEqual(next.id, model.id);
 	assert.equal(next.messages.length, 0);
