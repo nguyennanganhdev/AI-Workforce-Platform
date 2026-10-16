@@ -1,9 +1,10 @@
 """A scripted OpenAI-compatible server. It plays a fixed case so the plumbing
-(case file, digest, protocol, guard, cost, delivery) can be tested without
+(case file, digest, protocol, guard, cost, engine) can be tested without
 spending money. It says nothing about how a real model would behave.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import socket
@@ -13,10 +14,26 @@ import uuid
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 CALLS: list[dict] = []  # every request, for assertions
-MODE: dict = {"leader": "normal", "scenario": "default"}  # tests flip this to script a failing leader
+# Tests flip this to script a failing leader, or set `answer_gate` (a threading.Event) to hold back a teammate's
+# answer to a peer question until the test sets it.
+# Workflow tests set `script` (a function of a `Call`, used for the leader), `leader_delay` (seconds the
+# leader's model call takes) and `leader_http` (answer the leader's model calls with this HTTP status).
+# `leader_gate` (a threading.Event) holds every model call of the leader until the test sets it: a gate where a
+# delay would make a test depend on the speed of the machine.
+# `worker` is the same kind of script for the technician ('tech'), `worker_http` makes its model calls fail.
+# `agents` maps a profile key to a script for the agent of that profile (any key, asked before the fixed ones).
+# `builder` is the scenario of the agent builder: a function of a `Call` that returns the structured answer (a dict
+# shaped like awp.builder.Reply); without one the builder asks a question back (`builder_default`).
+# `delay` is a function of the system prompt that says how many seconds this model call takes (the server stays free
+# for the other agents meanwhile, which a sleep inside a script would not allow).
+# `eval_leader` replaces the script of the platform's own leader of a specialist's evaluation (`eval_leader`).
+MODE: dict = {"leader": "normal", "scenario": "default", "answer_gate": None, "script": None,
+              "leader_delay": 0, "leader_gate": None, "leader_http": 0, "worker": None, "worker_http": 0,
+              "agents": {}, "builder": None, "eval_leader": None, "delay": None}
+STRUCTURED = "generate_structured_output"  # the tool AgentScope forces for a structured answer
 
 
 def _text(m: dict) -> str:
@@ -45,32 +62,57 @@ def _results(msgs: list[dict], name: str) -> list[str]:
     return [_text(m) for m in msgs if m.get("role") == "tool" and m.get("tool_call_id") in ids]
 
 
-ITEMS = [{"label": "pipe", "amount": 300000}, {"label": "seal", "amount": 250000}]
+class Call:
+    """One request to the scripted model, with the questions a leader script asks about it."""
+
+    HINTS = ("<system-reminder", "<workflow-state", "<room-digest")  # reminders the room adds as user messages
+
+    def __init__(self, msgs: list[dict], tools: list[dict] | None) -> None:
+        self.msgs, self.tools, self.names = msgs, tools or [], [t["function"]["name"] for t in tools or []]
+        self.blob = " ".join(_text(m) for m in msgs if m.get("role") != "system")
+        # what started this turn: the last user message that is not one of the room's own reminders
+        self.at = max((i for i, m in enumerate(msgs) if m.get("role") == "user"
+                       and not _text(m).startswith(self.HINTS)), default=-1)
+        self.last_user = _text(msgs[self.at]) if self.at >= 0 else ""
+
+    def called(self, name: str) -> int:
+        return _called(self.msgs, name)
+
+    def results(self, name: str) -> list[str]:
+        return _results(self.msgs, name)
+
+    def after_user(self) -> "Call":
+        """The calls and results since the last user message: what this turn did so far."""
+        out = Call(self.msgs[:1] + self.msgs[self.at + 1:], None)
+        out.names, out.tools, out.last_user = self.names, self.tools, self.last_user
+        return out
 
 
-def repair_leader(msgs: list[dict], blob: str):
-    """Leader that works through field staff: request work, total the costs, ask the resident."""
-    n_req = _called(msgs, "CaseRequest")
-    reqs = _results(msgs, "CaseRequest")
-    if n_req == 0:
-        return [("CaseRequest", {"kind": "work_request", "evidence": ["E1"],
-                                 "fields": {"unit": "A-12-05", "issue": "leaking pipe"}})]
-    cost_ev = re.findall(r"evidence (E\d+):\ncost_items", blob)
-    confirm_ev = re.findall(r"evidence (E\d+):\nconfirmed: true", blob)
-    calc = _results(msgs, "calc_sum")
-    calc_ev = re.findall(r"\[evidence (E\d+)\]", " ".join(calc))
-    if cost_ev and not calc:
-        return [("calc_sum", {"label": "materials", "values": ["300000", "250000"]})]
-    if calc and n_req == 1:  # the first total is wrong on purpose
-        return [("CaseRequest", {"kind": "cost_confirmation", "evidence": [cost_ev[0]],
-                                 "fields": {"total": "600000", "items": ITEMS}})]
-    if n_req == 2 and "Not sent" in reqs[-1] and calc_ev:
-        return [("CaseRequest", {"kind": "cost_confirmation", "evidence": [calc_ev[0], cost_ev[0]],
-                                 "fields": {"total": "550000", "items": ITEMS}})]
-    if confirm_ev and _called(msgs, "CaseFinalize") == 0:
-        return [("CaseFinalize", {"answer": "Repair done. Cost 550000 VND confirmed.", "outcome": "resolved",
-                                  "cites": [calc_ev[0], confirm_ev[0]]})]
-    return "Waiting."
+def builder_default(c: Call) -> dict:
+    """The builder scenario when a test sets none: it cannot propose yet and asks."""
+    return {"reply": "I need to know more.", "proposals": [
+        {"action": "clarify", "question": "What should the agent handle?", "reason": "the request names no work"}]}
+
+
+def eval_leader(c: Call):
+    """The platform's leader of a specialist's evaluation, as its instructions say: make the team, create the one
+    specialist it may create with the resident's message as its task, wait for the report, finish."""
+    if c.called("CaseFinalize"):
+        return "Done."
+    if c.called("TeamCreate") == 0:
+        return [("TeamCreate", {"name": "eval-team", "description": "Evaluate one specialist"})]
+    done = [("CaseFinalize", {"answer": "Evaluation finished.", "outcome": "needs_human", "unknowns": ["evaluation only"]})]
+    if c.called("AgentCreate") == 0:
+        schema = next(t["function"]["parameters"] for t in c.tools if t["function"]["name"] == "AgentCreate")
+        kinds = (schema["properties"].get("subagent_type") or {}).get("enum") or []
+        if not kinds:
+            return done
+        task = re.search(r"<resident-message[^>]*>\n(.*?)\n</resident-message>", c.last_user, re.S)
+        return [("AgentCreate", {"name": "subject", "description": "The specialist under evaluation",
+                                 "subagent_type": kinds[0], "prompt": task.group(1) if task else c.last_user})]
+    if re.search(r"\bR\d+ \S+ reported:", c.blob) or not all("subject" in r for r in c.results("AgentCreate")):
+        return done
+    return "Waiting for the specialist."
 
 
 def policy(msgs: list[dict], tools: list[dict]) -> list[tuple[str, dict]] | str:
@@ -78,6 +120,18 @@ def policy(msgs: list[dict], tools: list[dict]) -> list[tuple[str, dict]] | str:
     blob = " ".join(_text(m) for m in msgs if m.get("role") != "system")
     names = [t["function"]["name"] for t in tools or []]
 
+    if names == [STRUCTURED]:  # the agent builder asking for its structured answer
+        return [(STRUCTURED, (MODE["builder"] or builder_default)(Call(msgs, tools)))]
+    for key, script in MODE["agents"].items():
+        if f'key="{key}"' in sp:
+            return script(Call(msgs, tools))
+    if 'key="awp_eval_leader"' in sp:
+        return (MODE["eval_leader"] or eval_leader)(Call(msgs, tools))
+
+    if MODE["script"] is not None and 'key="supervisor"' in sp:
+        return MODE["script"](Call(msgs, tools))
+    if MODE["worker"] is not None and 'key="tech"' in sp:
+        return MODE["worker"](Call(msgs, tools))
     out_of_budget = "budget for this case is spent" in blob
     if 'key="supervisor"' in sp:
         if MODE["leader"] == "mute":
@@ -85,8 +139,6 @@ def policy(msgs: list[dict], tools: list[dict]) -> list[tuple[str, dict]] | str:
         if out_of_budget:
             return [("CaseFinalize", {"answer": "Out of budget.", "outcome": "needs_human",
                                       "unknowns": ["budget spent before the case was verified"]})]
-        if MODE["scenario"] == "repair":
-            return repair_leader(msgs, blob)
         if _called(msgs, "TeamCreate") == 0:
             return [("TeamCreate", {"name": "case-team", "description": "Resolve the leak"})]
         if _called(msgs, "AgentCreate") == 0:
@@ -101,9 +153,9 @@ def policy(msgs: list[dict], tools: list[dict]) -> list[tuple[str, dict]] | str:
         if f_tech and f_fin:
             cites = [f_tech[0], f_fin[0]]
             tries = _results(msgs, "CaseFinalize")
-            if not tries:  # first attempt invents a figure on purpose
+            if not any("Not accepted" in t for t in tries):  # first real attempt invents a figure on purpose
                 return [("CaseFinalize", {"answer": "Repair costs 2000000 VND.", "outcome": "resolved", "cites": cites})]
-            if "Not accepted" in tries[-1]:
+            if tries[-1].startswith("Not "):  # refused (not accepted, or told to wait): try again with the right figure
                 return [("CaseFinalize", {
                     "answer": "Pipe repair costs 1500000 VND; ticket T-1001 is waiting for the plumber.",
                     "outcome": "resolved", "cites": cites})]
@@ -161,9 +213,35 @@ def make_app() -> FastAPI:
     async def completions(req: Request):
         body = await req.json()
         msgs, tools = body.get("messages", []), body.get("tools")
+        leader = 'key="supervisor"' in _system(msgs)
+        if leader and MODE["leader_delay"]:
+            await asyncio.sleep(MODE["leader_delay"])
+        if MODE["delay"] is not None:
+            await asyncio.sleep(MODE["delay"](_system(msgs)) or 0)
+        gate = MODE["leader_gate"]
+        if leader and gate is not None:
+            for _ in range(4000):  # 40 s at most: a test that forgets to open the gate fails instead of hanging
+                if gate.is_set():
+                    break
+                await asyncio.sleep(0.01)
+        if leader and MODE["leader_http"]:
+            CALLS.append({"sys": _system(msgs)[:80], "tools": [], "out": f"http {MODE['leader_http']}",
+                          "last_user": Call(msgs, tools).last_user})
+            return JSONResponse({"error": {"message": "scripted failure", "type": "invalid_request_error"}},
+                                status_code=MODE["leader_http"])
+        if MODE["worker_http"] and 'key="tech"' in _system(msgs):
+            return JSONResponse({"error": {"message": "scripted failure", "type": "invalid_request_error"}},
+                                status_code=MODE["worker_http"])
         out = policy(msgs, tools)
+        gate = MODE["answer_gate"]
+        if gate is not None and 'key="tech"' in _system(msgs) and isinstance(out, list) and any(n == "CaseAnswer" for n, _ in out):
+            while not gate.is_set():  # the answer to a peer question comes late: when the test lets it
+                await asyncio.sleep(0.05)
         CALLS.append({"sys": _system(msgs)[:80], "tools": [t["function"]["name"] for t in tools or []],
-                      "out": out if isinstance(out, str) else [(n, a) for n, a in out]})
+                      "out": out if isinstance(out, str) else [(n, a) for n, a in out],
+                      "last_user": Call(msgs, tools).last_user,
+                      "shape": [(m.get("role"), _text(m)[:1600], [tc["function"]["name"] for tc in m.get("tool_calls") or []])
+                                for m in msgs if m.get("role") != "system"]})
         cid = "chatcmpl-" + uuid.uuid4().hex[:8]
         ptok = sum(len(json.dumps(m, ensure_ascii=False)) for m in msgs) // 4
         usage = lambda c: {"prompt_tokens": ptok, "completion_tokens": c, "total_tokens": ptok + c}

@@ -1,0 +1,525 @@
+{
+  "worker_report_idle_leader_turns": [
+    [
+      "message",
+      "m-start",
+      true,
+      "completed",
+      "end_event",
+      false
+    ],
+    [
+      "continue",
+      null,
+      true,
+      "completed",
+      "end_event",
+      true
+    ]
+  ],
+  "worker_report_idle_leader_runs": 2,
+  "worker_turns": [
+    [
+      "w1",
+      "continue",
+      true,
+      true,
+      "completed",
+      "end_event"
+    ]
+  ],
+  "worker_report_racing_leader_turns": [
+    [
+      "message",
+      "m-start",
+      true,
+      "completed",
+      "end_event",
+      false
+    ],
+    [
+      "continue",
+      null,
+      true,
+      "completed",
+      "end_event",
+      true
+    ]
+  ],
+  "worker_report_racing_leader_runs": 1,
+  "model_error_turn": {
+    "trigger": "message",
+    "msg_id": "m-err",
+    "saw_start": true,
+    "saw_end": false,
+    "finished_reason": null,
+    "left": "exception:InternalServerError",
+    "status": "error",
+    "error": {
+      "message": "Error code: 500 - {'error': {'message': 'scripted failure', 'type': 'server_error'}}"
+    },
+    "model_http_calls": 12,
+    "seconds": 8.48,
+    "turns_after": 1
+  },
+  "model_error_persisted_messages": [
+    [
+      "user",
+      null,
+      null
+    ],
+    [
+      "assistant",
+      "error",
+      "upstream"
+    ]
+  ],
+  "interrupt_turn": {
+    "trigger": "message",
+    "saw_end": true,
+    "finished_reason": "interrupted",
+    "left": "end_event",
+    "status": "interrupted",
+    "seconds_to_end": 0.0,
+    "turns_after": 1
+  },
+  "seq_wake_turns_per_input": [
+    1
+  ],
+  "seq_say_turns_per_input": [
+    1
+  ],
+  "seq_wake_detail_set": [
+    [
+      1,
+      "continue",
+      1,
+      true,
+      1
+    ]
+  ],
+  "seq_say_detail_set": [
+    [
+      1,
+      "message",
+      true,
+      true,
+      1
+    ]
+  ],
+  "seq_latency_ms_end_of_turn": {
+    "wake_median": 52,
+    "wake_max": 198,
+    "say_median": 67,
+    "say_max": 206
+  },
+  "burst_3_wakes_8_trials": [
+    {
+      "turns": 1,
+      "runs": 1,
+      "model_calls": 1,
+      "empty_turns": 0,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "turns": 3,
+      "runs": 3,
+      "model_calls": 3,
+      "empty_turns": 2,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "turns": 1,
+      "runs": 1,
+      "model_calls": 1,
+      "empty_turns": 0,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "turns": 1,
+      "runs": 1,
+      "model_calls": 1,
+      "empty_turns": 0,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "turns": 1,
+      "runs": 1,
+      "model_calls": 1,
+      "empty_turns": 0,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "turns": 1,
+      "runs": 1,
+      "model_calls": 1,
+      "empty_turns": 0,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "turns": 3,
+      "runs": 3,
+      "model_calls": 3,
+      "empty_turns": 2,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "turns": 1,
+      "runs": 1,
+      "model_calls": 1,
+      "empty_turns": 0,
+      "markers_seen": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "burst_3_wakes_summary": {
+    "turns_distribution": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      3,
+      3
+    ],
+    "trials_with_an_empty_turn": 2,
+    "max_model_calls": 3
+  },
+  "burst_3_says": {
+    "status_codes": [
+      200,
+      409,
+      409
+    ],
+    "new_turns": 1,
+    "model_calls": 1,
+    "persisted_burst_user_messages": 1,
+    "model_saw": [
+      true,
+      false,
+      false
+    ]
+  },
+  "wake_during_run": [
+    {
+      "delivered_after_s": 0.02,
+      "turns": 2,
+      "runs": 2,
+      "model_calls": 2,
+      "hint_per_turn": [
+        1,
+        0
+      ],
+      "empty_turns": 1
+    },
+    {
+      "delivered_after_s": 0.1,
+      "turns": 2,
+      "runs": 2,
+      "model_calls": 2,
+      "hint_per_turn": [
+        1,
+        0
+      ],
+      "empty_turns": 1
+    },
+    {
+      "delivered_after_s": 0.4,
+      "turns": 2,
+      "runs": 1,
+      "model_calls": 2,
+      "hint_per_turn": [
+        0,
+        1
+      ],
+      "empty_turns": 0
+    },
+    {
+      "delivered_after_s": 0.7,
+      "turns": 2,
+      "runs": 1,
+      "model_calls": 2,
+      "hint_per_turn": [
+        0,
+        1
+      ],
+      "empty_turns": 0
+    }
+  ],
+  "post_chat_while_running": {
+    "status": 409,
+    "json": {
+      "detail": "Session '4f52c937147541b38d94d340ed99e03c' already has an active chat run in this process."
+    }
+  },
+  "post_chat_409_unawaited_coroutine_warning": true,
+  "post_chat_409_persisted_user_texts": [
+    "FIRST"
+  ],
+  "lock_held_elsewhere": {
+    "status": 200,
+    "http_seconds": 0.001,
+    "turns_while_held": 0,
+    "model_calls_while_held": 0,
+    "persisted_while_held": false,
+    "registry_busy": true
+  },
+  "race_naive_hook": {
+    "jobs": 20,
+    "turns": 20,
+    "first_attempt_409": 19,
+    "fraction": 1.0,
+    "gap_ms": {
+      "n": 20,
+      "min": 11.5,
+      "median": 13.7,
+      "p90": 17.2,
+      "max": 20.7
+    }
+  },
+  "serial_say_retry_instant": {
+    "strategy": "say_retry",
+    "model_delay_s": 0.0,
+    "jobs": 20,
+    "turns": 20,
+    "runs": 20,
+    "model_calls": 20,
+    "n409": 33,
+    "posts": 53,
+    "total_s": 2.21,
+    "per_job_ms": {
+      "n": 20,
+      "min": 77.7,
+      "median": 93.1,
+      "p90": 136.1,
+      "max": 268.9
+    },
+    "gap_ms": {
+      "n": 20,
+      "min": 10.3,
+      "median": 12.2,
+      "p90": 16.6,
+      "max": 22.6
+    },
+    "in_order": true,
+    "prompts_with_two_new_jobs": 0
+  },
+  "serial_say_idle_instant": {
+    "strategy": "say_idle",
+    "model_delay_s": 0.0,
+    "jobs": 20,
+    "turns": 20,
+    "runs": 20,
+    "model_calls": 20,
+    "n409": 0,
+    "posts": 20,
+    "total_s": 2.61,
+    "per_job_ms": {
+      "n": 20,
+      "min": 53.7,
+      "median": 97.5,
+      "p90": 139.0,
+      "max": 262.7
+    },
+    "gap_ms": {
+      "n": 20,
+      "min": 10.6,
+      "median": 20.5,
+      "p90": 41.2,
+      "max": 59.3
+    },
+    "in_order": true,
+    "prompts_with_two_new_jobs": 0
+  },
+  "serial_bus_message_instant": {
+    "strategy": "bus_message",
+    "model_delay_s": 0.0,
+    "jobs": 20,
+    "turns": 20,
+    "runs": 20,
+    "model_calls": 20,
+    "n409": 0,
+    "posts": 20,
+    "total_s": 3.22,
+    "per_job_ms": {
+      "n": 20,
+      "min": 59.7,
+      "median": 111.2,
+      "p90": 205.5,
+      "max": 297.2
+    },
+    "gap_ms": {
+      "n": 20,
+      "min": 10.3,
+      "median": 28.4,
+      "p90": 38.8,
+      "max": 44.3
+    },
+    "in_order": true,
+    "prompts_with_two_new_jobs": 0
+  },
+  "serial_say_retry_50ms": {
+    "strategy": "say_retry",
+    "model_delay_s": 0.05,
+    "jobs": 20,
+    "turns": 20,
+    "runs": 20,
+    "model_calls": 20,
+    "n409": 33,
+    "posts": 53,
+    "total_s": 3.16,
+    "per_job_ms": {
+      "n": 20,
+      "min": 124.1,
+      "median": 141.2,
+      "p90": 186.2,
+      "max": 313.4
+    },
+    "gap_ms": {
+      "n": 20,
+      "min": 9.8,
+      "median": 11.8,
+      "p90": 15.9,
+      "max": 60.7
+    },
+    "in_order": true,
+    "prompts_with_two_new_jobs": 0
+  },
+  "serial_say_idle_50ms": {
+    "strategy": "say_idle",
+    "model_delay_s": 0.05,
+    "jobs": 20,
+    "turns": 20,
+    "runs": 20,
+    "model_calls": 20,
+    "n409": 0,
+    "posts": 20,
+    "total_s": 3.68,
+    "per_job_ms": {
+      "n": 20,
+      "min": 111.7,
+      "median": 145.7,
+      "p90": 189.6,
+      "max": 318.3
+    },
+    "gap_ms": {
+      "n": 20,
+      "min": 10.6,
+      "median": 25.8,
+      "p90": 45.0,
+      "max": 134.3
+    },
+    "in_order": true,
+    "prompts_with_two_new_jobs": 0
+  },
+  "serial_bus_message_50ms": {
+    "strategy": "bus_message",
+    "model_delay_s": 0.05,
+    "jobs": 20,
+    "turns": 20,
+    "runs": 20,
+    "model_calls": 20,
+    "n409": 0,
+    "posts": 20,
+    "total_s": 3.8,
+    "per_job_ms": {
+      "n": 20,
+      "min": 97.8,
+      "median": 153.7,
+      "p90": 207.3,
+      "max": 350.7
+    },
+    "gap_ms": {
+      "n": 20,
+      "min": 8.7,
+      "median": 17.8,
+      "p90": 29.8,
+      "max": 58.5
+    },
+    "in_order": true,
+    "prompts_with_two_new_jobs": 0
+  },
+  "assembly_failure": {
+    "http": 200,
+    "turns_recorded": 0,
+    "model_calls": 0,
+    "persisted": [
+      [
+        "assistant",
+        "error",
+        "invalid_request",
+        []
+      ]
+    ]
+  },
+  "auto_naming_extra_call": {
+    "named_model_calls": 1,
+    "unnamed_model_calls": 1,
+    "title_requests": 3,
+    "unnamed_gap_ms": {
+      "n": 1,
+      "min": 31.1,
+      "median": 31.1,
+      "p90": 31.1,
+      "max": 31.1
+    },
+    "named_gap_ms": {
+      "n": 1,
+      "min": 9.9,
+      "median": 9.9,
+      "p90": 9.9,
+      "max": 9.9
+    }
+  },
+  "bus_message_burst_order": {
+    "order": [
+      "q-0",
+      "q-3",
+      "q-4",
+      "q-1",
+      "q-2"
+    ],
+    "turns": 5,
+    "runs": 5
+  },
+  "status_endpoint": {
+    "during": "running",
+    "after": "idle",
+    "stored_roles": [
+      "user",
+      "assistant"
+    ]
+  }
+}

@@ -30,7 +30,7 @@ class MemoryConfig(BaseModel):
 
 class AgentProfile(BaseModel):
     key: str = Field(pattern=r"^[a-z][a-z0-9_]{1,40}$")
-    name: str
+    name: str = Field(min_length=1, max_length=80)  # stored in 80-character columns (case sessions, ledger, case items)
     role: Literal["leader", "specialist"] = "specialist"
     # Who am I and what do I do (one or two sentences).
     mission: str
@@ -67,3 +67,5 @@ class ProfileRecord(BaseModel):
     status: Literal["draft", "published", "retired"]
     profile: AgentProfile
     created_at: float
+    published_at: float | None = None
+    published_by: str | None = None

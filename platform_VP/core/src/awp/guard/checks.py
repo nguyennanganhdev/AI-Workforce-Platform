@@ -1,7 +1,7 @@
 """Deterministic grounding checks. No model is involved in this file.
 
 The one rule that holds in every domain: an agent may only state a number
-or a code that appears in the evidence it cites. Domain packs add phrase
+or a code that appears in the evidence it cites. A route adds phrase
 rules on top (for example "do not say the work is finished unless the
 system says so").
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 _NUMBER = re.compile(r"\d+(?:[.,:/\-]\d+)*")
 _LIST_MARKER = re.compile(r"(?m)^\s*\d+[.)]\s")
@@ -55,6 +56,29 @@ def figures_missing(text: str, sources: list[str]) -> list[str]:
     return [f for f in figures(text) if digits(f) not in known]
 
 
+def leaves(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        return [x for v in value.values() for x in leaves(v)]
+    if isinstance(value, list):
+        return [x for v in value for x in leaves(v)]
+    return [str(value)]
+
+
+def figures_text(fields: dict) -> str:
+    """What the guard reads of structured data: its values, without keys or indexes."""
+    return "\n".join(leaves(fields))
+
+
+# An amount written out ("two million", "hai triệu", "hai trieu") has no digits for `figures_missing` to
+# compare, so a model could state an unsourced price in words. The magnitude words give it away.
+_AMOUNT_WORDS = re.compile(r"\b(?:thousand|million|billion|ngh[iì]n|ng[aà]n|tri[eệ]u|tỷ)\b", re.I)
+
+
+def written_amounts(text: str) -> list[str]:
+    """Magnitude words that write an amount out in words, which no source can be compared with."""
+    return sorted({m.group().lower() for m in _AMOUNT_WORDS.finditer(text)})
+
+
 @dataclass
 class PhraseRule:
     """Forbid `phrases` unless the trusted evidence contains one of `unless`."""
@@ -66,7 +90,7 @@ class PhraseRule:
 
 @dataclass
 class Rules:
-    """Domain-supplied rules, applied after the generic figure check."""
+    """Rules of a route, applied after the generic figure check."""
 
     phrase_rules: list[PhraseRule] = field(default_factory=list)
     forbidden_words: tuple[str, ...] = ()  # words that must not reach the reader
