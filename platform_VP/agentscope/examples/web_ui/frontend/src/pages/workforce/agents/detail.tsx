@@ -10,6 +10,7 @@ import {
 	KnowledgeEditor,
 	RulesEditor,
 	Section,
+	SkillsEditor,
 	StringListEditor,
 	TestsEditor,
 	TextField,
@@ -17,13 +18,14 @@ import {
 } from './editors';
 import { ChangeList, CopilotPanel, TestReportView } from './panels';
 import type { CopilotTurn } from './panels';
-import { knowledgeBaseApi, studioApi } from '@/api';
+import { knowledgeBaseApi, skillApi, studioApi } from '@/api';
 import type {
 	AgentDetail,
 	AgentMemory,
 	AgentSpec,
 	CatalogTool,
 	KnowledgeBaseView,
+	SkillView,
 	TestReport,
 } from '@/api';
 import { Badge } from '@/components/ui/badge';
@@ -74,6 +76,7 @@ export function AgentDetailPage() {
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [catalog, setCatalog] = useState<CatalogTool[]>([]);
 	const [bases, setBases] = useState<KnowledgeBaseView[]>([]);
+	const [skills, setSkills] = useState<SkillView[]>([]);
 	const [memories, setMemories] = useState<AgentMemory[]>([]);
 	const [turns, setTurns] = useState<CopilotTurn[]>([]);
 	const [report, setReport] = useState<TestReport | null>(null);
@@ -98,6 +101,7 @@ export function AgentDetailPage() {
 	useEffect(() => {
 		studioApi.getAgent(agentId).then(apply).catch((error) => toast.error(errorText(error)));
 		studioApi.tools().then(setCatalog).catch(() => setCatalog([]));
+		skillApi.list().then(setSkills).catch((error) => toast.error(errorText(error)));
 		knowledgeBaseApi
 			.listAll()
 			.then(setBases)
@@ -281,11 +285,11 @@ export function AgentDetailPage() {
 				</header>
 
 				<Tabs defaultValue="overview" className="min-h-0 flex-1 overflow-hidden p-4">
-					<TabsList className="flex-wrap">
+					<TabsList className="max-w-full shrink-0 flex-wrap justify-start gap-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-none">
 						<TabsTrigger value="overview">Tổng quan</TabsTrigger>
 						<TabsTrigger value="rules">Hướng dẫn</TabsTrigger>
 						<TabsTrigger value="tools">Công cụ</TabsTrigger>
-						<TabsTrigger value="knowledge">Kiến thức</TabsTrigger>
+						<TabsTrigger value="knowledge">Kiến thức & Skill</TabsTrigger>
 						<TabsTrigger value="team">Phối hợp</TabsTrigger>
 						<TabsTrigger value="tests">Kiểm thử</TabsTrigger>
 						<TabsTrigger value="prompt">Prompt</TabsTrigger>
@@ -325,6 +329,7 @@ export function AgentDetailPage() {
 								<StringListEditor items={spec.scope_out} onChange={(items) => update('scope_out', items)} placeholder="Việc agent không làm" addLabel="Thêm mục" />
 							</Section>
 							<Section title="Vận hành">
+								<p className="text-xs text-muted-foreground">Model dùng cấu hình chung của nền tảng. Bộ nhớ và luật tự học là hai lựa chọn độc lập; thay đổi có hiệu lực sau khi phát hành.</p>
 								<div className="flex flex-wrap gap-6 text-sm">
 									<label className="flex items-center gap-2">
 										<Switch checked={spec.model_tier === 'strong'} onCheckedChange={(checked) => update('model_tier', checked ? 'strong' : 'standard')} />
@@ -338,6 +343,14 @@ export function AgentDetailPage() {
 										<Switch checked={spec.self_improve} onCheckedChange={(checked) => update('self_improve', checked)} />
 										Cho agent tự cải tiến luật sau ca xử lý tốt
 									</label>
+								</div>
+							</Section>
+							<Section title="Tài nguyên đã chọn" hint="Chọn tài nguyên có sẵn ở tab Công cụ và Kiến thức & Skill; không cần nhập lại mô tả.">
+								<div className="flex flex-wrap gap-2">
+									<Badge variant="outline">{spec.tools.length} tool MCP</Badge>
+									<Badge variant="outline">{spec.knowledge.length} kho kiến thức</Badge>
+									<Badge variant="outline">{spec.skills.length} skill thư viện</Badge>
+									<Badge variant="outline">{spec.tests.length} kịch bản kiểm thử</Badge>
 								</div>
 							</Section>
 						</TabsContent>
@@ -364,25 +377,8 @@ export function AgentDetailPage() {
 							<Section title="Kho kiến thức" hint="Agent tra cứu tài liệu ở đây thay vì nhồi vào prompt.">
 								<KnowledgeEditor items={spec.knowledge} bases={bases} onChange={(items) => update('knowledge', items)} />
 							</Section>
-							<Section title="Skill" hint="Skill trong thư viện của bạn; được cài vào agent khi phát hành. Nhờ copilot thêm, ví dụ: dùng skill đọc ảnh khi cư dân gửi ảnh.">
-								<div className="space-y-2">
-									{spec.skills.map((skill) => (
-										<div key={skill.skill_id} className="flex items-start gap-2 rounded-xl border border-border/70 p-2 text-sm">
-											<div className="min-w-0 flex-1">
-												<p className="font-medium">{skill.name || skill.skill_id}</p>
-												{skill.use_when && <p className="text-xs text-muted-foreground">Dùng khi: {skill.use_when}</p>}
-											</div>
-											<Button
-												size="xs"
-												variant="ghost"
-												onClick={() => update('skills', spec.skills.filter((item) => item.skill_id !== skill.skill_id))}
-											>
-												Bỏ
-											</Button>
-										</div>
-									))}
-									{spec.skills.length === 0 && <p className="text-xs text-muted-foreground">Chưa gắn skill nào.</p>}
-								</div>
+							<Section title="Skill" hint="Chọn skill từ thư viện. Nội dung skill được cài vào workspace của agent khi phát hành.">
+								<SkillsEditor items={spec.skills} skills={skills} onChange={(items) => update('skills', items)} />
 							</Section>
 						</TabsContent>
 
@@ -493,6 +489,7 @@ export function AgentDetailPage() {
 						</TabsContent>
 
 						<TabsContent value="memory" className="space-y-4">
+							<p className="text-sm text-muted-foreground">Bộ nhớ dài hạn lưu kinh nghiệm để tra cứu ở ticket sau. Agent có thể đề xuất luật từ ca đã xác minh; đây là học từ kinh nghiệm, không huấn luyện lại trọng số model.</p>
 							<Section title="Luật agent tự học" hint="Sinh ra sau những ca được xác minh là xử lý tốt. Bạn có thể sửa, khoá hoặc xoá ở tab Hướng dẫn.">
 								{learnedRules.length === 0 ? (
 									<p className="text-xs text-muted-foreground">Chưa có.</p>
@@ -508,7 +505,7 @@ export function AgentDetailPage() {
 									</ul>
 								)}
 							</Section>
-							<Section title="Bộ nhớ kinh nghiệm" hint="Agent tự ghi và tự duyệt sau mỗi ticket; bản cũ bị thay thế chứ không bị xoá.">
+							<Section title="Bộ nhớ kinh nghiệm" hint="Chỉ ghi từ ca được xác minh thành công và có bằng chứng hợp lệ. Ký ức có thời hạn, được chấm theo kết quả sử dụng; bản cũ được lưu khi có bản thay thế.">
 								<div className="space-y-2">
 									{memories.map((memory) => (
 										<div key={memory.id} className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${memory.status === 'active' ? 'border-border/70' : 'border-dashed opacity-60'}`}>
@@ -516,7 +513,7 @@ export function AgentDetailPage() {
 											<div className="min-w-0 flex-1">
 												<p>{memory.content}</p>
 												<p className="text-xs text-muted-foreground">
-													{memory.status === 'active' ? `Đã dùng ${memory.uses} lần` : memory.status === 'superseded' ? 'Đã được thay bằng bản mới' : 'Đã gỡ'}
+													{memory.status === 'active' ? `Đã dùng ${memory.uses} lần` : memory.status === 'superseded' ? 'Đã được thay bằng bản mới' : memory.status === 'expired' ? 'Đã hết hạn' : 'Đã gỡ'}
 													{memory.source_ticket ? ` · ticket ${memory.source_ticket.slice(0, 8)}` : ''}
 												</p>
 											</div>

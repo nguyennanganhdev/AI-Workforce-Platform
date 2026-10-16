@@ -10,8 +10,10 @@ import type {
 	SpecExample,
 	SpecKnowledge,
 	SpecRule,
+	SpecSkill,
 	SpecTest,
 	SpecTool,
+	SkillView,
 } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -241,6 +243,22 @@ export function EscalationEditor({
 	);
 }
 
+function ResourceGuidance({ value, onChange, placeholder }: {
+	value: string;
+	onChange: (value: string) => void;
+	placeholder: string;
+}) {
+	return (
+		<details className="text-xs text-muted-foreground">
+			<summary className="cursor-pointer">Chỉ dẫn riêng cho agent (tuỳ chọn){value ? ' · Đã thiết lập' : ''}</summary>
+			<label className="mt-2 block space-y-1.5">
+				<span>Chỉ thêm khi agent này cần cách dùng khác với mô tả có sẵn.</span>
+				<Input value={value} aria-label="Chỉ dẫn sử dụng riêng cho agent" placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+			</label>
+		</details>
+	);
+}
+
 export function ToolsEditor({
 	tools,
 	catalog,
@@ -268,10 +286,13 @@ export function ToolsEditor({
 						</div>
 						<RemoveButton onClick={() => onChange(tools.filter((_, i) => i !== index))} />
 					</div>
-					<Input
+					{catalog.find((entry) => entry.tool_id === tool.tool_id)?.description && (
+						<p className="text-xs text-muted-foreground">{catalog.find((entry) => entry.tool_id === tool.tool_id)?.description}</p>
+					)}
+					<ResourceGuidance
 						value={tool.use_when}
-						placeholder="Dùng khi nào (ví dụ: cần phân loại sự cố)"
-						onChange={(event) => update(index, { use_when: event.target.value })}
+						placeholder="Ví dụ: chỉ tra cứu sau khi đã hỏi loại sự cố"
+						onChange={(value) => update(index, { use_when: value })}
 					/>
 					<label className="flex items-center gap-2 text-xs text-muted-foreground">
 						<Switch
@@ -301,7 +322,7 @@ export function ToolsEditor({
 											mcp_name: tool.mcp_name,
 											tool_name: tool.tool_name,
 											use_when: '',
-											requires_consent: !tool.read_only,
+											requires_consent: tool.requires_consent || !tool.read_only,
 											read_only: tool.read_only,
 										},
 									])
@@ -337,11 +358,14 @@ export function KnowledgeEditor({
 				<div key={item.kb_id} className="flex items-center gap-2 rounded-xl border border-border/70 p-3">
 					<div className="min-w-0 flex-1 space-y-1.5">
 						<p className="text-sm font-medium">{item.name || item.kb_id}</p>
-						<Input
+						{bases.find((base) => base.id === item.kb_id)?.description && (
+							<p className="text-xs text-muted-foreground">{bases.find((base) => base.id === item.kb_id)?.description}</p>
+						)}
+						<ResourceGuidance
 							value={item.use_for}
-							placeholder="Dùng cho việc gì (quy trình, bảng giá...)"
-							onChange={(event) =>
-								onChange(items.map((v, i) => (i === index ? { ...v, use_for: event.target.value } : v)))
+							placeholder="Ví dụ: chỉ dùng quy trình dành cho khách thuê"
+							onChange={(value) =>
+								onChange(items.map((v, i) => (i === index ? { ...v, use_for: value } : v)))
 							}
 						/>
 					</div>
@@ -367,6 +391,40 @@ export function KnowledgeEditor({
 					</p>
 				)}
 			</div>
+		</div>
+	);
+}
+
+export function SkillsEditor({ items, skills, onChange }: {
+	items: SpecSkill[];
+	skills: SkillView[];
+	onChange: (items: SpecSkill[]) => void;
+}) {
+	const selected = new Set(items.map((item) => item.skill_id));
+	const available = skills.filter((skill) => skill.enabled && !selected.has(skill.id));
+	return (
+		<div className="space-y-3">
+			{items.map((item, index) => (
+				<div key={item.skill_id} className="flex items-start gap-2 rounded-xl border border-border/70 p-3">
+					<div className="min-w-0 flex-1 space-y-1.5">
+						<p className="text-sm font-medium">{item.name || item.skill_id}</p>
+						{skills.find((skill) => skill.id === item.skill_id)?.description && (
+							<p className="text-xs text-muted-foreground">{skills.find((skill) => skill.id === item.skill_id)?.description}</p>
+						)}
+						<ResourceGuidance value={item.use_when} placeholder="Ví dụ: dùng khi khách gửi ảnh hiện trường" onChange={(value) => onChange(items.map((v, i) => i === index ? { ...v, use_when: value } : v))} />
+					</div>
+					<RemoveButton onClick={() => onChange(items.filter((_, i) => i !== index))} />
+				</div>
+			))}
+			<div className="flex flex-wrap gap-1.5">
+				{available.map((skill) => (
+					<Button key={skill.id} variant="outline" size="xs" title={skill.description} onClick={() => onChange([...items, { skill_id: skill.id, name: skill.name, use_when: '' }])}>
+						<Plus /> {skill.display_name || skill.name}
+					</Button>
+				))}
+			</div>
+			{items.length === 0 && <p className="text-xs text-muted-foreground">Chưa gắn skill nào.</p>}
+			{!skills.some((skill) => skill.enabled) && <p className="text-xs text-muted-foreground">Chưa có skill khả dụng. Thêm vào thư viện Skill rồi chọn tại đây.</p>}
 		</div>
 	);
 }

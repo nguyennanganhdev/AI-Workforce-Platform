@@ -197,6 +197,7 @@ export interface CatalogTool {
 	tool_name: string;
 	description: string;
 	read_only: boolean;
+	requires_consent: boolean;
 }
 
 export interface AgentTemplate {
