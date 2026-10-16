@@ -48,6 +48,8 @@ export function useSessions(agentId: string | null) {
 		// two mounts is the point here, not skipping the read — so a
 		// view that needs it still re-reads it when it mounts.
 		staleTime: 0,
+		refetchInterval: 5000,
+		refetchIntervalInBackground: false,
 	});
 
 	/** Drop every agent's list, so both mounts re-read after a write. */

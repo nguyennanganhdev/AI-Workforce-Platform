@@ -109,7 +109,7 @@ function LeaderPageInner() {
 				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
 					<div className="min-w-0">
 						<h1 className="truncate text-[15px]/5 font-semibold">Leader</h1>
-						<p className="truncate text-xs text-muted-foreground">Session nhận ticket từ khách hàng</p>
+						<p className="truncate text-xs text-muted-foreground">Phiếu cư dân · Ban quản lý điều hành</p>
 					</div>
 					<Button
 						variant="ghost"

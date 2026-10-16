@@ -240,6 +240,8 @@ async def list_sessions(
     sessions = await storage.list_sessions(user_id, agent_id)
     views: list[SessionView] = []
     for session in sessions:
+        if session.state.middle_context.get("management_case_session_id"):
+            continue
         team_detail = None
         if session.team_id:
             team_record = await storage.get_team(user_id, session.team_id)

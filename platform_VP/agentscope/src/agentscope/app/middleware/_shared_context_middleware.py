@@ -39,9 +39,11 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         membership_storage: StorageBase | None = None,
         agent_id: str | None = None,
         summary_model: object | None = None,
+        project_private_history: bool = False,
     ) -> None:
         self._mode = mode
         self._summary_model = summary_model
+        self._project_private_history = project_private_history
         self._agent_id = agent_id
         self._service = service
         self._user_id = user_id
@@ -163,7 +165,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 "Cannot attach shared context because the model input has "
                 "no system message.",
             )
-        if self._mode in {"isolated", "references"}:
+        if self._mode in {"isolated", "references"} or self._project_private_history:
             # ``messages[1]`` may be the agent's old private summary and is
             # intentionally excluded. Only the system prompt, this turn's
             # context delta and the (references) packet are visible.

@@ -30,13 +30,50 @@ export const KIND_LABEL: Record<string, string> = {
 
 /** Strip the runtime envelope of a team message: tags, handoff/task ids. */
 export function teamMessageText(raw: string): string {
+	if (/CaseSay|CaseFinalize/.test(raw) && /không có lượt|không có.*đang mở|dừng retry|không gửi|kết thúc/i.test(raw)) {
+		return 'Đã lưu thông tin để tiếp tục ở lượt trao đổi tiếp theo.';
+	}
+	if (/WORKER_RUN_FAILED|evidence gate rejected/i.test(raw)) {
+		return 'Agent chưa hoàn tất xác minh. Leader cần kiểm tra báo cáo trước khi trả lời.';
+	}
+	if (/context.*budget|ngân sách context/i.test(raw)) {
+		return 'Lượt xử lý trước bị gián đoạn do hội thoại quá dài. Bằng chứng của phiếu vẫn được lưu.';
+	}
+	const eventStatus = /^\(Hệ thống\)\s*Sự kiện /.test(raw)
+		? /\(trạng thái ([^)]+)\)/.exec(raw)?.[1]
+		: undefined;
+	if (eventStatus) {
+		const labels: Record<string, string> = {
+			offered: 'Đã mời nhân viên nhận việc.', accepted: 'Nhân viên đã nhận việc.',
+			en_route: 'Nhân viên đang di chuyển.', arrived: 'Nhân viên đã đến.',
+			in_progress: 'Nhân viên đang xử lý.', quote_ready: 'Báo giá đã sẵn sàng, đang chờ cư dân duyệt.',
+			result_published: 'Nhân viên đã gửi kết quả, đang chờ cư dân xác nhận.',
+			resident_confirmed: 'Cư dân đã xác nhận kết quả.', closed: 'Phiếu đã hoàn tất.',
+		};
+		if (labels[eventStatus]) return labels[eventStatus];
+	}
 	return raw
 		.replace(/<team-message[^>]*>/g, '')
 		.replace(/<\/team-message>/g, '')
 		.split('\n')
 		.filter((line) => !/^\s*(handoff_id|task_id|reference_event_ids)=/.test(line))
 		.join('\n')
+		.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '')
+		.replace(/\b[0-9a-f]{32,64}\b/gi, '')
+		.replace(/@[0-9a-f]{6,}\b/gi, '')
+		.replace(/\bE\d+\b[:,]?\s*/g, '')
+		.replace(/\b(ticket_id|workflow_id|operation_id|approval_id)\s*[:=]\s*[,.;]?/g, '')
 		.trim();
+}
+
+export function toolLabel(name: string): string {
+	const labels: Record<string, string> = {
+		vh_ticket_get: 'Kiểm tra tiến độ phiếu', vh_staff_list: 'Tra nhân viên phù hợp',
+		vh_knowledge_search: 'Tra hướng dẫn nghiệp vụ', vh_work_order_dispatch: 'Điều phối nhân viên',
+		vh_work_order_reschedule: 'Cập nhật lịch hẹn', vh_ticket_add_note: 'Ghi nhận thông tin',
+		vh_ticket_cancel: 'Hủy yêu cầu', CaseEvidence: 'Đọc lại bằng chứng',
+	};
+	return labels[name.split('__').at(-1) ?? name] ?? 'Xác minh thông tin';
 }
 
 /** `field: value` lines of a structured hand-over (partner ticket). */

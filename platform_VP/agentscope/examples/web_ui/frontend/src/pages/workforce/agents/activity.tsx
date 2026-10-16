@@ -46,13 +46,10 @@ export function ActivityDialog() {
 		} catch (e) { toast.error(String(e)); } finally { setExporting(false); }
 	};
 	const metrics: [string, string][] = data ? [
-		['Lần gọi provider', number(data.calls)], ['p50 / p95', `${duration(data.p50_ms)} / ${duration(data.p95_ms)}`],
-		['Lỗi hoặc hủy', percent(data.failure_rate)], ['Token vào từ cache', percent(data.cache_hit_ratio)],
-		['Chưa có kết thúc', number(data.pending_calls)], ['Thiếu usage', number(data.calls_missing_usage)],
-		['Chưa có giá', number(data.calls_unpriced)], ['Chi phí đủ bằng chứng', usd(data.est_cost_usd)],
-		['Phần chi phí đã biết', usd(data.calls_costed ? data.known_cost_usd : null)], ['Phiếu thành công', number(data.successful_tickets ?? 0)],
-		['Chi phí / phiếu thành công', usd(data.cost_per_successful_ticket_usd)],
-		['Phiếu cần xử lý', number(data.backlog.tickets_need_attention ?? 0)],
+		['Phiếu hoàn tất', number(data.successful_tickets ?? 0)],
+		['Cần kiểm tra', number(data.backlog.tickets_need_attention ?? 0)],
+		['Thời gian phản hồi thường gặp', duration(data.p50_ms)],
+		['Chi phí ghi nhận', usd(data.est_cost_usd)],
 	] : [];
 	return <>
 		<Button variant="outline" onClick={() => setOpen(true)}><Activity /> Hoạt động và chi phí</Button>
@@ -60,23 +57,28 @@ export function ActivityDialog() {
 			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
 				<DialogHeader>
 					<DialogTitle>Hoạt động và chi phí · 30 ngày</DialogTitle>
-					<DialogDescription>Mỗi lần gọi được ghi riêng theo provider, model, tier và mục đích. Chi phí là ước tính theo giá có phiên bản; dữ liệu trước khi bật ledger chưa được đối soát.</DialogDescription>
+					<DialogDescription>Kết quả xử lý và mức sử dụng trợ lý trong 30 ngày. Phiếu hoàn tất cần được cư dân xác nhận.</DialogDescription>
 				</DialogHeader>
 				<div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading} onClick={load}><RefreshCw /> Cập nhật</Button>
-					<Button variant="outline" size="sm" disabled={!data || exporting} onClick={download}><Download /> Xuất từng lần gọi</Button></div>
+					</div>
 				{loading && <div className="flex justify-center p-4"><Spinner /></div>}
-				{error && <p role="alert" className="text-sm text-destructive">Không tải được sổ usage: {error}</p>}
+				{error && <p role="alert" className="text-sm text-destructive">Không tải được số liệu hoạt động. Vui lòng thử lại.</p>}
 				{data && <>
-					<div className="flex flex-wrap gap-2"><Badge variant={data.usage_complete ? 'secondary' : 'outline'}>{data.usage_complete ? 'Usage đầy đủ trong sổ' : 'Usage chưa đầy đủ'}</Badge>
-						{data.coverage.truncated && <Badge variant="destructive">Dashboard chỉ chứa 20.000 lần gọi đầu; cần xuất API để xem đủ</Badge>}
-						{data.calls_unknown_purpose > 0 && <Badge variant="outline">{data.calls_unknown_purpose} lần chưa phân loại mục đích</Badge>}
-						{data.coverage.recording_failures_current_process > 0 && <Badge variant="destructive">Có lỗi ghi ledger trong tiến trình hiện tại</Badge>}</div>
+					<div className="flex flex-wrap gap-2"><Badge variant={data.usage_complete ? 'secondary' : 'outline'}>{data.usage_complete ? 'Số liệu sử dụng đầy đủ' : 'Số liệu sử dụng chưa đầy đủ'}</Badge>
+					</div>
 					<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{metrics.map(([label, value]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium tabular-nums">{value}</p></div>)}</div>
-					<p className="text-xs text-muted-foreground">Phần chi phí đã biết không bao gồm lần gọi thiếu usage hoặc chưa có bảng giá. Các lần thử lại được tính riêng. Phiếu thành công cần cư dân nghiệm thu; dừng theo dõi không được tính thành công.</p>
-					<Table><TableHeader><TableRow><TableHead>Provider / model / tier</TableHead><TableHead>Lần gọi</TableHead><TableHead>Token vào / cache / ra</TableHead><TableHead>p95</TableHead><TableHead>Chi phí</TableHead></TableRow></TableHeader>
-						<TableBody>{data.by_model.map(row => <TableRow key={[row.provider, row.endpoint_id, row.model, row.service_tier].join(':')}><TableCell><p className="font-medium">{row.model}</p><p className="text-xs text-muted-foreground">{row.provider} · {row.service_tier} · {row.endpoint_id.slice(0, 8)}</p></TableCell><TableCell>{number(row.calls)}</TableCell><TableCell>{row.calls_missing_usage === row.calls ? 'Chưa xác định' : `${number(row.input_tokens)} / ${number(row.cached_input_tokens)} / ${number(row.output_tokens)}${row.usage_complete ? '' : ' · chưa đủ usage'}`}</TableCell><TableCell>{duration(row.p95_ms)}</TableCell><TableCell>{usd(row.est_cost_usd)}</TableCell></TableRow>)}</TableBody></Table>
+					{data.calls_unpriced > 0 && <p className="text-xs text-muted-foreground">Chưa có bảng giá cho một số lần gọi nên chưa thể tính tổng chi phí.</p>}
 					{data.calls === 0 && <p className="py-3 text-center text-sm text-muted-foreground">Chưa có lần gọi nào trong sổ mới.</p>}
-					<div className="flex flex-wrap gap-2">{data.by_purpose.map(row => <Badge key={row.purpose} variant="outline">{row.purpose}: {number(row.calls)}</Badge>)}</div>
+					<details className="text-xs text-muted-foreground"><summary className="cursor-pointer py-2">Chi tiết đối soát</summary>
+						{data.coverage.truncated && <p>Dashboard chỉ chứa 20.000 lần gọi đầu; cần xuất API để xem đủ.</p>}
+						{data.calls_unknown_purpose > 0 && <p>{data.calls_unknown_purpose} lần chưa phân loại mục đích.</p>}
+						{data.coverage.recording_failures_current_process > 0 && <p>Có lỗi ghi ledger trong tiến trình hiện tại.</p>}
+						<Table><TableHeader><TableRow><TableHead>Model</TableHead><TableHead>Lần gọi</TableHead><TableHead>Token vào / ra</TableHead><TableHead>Chi phí</TableHead></TableRow></TableHeader>
+							<TableBody>{data.by_model.map(row => <TableRow key={[row.provider, row.endpoint_id, row.model, row.service_tier].join(':')}><TableCell className="font-medium">{row.model}</TableCell><TableCell>{number(row.calls)}</TableCell><TableCell>{row.calls_missing_usage === row.calls ? 'Chưa xác định' : `${number(row.input_tokens)} / ${number(row.output_tokens)}${row.usage_complete ? '' : ' · chưa đầy đủ'}`}</TableCell><TableCell>{usd(row.est_cost_usd)}</TableCell></TableRow>)}</TableBody></Table>
+						<p>Lỗi hoặc hủy: {percent(data.failure_rate)} · Dữ liệu vào từ cache: {percent(data.cache_hit_ratio)} · Phản hồi chậm (95%): {duration(data.p95_ms)}</p>
+						<p>Thiếu số liệu: {number(data.calls_missing_usage)} · Chưa có giá: {number(data.calls_unpriced)} · Chi phí đã biết: {usd(data.calls_costed ? data.known_cost_usd : null)}</p>
+						<Button className="mt-2" variant="outline" size="sm" disabled={exporting} onClick={download}><Download /> Xuất số liệu đối soát</Button>
+					</details>
 				</>}
 			</DialogContent>
 		</Dialog>

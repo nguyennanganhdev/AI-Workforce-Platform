@@ -44,7 +44,6 @@ from ...message import (
     AssistantMsg,
     HintBlock,
     Msg,
-    TextBlock,
     ToolCallBlock,
     ToolResultBlock,
     ToolResultState,
@@ -178,22 +177,14 @@ def _apply_prompt_cache_key(model: ChatModelBase, agent_id: str) -> None:
     }
 
 
-# A partner tool's result in the room: what every member and the Leader
-# re-read on each call, so a preview; the full text is in the ticket's case
-# log under the same E label (the label the Leader cites).
-_PARTNER_FACT_CHARS = 1200
-
-
 def _partner_fact(call: ToolCallBlock, result: ToolResultBlock) -> str:
-    output = result.output
-    if not isinstance(output, str):
-        output = "\n".join(
-            block.text for block in output if isinstance(block, TextBlock)
-        )
-    text = f"{call.name} {call.input}\n{output}"
-    if len(text) <= _PARTNER_FACT_CHARS:
-        return text
-    return text[:_PARTNER_FACT_CHARS] + " …(rút gọn; bản đầy đủ theo mã E ở đầu)"
+    # Preserve exact evidence. Packet projection, rather than an arbitrary
+    # character cut, decides what is sent to the next model call.
+    return json.dumps({
+        "tool_call": {"name": call.name, "input": call.input},
+        "tool_result": result.model_dump(mode="json"),
+        "state": result.state,
+    }, ensure_ascii=False, separators=(",", ":"))
 
 
 class _FlexFirst:
@@ -261,12 +252,18 @@ def _apply_reasoning_effort(model: ChatModelBase, system_role: str) -> None:
     from ...model._openai_response._model import _REASONING_MODEL
 
     if isinstance(model, OpenAIChatModel):
+        if model.model == "gpt-6-luna":
+            model.parameters = model.parameters.model_copy(
+                update={"thinking_enable": True, "reasoning_effort": "none"},
+            )
         # OpenAI rejects reasoning_effort together with function tools on
         # Chat Completions (gpt-5.4-mini, gpt-5.5: 400 "use /v1/responses or
         # set reasoning_effort to 'none'"), and every agent here has tools.
         return
     if isinstance(model, OpenAIResponseModel) and not _REASONING_MODEL.match(model.model):
         # gpt-4o / gpt-4.1 do not reason and reject the parameter.
+        return
+    if os.getenv("WORKFORCE_MODEL_NAME", "").strip() == "gpt-6-luna":
         return
     name = "LEADER" if system_role == "leader" else "AGENT"
     effort = os.getenv(f"WORKFORCE_REASONING_EFFORT_{name}", "").strip().lower()
@@ -851,6 +848,7 @@ class ChatService:
         error: Exception,
         team_ctx: "_TeamContext | None" = None,
         worker_name: str | None = None,
+        output_session_id: str | None = None,
     ) -> None:
         """Tell the client about a failure that reached no reply.
 
@@ -912,11 +910,16 @@ class ChatService:
                     session_id,
                     event.model_dump(mode="json"),
                 )
+                if output_session_id and output_session_id != session_id:
+                    await publish_session_event(self._message_bus, output_session_id,
+                        {**event.model_dump(mode="json"), "session_id": output_session_id})
             await self._storage.upsert_message(
                 user_id,
                 session_id,
                 reply_msg,
             )
+            if output_session_id and output_session_id != session_id:
+                await self._storage.upsert_message(user_id, output_session_id, reply_msg)
         except Exception:
             logger.exception(
                 "Failed to report a failure for session %r; the original "
@@ -1091,6 +1094,7 @@ class ChatService:
             # A partner ticket's Leader speaks through CaseSay only; the case
             # runtime records what it sent (see the case middleware).
             partner_case = False
+            partner_room = False
             # Where recalled memory goes: the end of each model input (see
             # SharedContextIsolationMiddleware), not the system message.
             isolation = None
@@ -1143,6 +1147,12 @@ class ChatService:
                             f"Session {session_id!r} not found for agent {agent_id!r}."
                         ),
                     )
+                management_output = session_record.state.middle_context.get("management_output_session_id")
+                if management_output:
+                    visible_session = await self._storage.get_session(user_id, "", management_output)
+                    if visible_session is None:
+                        raise ValueError("Management conversation is unavailable")
+                    customer_output_session_id = management_output
                 pinned_version = session_record.state.middle_context.get("agent_version")
                 if pinned_version and agent_record.data.system_role == "business":
                     from ._agent_studio import pinned_view
@@ -1405,8 +1415,11 @@ class ChatService:
                 # A partner ticket's Leader waits for its room in its own case
                 # middleware and learns when the ticket's result is out.
                 for extra in extras:
-                    if await extra.get_middleware_key() == "partner_case":
+                    middleware_key = await extra.get_middleware_key()
+                    if middleware_key in {"partner_case", "management_case"}:
                         partner_case = True
+                    if middleware_key in {"partner_case", "partner_case_member"}:
+                        partner_room = True
                 if agent_record.data.system_role == "leader" and not partner_case:
                     middlewares.append(
                         LeaderEvidenceMiddleware(
@@ -1602,6 +1615,10 @@ class ChatService:
                                 message
                                 for message in customer_history
                                 if message.id not in current_input_ids
+                                and (not partner_room or (
+                                    message.metadata.get("actor") not in {"management", "system"}
+                                    and message.metadata.get("audience") != "management"
+                                ))
                             ],
                             source_session_id=customer_output_session_id,
                             reply_owner_agent_id=(
@@ -1615,6 +1632,8 @@ class ChatService:
                         turn_state.task_id if turn_state is not None else None
                     )
                     for msg in customer_input_msgs:
+                        if partner_room and msg.metadata.get("actor") == "system":
+                            continue
                         text = (msg.get_text_content() or "").strip() or (
                             f"[Customer message {msg.id} contains non-text "
                             "content; inspect the source message.]"
@@ -1708,6 +1727,7 @@ class ChatService:
                         membership_storage=self._storage,
                         agent_id=agent_id,
                         summary_model=summary_model,
+                        project_private_history=partner_room,
                     )
                     middlewares.append(isolation)
 
@@ -1726,7 +1746,8 @@ class ChatService:
                     )
                     middlewares.append(isolation)
 
-                fallback_cfg = session_record.config.fallback_chat_model_config
+                fallback_cfg = (None if os.getenv("WORKFORCE_MODEL_NAME", "").strip()
+                                else session_record.config.fallback_chat_model_config)
                 fallback_model = (
                     await get_model(user_id, fallback_cfg, self._access)
                     if fallback_cfg is not None
@@ -1844,7 +1865,7 @@ class ChatService:
                 agent_state = session_record.state
                 agent_state.session_id = session_id
                 context_config = agent_record.data.context_config
-                if team is not None:
+                if team is not None or management_output:
                     # Workforce turns must never silently discard old private
                     # context when summarization fails.
                     output_reserve_tokens = max(
@@ -1870,7 +1891,10 @@ class ChatService:
                     # A ratio of a 1M-token window would never trigger: every
                     # later turn would resend the whole ticket. Cap the private
                     # history by tokens too (WORKFORCE_PRIVATE_CONTEXT_TOKENS).
-                    capped = _private_context_ratio(model.context_size)
+                    # Partner rooms use the durable shared summary + the
+                    # current turn. Re-summarizing the duplicate private
+                    # transcript would cost tokens without changing input.
+                    capped = 0.9 if partner_room else _private_context_ratio(model.context_size)
                     safe_trigger_ratio = min(
                         context_config.trigger_ratio,
                         private_prompt_limit / model.context_size,
@@ -1928,6 +1952,7 @@ class ChatService:
                     e,
                     team_ctx,
                     worker_name,
+                    output_session_id=customer_output_session_id,
                 )
                 return
 
@@ -2183,6 +2208,15 @@ class ChatService:
                                         session_id,
                                         msg,
                                     )
+                                    if customer_output_session_id != session_id and not management_output:
+                                        await self._storage.upsert_message(user_id, customer_output_session_id, msg)
+                                    if not management_output:
+                                        await publish_session_event(
+                                            self._message_bus, customer_output_session_id,
+                                            CustomEvent(name="message_upserted", value={
+                                                "message": msg.model_dump(mode="json"),
+                                            }).model_dump(mode="json"),
+                                        )
 
                             async for event in agent.reply_stream(
                                 inputs=input_msg,
@@ -2195,6 +2229,7 @@ class ChatService:
                                         id=event.reply_id,
                                         name=event.name,
                                         content=[],
+                                        metadata={"audience": "management"} if management_output else {},
                                     )
                                 elif reply_msg is not None:
                                     reply_msg.append_event(event)
@@ -2363,6 +2398,8 @@ class ChatService:
                             else set()
                         )
                         for msg in customer_input_msgs:
+                            if partner_room and msg.metadata.get("actor") == "system":
+                                continue
                             if msg.id in existing_event_ids:
                                 continue
                             text = (msg.get_text_content() or "").strip() or (
@@ -2526,6 +2563,12 @@ class ChatService:
                                     customer_output_session_id,
                                     msg.model_copy(deep=True),
                                 )
+                            await publish_session_event(
+                                self._message_bus, customer_output_session_id,
+                                CustomEvent(name="message_upserted", value={
+                                    "message": msg.model_dump(mode="json"),
+                                }).model_dump(mode="json"),
+                            )
                             if team is not None and is_reply_owner and not partner_case:
                                 reply_text = (msg.get_text_content() or "").strip()
                                 if reply_text:

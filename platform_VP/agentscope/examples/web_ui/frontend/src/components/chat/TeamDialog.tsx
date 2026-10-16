@@ -1,8 +1,8 @@
 import { ArrowRight, ChevronRight, Inbox, UserRound, Wrench } from 'lucide-react';
 import { type ReactNode, useContext, useLayoutEffect, useRef, useState } from 'react';
 
-import { RoomContext, memberToolCalls, useAgentId } from './team-roster';
-import { KIND_LABEL, cleanName, teamMessageText } from './teamDialogText';
+import { RoomContext, TicketViewContext, memberToolCalls, useAgentId } from './team-roster';
+import { KIND_LABEL, cleanName, teamMessageText, toolLabel } from './teamDialogText';
 import type { ToolCallWithResult } from './tool-renderers/types';
 import type { RoomEntry } from '@/api';
 import { Markdown } from '@/components/markdown';
@@ -89,7 +89,7 @@ function Face({ name }: { name: string }) {
 /** The tool calls behind a report: a count, then each call with its arguments. */
 function ToolTrace({ calls }: { calls: RoomEntry[] }) {
 	if (calls.length === 0) return null;
-	const names = [...new Set(calls.map((call) => call.text.split(/\s/, 1)[0]))];
+	const names = [...new Set(calls.map((call) => toolLabel(call.text.split(/\s/, 1)[0])))];
 	return (
 		<Collapsible className="mt-2.5 border-t border-dashed border-border/80 pt-2">
 			<CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
@@ -101,13 +101,10 @@ function ToolTrace({ calls }: { calls: RoomEntry[] }) {
 			<CollapsibleContent>
 				<ol className="mt-2 flex flex-col gap-1">
 					{calls.map((call, index) => {
-						const [tool, ...rest] = call.text.split(' ');
+						const tool = toolLabel(call.text.split(' ')[0]);
 						return (
 							<li key={index} className="rounded-lg bg-muted/60 px-2.5 py-1.5 font-mono text-xs">
 								<span className="font-semibold">{tool}</span>
-								{rest.length > 0 && (
-									<span className="ml-1.5 break-all text-muted-foreground">{rest.join(' ')}</span>
-								)}
 							</li>
 						);
 					})}
@@ -197,13 +194,6 @@ function resultNote(pair: ToolCallWithResult): ReactNode {
 	return null;
 }
 
-function resultText(pair: ToolCallWithResult): string {
-	const output = pair.result?.output;
-	if (!output) return '';
-	if (typeof output === 'string') return output;
-	return output.map((block) => ('text' in block ? block.text : '')).join('\n');
-}
-
 /** A message the Leader sent: an assignment, a room message or the user reply. */
 export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 	const args = parseArgs(pair.call.input);
@@ -225,7 +215,7 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 							kind="assign"
 							note={after.length > 0 && <>Bắt đầu sau khi {after.join(', ')} báo kết quả</>}
 						>
-							<Markdown>{String(item.prompt ?? '')}</Markdown>
+							<Markdown>{teamMessageText(String(item.prompt ?? ''))}</Markdown>
 						</DialogCard>
 					);
 				})}
@@ -241,7 +231,7 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 				decision={String(args.decision ?? '')}
 				note={resultNote(pair)}
 			>
-				<Markdown>{String(args.content ?? '')}</Markdown>
+				<Markdown>{teamMessageText(String(args.content ?? ''))}</Markdown>
 			</DialogCard>
 		);
 	}
@@ -253,9 +243,9 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 			to="Cư dân"
 			toPerson
 			kind={refused ? 'error' : 'reply'}
-			note={refused ? <span className="text-destructive">{resultText(pair)}</span> : resultNote(pair)}
+			note={refused ? 'Nội dung chưa được gửi cho cư dân.' : resultNote(pair)}
 		>
-			<Markdown>{String(args.text ?? args.answer ?? '')}</Markdown>
+			<Markdown>{refused ? 'Cần xác minh lại trước khi gửi cập nhật.' : teamMessageText(String(args.text ?? args.answer ?? ''))}</Markdown>
 		</DialogCard>
 	);
 }
@@ -282,6 +272,7 @@ export function TicketCard({ request, facts }: { request: string; facts: string[
 }
 
 export function HandoverCard({ shown, hidden }: { shown: [string, string][]; hidden: string[] }) {
+	const ticketView = useContext(TicketViewContext);
 	return (
 		<div className="flex flex-col gap-2 text-sm">
 			<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
@@ -292,7 +283,7 @@ export function HandoverCard({ shown, hidden }: { shown: [string, string][]; hid
 					</div>
 				))}
 			</dl>
-			{hidden.length > 0 && (
+			{!ticketView && hidden.length > 0 && (
 				<Collapsible>
 					<CollapsibleTrigger className="text-xs text-muted-foreground hover:text-primary">
 						Thông tin kỹ thuật ({hidden.length})

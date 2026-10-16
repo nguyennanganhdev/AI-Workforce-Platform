@@ -182,7 +182,20 @@ export function useMessages(
 			// reply content — route them to callbacks and skip appendEvent.
 			if (event.type === EventType.CUSTOM) {
 				const custom = event as CustomEvent;
-				if (custom.name === 'team_updated') {
+				if (custom.name === 'message_upserted' && custom.value) {
+					const message = (custom.value as { message?: Msg }).message;
+					if (message) {
+						const exists = msgsRef.current.some((m) => m.id === message.id);
+						msgsRef.current = exists
+							? msgsRef.current.map((m) => m.id === message.id ? message : m)
+							: [...msgsRef.current, message];
+						if (message.role === 'assistant' && message.finished_at && currentReplyRef.current?.id === message.id) {
+							currentReplyRef.current = null;
+							setPhase('idle');
+						}
+						scheduleUpdate();
+					}
+				} else if (custom.name === 'team_updated') {
 					optionsRef.current?.onTeamUpdated?.();
 				} else if (custom.name === 'state_updated' && custom.value) {
 					optionsRef.current?.onStateUpdated?.(custom.value as Record<string, unknown>);
@@ -331,7 +344,8 @@ export function useMessages(
 					setMsgs([...msgsRef.current]);
 				} catch (e) {
 					if (!cancelled) setError(e as Error);
-					return;
+					// Keep subscribing and reconciling after a transient history
+					// failure; otherwise this tab stays offline until a reload.
 				} finally {
 					// Marks the load done whether it succeeded or threw —
 					// an error surfaces through `error`, and leaving
@@ -341,25 +355,60 @@ export function useMessages(
 				}
 			}
 
-			// 2. Open SSE long connection for live events
-			try {
-				for await (const event of sessionApi.streamEvents(
-					sessionId,
-					agentId,
-					controller.signal,
-				)) {
-					if (cancelled) break;
-					processEvent(event);
+			// Reconcile persisted messages after a disconnect; SSE is a live
+			// signal, so events missed while offline must be read from storage.
+			let retry = 0;
+			while (!cancelled) {
+				try {
+					if (retry) {
+						const history = await sessionApi.messages(sessionId, agentId);
+						if (cancelled) break;
+						for (const message of history.messages) {
+							const index = msgsRef.current.findIndex((m) => m.id === message.id);
+							if (index < 0) msgsRef.current.push(message);
+							else if (currentReplyRef.current?.id !== message.id || message.finished_at) msgsRef.current[index] = message;
+							if (currentReplyRef.current?.id === message.id && message.finished_at) currentReplyRef.current = null;
+						}
+						if (!history.is_running && !hasPendingToolCall(history.messages.at(-1))) setPhase('idle');
+						scheduleUpdate();
+					}
+					setError(null);
+					for await (const event of sessionApi.streamEvents(sessionId, agentId, controller.signal)) {
+						if (cancelled) break;
+						retry = 0;
+						processEvent(event);
+					}
+				} catch (e) {
+					if (cancelled || (e as Error).name === 'AbortError') break;
+					setError(new Error('Đang kết nối lại để cập nhật hội thoại…'));
 				}
-			} catch (e) {
-				if ((e as Error).name !== 'AbortError' && !cancelled) {
-					setError(e as Error);
-				}
+				if (cancelled) break;
+				retry += 1;
+				await new Promise<void>((resolve) => {
+					const done = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', done); resolve(); };
+					const timer = setTimeout(done, Math.min(1000 * retry, 10000));
+					controller.signal.addEventListener('abort', done, { once: true });
+				});
 			}
 		})();
+		// Also cover the short history/subscription race and an idle reply
+		// written by another worker. Never replace an actively streamed reply.
+		const reconcile = window.setInterval(async () => {
+			if (document.hidden || currentReplyRef.current) return;
+			try {
+				const history = await sessionApi.messages(sessionId, agentId);
+				if (cancelled || currentReplyRef.current) return;
+				const byId = new Map(msgsRef.current.map((m) => [m.id, m]));
+				for (const message of history.messages) byId.set(message.id, message);
+				msgsRef.current = [...byId.values()];
+				if (!history.is_running && !hasPendingToolCall(history.messages.at(-1))) setPhase('idle');
+				scheduleUpdate();
+			} catch { /* SSE reconnect reports connection status. */ }
+		}, 5000);
 
 		return () => {
 			cancelled = true;
+			window.clearInterval(reconcile);
 			controller.abort();
 			abortRef.current = null;
 			clearInterruptTimer();

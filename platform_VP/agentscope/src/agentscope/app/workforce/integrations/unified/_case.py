@@ -480,6 +480,24 @@ class _CaseTool(ToolBase):
         )
 
 
+class _EvidenceParams(ParamsBase):
+    cites: list[str] = Field(min_length=1, max_length=4, description="Mã E.. cần đọc lại từ bằng chứng đã lưu của phiếu này.")
+
+
+class CaseEvidence(_CaseTool):
+    name = "CaseEvidence"
+    description = "Đọc bằng chứng E.. đã lưu khi context chỉ còn tham chiếu. Không thực hiện lại thao tác."
+    input_schema = _EvidenceParams.model_json_schema()
+    is_concurrency_safe = True
+
+    async def call(self, cites: list[str]) -> ToolChunk:
+        found = await self._case.store.labelled(self._case.workflow_id, cites)
+        if set(found) != set(cites):
+            return ToolChunk(content=[TextBlock(text="Không tìm thấy bằng chứng trong phiếu này.")], state=ToolResultState.ERROR)
+        return ToolChunk(content=[TextBlock(text="\n".join(f"{label}: {value}" for label, value in found.items()))],
+                         state=ToolResultState.SUCCESS, metadata={"external_evidence": True})
+
+
 class CaseSay(_CaseTool):
     name = "CaseSay"
     description = (
@@ -731,13 +749,16 @@ class PartnerCaseMiddleware(MiddlewareBase):
         self._ended_on: set[str] = set()
 
     async def list_tools(self) -> list[ToolBase]:
-        return [CaseSay(self._case), CaseFinalize(self._case), *self._tools]
+        return [CaseSay(self._case), CaseFinalize(self._case), CaseEvidence(self._case), *self._tools]
 
     async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
         """The Leader sees its case tools and the team tools limited to the
         route's members (``tools``: partner tools, empty for the Leader)."""
 
-        allowed = {"CaseSay", "CaseFinalize", *(tool.name for tool in self._tools)}
+        if await self._case.trigger_id() == "unknown":
+            return ChatResponse(content=[TextBlock(text="Đã lưu báo cáo nội bộ cho lượt xử lý tiếp theo.")], is_last=True)
+
+        allowed = {"CaseSay", "CaseFinalize", "CaseEvidence", *(tool.name for tool in self._tools)}
         if self._members:
             allowed.update(TEAM_TOOLS)
         if await self._case.said():
@@ -882,10 +903,10 @@ class PartnerMemberMiddleware(MiddlewareBase):
         self._tools = tools
 
     async def list_tools(self) -> list[ToolBase]:
-        return list(self._tools)
+        return [CaseEvidence(self._case), *self._tools]
 
     async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
-        allowed = {"TeamSay", *(tool.name for tool in self._tools)}
+        allowed = {"TeamSay", "CaseEvidence", *(tool.name for tool in self._tools)}
         tools = [schema for schema in input_kwargs.get("tools") or [] if _schema_name(schema) in allowed]
         messages = clear_old_results(list(input_kwargs.get("messages") or []), agent.state.reply_id)
         return await next_handler(tools=tools, messages=messages)
@@ -906,6 +927,40 @@ def _members(route: dict) -> dict[str, dict]:
 
     agents = (route.get("config") or {}).get("member_agents") or {}
     return {_display_name(entry["name"], agent_id): entry for agent_id, entry in agents.items()}
+
+
+class ManagementCaseMiddleware(MiddlewareBase):
+    """Console Q&A can inspect this ticket but cannot speak for a resident."""
+
+    def __init__(self, tools: list, ticket_id: str = "") -> None:
+        self._tools = [tool for tool in tools if tool.is_read_only]
+        self._ticket_id = ticket_id
+
+    async def list_tools(self) -> list[ToolBase]:
+        return self._tools
+
+    async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
+        allowed = {tool.name for tool in self._tools}
+        tools = [schema for schema in input_kwargs.get("tools") or [] if _schema_name(schema) in allowed]
+        return await next_handler(**{**input_kwargs, "tools": tools})
+
+    async def on_check_permission(self, agent: Any, input_kwargs: dict, next_handler: Any) -> PermissionDecision:
+        if input_kwargs["tool_call"].name not in {tool.name for tool in self._tools}:
+            return PermissionDecision(behavior=PermissionBehavior.DENY,
+                message="Trao đổi nội bộ chỉ được tra cứu phiếu.", decision_reason="Management Q&A is read-only")
+        return await next_handler(**input_kwargs)
+
+    async def on_system_prompt(self, agent: Any, current_prompt: str) -> str:
+        return current_prompt + (
+            "\nSERVER AUDIENCE: Bạn đang trao đổi nội bộ với BAN QUẢN LÝ, không phải cư dân. "
+            "Trả lời trực tiếp cho BQL bằng văn bản ngắn gọn. Không TeamSay, CaseSay, "
+            "CaseFinalize; không gửi sang cư dân, không suy diễn đồng ý/duyệt/đóng phiếu. "
+            "Chỉ đọc công cụ được cấp để xác minh, không khẳng định đã thực hiện nếu chưa có bằng chứng. "
+            f"Phiếu cần tra: {self._ticket_id}."
+        )
+
+    async def get_middleware_key(self) -> str:
+        return "management_case"
 
 
 class CaseRuntime:
@@ -984,6 +1039,22 @@ class CaseRuntime:
     async def middlewares(self, user_id: str, agent_id: str, session_id: str, *_: Any) -> list[MiddlewareBase]:
         if self._storage is None:
             return []
+        record = await self._storage.get_session(user_id, agent_id, session_id)
+        management_source = record.state.middle_context.get("management_case_session_id") if record else None
+        if management_source:
+            binding = await self.store.session(management_source)
+            if binding is None or binding["manager_account_id"] != user_id:
+                raise ValueError("Management ticket scope is unavailable")
+            from ._contract import route_for_workflow
+            route = await route_for_workflow(self.store, binding["workflow_id"], binding["route_id"])
+            members = ((route or {}).get("config") or {}).get("member_agents") or {}
+            if agent_id != binding["agent_id"] and agent_id not in members:
+                raise ValueError("Agent is not in this ticket's frozen roster")
+            only = None if agent_id == binding["agent_id"] else set(members[agent_id].get("tools") or [])
+            case = _Case(self.store, binding, route)
+            tools = await self._tools(user_id, case, route, only=only)
+            ticket = await self.store.grant_context(binding["workflow_id"])
+            return [ManagementCaseMiddleware(tools, ticket["ticket_id"])]
         session = await self.store.session(session_id)
         if session is None:
             return await self._member(user_id, agent_id, session_id)

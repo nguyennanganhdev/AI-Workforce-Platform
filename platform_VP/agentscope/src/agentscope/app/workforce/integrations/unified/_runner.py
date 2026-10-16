@@ -678,6 +678,7 @@ class ChatLeaderTurnRunner:
                 id=f"{trigger_id}:retry{attempt}",
                 name="customer",
                 content=[TextBlock(text="(Hệ thống) Lượt trước bị lỗi model nên chưa trả lời. Tiếp tục xử lý yêu cầu ở trên.")],
+                metadata={"actor": "system"},
             )
             await state.chat_service.run(user_id, session.id, agent_id, message)
             ran = True
@@ -687,7 +688,8 @@ class ChatLeaderTurnRunner:
             if heard:
                 parts.append(
                     "(Hệ thống) Sự kiện mới của việc đang theo dõi:\n"
-                    + "\n".join(f"E{item['seq']}: {item['text']}" for item in heard),
+                    + "\n".join(f"E{item['seq']}: {item['text'].split(': {', 1)[0]}" for item in heard)
+                    + "\nChi tiết đã lưu theo mã E; đọc CaseEvidence khi cần, không thực hiện lại thao tác.",
                 )
             brief, card = ticket_brief(text, (route.get("config") or {}).get("ticket_input"))
             if brief:
@@ -699,7 +701,8 @@ class ChatLeaderTurnRunner:
                 message = UserMsg(
                     id=f"{trigger_id}:input", name="customer", content=[TextBlock(text="\n\n".join(parts)), *images],
                     # The room shows the ticket as a card, not the lines the Leader reads.
-                    metadata={"ticket": card} if card else None,
+                    metadata={"actor": "resident" if cause.get("kind") == "request" else "system",
+                              **({"ticket": card} if card else {})},
                 )
                 await state.chat_service.run(user_id, session.id, agent_id, message)
                 ran = True

@@ -1,14 +1,11 @@
-import { ChevronRight, UserRound } from 'lucide-react';
+import { UserRound } from 'lucide-react';
 import { useContext, useState } from 'react';
 
 import type { RoomEntry } from '@/api';
 import { RoomContext, useAgentId } from '@/components/chat/team-roster';
-import { KIND_LABEL, cleanName } from '@/components/chat/teamDialogText';
+import { KIND_LABEL, cleanName, teamMessageText, toolLabel } from '@/components/chat/teamDialogText';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-
-const number = (value: number) => value.toLocaleString('vi-VN');
 
 /** Kinds that are work traces rather than people talking. */
 const QUIET = new Set(['tool', 'partner_event']);
@@ -57,7 +54,7 @@ function Entry({ entry }: { entry: RoomEntry }) {
 						entry.kind === 'error' && 'text-destructive',
 					)}
 				>
-					{entry.text}
+					{entry.kind === 'tool' ? toolLabel(entry.text.split(' ')[0]) : teamMessageText(entry.text)}
 				</span>
 			</button>
 		</li>
@@ -74,10 +71,6 @@ export function RoomActivity() {
 
 	if (!room || (room.timeline.length === 0 && room.participants.length === 0)) return null;
 	const timeline = showWork ? room.timeline : room.timeline.filter((entry) => !QUIET.has(entry.kind));
-	const total = room.participants.reduce(
-		(sum, p) => ({ input: sum.input + p.input_tokens, output: sum.output + p.output_tokens }),
-		{ input: 0, output: 0 },
-	);
 
 	return (
 		<>
@@ -102,29 +95,6 @@ export function RoomActivity() {
 					</ol>
 				)}
 			</section>
-
-			{room.participants.length > 0 && (
-				<Collapsible className="px-3 pb-3">
-					<CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-						Chi phí: {number(total.input + total.output)} token
-						<ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
-					</CollapsibleTrigger>
-					<CollapsibleContent>
-						<ul className="mt-2 flex flex-col gap-1 text-xs">
-							{room.participants.map((p) => (
-								<li key={p.agent_id} className="flex items-center justify-between gap-2">
-									<span className="truncate">{cleanName(p.name)}</span>
-									<span className="shrink-0 tabular-nums text-muted-foreground">
-										{number(p.input_tokens + p.output_tokens)} token
-										{p.input_tokens > 0 &&
-											` · ${Math.round((p.cached_input_tokens / p.input_tokens) * 100)}% từ cache`}
-									</span>
-								</li>
-							))}
-						</ul>
-					</CollapsibleContent>
-				</Collapsible>
-			)}
 		</>
 	);
 }

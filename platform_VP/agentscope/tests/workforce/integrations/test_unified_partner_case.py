@@ -1191,7 +1191,7 @@ def _unsaid_case(said: bool = False, route: dict | None = None):
     async def answer():
         return said
 
-    return SimpleNamespace(rules={}, said=answer, route=route or {})
+    return SimpleNamespace(rules={}, said=answer, route=route or {}, trigger_id=AsyncMock(return_value="active-turn"))
 
 
 class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
@@ -1325,8 +1325,8 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
                 removed.append((name, agent_id, session_id))
 
         sessions = {
-            "s-kt": SimpleNamespace(id="s-kt", team_id="team-1", config=SimpleNamespace(workspace_id="w")),
-            "s-other": SimpleNamespace(id="s-other", team_id=None, config=SimpleNamespace(workspace_id="w")),
+            "s-kt": SimpleNamespace(id="s-kt", team_id="team-1", state=SimpleNamespace(middle_context={}), config=SimpleNamespace(workspace_id="w")),
+            "s-other": SimpleNamespace(id="s-other", team_id=None, state=SimpleNamespace(middle_context={}), config=SimpleNamespace(workspace_id="w")),
         }
 
         class Storage:
@@ -1433,18 +1433,18 @@ class TicketBriefTest(unittest.TestCase):
 
 
 class PartnerFactTest(unittest.TestCase):
-    def test_a_partner_result_enters_the_room_as_a_labelled_preview(self):
-        from agentscope.app._service._chat import _PARTNER_FACT_CHARS, _partner_fact
+    def test_partner_facts_keep_exact_evidence_for_packet_projection(self):
+        from agentscope.app._service._chat import _partner_fact
         from agentscope.message import ToolCallBlock, ToolResultBlock
 
         call = ToolCallBlock(id="c1", name="vh_ticket_get", input='{"ticket_id": "T-77"}')
         short = ToolResultBlock(id="c1", name="vh_ticket_get", output=[TextBlock(text='E4: {"ticket_status": "open"}')])
-        self.assertEqual('vh_ticket_get {"ticket_id": "T-77"}\nE4: {"ticket_status": "open"}', _partner_fact(call, short))
+        value = json.loads(_partner_fact(call, short))
+        self.assertEqual(value["tool_result"]["output"][0]["text"], 'E4: {"ticket_status": "open"}')
         long = ToolResultBlock(id="c1", name="vh_ticket_get", output="E5: " + "x" * 5000)
         fact = _partner_fact(call, long)
         self.assertIn("E5: ", fact)
-        self.assertTrue(fact.endswith("bản đầy đủ theo mã E ở đầu)"))
-        self.assertLess(len(fact), _PARTNER_FACT_CHARS + 60)
+        self.assertEqual(json.loads(fact)["tool_result"]["output"], long.output)
 
 
 class CheckSayTest(unittest.TestCase):

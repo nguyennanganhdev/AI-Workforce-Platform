@@ -134,6 +134,8 @@ jobs:
           tests/team_shared_context_test.py
           tests/leader_evidence_middleware_test.py
           tests/service_chat_run_context_test.py
+          tests/session_runtime_regression_test.py
+          tests/service_model_test.py
           tests/workforce_provider_usage_test.py
           tests/workforce_model_routing_test.py
           tests/workforce_task_ledger_test.py

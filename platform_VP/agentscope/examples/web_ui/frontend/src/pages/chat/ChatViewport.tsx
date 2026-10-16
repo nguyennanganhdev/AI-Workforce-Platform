@@ -385,6 +385,7 @@ export function ChatViewport({
 	// eagerly on first render, so a later `const` would still be in
 	// the temporal dead zone.
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+	const isTicketView = ticketView || Boolean((view?.session.state.middle_context as Record<string, unknown> | undefined)?.workflow_id);
 	const team = view?.team;
 	const completeTeamMention = useCallback(
 		(input: string): string | null => {
@@ -827,7 +828,7 @@ export function ChatViewport({
 			: undefined;
 
 	return (
-		<TicketViewContext.Provider value={ticketView}>
+		<TicketViewContext.Provider value={isTicketView}>
 		<TeamRosterContext.Provider value={roster}>
 		<RoomContext.Provider value={room}>
 			<SessionWorkspace snapshot={office}>
@@ -882,6 +883,7 @@ export function ChatViewport({
 									{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
 									<div className="flex shrink-0 flex-row items-center gap-x-1">
+										{!isTicketView && <>
 										<LlmSelect
 											id="tour-llm-select"
 											variant="ghost"
@@ -910,6 +912,7 @@ export function ChatViewport({
 											disabled={!sessionId || configPending}
 											onChange={handlePermissionModeChange}
 										/>
+										</>}
 
 										{/* Quick toggles for the two panels used most —
 									    team (who is working) and plan (what they are
@@ -1011,6 +1014,8 @@ export function ChatViewport({
 								<div className="relative flex min-h-0 flex-1 overflow-hidden">
 									<ChatContent
 										className="w-full"
+										showWorkspace={!isTicketView}
+										composerPlaceholder={isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
 										agentName={agentName}
 										msgs={msgs}
 										loading={messagesLoading}
@@ -1018,7 +1023,7 @@ export function ChatViewport({
 										sessionId={sessionId}
 										cwd={view?.session.config.cwd ?? null}
 										onCwdChange={handleCwdChange}
-										git={workspaceStatus?.git ?? null}
+										git={isTicketView ? null : workspaceStatus?.git ?? null}
 										mentions={mentions}
 										onRefreshGit={refetchWorkspaceStatus}
 										phase={phase}

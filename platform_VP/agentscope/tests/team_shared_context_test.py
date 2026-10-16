@@ -1198,7 +1198,10 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
 
         self.assertTrue(packet)
         self.assertLessEqual(measured, self.service.config.packet_max_tokens)
-        self.assertIn('"summary_failed_packet_fallback"', packet)
+        # The lean event envelope now fits all eight events even while the
+        # summarizer is unavailable, so no fallback omission is needed.
+        self.assertIsNone(json.loads(packet)["history_omission"])
+        self.assertEqual(len(json.loads(packet)["recent_events"]), 8)
         self.assertEqual(record.state.summaries, {})
         self.assertEqual(len(record.state.events), 8)
         self.assertEqual(record.state.metrics.compaction_failures, 1)

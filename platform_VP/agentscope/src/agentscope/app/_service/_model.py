@@ -9,6 +9,25 @@ from ...model import ChatModelBase, OpenAIChatModel, OpenAIResponseModel
 from ..._logging import logger
 
 
+def runtime_model_config(config: ChatModelConfig) -> ChatModelConfig:
+    """Deployment policy applies to runtime, summaries, evaluation and learning."""
+    name = os.getenv("WORKFORCE_MODEL_NAME", "").strip()
+    if not name:
+        return config
+    parameters = {**config.parameters}
+    parameters["max_tokens"] = min(
+        int(parameters.get("max_tokens") or 4096),
+        int(os.getenv("WORKFORCE_MAX_OUTPUT_TOKENS", "4096")),
+    )
+    if name == "gpt-6-luna":
+        # Luna function calling over Chat Completions requires effort=none.
+        # Explicitly send it; omitting it leaves the provider's default active.
+        parameters.update(thinking_enable=True, reasoning_effort="none")
+        parameters.pop("temperature", None)
+        parameters.pop("top_p", None)
+    return config.model_copy(update={"model": name, "parameters": parameters})
+
+
 async def get_model(
     user_id: str,
     config: ChatModelConfig,
@@ -41,6 +60,7 @@ async def get_model(
             404 when the credential is neither owned by ``user_id`` nor
             shared to them.
     """
+    config = runtime_model_config(config)
     credential_record = await access.resolve_credential(
         user_id,
         config.credential_id,

@@ -22,10 +22,11 @@ import {
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useRef, useState } from 'react';
 
+import { TicketViewContext } from './team-roster';
 import { DialogToolCard, HandoverCard, TeamMessageCard, TicketCard } from './TeamDialog';
-import { DIALOG_TOOLS, parseHandover, teamHintSource } from './teamDialogText';
+import { DIALOG_TOOLS, parseHandover, teamHintSource, teamMessageText, toolLabel } from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
 import { DiffStats } from './tool-renderers/_shared';
 import { countDiffStats, getResultDiff } from './tool-renderers/_shared-utils';
@@ -428,6 +429,7 @@ interface MessageBubbleProps {
  * body is omitted entirely so only the bottom status row renders.
  */
 function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
+	const ticketView = useContext(TicketViewContext);
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
 	// A partner handover reads as the card reception confirmed (see the
@@ -470,13 +472,30 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
+	const visibleBlocks = blocks.filter((block) => {
+		if (block.type === 'data' || (ticket?.request && block.type === 'text')) return false;
+		if (!ticketView) return true;
+		if (block.type === 'thinking') return false;
+		if (block.type === 'hint' && !teamHintSource(block.source)) return false;
+		if (block.type === 'text' && /^(Đã gửi (tin cho người dùng|cho người dùng)|Đã giao việc cho phòng, chờ báo cáo)\.?$/.test(block.text.trim())) return false;
+		return true;
+	});
+	if (ticketView && !isRunning && !ticket?.request && visibleBlocks.length === 0 &&
+		!blocks.some((block) => block.type === 'data') && message.finished_reason !== ReplyFinishedReason.ERROR) return null;
+	if (ticketView && message.finished_reason === ReplyFinishedReason.ERROR && visibleBlocks.length === 0) {
+		return <details className="my-2 rounded-lg border border-amber-200 px-3 py-2 text-xs text-muted-foreground">
+			<summary className="cursor-pointer">Một lượt xử lý trước chưa hoàn tất</summary>
+			<p className="mt-2">Hội thoại và bằng chứng vẫn được lưu. Có thể tiếp tục trao đổi để kiểm tra trạng thái phiếu.</p>
+		</details>;
+	}
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
+				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
+				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
 				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
-				{blocks
-					.filter((block) => block.type !== 'data' && !(ticket?.request && block.type === 'text'))
+				{visibleBlocks
 					.map((block, index) => (
 						// Only the agent's prose gets a bubble. Thinking, hints and
 						// tool runs stay bare one-line disclosures — bubbling each
@@ -506,7 +525,9 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 						<TriangleAlert />
 						<AlertTitle>{t('messageBubble.error.title')}</AlertTitle>
 						<AlertDescription>
-							{t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
+							{ticketView ? (String(message.error?.type) === 'context_budget'
+								? 'Lượt trước bị gián đoạn do hội thoại quá dài. Dữ liệu phiếu vẫn được lưu; hãy tiếp tục trao đổi.'
+								: 'Lượt xử lý chưa hoàn tất. Vui lòng kiểm tra trạng thái phiếu và thử lại.') : t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
 								defaultValue:
 									message.error?.message ?? t('messageBubble.error.unknown'),
 							})}
@@ -527,6 +548,12 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 						</MessageFooter>
 					)
 				) : (
+					ticketView ? (
+						<MessageFooter>
+							{isRunning && <p role="status" className="text-xs text-muted-foreground">Đang xử lý…</p>}
+							{audioBlocks.map((block) => <AudioInlineControl key={block.id} block={block} />)}
+						</MessageFooter>
+					) :
 					<MessageFooter className="gap-1 font-mono">
 						<Badge
 							variant="secondary"
@@ -630,6 +657,7 @@ interface ASBlockProps {
 
 export function ASBlock({ block, ...props }: ASBlockProps) {
 	const { t } = useTranslation();
+	const ticketView = useContext(TicketViewContext);
 
 	switch (block.type) {
 		case 'text': {
@@ -637,7 +665,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			if (handover) return <HandoverCard {...handover} />;
 			return (
 				<Markdown animated isAnimating={!block.finished_at} {...props}>
-					{block.text}
+					{ticketView ? teamMessageText(block.text) : block.text}
 				</Markdown>
 			);
 		}
@@ -703,7 +731,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			}
 		}
 		case 'thinking':
-			return <ThinkingBlockView block={block} />;
+			return ticketView ? null : <ThinkingBlockView block={block} />;
 		case 'hint': {
 			// Another agent's message in the room: a conversation card.
 			const team = teamHintSource(block.source);
@@ -774,6 +802,9 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			);
 		}
 		case 'tool_call_group': {
+			if (ticketView) return <div className="space-y-1 text-xs text-muted-foreground">{block.calls.map(({ call, result }) =>
+				<p key={call.id}>{toolLabel(call.name)} · {result?.state === 'error' ? 'Chưa thực hiện được' : result?.state === 'success' ? 'Đã có kết quả' : 'Đang xử lý…'}</p>
+			)}</div>;
 			const { title, insertions, deletions } = summarizeToolGroup(block.calls, t);
 			const hasRunningCall = block.calls.some(
 				(c) => !c.result || c.result.state === 'running',

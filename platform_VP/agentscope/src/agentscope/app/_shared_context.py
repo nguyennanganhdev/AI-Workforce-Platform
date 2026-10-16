@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -525,6 +526,7 @@ class SharedContextService:
         """
         projected: list[dict] = []
         seen: dict[str, dict] = {}
+        snapshots: dict[str, tuple[tuple[int, int], dict]] = {}
         for item in items:
             if item["authority"] != "tool_verified" or item["kind"] != "fact":
                 projected.append(item)
@@ -532,7 +534,10 @@ class SharedContextService:
             try:
                 value = json.loads(item["text"])
                 call, result = value["tool_call"], value["tool_result"]
-                if not call["name"].startswith("mcp__") or not isinstance(result, dict):
+                if not isinstance(result, dict) or not (
+                    call["name"].startswith("mcp__")
+                    or result.get("metadata", {}).get("external_evidence")
+                ):
                     raise ValueError("not a runtime MCP result")
                 arguments = json.loads(call["input"])
                 output = result["output"]
@@ -550,11 +555,17 @@ class SharedContextService:
                         # This is lossless for business values and raw evidence
                         # remains immutable in the source event.
                         block_text = compact_block.get("text")
-                        if isinstance(block_text, str) and block_text.strip().startswith(
-                            ("{", "[")
-                        ):
+                        label = None
+                        if isinstance(block_text, str):
+                            match = re.match(r"^(E\d+):\s*(.*)$", block_text, re.DOTALL)
+                            if match:
+                                label, block_text = match.groups()
+                        if isinstance(block_text, str) and block_text.strip().startswith(("{", "[")):
                             try:
-                                normalized_output.append(json.loads(block_text))
+                                parsed = json.loads(block_text)
+                                normalized_output.append(
+                                    {"evidence": label, "value": parsed} if label else parsed,
+                                )
                                 continue
                             except (TypeError, ValueError):
                                 pass
@@ -575,6 +586,35 @@ class SharedContextService:
                 )
             except (ValueError, TypeError, KeyError, AttributeError):
                 projected.append(item)
+                continue
+            # vh_ticket_get is a versioned full snapshot. A newer read replaces
+            # that snapshot, while raw events and all page reads stay durable.
+            snapshot = output.get("value", {}) if isinstance(output, dict) else {}
+            version = snapshot.get("ticket_version")
+            if (
+                call["name"] == "vh_ticket_get"
+                and value["state"] == "success"
+                and isinstance(version, int)
+                and not arguments.get("history_before_seq")
+            ):
+                snapshot_key = SharedContextService._json([item["task_id"], arguments])
+                sequence = snapshot.get("snapshot_seq")
+                rank = (version, sequence if isinstance(sequence, int) else 0)
+                previous = snapshots.get(snapshot_key)
+                compact = {**item, "text": text, "superseded_source_event_ids": []}
+                if previous:
+                    previous_rank, previous_item = previous
+                    if rank >= previous_rank:
+                        compact["superseded_source_event_ids"] = [
+                            *previous_item.get("superseded_source_event_ids", []),
+                            *previous_item["source_event_ids"],
+                        ]
+                        projected.remove(previous_item)
+                    else:
+                        previous_item["superseded_source_event_ids"].extend(item["source_event_ids"])
+                        continue
+                snapshots[snapshot_key] = (rank, compact)
+                projected.append(compact)
                 continue
             key = SharedContextService._json([item["task_id"], text])
             if key in seen:
@@ -1299,6 +1339,7 @@ class SharedContextService:
                         and candidate.source_session_id == event.source_session_id
                     )
         support.extend(current[event_id].content for event_id in selected)
+        support.extend(assignment.agent_name for assignment in task.assignments.values())
         return support
 
     async def unsupported_customer_reply_claims(
@@ -2523,18 +2564,38 @@ class SharedContextService:
                 ],
             ),
         )
+        # Partner tools already persist exact evidence and current items. When
+        # every material source is represented there, an index is lossless
+        # and avoids asking another model to paraphrase the same facts.
+        all_covered = [event for event in record.state.events
+                       if event.task_id == task_id and event.revision <= target_revision]
+        superseded = {source for item in record.state.items if item.status == "superseded"
+                      for source in item.source_event_ids}
+        unrepresented, _ = self._project_represented_events(all_covered, self._active_items(record), superseded)
+        partner_sources = any(
+            "external_evidence" in event.content
+            or re.match(r"^\w+ \{.*\}\nE\d+:", event.content)
+            for event in all_covered if event.kind == "external_event"
+        )
+        use_index = partner_sources and all(
+            event.kind in {"progress", "handoff", "question", "error"} or event.stale
+            for event in unrepresented
+        )
         try:
-            (
-                summary_text,
-                input_tokens,
-                output_tokens,
-                attempts,
-                model_calls,
-            ) = await self._summarize(
-                summary_model or model,
-                prior_summary,
-                old,
-            )
+            if use_index:
+                summary_text = (
+                    f"History through revision {target_revision} is represented by authoritative "
+                    "constraints, verified facts, outputs and the task ledger below. Raw sources "
+                    "remain stored. Read archived E cites with CaseEvidence before using their details. "
+                    "Check current pending approvals and operations; never repeat a side effect to recall it."
+                )
+                input_tokens = 0
+                output_tokens = await self._tokens(model, summary_text)
+                attempts = model_calls = 0
+            else:
+                (summary_text, input_tokens, output_tokens, attempts, model_calls) = await self._summarize(
+                    summary_model or model, prior_summary, old,
+                )
         except SharedContextSummaryError as exc:
             async with self._bus.acquire_lock(
                 MessageBusKeys.team_shared_context_lock(team_id),
@@ -2595,12 +2656,23 @@ class SharedContextService:
             else []
         )
         for task in tasks:
+            for key in ("created_at", "updated_at", "learned_revision", "thread_id"):
+                task.pop(key, None)
             for branch in task.get("collaboration", {}).values():
                 branch.pop("receipts", None)
                 branch.pop("signatures", None)
+                for key in ("input_tokens", "output_tokens", "tokens", "model_calls", "active_seconds", "exchanges", "started_at", "updated_at"):
+                    branch.pop(key, None)
             for assignment in task.get("assignments", {}).values():
                 assignment.pop("pending_payload", None)
                 assignment.pop("created_at", None)
+                assignment.pop("updated_at", None)
+                if assignment.get("status") in {"verified", "accepted", "stopped"}:
+                    # The runtime has already checked this assignment; keep
+                    # its result and dependency state, not its repeated brief.
+                    assignment.pop("goal", None)
+                    assignment.pop("expected_output", None)
+                    assignment.pop("done_when", None)
         selected_event_ids = {event.id for event in events}
         active_items = [
             item
@@ -2668,6 +2740,10 @@ class SharedContextService:
                     retained_items.append(item)
             active_items = retained_items
         active_items = self._compact_tool_facts(active_items)
+        represented_tool_source_ids.update(
+            source_id for item in active_items
+            for source_id in item.get("superseded_source_event_ids", ())
+        )
         superseded_source_ids = {
             source_id
             for item in record.state.items
@@ -2681,11 +2757,22 @@ class SharedContextService:
             active_items,
             superseded_source_ids,
         )
+        active_items = [
+            {key: value for key, value in item.items()
+             if key not in {"created_at", "task_id", "status", "equivalent_item_ids", "superseded_source_event_ids"}}
+            for item in active_items
+        ]
         summary = (
             record.state.summaries.get(selected_task_id)
             if selected_task_id is not None
             else None
         )
+        summary_text = summary.text if summary else ""
+        if summary:
+            # Canonical source ids stay in the stored summary. Its model view
+            # uses short revision handles rather than repeated opaque UUIDs.
+            for event in record.state.events:
+                summary_text = summary_text.replace(event.id, f"event:{event.revision}")
         return {
             "schema": "agentscope.shared-context.v1",
             "team_id": record.team_id,
@@ -2699,12 +2786,9 @@ class SharedContextService:
             "summary": (
                 {
                     "id": summary.id,
-                    "text": summary.text,
+                    "text": summary_text,
                     "covered_through_revision": (summary.covered_through_revision),
                     "source_event_count": len(summary.source_event_ids),
-                    "input_tokens": summary.input_tokens,
-                    "output_tokens": summary.output_tokens,
-                    "created_at": summary.created_at.isoformat(),
                 }
                 if mode == "task" and summary
                 else None
@@ -2731,7 +2815,9 @@ class SharedContextService:
             ),
             "history_omission": None,
             "recent_events": [
-                self._event_dict(event) for event in recent_events
+                {key: value for key, value in self._event_dict(event).items()
+                 if value is not None and value != [] and value != () and value is not False}
+                for event in recent_events
             ],
         }
 
@@ -2817,6 +2903,28 @@ class SharedContextService:
         )
         text = self._json(packet)
         tokens = await self._tokens(model, text)
+        # Large partner evidence is already durable and can be read by label
+        # through CaseEvidence. Explicit references keep the current task and
+        # approvals available without resending every historical tool result.
+        if mode == "task" and tokens > self.config.packet_max_tokens:
+            candidates = sorted(
+                (item for item in packet["authoritative_state"]["items"]
+                 if item["authority"] == "tool_verified"
+                 and ("external_evidence" in item["text"] or re.match(r"^\w+ \{.*\}\nE\d+:", item["text"]))
+                 and re.search(r"\bE\d+\b", item["text"])),
+                key=lambda item: len(item["text"]), reverse=True,
+            )
+            for item in candidates:
+                if tokens <= self.config.packet_max_tokens:
+                    break
+                labels = list(dict.fromkeys(re.findall(r"\bE\d+\b", item["text"])))
+                item["text"] = self._json({
+                    "archived_evidence": labels,
+                    "read_tool": "CaseEvidence",
+                    "instruction": "Read these cites before using business details. Raw sources retained.",
+                })
+                text = self._json(packet)
+                tokens = await self._tokens(model, text)
         source_event_count = len(events)
         projected_event_count = (
             packet["history_projection"]["projected_event_count"]

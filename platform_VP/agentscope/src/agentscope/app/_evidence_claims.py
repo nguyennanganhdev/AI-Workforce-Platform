@@ -110,6 +110,9 @@ _TRAILING_GENERIC = {
 # Title-cased headings and action phrases are not named entities. Without this
 # filter, headings such as "Đánh Giá Ngân Sách" become fake business names.
 _NON_ENTITY_PREFIXES = (
+    # Internal agent role labels (including abbreviated Vietnamese roles)
+    # are routing language, not names of staff dispatched in the real world.
+    "agent",
     "các phương án",
     "chi phí dự kiến",
     "đánh giá ngân sách",
