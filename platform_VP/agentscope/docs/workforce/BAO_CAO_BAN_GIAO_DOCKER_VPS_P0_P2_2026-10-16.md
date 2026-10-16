@@ -24,6 +24,8 @@
 
 Nhánh `develop2`, commit nền `2b9de30f7aff05a72716f480efd10429ea134fb6`. Image được dựng từ snapshot WIP đã chốt, sau đó đối chiếu các file runtime với nội dung commit bàn giao. Commit/push được ghi ở `release.json` trên hai VPS và trong phản hồi bàn giao; không đổi nhãn OCI cũ thành SHA mới để giả lập một lần build khác.
 
+Commit nguồn **`ed6915e3a2a1650f2c1c120c54eccf15daef39fe`** đã push lên `origin/develop2`. Đối chiếu 1.775 file Git với snapshot: không khác nội dung; 50 file chỉ khác CRLF/LF do Git chuẩn hóa xuống dòng. Hash manifest/image giữ nguyên byte đã đóng gói. 10 file metadata egg-info được tạo trong môi trường build, không đưa vào Git và không tính là source nghiệp vụ.
+
 | Thành phần | Image | Image ID |
 | --- | --- | --- |
 | Platform app | `agentscope-platform:2b9de30f-p0p2-20261016` | `sha256:3198eee14e11a4975818286de8155e8dcf334f66e99cc84716145057b709444f` |
