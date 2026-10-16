@@ -41,6 +41,8 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
+import { EvaluationProgress } from '@/components/workforce/EvaluationProgress';
+import { useEvaluationProgress } from '@/hooks/useEvaluationProgress';
 
 
 const STATUS_LABEL = {
@@ -76,6 +78,8 @@ export function AgentDetailPage() {
 	const [turns, setTurns] = useState<CopilotTurn[]>([]);
 	const [report, setReport] = useState<TestReport | null>(null);
 	const [publishNote, setPublishNote] = useState('');
+	const loadProgress = useCallback(() => studioApi.testProgress(agentId), [agentId]);
+	const { progress, progressError } = useEvaluationProgress(agentId || null, loadProgress, busy === 'tests');
 
 	const apply = useCallback((value: AgentDetail) => {
 		setDetail(value);
@@ -402,6 +406,8 @@ export function AgentDetailPage() {
 								<p className="text-xs text-muted-foreground">Công cụ chỉ đọc, không cần xác nhận được gọi thật. Công cụ ghi dữ liệu hoặc cần xác nhận được mô phỏng. Đây là kiểm thử từng agent; luồng nhiều agent xử lý ticket cần nghiệm thu riêng.</p>
 							</div>
 							{busy === 'tests' && <TaskProgress label={`Đang chạy và chấm ${spec.tests.length} tình huống`} startedAt={taskStartedAt} />}
+							{progress && <EvaluationProgress progress={progress} />}
+							{progressError && <p role="status" className="text-xs text-muted-foreground">Chưa tải được tiến độ; kết quả vẫn được lưu trên server. Không tự chạy lại model.</p>}
 							<Section title="Kịch bản kiểm thử" hint="Cần ít nhất 3 kịch bản và 80% đạt trên đúng bản nháp này mới phát hành được.">
 								{spec.tests.length < 3 && (
 									<div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 p-3 text-xs">

@@ -39,7 +39,7 @@ from .._agent_spec import (
 from .._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY, governed_system_prompt
 from ..storage import AgentRecord, InviteConfig, StorageBase
 from ._publish_gate import publication_blocker
-from ._agent_eval import catalog_allows_read
+from ._agent_eval import catalog_allows_read, tool_result_error
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -378,14 +378,19 @@ def tool_runner(storage: StorageBase, user_id: str, spec: AgentSpec):
             result = await mcp_tool(**arguments)
             content = getattr(result, "content", result)
             if isinstance(content, list):
-                return "\n".join(
+                output = "\n".join(
                     block.text if isinstance(block, TextBlock) else json.dumps(
                         getattr(block, "model_dump", lambda **_: str(block))(mode="json"),
                         ensure_ascii=False,
                     )
                     for block in content
                 )
-            return str(content)
+            else:
+                output = str(content)
+            error = tool_result_error(output, failed=str(getattr(result, "state", "success")) in {"error", "denied", "interrupted"})
+            if error:
+                raise error
+            return output
         finally:
             if client.is_stateful and client.is_connected:
                 await client.close()

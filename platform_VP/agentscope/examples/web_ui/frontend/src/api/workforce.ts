@@ -1,4 +1,5 @@
 import { client } from './client';
+import type { EvalProgress, TestReport } from './studio';
 import type { ChatModelConfig } from './types';
 
 export interface BuilderTool {
@@ -26,7 +27,7 @@ export interface ProposedAgent {
 		score?: number;
 		checks?: Record<string, boolean>;
 		publish_blocker?: string;
-		model_report?: { passed: number; total: number; pass_rate: number; errors: number; latency_ms: number };
+		model_report?: TestReport;
 		invalid_tool_ids?: string[];
 		reuse_similarity?: number;
 	};
@@ -151,6 +152,8 @@ export const workforceApi = {
 		client.get<BuilderConversation>(
 			`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}`,
 		),
+	builderProgress: (conversationId: string) => client.get<EvalProgress | null>(`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}/progress`),
+	evaluate: (conversationId: string, proposalId: string, expectedRevision: number) => client.post<BuilderProposal>('/workforce/console/builder/evaluate', { conversation_id: conversationId, proposal_id: proposalId, expected_revision: expectedRevision }),
 	listAgents: () => client.get<WorkforceAgent[]>('/workforce/console/agents'),
 	setLifecycle: (agentId: string, state: 'draft' | 'published') =>
 		client.post<WorkforceAgent>(

@@ -589,21 +589,32 @@ async def run_tests(
     return await _run_and_record(storage, user_id, access, agent_id, spec)
 
 
+@workforce_studio_router.get("/agents/{agent_id}/tests/progress")
+async def test_progress(agent_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._eval_progress import EVAL_AGENT, progress_view
+    await _business_agent(storage, user_id, agent_id)
+    return progress_view(await storage.get_session(user_id, EVAL_AGENT, "eval-" + agent_id))
+
+
 async def _run_and_record(storage, user_id, access, agent_id: str, spec: AgentSpec) -> dict:
+    from .._service._eval_progress import EvalProgress
     model, judge_model = await _models(storage, user_id, access, spec)
     for selected in (model, judge_model):
         selected._usage_attributes = {"user_id": user_id, "agent_id": agent_id,
                                       "operation_id": spec_hash(spec), "purpose": "eval"}
-    report = await run_spec_tests(
-        spec=spec,
-        model=model,
-        judge_model=judge_model,
-        discovered=await tool_catalog(storage, user_id),
-        run_tool=tool_runner(storage, user_id, spec),
-    )
+    progress = await EvalProgress.for_agent(storage, user_id, agent_id, await _model_config(storage, user_id))
+    await progress.stage("preparing")
+    try:
+        report = await run_spec_tests(spec=spec, model=model, judge_model=judge_model,
+            discovered=await tool_catalog(storage, user_id), run_tool=tool_runner(storage, user_id, spec), on_progress=progress.event)
+        await progress.report(report)
+    except BaseException:
+        await progress.fail()
+        raise
     async with _locks[agent_id]:
         record = await _business_agent(storage, user_id, agent_id)
         if spec_hash(draft_spec(record)) != spec_hash(spec):
+            await progress.stage("error", status="error", error="Bản nháp đã thay đổi trong khi kiểm thử; hãy chạy lại trên bản mới.")
             raise HTTPException(status_code=409, detail="Bản nháp đã thay đổi trong khi kiểm thử; hãy chạy lại.")
         if record.data.draft_spec is None:
             # Testing the published spec: keep the report on a draft copy so
@@ -611,6 +622,7 @@ async def _run_and_record(storage, user_id, access, agent_id: str, spec: AgentSp
             set_draft(record, spec, author="manager", note="Kiểm thử bản đang phát hành")
         record_test_run(record, report)
         await _save_agent(storage, user_id, record)
+    await progress.finish()
     return report
 
 

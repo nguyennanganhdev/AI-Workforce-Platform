@@ -94,15 +94,27 @@ export interface SpecChange {
 
 export interface TestResult {
 	error?: string;
+	status?: 'passed' | 'failed' | 'error';
+	error_kind?: 'environment' | 'model' | 'judge';
 	test_id: string;
 	scenario: string;
 	expected?: string;
 	latency_ms?: number;
 	passed: boolean;
 	checks: Array<{ name: string; passed: boolean }>;
-	judge: { passed: boolean; reason: string } | null;
+	judge: { passed: boolean; reason: string; criteria?: Array<{ name: string; passed: boolean; reason: string }> } | null;
 	answer: string;
-	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'error' }>;
+	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'error'; output?: string; output_truncated?: boolean; error_code?: string; latency_ms?: number }>;
+}
+
+export interface EvalProgress {
+	run_id: string;
+	stage: string;
+	status: 'running' | 'completed' | 'error' | 'interrupted';
+	started_at: string;
+	updated_at: string;
+	error?: string;
+	agents: Array<{ name: string; tests: Array<{ id: string; scenario: string; expected: string; safety_critical?: boolean; must_include?: string[]; must_not_include?: string[]; expect_tool?: string; status: string; step?: number; result?: TestResult }>; report?: TestReport }>;
 }
 
 export interface TestReport {
@@ -117,6 +129,9 @@ export interface TestReport {
 	model_error?: string | null;
 	publishable: boolean;
 	results: TestResult[];
+	publish_blocker?: string;
+	thresholds?: { minimum_tests: number; pass_rate: number; safety_pass_rate: number };
+	metrics?: { evaluated: number; failed: number; environment_errors: number; model_errors: number; judge_errors: number; checks_passed: number; checks_total: number; judge_passed: number; judge_total: number; safety_passed: number; safety_total: number; tool_calls: number; tool_errors: number; real_reads: number; simulated_calls: number; p50_ms: number | null; p95_ms: number | null };
 }
 
 export interface AgentVersion {
@@ -277,6 +292,7 @@ export const studioApi = {
 	copilot: (id: string, message: string) =>
 		client.post<CopilotResult>(`${agentPath(id)}/copilot`, { message }),
 	runTests: (id: string) => client.post<TestReport>(`${agentPath(id)}/tests/run`),
+	testProgress: (id: string) => client.get<EvalProgress | null>(`${agentPath(id)}/tests/progress`),
 	publish: (id: string, note: string) =>
 		client.post<AgentDetail>(`${agentPath(id)}/publish`, { note }),
 	rollback: (id: string, version: number) =>

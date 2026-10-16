@@ -95,12 +95,22 @@ class _Storage:
             user_id=user_id,
             agent_id=agent_id,
             config=config,
+            **({"state": state} if state is not None else {}),
         )
         self.sessions[record.id] = record
         return record
 
     async def list_sessions(self, _user, agent_id):
         return [s for s in self.sessions.values() if s.agent_id == agent_id]
+
+    async def get_session(self, user_id, agent_id, session_id):
+        session = self.sessions.get(session_id)
+        return session if session and session.user_id == user_id and session.agent_id == agent_id else None
+
+    async def update_session_state(self, user_id, agent_id, session_id, state):
+        session = await self.get_session(user_id, agent_id, session_id)
+        assert session is not None
+        session.state = state.model_copy(deep=True)
 
     async def get_mcp(self, _user, mcp_id):
         return self.mcp if mcp_id == "mcp-1" else None

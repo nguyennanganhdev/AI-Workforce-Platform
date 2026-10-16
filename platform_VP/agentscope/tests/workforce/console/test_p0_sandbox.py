@@ -83,9 +83,11 @@ async def test_draft_cannot_promote_unknown_write_or_consent_tools(metadata):
     )
 
     assert calls == []
-    assert report["results"][0]["tool_calls"][0] == {
+    call = report["results"][0]["tool_calls"][0]
+    assert {key: call[key] for key in ("name", "arguments", "executed", "mode")} == {
         "name": "dispatch", "arguments": {}, "executed": False, "mode": "simulated",
     }
+    assert "NOT executed" in call["output"]
     assert report["publishable"] is False
 
 

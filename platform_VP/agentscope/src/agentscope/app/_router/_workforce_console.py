@@ -298,6 +298,15 @@ class BuilderConversationView(BaseModel):
     context_summarized: bool = False
 
 
+@workforce_console_router.get("/builder/conversations/{conversation_id}/progress")
+async def builder_progress(conversation_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._eval_progress import progress_view
+    session = await storage.get_session(user_id, _BUILDER_AGENT_ID, conversation_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hội thoại Agent Builder.")
+    return progress_view(session)
+
+
 _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
@@ -1359,21 +1368,24 @@ def _library_note(knowledge: dict[str, dict], skills: dict[str, dict]) -> str:
     )
 
 
-async def _evaluate_proposed_agent(item: ProposedAgentView, storage: StorageBase, user_id: str, model: ChatModelBase) -> None:
+async def _evaluate_proposed_agent(item: ProposedAgentView, storage: StorageBase, user_id: str, model: ChatModelBase, progress=None) -> None:
     from .._service._agent_eval import run_spec_tests
     from .._service._agent_studio import tool_catalog, tool_runner
 
-    temporary = AgentRecord(user_id=user_id, data=AgentData(
-        name=item.name, system_prompt=item.system_prompt,
-        context_config=_FIXED_CONTEXT.model_copy(deep=True),
-        react_config=_FIXED_REACT.model_copy(deep=True),
-        build_description=item.objective,
-        tool_bindings=[tool.model_dump(mode="json") for tool in item.selected_tools],
-    ))
-    _seed_spec(temporary, item.tests, item.knowledge, item.library_skills)
-    spec = AgentSpec.model_validate(temporary.data.spec)
-    # Bind the generated skill body into the evaluated artifact hash as well.
-    spec.extra_instructions = item.skill_markdown
+    if item.spec:
+        spec = AgentSpec.model_validate(item.spec)
+    else:
+        temporary = AgentRecord(user_id=user_id, data=AgentData(
+            name=item.name, system_prompt=item.system_prompt,
+            context_config=_FIXED_CONTEXT.model_copy(deep=True),
+            react_config=_FIXED_REACT.model_copy(deep=True),
+            build_description=item.objective,
+            tool_bindings=[tool.model_dump(mode="json") for tool in item.selected_tools],
+        ))
+        _seed_spec(temporary, item.tests, item.knowledge, item.library_skills)
+        spec = AgentSpec.model_validate(temporary.data.spec)
+        # Bind the generated skill body into the evaluated artifact hash as well.
+        spec.extra_instructions = item.skill_markdown
     item.spec = spec.model_dump(mode="json")
     item.tests = [test.model_dump(mode="json") for test in spec.tests]
     from ...model._call_observer import usage_scope
@@ -1382,7 +1394,10 @@ async def _evaluate_proposed_agent(item: ProposedAgentView, storage: StorageBase
             spec=spec, model=model, judge_model=model,
             discovered=await tool_catalog(storage, user_id),
             run_tool=tool_runner(storage, user_id, spec),
+            on_progress=progress.event if progress else None,
         )
+    if progress:
+        await progress.report(report)
     blocker = publish_blocker(spec, report)
     static_passed = all(item.evaluation["checks"].values())
     item.evaluation.update({
@@ -1393,14 +1408,14 @@ async def _evaluate_proposed_agent(item: ProposedAgentView, storage: StorageBase
     })
 
 
-@workforce_console_router.post("/builder/prepare", response_model=ProposalView)
-async def prepare_builder(
+async def _prepare_builder(
     body: PrepareRequest,
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     access: ResourceAccessService = Depends(get_resource_access_service),
+    session=None,
+    progress=None,
 ) -> ProposalView:
-    session = await _builder_session(storage, user_id, body)
     messages = await _list_all_builder_messages(
         storage,
         user_id,
@@ -1522,6 +1537,8 @@ async def prepare_builder(
         )
         return proposal
 
+    if progress:
+        await progress.stage("generating")
     try:
         generation, prompt_tokens, reserved_output_tokens = await _generate(
             transcript,
@@ -1633,7 +1650,7 @@ async def prepare_builder(
                 },
             ),
         )
-        await _evaluate_proposed_agent(views[-1], storage, user_id, model)
+        await _evaluate_proposed_agent(views[-1], storage, user_id, model, progress)
         any_blocked = any_blocked or not views[-1].evaluation["passed"]
     if not views:
         any_blocked = True
@@ -1663,6 +1680,57 @@ async def prepare_builder(
         proposal,
     )
     return proposal
+
+
+@workforce_console_router.post("/builder/prepare", response_model=ProposalView)
+async def prepare_builder(body: PrepareRequest, user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service)) -> ProposalView:
+    from .._service._eval_progress import EvalProgress
+    session = await _builder_session(storage, user_id, body)
+    progress = EvalProgress(storage, user_id, session) if body.confirm_outline else None
+    if progress:
+        await progress.stage("preparing")
+    try:
+        proposal = await _prepare_builder(body, user_id, storage, access, session, progress)
+        if progress:
+            await progress.finish()
+        return proposal
+    except BaseException:
+        if progress:
+            await progress.fail()
+        raise
+
+
+@workforce_console_router.post("/builder/evaluate", response_model=ProposalView)
+async def evaluate_builder(body: PublishRequest, user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service)):
+    """Re-evaluate the exact reviewed draft, without regenerating prompts or tests."""
+    from .._service._eval_progress import EvalProgress
+    async with _proposal_locks[user_id]:
+        session = await storage.get_session(user_id, _BUILDER_AGENT_ID, body.conversation_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hội thoại Agent Builder.")
+        proposal = _stored_proposal(await _list_all_builder_messages(storage, user_id, session.id))
+        if proposal is None or proposal.proposal_id != body.proposal_id:
+            raise HTTPException(status_code=404, detail="Không tìm thấy đề xuất.")
+        if proposal.revision != body.expected_revision or proposal.status == "published":
+            raise HTTPException(status_code=409, detail="Đề xuất đã thay đổi hoặc đã phát hành; hãy tải lại.")
+        progress = EvalProgress(storage, user_id, session)
+        await progress.stage("preparing")
+        try:
+            model = await get_model(user_id, proposal.chat_model_config, access)
+            model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "eval"}
+            for item in proposal.agents:
+                await _evaluate_proposed_agent(item, storage, user_id, model, progress)
+            proposal.status = "ready" if proposal.agents and all(item.evaluation["passed"] for item in proposal.agents) else "blocked"
+            proposal.revision += 1
+            proposal.assistant_message = "Đã chạy lại eval trên đúng cấu hình và test case hiện có; không sinh lại agent."
+            await _persist_builder_turn(storage, user_id, session.id, "Chạy lại eval trên bản nháp hiện tại.", proposal)
+            await progress.finish()
+            return proposal
+        except BaseException:
+            await progress.fail()
+            raise
 
 
 @workforce_console_router.post("/builder/publish", response_model=PublishResponse)

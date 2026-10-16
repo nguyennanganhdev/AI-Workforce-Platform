@@ -42,6 +42,9 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
+import { EvaluationProgress } from '@/components/workforce/EvaluationProgress';
+import { EvaluationReport } from '@/components/workforce/EvaluationReport';
+import { useEvaluationProgress } from '@/hooks/useEvaluationProgress';
 import { cn } from '@/lib/utils';
 
 function prefersVietnamese(text: string) {
@@ -88,7 +91,6 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 					<p className="mt-1 text-sm text-muted-foreground">{proposal.objective}</p>
 					{failed.length > 0 && <p className="mt-1 text-xs text-destructive">Chưa đạt: {failed.join('; ')}.</p>}
 					{proposal.evaluation.publish_blocker && <p className="mt-1 text-xs text-destructive">{proposal.evaluation.publish_blocker}</p>}
-					{proposal.evaluation.model_report && <p className="mt-1 text-xs text-muted-foreground">Model: {proposal.evaluation.model_report.passed}/{proposal.evaluation.model_report.total} ca đạt · {proposal.evaluation.model_report.errors} lỗi chạy · {(proposal.evaluation.model_report.latency_ms / 1000).toFixed(1)} giây</p>}
 				</div>
 			</header>
 
@@ -147,7 +149,8 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 					)}
 				</CollapsibleContent>
 			</Collapsible>
-			{proposal.tests && proposal.tests.length > 0 && (
+			{proposal.evaluation.model_report && <div className="mt-4 border-t pt-4"><EvaluationReport report={proposal.evaluation.model_report} configurationBlocker={failed.length ? `Cấu hình chưa đủ: ${failed.join('; ')}.` : undefined} /></div>}
+			{!proposal.evaluation.model_report && proposal.tests && proposal.tests.length > 0 && (
 				<details className="mt-3 text-sm">
 					<summary className="cursor-pointer py-2 font-medium">{proposal.tests.length} ca kiểm thử</summary>
 					<p className="mb-2 text-xs text-muted-foreground">{proposal.evaluation.model_report ? 'Đã chạy model và bộ chấm. Chỉ được phát hành khi kết quả khớp cấu hình này và mọi ca an toàn đạt.' : 'Kịch bản chưa được chạy bằng model; chưa được phát hành. Tạo lại cấu hình để kiểm thử.'}</p>
@@ -184,6 +187,8 @@ export function AgentBuilderPage() {
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
 	const [agentsOpen, setAgentsOpen] = useState(false);
 	const [deleting, setDeleting] = useState<BuilderConversationSummary | null>(null);
+	const loadProgress = useCallback(() => workforceApi.builderProgress(conversationId!), [conversationId]);
+	const { progress, progressError } = useEvaluationProgress(conversationId, loadProgress, working);
 
 	const loadAgents = useCallback(async () => {
 		setAgents(await workforceApi.listAgents());
@@ -300,6 +305,17 @@ export function AgentBuilderPage() {
 			setLastLatency(Date.now() - startedAt);
 			setWorking(false);
 		}
+	};
+	const evaluate = async () => {
+		if (!proposal?.proposal_id || working) return;
+		setWorking(true);
+		const startedAt = Date.now();
+		setTask({ label: 'Đang chạy lại eval trên cấu hình hiện tại…', startedAt });
+		try {
+			await workforceApi.evaluate(proposal.conversation_id, proposal.proposal_id, proposal.revision);
+			await refreshConversation(proposal.conversation_id);
+		} catch { toast.error('Chưa chạy lại được eval. Kiểm tra kết nối và tải lại đề xuất.'); }
+		finally { setLastLatency(Date.now() - startedAt); setWorking(false); }
 	};
 
 	const toggleLifecycle = async (agent: WorkforceAgent) => {
@@ -427,6 +443,8 @@ export function AgentBuilderPage() {
 						{working && (
 							<TaskProgress key={task.startedAt} {...task} />
 						)}
+						{progress && <EvaluationProgress progress={progress} />}
+						{progressError && <p role="status" className="text-xs text-muted-foreground">Chưa tải được tiến độ. Kết quả vẫn được lưu trên server; không tự chạy lại model.</p>}
 						{conversation.length > 0 && (
 							<p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-testid="builder-metrics">
 								<span>Ngữ cảnh: {contextInfo.messages} tin nhắn{contextInfo.summarized ? ' · đã tóm tắt lịch sử dài' : ''}</span>
@@ -454,6 +472,7 @@ export function AgentBuilderPage() {
 											<CheckCircle2 /> Chốt và sinh cấu hình
 										</Button>
 									)}
+									{proposal.agents.length > 0 && proposal.status !== 'published' && <Button variant="outline" onClick={() => void evaluate()} disabled={working}>Chạy lại eval · giữ cấu hình</Button>}
 								</div>
 								{proposal.planned_agents.length > 0 && proposal.agents.length === 0 && (
 									<div className="grid gap-3 md:grid-cols-2">
