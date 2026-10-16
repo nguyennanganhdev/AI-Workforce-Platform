@@ -72,6 +72,7 @@ export function toolLabel(name: string): string {
 		vh_knowledge_search: 'Tra hướng dẫn nghiệp vụ', vh_work_order_dispatch: 'Điều phối nhân viên',
 		vh_work_order_reschedule: 'Cập nhật lịch hẹn', vh_ticket_add_note: 'Ghi nhận thông tin',
 		vh_ticket_cancel: 'Hủy yêu cầu', CaseEvidence: 'Đọc lại bằng chứng',
+		MemorySearch: 'Tra cứu bộ nhớ', MemoryRecall: 'Tra cứu bộ nhớ',
 	};
 	return labels[name.split('__').at(-1) ?? name] ?? 'Xác minh thông tin';
 }

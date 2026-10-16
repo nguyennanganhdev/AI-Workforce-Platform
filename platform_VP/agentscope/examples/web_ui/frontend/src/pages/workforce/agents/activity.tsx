@@ -48,7 +48,7 @@ export function ActivityDialog() {
 	const metrics: [string, string][] = data ? [
 		['Phiếu hoàn tất', number(data.successful_tickets ?? 0)],
 		['Cần kiểm tra', number(data.backlog.tickets_need_attention ?? 0)],
-		['Thời gian phản hồi thường gặp', duration(data.p50_ms)],
+		['Latency p50 / p95', `${duration(data.p50_ms)} / ${duration(data.p95_ms)}`],
 		['Chi phí ghi nhận', usd(data.est_cost_usd)],
 	] : [];
 	return <>
@@ -68,13 +68,13 @@ export function ActivityDialog() {
 					</div>
 					<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{metrics.map(([label, value]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium tabular-nums">{value}</p></div>)}</div>
 					{data.calls_unpriced > 0 && <p className="text-xs text-muted-foreground">Chưa có bảng giá cho một số lần gọi nên chưa thể tính tổng chi phí.</p>}
+					<Table><TableHeader><TableRow><TableHead>Model</TableHead><TableHead>Lần gọi</TableHead><TableHead>Token vào / ra</TableHead><TableHead>Latency p50 / p95</TableHead><TableHead>Chi phí</TableHead></TableRow></TableHeader>
+						<TableBody>{data.by_model.map(row => <TableRow key={[row.provider, row.endpoint_id, row.model, row.service_tier].join(':')}><TableCell className="font-medium">{row.model}</TableCell><TableCell>{number(row.calls)}</TableCell><TableCell>{row.calls_missing_usage === row.calls ? 'Chưa xác định' : `${number(row.input_tokens)} / ${number(row.output_tokens)}${row.usage_complete ? '' : ' · chưa đầy đủ'}`}</TableCell><TableCell>{duration(row.p50_ms)} / {duration(row.p95_ms)}</TableCell><TableCell>{usd(row.est_cost_usd)}</TableCell></TableRow>)}</TableBody></Table>
 					{data.calls === 0 && <p className="py-3 text-center text-sm text-muted-foreground">Chưa có lần gọi nào trong sổ mới.</p>}
 					<details className="text-xs text-muted-foreground"><summary className="cursor-pointer py-2">Chi tiết đối soát</summary>
 						{data.coverage.truncated && <p>Dashboard chỉ chứa 20.000 lần gọi đầu; cần xuất API để xem đủ.</p>}
 						{data.calls_unknown_purpose > 0 && <p>{data.calls_unknown_purpose} lần chưa phân loại mục đích.</p>}
 						{data.coverage.recording_failures_current_process > 0 && <p>Có lỗi ghi ledger trong tiến trình hiện tại.</p>}
-						<Table><TableHeader><TableRow><TableHead>Model</TableHead><TableHead>Lần gọi</TableHead><TableHead>Token vào / ra</TableHead><TableHead>Chi phí</TableHead></TableRow></TableHeader>
-							<TableBody>{data.by_model.map(row => <TableRow key={[row.provider, row.endpoint_id, row.model, row.service_tier].join(':')}><TableCell className="font-medium">{row.model}</TableCell><TableCell>{number(row.calls)}</TableCell><TableCell>{row.calls_missing_usage === row.calls ? 'Chưa xác định' : `${number(row.input_tokens)} / ${number(row.output_tokens)}${row.usage_complete ? '' : ' · chưa đầy đủ'}`}</TableCell><TableCell>{usd(row.est_cost_usd)}</TableCell></TableRow>)}</TableBody></Table>
 						<p>Lỗi hoặc hủy: {percent(data.failure_rate)} · Dữ liệu vào từ cache: {percent(data.cache_hit_ratio)} · Phản hồi chậm (95%): {duration(data.p95_ms)}</p>
 						<p>Thiếu số liệu: {number(data.calls_missing_usage)} · Chưa có giá: {number(data.calls_unpriced)} · Chi phí đã biết: {usd(data.calls_costed ? data.known_cost_usd : null)}</p>
 						<Button className="mt-2" variant="outline" size="sm" disabled={exporting} onClick={download}><Download /> Xuất số liệu đối soát</Button>

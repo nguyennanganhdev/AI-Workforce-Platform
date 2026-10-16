@@ -475,19 +475,14 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	const visibleBlocks = blocks.filter((block) => {
 		if (block.type === 'data' || (ticket?.request && block.type === 'text')) return false;
 		if (!ticketView) return true;
-		if (block.type === 'thinking') return false;
-		if (block.type === 'hint' && !teamHintSource(block.source)) return false;
+		if (block.type === 'hint' && block.source) {
+			try {
+				if (JSON.parse(block.source).sublabel === 'Runtime State') return false;
+			} catch { /* Plain hint labels remain visible. */ }
+		}
 		if (block.type === 'text' && /^(Đã gửi (tin cho người dùng|cho người dùng)|Đã giao việc cho phòng, chờ báo cáo)\.?$/.test(block.text.trim())) return false;
 		return true;
 	});
-	if (ticketView && !isRunning && !ticket?.request && visibleBlocks.length === 0 &&
-		!blocks.some((block) => block.type === 'data') && message.finished_reason !== ReplyFinishedReason.ERROR) return null;
-	if (ticketView && message.finished_reason === ReplyFinishedReason.ERROR && visibleBlocks.length === 0) {
-		return <details className="my-2 rounded-lg border border-amber-200 px-3 py-2 text-xs text-muted-foreground">
-			<summary className="cursor-pointer">Một lượt xử lý trước chưa hoàn tất</summary>
-			<p className="mt-2">Hội thoại và bằng chứng vẫn được lưu. Có thể tiếp tục trao đổi để kiểm tra trạng thái phiếu.</p>
-		</details>;
-	}
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
@@ -548,12 +543,6 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 						</MessageFooter>
 					)
 				) : (
-					ticketView ? (
-						<MessageFooter>
-							{isRunning && <p role="status" className="text-xs text-muted-foreground">Đang xử lý…</p>}
-							{audioBlocks.map((block) => <AudioInlineControl key={block.id} block={block} />)}
-						</MessageFooter>
-					) :
 					<MessageFooter className="gap-1 font-mono">
 						<Badge
 							variant="secondary"
@@ -655,6 +644,18 @@ interface ASBlockProps {
 	block: ExtendedContentBlock;
 }
 
+function BlockDuration({ createdAt, finishedAt }: { createdAt?: string; finishedAt?: string | null }) {
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		if (!createdAt || finishedAt) return;
+		const timer = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(timer);
+	}, [createdAt, finishedAt]);
+	if (!createdAt) return null;
+	const seconds = Math.max(0, ((finishedAt ? new Date(finishedAt).getTime() : now) - new Date(createdAt).getTime()) / 1000);
+	return <span className="ml-2 text-xs tabular-nums">{formatTime(seconds)}</span>;
+}
+
 export function ASBlock({ block, ...props }: ASBlockProps) {
 	const { t } = useTranslation();
 	const ticketView = useContext(TicketViewContext);
@@ -731,7 +732,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			}
 		}
 		case 'thinking':
-			return ticketView ? null : <ThinkingBlockView block={block} />;
+			return <ThinkingBlockView block={block} />;
 		case 'hint': {
 			// Another agent's message in the room: a conversation card.
 			const team = teamHintSource(block.source);
@@ -790,6 +791,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 							)}
 						>
 							<span>{hintLabel + (hintSublabel ? ` - ${hintSublabel}` : '')}</span>
+							<BlockDuration createdAt={block.created_at} finishedAt={block.finished_at} />
 							<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
 						</div>
 					</CollapsibleTrigger>
@@ -802,9 +804,10 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			);
 		}
 		case 'tool_call_group': {
-			if (ticketView) return <div className="space-y-1 text-xs text-muted-foreground">{block.calls.map(({ call, result }) =>
-				<p key={call.id}>{toolLabel(call.name)} · {result?.state === 'error' ? 'Chưa thực hiện được' : result?.state === 'success' ? 'Đã có kết quả' : 'Đang xử lý…'}</p>
-			)}</div>;
+			if (ticketView) return <div className="space-y-1 text-xs text-muted-foreground">{block.calls.map(({ call, result }) => {
+				const end = result?.finished_at ?? call.finished_at;
+				return <p key={call.id}>{toolLabel(call.name)} · {result?.state === 'error' ? 'Chưa thực hiện được' : result?.state === 'success' ? 'Đã có kết quả' : result?.state === 'denied' ? 'Không được phép' : result?.state === 'interrupted' ? 'Đã dừng' : 'Đang xử lý…'}<BlockDuration createdAt={call.created_at} finishedAt={end} /></p>;
+			})}</div>;
 			const { title, insertions, deletions } = summarizeToolGroup(block.calls, t);
 			const hasRunningCall = block.calls.some(
 				(c) => !c.result || c.result.state === 'running',
