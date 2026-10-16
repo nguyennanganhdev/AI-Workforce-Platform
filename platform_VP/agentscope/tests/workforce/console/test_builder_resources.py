@@ -483,6 +483,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         existing=(),
         classifier=None,
         outline=OUTLINE,
+        message="Confirm",
     ):
         storage = SimpleNamespace(
             upsert_message=AsyncMock(), list_agents=AsyncMock(return_value=list(existing)),
@@ -537,7 +538,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         ):
             result = await console.prepare_builder(
                 console.PrepareRequest(
-                    message="Confirm",
+                    message=message,
                     conversation_id="builder",
                     confirm_outline=confirm_outline,
                     expected_revision=expected_revision,

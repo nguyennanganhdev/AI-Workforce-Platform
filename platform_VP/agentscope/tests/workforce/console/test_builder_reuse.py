@@ -63,7 +63,7 @@ class TestBuilderReuse(IsolatedAsyncioTestCase):
             console, "_builder_classifier", AsyncMock(return_value=classifier)
         ):
             result = await console._reuse_builder_agents(
-                outline, records, TOOLS, KBS, object(), "user"
+                outline, records, TOOLS, KBS, object(), "user", "Find hotel rooms and explain hotel policies"
             )
         return result, classifier
 
@@ -86,6 +86,28 @@ class TestBuilderReuse(IsolatedAsyncioTestCase):
                 )
                 classifier.client.aclose.assert_awaited_once()
         self.assertIsNone(outline.agents[0].reuse_agent_id)
+
+    async def test_reuse_judgment_receives_request_and_actual_agent_instructions(self):
+        record = existing_agent()
+        _, classifier = await self._reuse(OUTLINE, [record])
+        state, questions = classifier.calls[0]
+        self.assertEqual(state["request"], "Find hotel rooms and explain hotel policies")
+        self.assertEqual(state["existing_agents"][0]["system_prompt"], record.data.system_prompt)
+        self.assertEqual(state["existing_agents"][0]["skill_markdown"], record.data.generated_skill)
+        self.assertIsNotNone(questions["reuse_0_0"].criteria)
+
+    async def test_optional_kb_does_not_mark_accepted_reuse_as_missing_resources(self):
+        record = existing_agent()
+        record.data.knowledge_base_ids = []
+        outline = console.BuilderOutline(agents=[console.PlannedAgent(
+            name="Hotel", objective="Search hotel rooms",
+            tool_requirements=["Search hotel rooms"],
+            knowledge_requirements=["Internal booking policy, if any"],
+        )])
+        selected, _ = await self._reuse(outline, [record])
+        console._validate_resource_selection(selected, TOOLS, KBS)
+        self.assertEqual(selected.agents[0].reuse_agent_id, record.id)
+        self.assertEqual(selected.agents[0].missing_resources, [])
 
     async def test_same_existing_agent_collapses_two_plan_entries(self):
         outline = OUTLINE.model_copy(deep=True)
@@ -179,7 +201,7 @@ class TestBuilderReuse(IsolatedAsyncioTestCase):
             AsyncMock(side_effect=RuntimeError("offline")),
         ):
             result = await console._reuse_builder_agents(
-                OUTLINE, [existing_agent()], TOOLS, KBS, object(), "user"
+                OUTLINE, [existing_agent()], TOOLS, KBS, object(), "user", "Find hotel rooms"
             )
         self.assertEqual(result, OUTLINE)
 
@@ -201,6 +223,7 @@ class TestBuilderReuse(IsolatedAsyncioTestCase):
         self.assertIsNone(result.planned_agents[0].reuse_agent_id)
         self.assertEqual(result.planned_agents[1].reuse_agent_id, record.id)
         self.assertEqual(result.resource_selection, "hybrid")
+        self.assertIn("new agents needed: 1", result.assistant_message)
 
     async def test_all_reused_skips_resource_selection_and_generation(self):
         record = existing_agent()
@@ -211,8 +234,11 @@ class TestBuilderReuse(IsolatedAsyncioTestCase):
             confirm_outline=False,
             existing=[record],
             classifier=_Classifier(),
+            message="Tạo nhóm trợ lý du lịch",
         )
         self.assertEqual(len(preview.planned_agents), 1)
+        self.assertIn("đã đủ nghiệp vụ", preview.assistant_message)
+        self.assertIn("Không cần tạo agent mới", preview.assistant_message)
         self.assertEqual(preview.planned_agents[0].reuse_agent_id, record.id)
         model = _Model({})
         ready = await resources.TestBuilderResources._prepare(
