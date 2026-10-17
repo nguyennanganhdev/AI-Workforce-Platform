@@ -99,6 +99,11 @@ class PersonalJobWorker:
                     result = await self._run(authority, context, job)
                     await authority.jobs.checkpoint(job, self.worker_id, result)
                     await enqueue_deliveries(authority, context, job.job_id, result)
+                elif job.job_type == "publish-batch":
+                    from ._publish_batch import run
+                    # The conversation guard lease is 300s. Bound staging
+                    # below it; timeout leaves a repairable checkpoint.
+                    result = await asyncio.wait_for(run(self, authority, context, job), timeout=240)
                 else:
                     raise PlatformError("PERSONAL_JOB_HANDLER_UNAVAILABLE", 503)
                 await authority.jobs.complete(job, self.worker_id, result)

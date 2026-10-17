@@ -98,6 +98,7 @@ def main():
     started = perf_counter()
     if options.contracts_only:
         suite = [
+            "tests/workforce/console/test_vin_publish_batch.py",
             "tests/workforce/console/test_vin_personal_automation.py",
             "tests/workforce/console/test_vin_discord_identity.py",
             "tests/vin_personal_jobs_test.py",

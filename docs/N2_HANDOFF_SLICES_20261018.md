@@ -268,3 +268,18 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Tham chiếu protocol: https://docs.discord.com/developers/topics/oauth2 và https://docs.discord.com/developers/resources/message (identify/code/state/PKCE; enforce_nonce có cửa sổ ngắn). Chỉ đọc tài liệu; test dùng fake HTTP/fixture, không Discord/Domain/model thật.
 - Gate còn mở: chưa thử Discord account/bot thật hoặc deploy/migrate DB ứng dụng; OAuth app cần operator provision. Queue reader C09 list hiện giới hạn 100 job đầu, N2 cần N1 giao pagination/filter mới cho lịch sử dài và repair sau hơn 100 run; consumer không query SQL authority riêng.
 - Runtime mở rộng cuối S08: **470 PASS / 19 SKIP / 0 FAIL / 0 ERROR**. 18 browser SKIP đã chạy riêng **18 PASS**, 1 SKIP là gate concurrency PostgreSQL personal_chat baseline (không được coi PASS bởi 3 consumer PG khác). Không cộng trùng coverage giữa suite. Không push/deploy, chưa upgrade DB ứng dụng.
+
+## S09 — N2-04 batch publish — ĐANG TRIỂN KHAI
+
+- Owner bổ sung `_service/_publish_batch.py`, test `test_vin_publish_batch.py` và frontend polling/repair UI theo lane Builder/publish Người 2. Dùng C09 jobs + checkpoint và storage.activate_agents_batch từ N1; không sửa persistence.
+- Manifest định danh agent/workspace ổn định theo proposal, stage riêng, chỉ activate toàn batch sau kiểm HEAD/revision/resource; crash không sinh agent/phiên bản thứ hai. Repair là thao tác có trạng thái, không dùng boolean claim cũ cho Vin customer.
+
+### S09 — Kết quả slice batch publish
+
+- VIN_USER chuyển publish sang job C09, UI poll trạng thái theo đúng proposal và khôi phục sau reload. Chỉ hiển thị published khi worker activate + receipt hoàn tất; BQL giữ luồng cũ.
+- Manifest giữ ID agent/session/resource workspace ổn định, cursor/record/spec/resource hash; stage riêng, activate_agents_batch CAS toàn batch. Conversation guard bằng authority automation lease chặn ghi đề xuất trong lúc publish; worker stage bị giới hạn 240s dưới lease 300s. Trước activate kiểm lại HEAD/revision và resource pins; package skill chưa cache thì fail rõ, không download không kiểm soát trong worker.
+- Repair job dùng checkpoint cũ, đọc lại agent pointers. Crash sau activate trước receipt nhận diện đúng data/versions, không gọi activate lần hai. UI recovery không gọi prepare/evaluate hoặc model.
+- Strict contracts **56 PASS / 0 SKIP / 0 FAIL / 0 ERROR**: thêm 10 ca fault injection SQL/Redis (thành công/idempotency, chết giữa stage, chết sau activate, guard/HEAD, revoke), dùng 5 ca eval trên fake model/judge cho mỗi spec; không real SDK/key.
+- Runtime + automation trước khi nhân đôi fixture SQL: **475 PASS / 19 SKIP / 0 FAIL / 0 ERROR**; 18 browser đã PASS ở S08, 1 PostgreSQL concurrency baseline còn SKIP. Browser mới phục hồi batch **1 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. TypeScript/ESLint/Ruff module/test mới/build PASS; chunk-size warning như trước.
+- Log `.artifacts/n2-batch-{contracts,runtime,browser,build}.log`. External network attempts trong harness 0; paid model calls 0. Không push/deploy, không thay UI shell và không sửa storage/Domain/authority N1.
+- Không đóng S03 chỉ từ batch gate: resource pins trong manifest publish đã có; tài nguyên KB/skill runtime business thực, model chất lượng thật và UAT vẫn chưa nghiệm thu. C09 pagination >100 job đang chờ producer như S08.
