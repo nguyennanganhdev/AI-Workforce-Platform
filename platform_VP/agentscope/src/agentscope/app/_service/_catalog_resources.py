@@ -1,5 +1,4 @@
 """C02 consumer for MCP/skill records; authority stays with VinPlatformService."""
-import os
 from typing import Literal
 
 from fastapi import HTTPException
@@ -8,8 +7,12 @@ Kind = Literal["mcp", "skill"]
 
 
 def catalog_authority(storage):
+    from ..vin_platform import enabled
+
+    if not enabled():
+        return None
     authority = getattr(storage, "vin_platform_service", None)
-    if authority is None and os.getenv("VIN_PLATFORM_ENABLED", "").lower() in {"true", "1", "yes"}:
+    if authority is None:
         raise HTTPException(503, "RESOURCE_AUTHORITY_UNAVAILABLE")
     return authority
 

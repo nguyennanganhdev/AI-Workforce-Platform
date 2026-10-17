@@ -8,6 +8,7 @@ import pytest_asyncio
 from fastapi import HTTPException
 
 pytest.importorskip("agentscope.app.vin_platform")
+from vin_fixtures import authority as authority
 
 from test_vin_model_resolver_contract import real_authority as real_authority
 from agentscope.app._agent_spec import AgentSpec, SpecTool

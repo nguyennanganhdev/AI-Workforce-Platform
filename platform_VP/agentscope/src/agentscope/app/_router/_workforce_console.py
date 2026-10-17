@@ -445,7 +445,9 @@ async def _platform_credential(storage: StorageBase, user_id: str) -> list:
 
 
 async def _model_config(storage: StorageBase, user_id: str, *, authority=None) -> ChatModelConfig:
-    if os.getenv("VIN_PLATFORM_ENABLED", "false").lower() == "true":
+    from ..vin_platform import enabled
+
+    if enabled():
         authority = authority or getattr(storage, "vin_platform_service", None)
         if authority is None:
             raise HTTPException(status_code=503, detail="MODEL_AUTHORITY_UNAVAILABLE")

@@ -60,7 +60,7 @@ def browser_app():
                         "buckets": [{"window": "day:2026-10-18", "used": 1200, "reserved": 300}]}
                 elif path == "/channels/types":
                     from agentscope.app.channel import ChannelTypeRegistry, DiscordChannel
-                    result = [item.model_dump() for item in ChannelTypeRegistry([DiscordChannel]).list_types()]
+                    result = [{**item.model_dump(), "icon_url": ""} for item in ChannelTypeRegistry([DiscordChannel]).list_types()]
                 elif path == "/channels/":
                     result = []
                 elif path == "/agent/":

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 pytest.importorskip("agentscope.app.vin_platform")
+from vin_fixtures import authority as authority
 
 from test_vin_model_resolver_contract import real_authority as real_authority
 from agentscope.app._service._chat import ChatService

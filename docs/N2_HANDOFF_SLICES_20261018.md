@@ -183,3 +183,8 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   không copy WIP của Người 1. Harness `--contracts-only` coi bất kỳ SKIP nào là gate fail.
 - `vin_platform.enabled()` chưa có trong các commit đã nhận; đã gửi yêu cầu bổ sung helper đúng owner,
   không sửa package authority từ lane Người 2.
+- Đã nhận thêm helper tại `2e2caa00`; console/catalog consumer dùng `vin_platform.enabled()` thay parser riêng.
+  N2 cần package N1 trong bản tích hợp để chạy; không tạo parser/fallback package giả trong production.
+- Lượt ghép đầu `9caf36ed`: **PASS 14 / SKIP 0 / ERROR 10 / FAIL 0**, lỗi đăng ký dependency fixture
+  ở test consumer (đã sửa); chưa đóng S03 bằng lượt này. Browser đầu **PASS 12 / FAIL 1** do favicon từ
+  schema Discord trong fixture bị outbound guard chặn; fixture đổi icon rỗng, giữ chặn outbound.

@@ -72,6 +72,7 @@ class PlatformCredentialTest(unittest.IsolatedAsyncioTestCase):
 
         parent = types.ModuleType("agentscope.app.vin_platform")
         parent.__path__ = []
+        parent.enabled = mock.Mock(return_value=True)
         contracts = types.ModuleType("agentscope.app.vin_platform._contracts")
         contracts.PlatformError = PlatformError
         resources = types.ModuleType("agentscope.app.vin_platform._resources")
