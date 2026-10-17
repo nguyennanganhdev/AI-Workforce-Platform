@@ -4,6 +4,8 @@ export interface UsageView {
 	timezone: string;
 	buckets: { window: string; used: number; reserved: number }[];
 	pending_reconciliation: number;
+	effective_limits?: { subject: string; window: string; limit: number; used: number; reserved: number; remaining: number }[];
+	policy_revision?: number;
 }
 export interface DomainLink {
 	id: string;
@@ -31,6 +33,18 @@ export function parseUsage(value: unknown): UsageView {
 	if (!Array.isArray(raw.buckets)) throw new Error('INVALID_CONTRACT');
 	return {
 		timezone: string(raw.timezone), pending_reconciliation: count(raw.pending_reconciliation),
+		...(raw.effective_limits !== undefined ? {
+			policy_revision: count(raw.policy_revision),
+			effective_limits: (() => {
+				if (!Array.isArray(raw.effective_limits)) throw new Error('INVALID_CONTRACT');
+				return raw.effective_limits.map((entry) => {
+					const item = object(entry);
+					const limit = count(item.limit), used = count(item.used), reserved = count(item.reserved), remaining = count(item.remaining);
+					if (remaining !== Math.max(0, limit - used - reserved)) throw new Error('INVALID_CONTRACT');
+					return { subject: string(item.subject), window: string(item.window), limit, used, reserved, remaining };
+				});
+			})(),
+		} : {}),
 		buckets: raw.buckets.map((entry) => {
 			const bucket = object(entry);
 			return { window: string(bucket.window), used: count(bucket.used), reserved: count(bucket.reserved) };

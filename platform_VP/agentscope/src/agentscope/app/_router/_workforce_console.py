@@ -73,6 +73,24 @@ async def _save_agent(storage: StorageBase, user_id: str, record: AgentRecord) -
     except AgentRevisionConflict as exc:
         raise HTTPException(status_code=409, detail="Agent changed concurrently; reload before publishing.") from exc
 
+
+@workforce_console_router.get("/admin/vin/users/{target_id}/usage")
+async def admin_vin_usage(target_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._catalog_resources import catalog_authority
+    from ..vin_platform import PlatformError
+    authority = catalog_authority(storage)
+    if authority is None:
+        raise HTTPException(503, "VIN_PLATFORM_DISABLED")
+    try:
+        context = await authority.context(user_id)
+        authority.admin(context)
+        target = await authority.context(target_id)
+        if target.tenant_id != context.tenant_id:
+            raise PlatformError("CAPABILITY_DENIED", 403)
+        return await authority.quota.usage(target)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
 # These are platform policy, not Builder output and not UI-editable fields.
 _FIXED_CONTEXT = ContextConfig(
     compression_fallback_to_truncation=False,

@@ -138,7 +138,8 @@ function PlatformApp() {
 						queryClient.clear();
 						try { localStorage.setItem(`session-workspace:view:${user.id}`, 'chat'); } catch { /* Optional browser preference. */ }
 						const callback = window.location.pathname === '/connections/callback/vinhomes';
-						void router.navigate(VIN_EXPERIENCE_ENABLED && callback ? window.location.pathname + window.location.search : VIN_EXPERIENCE_ENABLED ? '/' : '/chat');
+						void router.navigate(VIN_EXPERIENCE_ENABLED && callback ? window.location.pathname + window.location.search
+							: VIN_EXPERIENCE_ENABLED ? (user.role === 'PLATFORM_ADMIN' || user.role === 'DOMAIN_ADMIN' ? '/admin' : '/') : '/chat');
 						setCurrentUser(user);
 						setAuthStatus('authenticated');
 					}}
@@ -148,7 +149,7 @@ function PlatformApp() {
 		);
 	}
 
-	if (currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
+	if (!VIN_EXPERIENCE_ENABLED && currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
 		// Administrators manage accounts, domains and areas; agents and tickets belong to BQL accounts.
 		return (
 			<>

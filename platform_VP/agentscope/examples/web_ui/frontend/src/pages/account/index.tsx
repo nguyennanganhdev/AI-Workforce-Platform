@@ -31,6 +31,11 @@ export function AccountPage() {
 				{usage.isPending ? <p role="status">Đang tải mức sử dụng…</p> : usage.isError ? <p role="alert" className="text-sm">Chưa tải được mức sử dụng. Vui lòng thử lại.</p> : <>
 					<p className="text-sm text-muted-foreground">Múi giờ: {usage.data.timezone}. Token đang giữ chỗ chưa phải chi phí đã quyết toán.</p>
 					{usage.data.pending_reconciliation > 0 && <p role="status" className="rounded-lg border p-3 text-sm">{number.format(usage.data.pending_reconciliation)} lượt đang chờ đối soát. Số liệu có thể được cập nhật sau.</p>}
+					{usage.data.effective_limits && <div className="space-y-2"><h3 className="text-sm font-semibold">Hạn mức khả dụng · chính sách v{usage.data.policy_revision}</h3>
+						<div className="overflow-x-auto rounded-xl border"><table className="w-full text-left text-sm"><caption className="sr-only">Hạn mức và số token còn lại</caption>
+							<thead className="bg-muted"><tr>{['Đối tượng / kỳ', 'Giới hạn', 'Đã dùng', 'Giữ chỗ', 'Còn lại'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
+							<tbody>{usage.data.effective_limits.map((limit) => <tr key={`${limit.subject}:${limit.window}`} className="border-t"><th scope="row" className="p-3 font-normal">{limit.subject === `user:${user.id}` ? 'Cá nhân' : limit.subject} · {limit.window}</th>{[limit.limit, limit.used, limit.reserved, limit.remaining].map((value, index) => <td key={index} className="p-3 text-right tabular-nums">{number.format(value)}</td>)}</tr>)}</tbody>
+						</table></div></div>}
 					{usage.data.buckets.length === 0 ? <p className="rounded-xl border p-6 text-sm text-muted-foreground">Chưa có số liệu sử dụng được ghi nhận. Hạn mức khả dụng sẽ được kiểm tra khi bắt đầu tác vụ.</p> :
 						<div className="overflow-x-auto rounded-xl border"><table className="w-full text-left text-sm">
 							<caption className="sr-only">Token theo kỳ sử dụng</caption>
