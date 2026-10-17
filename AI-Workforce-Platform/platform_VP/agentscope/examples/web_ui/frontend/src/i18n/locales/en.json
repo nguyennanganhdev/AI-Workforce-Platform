@@ -135,6 +135,7 @@
 			"authentication": "Authentication failed — check the model's API key or credential.",
 			"permission": "Request not allowed — the credential lacks permission for this model or endpoint.",
 			"rate_limit": "Rate limit or quota exceeded — please try again later.",
+			"quota": "The model provider account has no credit left — top up the API key or switch the credential.",
 			"invalid_request": "The request to the model was rejected as invalid.",
 			"upstream": "The upstream model service returned an error.",
 			"connection": "Could not reach the model service — network error or timeout.",
@@ -142,8 +143,7 @@
 			"context_budget": "The required conversation context exceeds its token budget. No source history was deleted. Review context size and repeated tool calls.",
 			"collaboration_limit": "Internal coordination reached its processing limit. This assignment is incomplete; the conversation remains open.",
 			"setup": "The session could not be prepared — check the agent's model, tools and knowledge bases.",
-			"unknown": "The reply failed with an unknown error.",
-			"quota": "The model provider account has no credit left — top up the API key or switch the credential."
+			"unknown": "The reply failed with an unknown error."
 		},
 		"copy": "Copy"
 	},
@@ -213,12 +213,89 @@
 			"chatsOf": "Chats with {{name}}"
 		}
 	},
+	"shell": {
+		"backToChat": "Back to chat",
+		"groupWorkforce": "Workforce",
+		"leader": "Leader",
+		"builder": "Builder",
+		"agentStudio": "Agent management",
+		"groupOperations": "Operations",
+		"groupCapabilities": "What agents can use",
+		"account": "Account"
+	},
+	"agents": {
+		"list": {
+			"noDescription": "No description yet",
+			"chat": "Open chat",
+			"edit": "Edit"
+		},
+		"graph": {
+			"agentCount": "Agents: {{count}}",
+			"running": "{{count}} tickets in {{days}} days",
+			"fullscreen": "Full screen",
+			"exitFullscreen": "Exit full screen",
+			"zoomIn": "Zoom in",
+			"zoomOut": "Zoom out",
+			"fit": "Fit to view",
+			"legendLive": "replied in the last 15 minutes",
+			"legendIdle": "configured, idle",
+			"resident": "Residents",
+			"residentNote": "send requests through a partner",
+			"you": "You",
+			"youNote": "chat directly",
+			"leader": "Leader",
+			"leaderNote": "Picks the agents for each request",
+			"sessionCount": "{{count}} tickets",
+			"idle": "idle",
+			"invitable": "Leader can pick",
+			"notInvitable": "Invites off",
+			"notInvitableShort": "Not invitable",
+			"invitableHelp": "The Leader can bring this agent into a session when a request needs it.",
+			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
+			"inspectorSessions": "Tickets",
+			"inspectorRunning": "Replies",
+			"inspectorResponse": "Last active"
+		},
+		"office": {
+			"resetView": "Reset view",
+			"noWebgl": "This browser cannot show the 3D office (WebGL is unavailable).",
+			"phase": {
+				"idle": "Everyone at their desks",
+				"request": "New request",
+				"call": "Leader calls a meeting",
+				"meeting": "In a meeting",
+				"return": "Heading back to desks",
+				"work": "Working",
+				"collab": "Collaborating",
+				"approval": "Waiting for your approval",
+				"done": "Done"
+			},
+			"log": "Activity",
+			"rooms": {
+				"meeting": "Meeting room",
+				"approval": "Your office · Approval",
+				"reception": "Reception",
+				"workspace": "Workspace"
+			},
+			"status": {
+				"idle": "Idle at desk",
+				"working": "Working on a task",
+				"off": "Not invitable, skips meetings",
+				"walking": "Walking"
+			},
+			"live": "Session activity"
+		}
+	},
 	"dialog-agent-create": {
 		"title": "Create agent",
 		"description": "Define a new agent's identity and behaviour.",
 		"submit": "Create agent"
 	},
 	"agent-form": {
+		"advanced": {
+			"legend": "Advanced settings",
+			"description": "The defaults work. Open a section when you need to change it."
+		},
 		"identity": {
 			"legend": "Agent Identity",
 			"description": "Name and instructions that define this agent's behaviour.",
@@ -241,6 +318,9 @@
 			"reserve-ratio": {
 				"label": "Reserve ratio"
 			},
+			"context-buffer-ratio": {
+				"label": "Context buffer ratio"
+			},
 			"tool-result-limit": {
 				"label": "Tool result limit"
 			},
@@ -252,9 +332,6 @@
 			},
 			"max-image-num": {
 				"label": "Max images"
-			},
-			"context-buffer-ratio": {
-				"label": "Context buffer ratio"
 			}
 		},
 		"react-config": {
@@ -289,10 +366,6 @@
 				"label": "Invite description",
 				"placeholder": "Briefly describe this agent's expertise; required when invitable is on."
 			}
-		},
-		"advanced": {
-			"legend": "Advanced settings",
-			"description": "The defaults work. Open a section when you need to change it."
 		}
 	},
 	"dialog-agent-edit": {
@@ -621,11 +694,25 @@
 		"noTts": "No TTS"
 	},
 	"auth": {
-		"eyebrow": "Agent orchestration platform",
-		"secureAccess": "Secure workspace access",
 		"heroTitle": "Build and operate agents for your area",
 		"heroDescription": "Create an Area Manager account, manage your agents, and receive requests routed to the correct domain and area.",
 		"securityHint": "Short-lived access tokens and rotating secure sessions",
+		"showcase": {
+			"live": "Live",
+			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
+			"statusIdle": "Waiting",
+			"statusBusy": "In progress",
+			"statusDone": "Done",
+			"resident": "Resident",
+			"routed": "Routed: Ocean Park 1 · Plumbing",
+			"request": "A pipe burst in my flat, please send a plumber.",
+			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
+			"agents": {
+				"reception": "Reception",
+				"technical": "Technical",
+				"hotel": "Hotel"
+			}
+		},
 		"loginTitle": "Welcome back",
 		"loginDescription": "Sign in with your email address or username.",
 		"registerTitle": "Create your account",
@@ -645,22 +732,6 @@
 		"createAccount": "Create account",
 		"connectedTo": "Service:",
 		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it.",
-		"showcase": {
-			"live": "Live",
-			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
-			"statusIdle": "Waiting",
-			"statusBusy": "In progress",
-			"statusDone": "Done",
-			"resident": "Resident",
-			"routed": "Routed: Ocean Park 1 · Plumbing",
-			"request": "A pipe burst in my flat, please send a plumber.",
-			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
-			"agents": {
-				"reception": "Reception",
-				"technical": "Technical",
-				"hotel": "Hotel"
-			}
-		},
 		"brand": "VAgents Platform",
 		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
 		"errors": {
@@ -671,45 +742,6 @@
 			"alreadyExists": "email or username already exists",
 			"scopeRequired": "domain_id and area_id are required",
 			"invalidArea": "area does not belong to the selected domain"
-		}
-	},
-	"meetingRoom": {
-		"button": "View meeting room",
-		"chatTab": "Chat",
-		"officeTab": "Office",
-		"title": "Team meeting room",
-		"description": "A live view of handoffs, active agents, and completed work.",
-		"close": "Close meeting room",
-		"live": "Team active",
-		"quiet": "Team resting",
-		"sceneLabel": "Three-dimensional team meeting room",
-		"meetingZone": "Meeting room",
-		"workZone": "Work area",
-		"loungeZone": "Rest area",
-		"mailZone": "Inbox",
-		"sessionActivity": "Session activity",
-		"cameraHint": "Drag to rotate 360° · Scroll to zoom",
-		"resetCamera": "Reset view",
-		"rotateLeft": "Rotate left",
-		"rotateRight": "Rotate right",
-		"zoomOut": "Zoom out",
-		"zoomIn": "Zoom in",
-		"courier": "Office runner",
-		"courierRest": "Watching the inbox",
-		"courierDelivering": "Delivering the request",
-		"courierDispatching": "Calling an agent",
-		"inRoom": "in the room",
-		"resting": "outside the room",
-		"activity": "Latest activity",
-		"noActivity": "Coordination activity will appear here.",
-		"status": {
-			"loading": "Entering the office",
-			"idle": "Available",
-			"active": "Working",
-			"communicating": "Speaking",
-			"waiting": "Waiting in room",
-			"completed": "Resting",
-			"error": "Needs attention"
 		}
 	},
 	"setup": {
@@ -828,7 +860,6 @@
 		},
 		"loading": "Loading…",
 		"team": {
-			"membersHeading": "Members",
 			"noMembers": "The Leader invites the right agents when the ticket needs them.",
 			"emptyTitle": "No team",
 			"emptyDescription": "This session has no room yet. The Leader opens one when a ticket needs several agents.",
@@ -1021,79 +1052,6 @@
 		"empty": "This folder is empty",
 		"pressEnter": "Press Enter to check this path first",
 		"gitTooltip": "{{staged}} staged · {{unstaged}} modified · {{untracked}} untracked\nLine counts exclude untracked files"
-	},
-	"shell": {
-		"backToChat": "Back to chat",
-		"groupWorkforce": "Workforce",
-		"leader": "Leader",
-		"builder": "Builder",
-		"agentStudio": "Agent management",
-		"groupOperations": "Operations",
-		"groupCapabilities": "What agents can use",
-		"account": "Account"
-	},
-	"agents": {
-		"list": {
-			"noDescription": "No description yet",
-			"chat": "Open chat",
-			"edit": "Edit"
-		},
-		"graph": {
-			"agentCount": "Agents: {{count}}",
-			"running": "{{count}} tickets in {{days}} days",
-			"fullscreen": "Full screen",
-			"exitFullscreen": "Exit full screen",
-			"zoomIn": "Zoom in",
-			"zoomOut": "Zoom out",
-			"fit": "Fit to view",
-			"legendLive": "replied in the last 15 minutes",
-			"legendIdle": "configured, idle",
-			"resident": "Residents",
-			"residentNote": "send requests through a partner",
-			"you": "You",
-			"youNote": "chat directly",
-			"leader": "Leader",
-			"leaderNote": "Picks the agents for each request",
-			"sessionCount": "{{count}} tickets",
-			"idle": "idle",
-			"invitable": "Leader can pick",
-			"notInvitable": "Invites off",
-			"notInvitableShort": "Not invitable",
-			"invitableHelp": "The Leader can bring this agent into a session when a request needs it.",
-			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
-			"inspectorSessions": "Tickets",
-			"inspectorRunning": "Replies",
-			"inspectorResponse": "Last active"
-		},
-		"office": {
-			"resetView": "Reset view",
-			"noWebgl": "This browser cannot show the 3D office (WebGL is unavailable).",
-			"phase": {
-				"idle": "Everyone at their desks",
-				"request": "New request",
-				"call": "Leader calls a meeting",
-				"meeting": "In a meeting",
-				"return": "Heading back to desks",
-				"work": "Working",
-				"collab": "Collaborating",
-				"approval": "Waiting for your approval",
-				"done": "Done"
-			},
-			"log": "Activity",
-			"rooms": {
-				"meeting": "Meeting room",
-				"approval": "Your office · Approval",
-				"reception": "Reception",
-				"workspace": "Workspace"
-			},
-			"status": {
-				"idle": "Idle at desk",
-				"working": "Working on a task",
-				"off": "Not invitable, skips meetings",
-				"walking": "Walking"
-			},
-			"live": "Session activity"
-		}
 	},
 	"quickAgent": {
 		"title": "Quick agent with the Agent Builder",

@@ -5,14 +5,16 @@ import { DiffPreview } from './DiffPreview';
 import type { ToolCallWithResult, ToolRenderer } from './types';
 import {
 	countDiffStats,
-	DiffStats,
-	FramedFileBody,
 	getResultDiff,
 	parseInput,
-	toolArgClass,
-	toolLabelClass,
 	tryGetFileName,
 	tryGetFilePath,
+} from '@/components/chat/tool-renderers/_shared-utils';
+import {
+	DiffStats,
+	FramedFileBody,
+	toolArgClass,
+	toolLabelClass,
 } from '@/components/chat/tool-renderers/_shared.tsx';
 
 /**

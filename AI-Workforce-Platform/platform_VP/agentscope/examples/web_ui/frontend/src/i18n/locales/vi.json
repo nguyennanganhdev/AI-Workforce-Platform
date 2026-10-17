@@ -1,60 +1,5 @@
 {
-	"auth": {
-		"eyebrow": "Nền tảng điều phối agent",
-		"secureAccess": "Truy cập workspace an toàn",
-		"heroTitle": "Xây dựng và vận hành tác nhân AI cho khu vực của bạn",
-		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý tác nhân AI và nhận yêu cầu được định tuyến đúng lĩnh vực, đúng khu vực.",
-		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
-		"loginTitle": "Chào mừng bạn quay lại",
-		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",
-		"registerTitle": "Tạo tài khoản",
-		"registerDescription": "Chọn lĩnh vực và khu vực bạn chịu trách nhiệm.",
-		"login": "Đăng nhập",
-		"register": "Đăng ký",
-		"logout": "Đăng xuất",
-		"identity": "Email hoặc tên đăng nhập",
-		"email": "Email",
-		"username": "Tên đăng nhập",
-		"password": "Mật khẩu",
-		"passwordHint": "Sử dụng ít nhất 12 ký tự.",
-		"domain": "Lĩnh vực",
-		"area": "Khu vực",
-		"selectDomain": "Chọn lĩnh vực",
-		"selectArea": "Chọn khu vực",
-		"createAccount": "Tạo tài khoản",
-		"connectedTo": "Máy chủ:",
-		"authenticationDisabled": "Máy chủ chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại.",
-		"showcase": {
-			"live": "Đang hoạt động",
-			"caption": "Minh hoạ: yêu cầu của cư dân được Leader định tuyến tới đúng agent và được xử lý",
-			"statusIdle": "Chờ yêu cầu",
-			"statusBusy": "Đang xử lý",
-			"statusDone": "Hoàn tất",
-			"resident": "Cư dân",
-			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
-			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
-			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
-			"agents": {
-				"reception": "Lễ tân",
-				"technical": "Kỹ thuật",
-				"hotel": "Khách sạn"
-			}
-		},
-		"brand": "Nền tảng VAgents",
-		"usernameHint": "3–64 ký tự: chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
-		"errors": {
-			"invalidCredentials": "Email, tên đăng nhập hoặc mật khẩu không đúng.",
-			"invalidEmail": "Địa chỉ email không hợp lệ.",
-			"invalidUsername": "Tên đăng nhập phải có 3–64 ký tự, chỉ gồm chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
-			"invalidPassword": "Mật khẩu phải có ít nhất 12 ký tự và không vượt quá 1024 byte.",
-			"alreadyExists": "Email hoặc tên đăng nhập đã được sử dụng.",
-			"scopeRequired": "Hãy chọn lĩnh vực và khu vực.",
-			"invalidArea": "Khu vực không thuộc lĩnh vực đã chọn."
-		}
-	},
 	"common": {
-		"leader": "Trưởng nhóm",
-		"team": "Nhóm",
 		"add": "Thêm",
 		"agent": "Tác nhân AI",
 		"cancel": "Hủy",
@@ -91,7 +36,9 @@
 		"settings": "Cài đặt",
 		"switchToZh": "切换为中文",
 		"switchToEn": "Switch to English",
+		"team": "Nhóm",
 		"uploading": "Đang tải lên",
+		"leader": "Trưởng nhóm",
 		"time": "Thời gian",
 		"yes": "Có",
 		"deleteTitle": "Xóa {{entity}} \"{{name}}\"?",
@@ -106,124 +53,6 @@
 		"tts": "Chuyển văn bản thành giọng nói",
 		"embedding": "Embedding",
 		"switchToVi": "Chuyển sang tiếng Việt"
-	},
-	"panel": {
-		"team": {
-			"membersHeading": "Thành viên",
-			"noMembers": "Leader mời agent phù hợp khi ticket cần.",
-			"emptyTitle": "Chưa có nhóm",
-			"emptyDescription": "Session này chưa có phòng. Leader lập phòng khi ticket cần nhiều agent.",
-			"running": "Đang chạy",
-			"idle": "Đang chờ",
-			"missingSession": "(chưa có phiên)",
-			"member": "Thành viên phòng"
-		},
-		"plan": {
-			"title": "Kế hoạch",
-			"completed": "Hoàn tất: {{count}}",
-			"total": "Tổng: {{count}}",
-			"emptyTitle": "Chưa có công việc",
-			"emptyDescription": "Công việc do tác nhân lập kế hoạch sẽ xuất hiện ở đây."
-		},
-		"mcp": {
-			"description": "Các máy chủ MCP trong không gian làm việc.",
-			"searchPlaceholder": "Tìm MCP trong không gian làm việc",
-			"add": "Thêm MCP",
-			"addDescription": "Dùng lại MCP đã cài đặt hoặc dán cấu hình.",
-			"fromConfig": "Từ cấu hình",
-			"tools": "{{count}} công cụ",
-			"unhealthy": "Không thể kết nối MCP này",
-			"healthy": "Đã kết nối",
-			"emptyTitle": "Chưa có máy chủ MCP",
-			"emptyDescription": "Thêm máy chủ MCP để cung cấp công cụ cho không gian làm việc.",
-			"fromInstalled": "MCP đã cài đặt",
-			"installedEmptyTitle": "Chưa cài đặt mục nào",
-			"installedEmptyDescription": "Cài từ kho MCP hoặc dán cấu hình."
-		},
-		"skill": {
-			"title": "Kỹ năng",
-			"description": "Các kỹ năng trong không gian làm việc.",
-			"searchPlaceholder": "Tìm kỹ năng trong không gian làm việc",
-			"add": "Thêm kỹ năng",
-			"emptyTitle": "Chưa có kỹ năng",
-			"emptyDescription": "Thêm kỹ năng cho không gian làm việc.",
-			"addDescription": "Chọn kỹ năng đã cài đặt hoặc tải thư mục trên máy lên.",
-			"fromInstalled": "Từ mục đã cài đặt",
-			"fromFolder": "Tải thư mục lên",
-			"installedEmptyTitle": "Chưa có kỹ năng đã cài đặt",
-			"installedEmptyDescription": "Cài từ kho kỹ năng rồi thêm vào đây.",
-			"pickFolderTitle": "Chọn thư mục kỹ năng",
-			"pickFolderDescription": "Thư mục phải có tệp SKILL.md ở cấp gốc.",
-			"pickFolder": "Chọn thư mục",
-			"pickAnother": "Chọn thư mục khác",
-			"fileCount": "{{count}} tệp"
-		},
-		"knowledge": {
-			"title": "Kho tri thức",
-			"description": "Các kho tri thức tác nhân có thể truy xuất.",
-			"searchPlaceholder": "Tìm kho tri thức",
-			"emptyTitle": "Chưa có kho tri thức",
-			"emptyDescription": "Hãy tạo kho tri thức tại trang Kho tri thức trước.",
-			"parametersTitle": "Cài đặt truy xuất",
-			"parametersDescription": "Cài đặt truy xuất kho tri thức."
-		},
-		"permission": {
-			"title": "Quyền truy cập",
-			"description": "Các quyền áp dụng trong phiên này.",
-			"mode": "Chế độ: {{mode}}",
-			"workingDirectories": "Thư mục làm việc",
-			"noWorkingDirectories": "Chưa có thư mục làm việc.",
-			"allow": "Cho phép",
-			"deny": "Từ chối",
-			"ask": "Hỏi",
-			"anyInvocation": "mọi lần gọi",
-			"emptyTitle": "Chưa cấu hình quy tắc",
-			"emptyDescription": "Quy tắc cho phép / từ chối / hỏi sẽ xuất hiện khi được thêm."
-		},
-		"search": {
-			"emptyTitle": "Không có kết quả",
-			"emptyDescription": "Không có mục nào khớp với “{{query}}”."
-		},
-		"loading": "Đang tải…"
-	},
-	"meetingRoom": {
-		"button": "Xem phòng họp",
-		"chatTab": "Chat",
-		"officeTab": "Văn phòng",
-		"title": "Phòng họp của team",
-		"description": "Theo dõi trực tiếp việc bàn giao, agent đang làm và agent đã hoàn thành.",
-		"close": "Đóng phòng họp",
-		"live": "Team đang hoạt động",
-		"quiet": "Team đang nghỉ",
-		"sceneLabel": "Phòng họp ba chiều của team",
-		"meetingZone": "Phòng họp",
-		"workZone": "Khu làm việc",
-		"loungeZone": "Khu nghỉ",
-		"mailZone": "Hòm thư",
-		"sessionActivity": "Hoạt động của phiên",
-		"cameraHint": "Kéo để xoay 360° · Cuộn để thu phóng",
-		"resetCamera": "Đặt lại góc nhìn",
-		"rotateLeft": "Xoay sang trái",
-		"rotateRight": "Xoay sang phải",
-		"zoomOut": "Thu nhỏ",
-		"zoomIn": "Phóng to",
-		"courier": "Nhân viên chạy việc",
-		"courierRest": "Đang trực hòm thư",
-		"courierDelivering": "Đang chuyển yêu cầu",
-		"courierDispatching": "Đang gọi agent",
-		"inRoom": "đang trong phòng",
-		"resting": "ở ngoài phòng",
-		"activity": "Diễn biến gần nhất",
-		"noActivity": "Hoạt động phối hợp sẽ xuất hiện tại đây.",
-		"status": {
-			"loading": "Đang vào văn phòng",
-			"idle": "Đang sẵn sàng",
-			"active": "Đang làm việc",
-			"communicating": "Đang trao đổi",
-			"waiting": "Đang chờ trong phòng",
-			"completed": "Đang nghỉ",
-			"error": "Cần kiểm tra"
-		}
 	},
 	"error": {
 		"description": "Trang gặp lỗi không mong muốn. Bạn có thể thử lại hoặc về trang chủ.",
@@ -861,6 +690,57 @@
 		"ttsParametersDescription": "Điều chỉnh tham số cho mô hình giọng nói đã chọn.",
 		"noTts": "Không dùng giọng nói"
 	},
+	"auth": {
+		"heroTitle": "Xây dựng và vận hành tác nhân AI cho khu vực của bạn",
+		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý tác nhân AI và nhận yêu cầu được định tuyến đúng lĩnh vực, đúng khu vực.",
+		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
+		"showcase": {
+			"live": "Đang hoạt động",
+			"caption": "Minh hoạ: yêu cầu của cư dân được Leader định tuyến tới đúng agent và được xử lý",
+			"statusIdle": "Chờ yêu cầu",
+			"statusBusy": "Đang xử lý",
+			"statusDone": "Hoàn tất",
+			"resident": "Cư dân",
+			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
+			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
+			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
+			"agents": {
+				"reception": "Lễ tân",
+				"technical": "Kỹ thuật",
+				"hotel": "Khách sạn"
+			}
+		},
+		"loginTitle": "Chào mừng bạn quay lại",
+		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",
+		"registerTitle": "Tạo tài khoản",
+		"registerDescription": "Chọn lĩnh vực và khu vực bạn chịu trách nhiệm.",
+		"login": "Đăng nhập",
+		"register": "Đăng ký",
+		"logout": "Đăng xuất",
+		"identity": "Email hoặc tên đăng nhập",
+		"email": "Email",
+		"username": "Tên đăng nhập",
+		"password": "Mật khẩu",
+		"passwordHint": "Sử dụng ít nhất 12 ký tự.",
+		"domain": "Lĩnh vực",
+		"area": "Khu vực",
+		"selectDomain": "Chọn lĩnh vực",
+		"selectArea": "Chọn khu vực",
+		"createAccount": "Tạo tài khoản",
+		"connectedTo": "Máy chủ:",
+		"authenticationDisabled": "Máy chủ chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại.",
+		"brand": "Nền tảng VAgents",
+		"usernameHint": "3–64 ký tự: chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
+		"errors": {
+			"invalidCredentials": "Email, tên đăng nhập hoặc mật khẩu không đúng.",
+			"invalidEmail": "Địa chỉ email không hợp lệ.",
+			"invalidUsername": "Tên đăng nhập phải có 3–64 ký tự, chỉ gồm chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
+			"invalidPassword": "Mật khẩu phải có ít nhất 12 ký tự và không vượt quá 1024 byte.",
+			"alreadyExists": "Email hoặc tên đăng nhập đã được sử dụng.",
+			"scopeRequired": "Hãy chọn lĩnh vực và khu vực.",
+			"invalidArea": "Khu vực không thuộc lĩnh vực đã chọn."
+		}
+	},
 	"setup": {
 		"title": "Kết nối máy chủ",
 		"description": "Nhập địa chỉ máy chủ và tên đăng nhập để bắt đầu.",
@@ -907,6 +787,84 @@
 	},
 	"task-panel": {
 		"blockedBy": "bị chặn bởi"
+	},
+	"panel": {
+		"plan": {
+			"title": "Kế hoạch",
+			"completed": "Hoàn tất: {{count}}",
+			"total": "Tổng: {{count}}",
+			"emptyTitle": "Chưa có công việc",
+			"emptyDescription": "Công việc do tác nhân lập kế hoạch sẽ xuất hiện ở đây."
+		},
+		"mcp": {
+			"description": "Các máy chủ MCP trong không gian làm việc.",
+			"searchPlaceholder": "Tìm MCP trong không gian làm việc",
+			"add": "Thêm MCP",
+			"addDescription": "Dùng lại MCP đã cài đặt hoặc dán cấu hình.",
+			"fromConfig": "Từ cấu hình",
+			"tools": "{{count}} công cụ",
+			"unhealthy": "Không thể kết nối MCP này",
+			"healthy": "Đã kết nối",
+			"emptyTitle": "Chưa có máy chủ MCP",
+			"emptyDescription": "Thêm máy chủ MCP để cung cấp công cụ cho không gian làm việc.",
+			"fromInstalled": "MCP đã cài đặt",
+			"installedEmptyTitle": "Chưa cài đặt mục nào",
+			"installedEmptyDescription": "Cài từ kho MCP hoặc dán cấu hình."
+		},
+		"skill": {
+			"title": "Kỹ năng",
+			"description": "Các kỹ năng trong không gian làm việc.",
+			"searchPlaceholder": "Tìm kỹ năng trong không gian làm việc",
+			"add": "Thêm kỹ năng",
+			"emptyTitle": "Chưa có kỹ năng",
+			"emptyDescription": "Thêm kỹ năng cho không gian làm việc.",
+			"addDescription": "Chọn kỹ năng đã cài đặt hoặc tải thư mục trên máy lên.",
+			"fromInstalled": "Từ mục đã cài đặt",
+			"fromFolder": "Tải thư mục lên",
+			"installedEmptyTitle": "Chưa có kỹ năng đã cài đặt",
+			"installedEmptyDescription": "Cài từ kho kỹ năng rồi thêm vào đây.",
+			"pickFolderTitle": "Chọn thư mục kỹ năng",
+			"pickFolderDescription": "Thư mục phải có tệp SKILL.md ở cấp gốc.",
+			"pickFolder": "Chọn thư mục",
+			"pickAnother": "Chọn thư mục khác",
+			"fileCount": "{{count}} tệp"
+		},
+		"knowledge": {
+			"title": "Kho tri thức",
+			"description": "Các kho tri thức tác nhân có thể truy xuất.",
+			"searchPlaceholder": "Tìm kho tri thức",
+			"emptyTitle": "Chưa có kho tri thức",
+			"emptyDescription": "Hãy tạo kho tri thức tại trang Kho tri thức trước.",
+			"parametersTitle": "Cài đặt truy xuất",
+			"parametersDescription": "Cài đặt truy xuất kho tri thức."
+		},
+		"permission": {
+			"title": "Quyền truy cập",
+			"description": "Các quyền áp dụng trong phiên này.",
+			"mode": "Chế độ: {{mode}}",
+			"workingDirectories": "Thư mục làm việc",
+			"noWorkingDirectories": "Chưa có thư mục làm việc.",
+			"allow": "Cho phép",
+			"deny": "Từ chối",
+			"ask": "Hỏi",
+			"anyInvocation": "mọi lần gọi",
+			"emptyTitle": "Chưa cấu hình quy tắc",
+			"emptyDescription": "Quy tắc cho phép / từ chối / hỏi sẽ xuất hiện khi được thêm."
+		},
+		"search": {
+			"emptyTitle": "Không có kết quả",
+			"emptyDescription": "Không có mục nào khớp với “{{query}}”."
+		},
+		"loading": "Đang tải…",
+		"team": {
+			"noMembers": "Leader mời agent phù hợp khi ticket cần.",
+			"emptyTitle": "Chưa có nhóm",
+			"emptyDescription": "Session này chưa có phòng. Leader lập phòng khi ticket cần nhiều agent.",
+			"running": "Đang chạy",
+			"idle": "Đang chờ",
+			"missingSession": "(chưa có phiên)",
+			"member": "Thành viên phòng"
+		}
 	},
 	"channel": {
 		"credentialBinding": {

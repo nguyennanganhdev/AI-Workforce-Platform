@@ -37,9 +37,9 @@ Không copy đè mù toàn bộ `web_ui_new/frontend/src` lên UI cũ.
 - [x] Xác định đây là frontend replacement, không thay backend.
 - [x] Xác định AgentScope FastAPI là backend chính.
 - [x] Chốt API, URL, i18n, React Query, Docker và rollback constraints.
-- [ ] Tạo branch tích hợp.
+- [x] Tạo branch tích hợp (`web-ui-new-integration`).
 - [ ] Đóng băng baseline UI hiện tại.
-- [ ] Audit cấu trúc và API contract.
+- [x] Audit cấu trúc và API contract (xem `MIGRATION_AUDIT.md`).
 - [ ] Hoàn tất adapter/API layer.
 - [ ] Hoàn tất shell, auth và routing.
 - [ ] Hoàn tất chat và session.
@@ -54,10 +54,10 @@ Không copy đè mù toàn bộ `web_ui_new/frontend/src` lên UI cũ.
 
 ## 5. Phase 0 — Tạo điểm rollback
 
-- [ ] Kiểm tra Git status, không ghi đè thay đổi local chưa xác nhận.
-- [ ] Tạo branch, ví dụ `integrate/web-ui-new`.
+- [x] Kiểm tra Git status, không có thay đổi local trước khi tích hợp.
+- [x] Tạo branch `web-ui-new-integration`.
 - [ ] Ghi commit baseline.
-- [ ] Xác nhận `.env` và secret không nằm trong commit.
+- [x] Xác nhận `.env` và secret không nằm trong diff.
 
 ## 6. Phase 1 — Đóng băng baseline
 
@@ -271,10 +271,13 @@ Không xóa volume PostgreSQL, Redis hoặc MinIO khi rollback.
 | Ngày | Phase/batch | Thay đổi chính | Build/test | Commit | Blocker |
 |---|---|---|---|---|---|
 | 2026-10-17 | Lập kế hoạch | Chốt thay frontend, giữ backend/API/data | Chưa chạy integration | Chưa có | Chưa có |
+| 2026-10-17 | Phase 0-4 / frontend overlay | Chuyển design system, chat UI, locale, assets và các module UI mới; giữ router, workforce adapter/page và các module AgentScope-only | `git diff --check` pass; chưa thể build do môi trường không có Node/pnpm/Docker/WSL | Chưa commit | Thiếu toolchain để build, lint, Compose và browser smoke test |
 
 ## 20. Quy tắc bàn giao
 
 Agent tiếp theo phải:
+
+> Hướng dẫn thao tác chi tiết cho máy RAM 8 GB: `HANDOFF_8GB.md`.
 
 1. Đọc file này trước khi sửa code.
 2. Kiểm tra Git status.
