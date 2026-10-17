@@ -703,20 +703,8 @@ async def publish_proposal(body, request, user_id, storage, workspace_manager, s
                 ):
                     raise HTTPException(409, "Agent dùng lại không còn hợp lệ.")
                 records[record.id] = record
-            try:
-                claimed = await storage.claim_builder_publish(
-                    user_id, body.conversation_id, body.proposal_id
-                )
-            except (AttributeError, NotImplementedError) as exc:
-                raise HTTPException(
-                    503, "Storage chưa hỗ trợ phát hành an toàn; chưa phát hành agent."
-                ) from exc
-            if not claimed:
-                raise HTTPException(
-                    409,
-                    "Proposal đã được giữ để phát hành; kiểm tra kết quả trước khi thử lại.",
-                )
             result = []
+            prepared = []
             for item in proposal.agents:
                 record = records[item.target_agent_id]
                 if item.action == "reuse":
@@ -732,6 +720,12 @@ async def publish_proposal(body, request, user_id, storage, workspace_manager, s
                     if record.data.spec
                     else None
                 )
+                session = await c._primary_session(
+                    storage, workspace_manager, user_id, record.id,
+                    proposal.chat_model_config, "Builder primary session",
+                )
+                record = record.model_copy(deep=True)
+                record.data.resource_workspace_id = "published-" + _generate_id()
                 record.data.generated_skill = item.skill_markdown
                 materialize(
                     record,
@@ -739,15 +733,6 @@ async def publish_proposal(body, request, user_id, storage, workspace_manager, s
                     author="builder",
                     note="Builder reviewed diff and model evaluation",
                     evaluation=item.evaluation["model_report"],
-                )
-                await c._save_agent(storage, user_id, record)
-                session = await c._primary_session(
-                    storage,
-                    workspace_manager,
-                    user_id,
-                    record.id,
-                    proposal.chat_model_config,
-                    "Builder primary session",
                 )
                 await apply_bindings(
                     storage,
@@ -759,9 +744,10 @@ async def publish_proposal(body, request, user_id, storage, workspace_manager, s
                         request, storage, user_id, record.id
                     ),
                     previous=previous,
+                    stage=True,
                 )
                 workspace = await workspace_manager.get_workspace(
-                    user_id, record.id, session.id, session.config.workspace_id
+                    user_id, record.id, session.id, record.data.resource_workspace_id
                 )
                 if item.skill_markdown.strip():
                     await workspace.add_skill_archive(
@@ -770,11 +756,34 @@ async def publish_proposal(body, request, user_id, storage, workspace_manager, s
                         item.skill_name,
                         agent_id=record.id,
                     )
+                    from ..storage import SkillRecord
+                    from hashlib import sha256
+                    digest = sha256(item.skill_markdown.encode()).hexdigest()
+                    candidate_name = c._slug(item.skill_name)[:50] + "-" + digest[:12]
+                    if await storage.get_skill_by_name(user_id, candidate_name) is None:
+                        await storage.upsert_skill(user_id, SkillRecord(
+                            name=candidate_name, user_id=user_id, markdown=item.skill_markdown,
+                            description=spec.description or spec.goal or spec.name,
+                            version=digest[:16], review_status="candidate", enabled=False,
+                            source_agent_id=record.id, source_version=record.data.published_version,
+                            tags=["builder", "candidate"],
+                        ))
+                prepared.append(record)
                 result.append(
                     c.PublishedAgent(
                         agent_id=record.id, session_id=session.id, name=record.data.name
                     )
                 )
+            # Prepare all resources before the durable one-shot claim. A hub
+            # failure leaves every active version intact and can be retried.
+            try:
+                claimed = await storage.claim_builder_publish(user_id, body.conversation_id, body.proposal_id)
+            except (AttributeError, NotImplementedError) as exc:
+                raise HTTPException(503, "Storage chưa hỗ trợ phát hành an toàn.") from exc
+            if not claimed:
+                raise HTTPException(409, "Proposal đã được giữ để phát hành; kiểm tra kết quả trước khi thử lại.")
+            for record in prepared:
+                await c._save_agent(storage, user_id, record)
             proposal.status = "published"
             await storage.upsert_message(
                 user_id,

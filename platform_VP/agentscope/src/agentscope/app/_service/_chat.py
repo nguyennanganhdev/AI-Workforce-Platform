@@ -329,6 +329,7 @@ class ChatService:
         extra_projectors: list[EventProjector] | None = None,
         channel_clients: "ChannelClients | None" = None,
         shared_context_storage: StorageBase | None = None,
+        management_auth_service=None,
     ) -> None:
         """Initialize chat service.
 
@@ -417,6 +418,7 @@ class ChatService:
             self._shared_context,
             workspace_manager,
         )
+        self._management_auth_service = management_auth_service
         self._extra_agent_middlewares = extra_agent_middlewares
         # Probed once (the service is built once per lifespan) so legacy
         # three-argument factories keep working without the per-turn cost.
@@ -1359,7 +1361,7 @@ class ChatService:
                     user_id,
                     agent_id,
                     session_id,
-                    session_record.config.workspace_id,
+                    agent_record.data.resource_workspace_id or session_record.config.workspace_id,
                 )
 
                 # Add workspace working directory to the permission context
@@ -1512,7 +1514,7 @@ class ChatService:
                     for item in (agent_record.data.spec or {}).get("knowledge", [])
                     if item.get("kb_id")
                 ]
-                if spec_kb_ids and (kb_cfg is None or not kb_cfg.knowledge_base_ids):
+                if agent_record.data.resource_workspace_id or (spec_kb_ids and (kb_cfg is None or not kb_cfg.knowledge_base_ids)):
                     kb_cfg = SessionKnowledgeConfig(knowledge_base_ids=spec_kb_ids)
                 if (
                     kb_cfg is not None
@@ -1558,6 +1560,11 @@ class ChatService:
                 # 3. Toolkit (workspace tools + planning + ToolStop +
                 # schedule + team + extras + skills + mcps).
                 # -------------------------------------------------------------
+                if agent_record.data.resource_workspace_id:
+                    from ._agent_readiness import resource_manifest
+                    manifest = await resource_manifest(self._storage, user_id, agent_record)
+                    if not manifest["ready"]:
+                        raise HTTPException(409, detail={"code": "RESOURCE_NOT_READY", "issues": manifest["issues"]})
                 toolkit = await get_toolkit(
                     storage=self._storage,
                     workspace=workspace,
@@ -1576,6 +1583,7 @@ class ChatService:
                     channel_tools=channel_tools,
                     sop_dispatch=sop_dispatch,
                     shared_context_service=self._shared_context,
+                    management_auth_service=self._management_auth_service,
                 )
 
                 # -------------------------------------------------------------

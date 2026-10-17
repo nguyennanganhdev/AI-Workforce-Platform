@@ -280,6 +280,13 @@ async def _create_record(
 # ---------------------------------------------------------------- routes
 
 
+@workforce_studio_router.get("/agents/{agent_id}/resources")
+async def effective_resources(agent_id: str, user_id=Depends(get_current_user_id), storage=Depends(get_storage)):
+    from .._service._agent_readiness import resource_manifest
+    record = await _business_agent(storage, user_id, agent_id)
+    return await resource_manifest(storage, user_id, record)
+
+
 @workforce_studio_router.get("/templates")
 async def list_templates() -> list[dict]:
     return template_list()
@@ -644,14 +651,16 @@ async def publish(
         report = last_test_for(record, spec) or record.data.evaluation
         author = (record.data.draft_meta or {}).get("author", "manager")
         previous = published_spec(record) if record.data.published_version else None
+        record = record.model_copy(deep=True)
+        record.data.resource_workspace_id = "published-" + _generate_id()
         materialize(record, spec, author=author, note=body.note, evaluation=report)
-        # Reserve the immutable publication before mutating derived workspace
-        # bindings; a losing worker must have no binding/skill side effects.
-        await _save_agent(storage, user_id, record)
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
-            install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous,
+            install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous, stage=True,
         )
+        # CAS activates the version and its prepared resources together. A
+        # failed/losing publication never mutates the active workspace.
+        await _save_agent(storage, user_id, record)
     return _detail(record)
 
 
@@ -678,6 +687,8 @@ async def rollback(
             await _save_agent(storage, user_id, record)
             raise HTTPException(status_code=409, detail=blocker)
         previous = published_spec(record) if record.data.published_version else None
+        record = record.model_copy(deep=True)
+        record.data.resource_workspace_id = "published-" + _generate_id()
         materialize(
             record,
             spec,
@@ -685,13 +696,11 @@ async def rollback(
             note=body.note or f"Quay về phiên bản {body.version}",
             evaluation=report,
         )
-        # Reserve the immutable publication before mutating derived workspace
-        # bindings; a losing worker must have no binding/skill side effects.
-        await _save_agent(storage, user_id, record)
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
-            install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous,
+            install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous, stage=True,
         )
+        await _save_agent(storage, user_id, record)
     return _detail(record)
 
 
@@ -717,10 +726,14 @@ def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent
 
     async def install(workspace, skill_id: str) -> None:
         record = await storage.get_skill(user_id, skill_id)
-        if record is None or not getattr(record, "enabled", True):
+        if record is None or not getattr(record, "enabled", True) or getattr(record, "review_status", "approved") != "approved":
             raise HTTPException(status_code=409, detail=f"Skill {skill_id} không còn trong thư viện.")
         present = {getattr(item, "name", item) for item in await workspace.list_skills(agent_id=agent_id)}
         if record.name in present:
+            return
+        from .._service._skill_packages import archive_bytes, byte_stream, cache_archive
+        if getattr(record, "archive_base64", ""):
+            await workspace.add_skill_archive(byte_stream(archive_bytes(record)), record.archive_format, record.name, agent_id=agent_id)
             return
         if not record.hub_id and record.markdown:
             # Locally authored library skills already have their reviewed
@@ -733,7 +746,13 @@ def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent
             raise HTTPException(status_code=409, detail=f"Hub của skill {record.name} không còn đăng ký.")
         archive = await hub.download(user_id, record.card_id or record.name, record.version)
         service = await get_workspace_service(request)
-        await service.install_skill(workspace, archive.stream, archive.format, record.name, agent_id=agent_id)
+        if hasattr(record, "archive_base64"):
+            await cache_archive(record, archive.stream, archive.format)
+            await service.install_skill(workspace, byte_stream(archive_bytes(record)), archive.format, record.name, agent_id=agent_id)
+            # Cache only after the existing archive validator accepted it.
+            await storage.upsert_skill(user_id, record)
+        else:
+            await service.install_skill(workspace, archive.stream, archive.format, record.name, agent_id=agent_id)
 
     return install
 

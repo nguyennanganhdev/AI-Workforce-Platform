@@ -73,6 +73,8 @@ knowledge_base_router = APIRouter(
     tags=["knowledge_bases"],
     responses={404: {"description": "Not found"}},
 )
+from ._knowledge_references import reference_router
+knowledge_base_router.include_router(reference_router)
 
 
 @knowledge_base_router.get(

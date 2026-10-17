@@ -96,6 +96,7 @@ class KnowledgeBaseView(BaseModel):
     """
 
     id: str = Field(description="The knowledge base id.")
+    retrieval_mode: str = "vector"
     name: str = Field(description="Display name of the knowledge base.")
     description: str = Field(
         default="",

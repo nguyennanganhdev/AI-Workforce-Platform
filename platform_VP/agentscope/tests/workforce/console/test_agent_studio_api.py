@@ -24,6 +24,7 @@ class _Workspace:
     def __init__(self) -> None:
         self.mcps: dict[tuple[str, str], list] = {}
         self.default_mcps: list = []
+        self.skills = {}
 
     async def list_mcps(self, *, agent_id=None, session_id=None):
         return list(self.mcps.get((agent_id, session_id), []))
@@ -37,6 +38,12 @@ class _Workspace:
         self.mcps.setdefault((agent_id, session_id), []).append(client)
         return client
 
+    def declared_mcps(self, *, agent_id):
+        return list(self.mcps.get((agent_id, ""), []))
+
+    async def set_mcp_declarations(self, clients, *, agent_id):
+        self.mcps[(agent_id, "")] = list(clients)
+
     skills: dict = {}
 
     async def list_skills(self, *, agent_id=None):
@@ -49,11 +56,13 @@ class _Workspace:
 class _WorkspaceManager:
     def __init__(self) -> None:
         self.workspace = _Workspace()
+        self.workspaces = {}
 
     async def assign_workspace_id(self, **_kwargs):
         return "ws-1"
 
     async def get_workspace(self, *_args):
+        self.workspace = self.workspaces.setdefault(_args[3], _Workspace())
         return self.workspace
 
 
@@ -218,7 +227,7 @@ def test_template_agent_lifecycle_test_publish_copilot_rollback(env) -> None:
     assert record.data.invite_config.invitable is True
     assert {b["tool_name"] for b in record.data.tool_bindings} == {"lookup_incident_type", "create_work_order"}
     session_id = next(iter(storage.sessions))
-    [mcp] = manager.workspace.mcps[(agent_id, session_id)]
+    [mcp] = manager.workspace.mcps[(agent_id, "")]
     assert sorted(mcp.enable_tools) == ["create_work_order", "lookup_incident_type"]
 
     model.copilot_operations = [
@@ -316,8 +325,6 @@ def test_a_description_can_become_a_tested_team(env) -> None:
 
 def test_publishing_installs_the_spec_skills_and_removes_dropped_ones(env) -> None:
     client, _storage, model, manager = env
-    workspace = manager.workspace
-    workspace.skills = {}
 
     class Hub:
         async def download(self, user_id, card_id, version):
@@ -336,12 +343,14 @@ def test_publishing_installs_the_spec_skills_and_removes_dropped_ones(env) -> No
     client.post(f"{BASE}/agents/{agent_id}/tests/run")
     published = client.post(f"{BASE}/agents/{agent_id}/publish", json={})
     assert published.status_code == 200, published.text
+    workspace = manager.workspace
     assert workspace.skills[agent_id] == ["photo-check"]
     model.copilot_operations = [{"op": "remove", "field": "skills", "item_id": "sk-1"}]
     client.post(f"{BASE}/agents/{agent_id}/copilot", json={"message": "bỏ đọc ảnh"})
     client.post(f"{BASE}/agents/{agent_id}/tests/run")
     assert client.post(f"{BASE}/agents/{agent_id}/publish", json={}).status_code == 200
-    assert workspace.skills[agent_id] == []
+    assert manager.workspace.skills.get(agent_id, []) == []
+    assert workspace.skills[agent_id] == ["photo-check"]  # Old version remains usable.
 
 
 def test_failed_tests_block_publishing(env) -> None:

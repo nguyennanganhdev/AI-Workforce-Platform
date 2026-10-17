@@ -106,7 +106,8 @@ def build(app) -> FastMCP:
             async with asyncio.timeout(7):
                 async with app.state.engine.begin() as db:
                     await db.execute(text("select set_config('app.tenant_id',:tenant,true)"), {"tenant": str(app.state.settings.tenant_id)})
-                    await authorize(db,tool,args[0])
+                    if not tool.startswith('vh_management_'):
+                        await authorize(db,tool,args[0])
                     answer = await call(db, *args)
         except work.Refused as no:
             answer={'status':'failed','reason':str(no),'code':no.code,'retryable':False}
@@ -132,6 +133,41 @@ def build(app) -> FastMCP:
     mcp = FastMCP("vinhomes", stateless_http=True, json_response=True, log_level="WARNING",
                   transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=True,allowed_hosts=hosts,
                     allowed_origins=origins+['http://127.0.0.1:*','http://localhost:*']))
+
+    from . import platform_management as management
+
+    @mcp.tool(annotations=READ)
+    async def vh_management_ticket_list(from_date: str, to_date: str, status: str | None=None,
+                                         offset: Annotated[int,Field(ge=0,le=100000)]=0,
+                                         limit: Annotated[int,Field(ge=1,le=100)]=20) -> ToolReply:
+        """BQL only: list tickets for the authenticated area, with pagination. Dates YYYY-MM-DD, end exclusive, at most 93 days. No ticket required."""
+        return await run(False,'vh_management_ticket_list',management.tickets,from_date,to_date,status,offset,limit)
+
+    @mcp.tool(annotations=READ)
+    async def vh_management_ticket_summary(from_date: str,to_date: str) -> ToolReply:
+        """BQL only: ticket totals by status for the authenticated area and date interval (end exclusive, at most 93 days)."""
+        return await run(False,'vh_management_ticket_summary',management.summary,from_date,to_date)
+
+    @mcp.tool(annotations=READ)
+    async def vh_management_sla_report(from_date: str,to_date: str) -> ToolReply:
+        """BQL only: response/resolution deadline snapshot including missing deadlines, scoped to the authenticated area."""
+        return await run(False,'vh_management_sla_report',management.sla,from_date,to_date)
+
+    @mcp.tool(annotations=READ)
+    async def vh_management_workload(from_date: str,to_date: str) -> ToolReply:
+        """BQL only: open ticket counts by assigned team in the authenticated area, for tickets created in the date interval."""
+        return await run(False,'vh_management_workload',management.workload,from_date,to_date)
+
+    @mcp.tool(annotations=READ)
+    async def vh_management_knowledge_search(query: Annotated[str,Field(min_length=1,max_length=1000)],
+                                            include_unverified: bool=False,limit: Annotated[int,Field(ge=1,le=20)]=8) -> ToolReply:
+        """BQL only: lexical reference search in the authenticated project/area. Default reviewed sources only; unverified results are reference material, never official policy."""
+        return await run(False,'vh_management_knowledge_search',management.knowledge,query,include_unverified,limit)
+
+    @mcp.tool(annotations=READ)
+    async def vh_management_capabilities() -> ToolReply:
+        """BQL only: inspect supported reads/actions, mock-only integrations and actions requiring human handover."""
+        return await run(False,'vh_management_capabilities',management.capabilities)
 
     @mcp.tool(annotations=READ)
     async def vh_ticket_get(ticket_id: Ticket,history_before_seq: Annotated[int | None,Field(ge=1,description='next_before_seq from history_page, only to read older milestones.')]=None) -> ToolReply:
@@ -279,11 +315,15 @@ class Guarded:
         given = dict(scope["headers"]).get(b"authorization", b"")
         access=None
         if not hmac.compare_digest(given,self.expected):
-            if given.startswith(b'Bearer vhm_') and getattr(self.app.state,'engine',None) is not None:
+            if given.startswith((b'Bearer vhm_',b'Bearer vhmgr_')) and getattr(self.app.state,'engine',None) is not None:
                 token=given[7:].decode('utf-8',errors='replace')
                 async with self.app.state.engine.begin() as db:
                     await db.execute(text("select set_config('app.tenant_id',:tenant,true)"),{'tenant':str(self.app.state.settings.tenant_id)})
-                    access=await find_grant(db,token)
+                    if token.startswith('vhmgr_'):
+                        from .platform_management import find_management_grant
+                        access=await find_management_grant(db,token)
+                    else:
+                        access=await find_grant(db,token)
                 if access:
                     access={**access,'token':token}
             if access is None:

@@ -47,6 +47,10 @@ class SkillView(BaseModel):
         default=None,
         description="The card version installed.",
     )
+    review_status: str = "approved"
+    archive_cached: bool = False
+    source_agent_id: str | None = None
+    source_version: int | None = None
 
     @classmethod
     def from_record(cls, record: SkillRecord) -> "SkillView":
@@ -67,6 +71,10 @@ class SkillView(BaseModel):
             id=record.id,
             name=record.name,
             enabled=record.enabled,
+            review_status=record.review_status,
+            archive_cached=bool(record.archive_base64 or (not record.hub_id and record.markdown)),
+            source_agent_id=record.source_agent_id,
+            source_version=record.source_version,
             display_name=record.display_name,
             description=record.description,
             tags=record.tags,

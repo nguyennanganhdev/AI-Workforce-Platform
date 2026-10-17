@@ -78,6 +78,7 @@ export function AgentDetailPage() {
 	const [bases, setBases] = useState<KnowledgeBaseView[]>([]);
 	const [skills, setSkills] = useState<SkillView[]>([]);
 	const [memories, setMemories] = useState<AgentMemory[]>([]);
+	const [resources, setResources] = useState<Awaited<ReturnType<typeof studioApi.resources>> | null>(null);
 	const [turns, setTurns] = useState<CopilotTurn[]>([]);
 	const [report, setReport] = useState<TestReport | null>(null);
 	const [publishNote, setPublishNote] = useState('');
@@ -100,6 +101,7 @@ export function AgentDetailPage() {
 
 	useEffect(() => {
 		studioApi.getAgent(agentId).then(apply).catch((error) => toast.error(errorText(error)));
+		studioApi.resources(agentId).then(setResources).catch(() => setResources(null));
 		studioApi.tools().then(setCatalog).catch(() => setCatalog([]));
 		skillApi.list().then(setSkills).catch((error) => toast.error(errorText(error)));
 		knowledgeBaseApi
@@ -285,6 +287,7 @@ export function AgentDetailPage() {
 				</header>
 
 				<Tabs defaultValue="overview" className="min-h-0 flex-1 overflow-hidden p-4">
+					{resources && <details className="mb-3 rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">Tài nguyên bản phát hành v{resources.version} · {resources.ready ? 'Sẵn sàng' : 'Cần hoàn thiện'}</summary><div className="mt-2 space-y-1 text-sm">{resources.issues.map(issue => <p key={issue} className="text-amber-700 dark:text-amber-400">{issue}</p>)}{resources.knowledge.map(kb => <p key={kb.name}>Knowledge {kb.name}: {kb.ready_documents} tài liệu sẵn sàng</p>)}{resources.tools.map(tool => <p key={tool.name}>Tool {tool.name}: {tool.available ? 'Khả dụng' : 'Không khả dụng'}</p>)}{resources.skills.map(skill => <p key={skill.name}>Skill {skill.name} · {skill.version}: {skill.available ? 'Đã duyệt' : 'Không khả dụng'}</p>)}<Button variant="outline" size="sm" onClick={() => studioApi.resources(agentId).then(setResources).catch(error => toast.error(errorText(error)))}>Kiểm tra lại</Button></div></details>}
 					<TabsList className="max-w-full shrink-0 flex-wrap justify-start gap-1 group-data-horizontal/tabs:h-auto [&>button]:h-8 [&>button]:flex-none">
 						<TabsTrigger value="overview">Tổng quan</TabsTrigger>
 						<TabsTrigger value="rules">Hướng dẫn</TabsTrigger>

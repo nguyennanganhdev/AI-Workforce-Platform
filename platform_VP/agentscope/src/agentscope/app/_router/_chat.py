@@ -153,6 +153,14 @@ async def chat(
     # User prose is resolved by the server against stored ASKING calls, never
     # by an LLM or a client-supplied tool payload. Each decision grants one call.
     console_session = await storage.get_session(user_id, request.agent_id, request.session_id)
+    from .._service._agent_readiness import publication_issue
+    if console_session is not None:
+        config = console_session.config.personal_chat
+        roster = [m.agent_id for m in config.members] if config and config.kind == "group" else [request.agent_id]
+        for selected_id in roster:
+            selected = await resource_access_service.resolve_agent(user_id, selected_id)
+            if issue := publication_issue(selected):
+                raise HTTPException(409, detail={"code": "AGENT_NOT_READY", "message": issue})
     if console_session is not None and console_session.config.personal_chat is not None and console_session.config.personal_chat.kind == "group":
         from .._personal_chat import activate_group
         await activate_group(storage, shared_context_storage, message_bus, resource_access_service, user_id, console_session)

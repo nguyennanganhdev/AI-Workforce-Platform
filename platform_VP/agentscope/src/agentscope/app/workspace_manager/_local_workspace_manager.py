@@ -127,6 +127,8 @@ class LocalWorkspaceManager(WorkspaceManagerBase):
 
             # Workdir is deterministic for local workspaces — no storage needed
             workdir = os.path.join(self._basedir, agent_id)
+            if workspace_id.startswith("published-"):
+                workdir = os.path.join(workdir, ".releases", workspace_id)
             ws = LocalWorkspace(
                 workspace_id=workspace_id,
                 workdir=workdir,

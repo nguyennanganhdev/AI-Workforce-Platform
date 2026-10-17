@@ -269,6 +269,7 @@ const base = '/workforce/console/studio';
 const agentPath = (id: string) => `${base}/agents/${encodeURIComponent(id)}`;
 
 export const studioApi = {
+	resources: (id: string) => client.get<{ ready: boolean; issues: string[]; version: number; knowledge: { name: string; ready_documents: number }[]; tools: { name: string; available: boolean }[]; skills: { name: string; available: boolean; version: string | null }[] }>(`${agentPath(id)}/resources`),
 	observability: (days = 30) => client.get<ModelObservability>(`${base}/observability`, { days: String(days) }),
 	modelCalls: (since: string, until: string, offset = 0) =>
 		client.get<{ calls: Record<string, unknown>[]; next_offset: number | null }>(`${base}/model-calls`, {

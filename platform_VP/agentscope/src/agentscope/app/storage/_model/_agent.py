@@ -146,6 +146,9 @@ class AgentData(BaseModel):
     published_version: SkipJsonSchema[int] = 0
     """The version number the runtime currently serves (0 = none)."""
 
+    resource_workspace_id: SkipJsonSchema[str | None] = None
+    """Immutable prepared workspace activated with the published version."""
+
 
 class AgentRecord(_RecordBase):
     """The agent ORM model."""

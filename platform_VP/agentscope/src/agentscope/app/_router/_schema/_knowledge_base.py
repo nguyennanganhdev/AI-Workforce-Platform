@@ -96,6 +96,9 @@ class KnowledgeDocumentView(BaseModel):
     """
 
     id: str = Field(description="The document identifier.")
+    review_status: str = "approved"
+    source_ref: str = ""
+    version: str = ""
     filename: str = Field(description="Original filename at upload time.")
     size: int = Field(description="Document size in bytes.")
     content_type: str | None = Field(
@@ -132,6 +135,9 @@ class KnowledgeDocumentView(BaseModel):
         """
         return cls(
             id=record.id,
+            review_status=record.data.review_status,
+            source_ref=record.data.source_ref,
+            version=record.data.version,
             filename=record.data.filename,
             size=record.data.size,
             content_type=record.data.content_type,

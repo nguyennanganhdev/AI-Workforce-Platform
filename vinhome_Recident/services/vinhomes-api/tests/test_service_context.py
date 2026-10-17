@@ -175,7 +175,9 @@ def test_context_seven_sections_uses_resident_rights_and_masks_private_fields(da
     first, token = handed(database)
     second, other = handed(database, "sim-resident-2")
     with door(database) as c:
-        assert len(rpc(c, BOOTSTRAP, "tools/list").json()["result"]["tools"]) == 16
+        from vinhomes_api.platform_management import TOOLS as MANAGEMENT_TOOLS
+        tools = rpc(c, BOOTSTRAP, "tools/list").json()["result"]["tools"]
+        assert {tool['name'] for tool in tools} == set(TOOLS) | set(MANAGEMENT_TOOLS)
         for section, key, count in (
             ("cards", "cards", 2),
             ("visitors", "visits", 1),

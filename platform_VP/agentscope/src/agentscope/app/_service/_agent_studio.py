@@ -143,6 +143,7 @@ def pinned_view(record: AgentRecord, version: int) -> AgentRecord:
     view.data.published_version = version
     view.data.system_prompt = stored["system_prompt"]
     view.data.evaluation = copy.deepcopy(stored.get("evaluation") or {})
+    view.data.resource_workspace_id = stored.get("resource_workspace_id")
     if stored.get("spec"):
         view.data.spec = copy.deepcopy(stored["spec"])
         view.data.name = AgentSpec.model_validate(stored["spec"]).name
@@ -197,6 +198,7 @@ def materialize(
             "note": note[:1000],
             "created_at": _now(),
             "evaluation": copy.deepcopy(record.data.evaluation),
+            "resource_workspace_id": record.data.resource_workspace_id,
         },
     ]
     record.data.published_version = version
@@ -211,6 +213,7 @@ async def apply_bindings(
     spec: AgentSpec,
     install_skill: Any = None,
     previous: AgentSpec | None = None,
+    stage: bool = False,
 ) -> None:
     """Point the agent's primary session at exactly the spec's tools/knowledge.
 
@@ -227,17 +230,26 @@ async def apply_bindings(
                     if getattr(getattr(session, "origin", None), "type", "user") == "user"
                     and not getattr(session, "team_id", None)), None)
     if primary is None:
-        return
+        raise SpecPatchError("Agent chưa có phiên chính để chuẩn bị tài nguyên.")
+    if stage:
+        primary = primary.model_copy(deep=True)
+        primary.config.workspace_id = record.data.resource_workspace_id
     workspace = await workspace_manager.get_workspace(
         user_id,
         record.id,
         primary.id,
         primary.config.workspace_id,
     )
-    for client in await workspace.list_mcps(agent_id=record.id, session_id=primary.id):
-        await workspace.remove_mcp(client.name, agent_id=record.id, session_id=primary.id)
-    for default_mcp in workspace.default_mcps:
-        await workspace.remove_mcp(default_mcp.name, agent_id=record.id, session_id=primary.id)
+    partition = "" if stage else primary.id
+    # Prepared publications start in a private directory. Never connect old
+    # clients or remove the previous version's resources while staging.
+    for client in ([] if stage else await workspace.list_mcps(agent_id=record.id, session_id=partition)):
+        await workspace.remove_mcp(client.name, agent_id=record.id, session_id=partition)
+    for default_mcp in ([] if stage else workspace.default_mcps):
+        await workspace.remove_mcp(default_mcp.name, agent_id=record.id, session_id=partition)
+    if stage:
+        # Explicit empty declaration prevents unrelated default MCPs returning.
+        await workspace.set_mcp_declarations([], agent_id=record.id)
     selected: dict[str, list[str]] = {}
     confirm: dict[str, list[str]] = {}
     for tool in spec.tools:
@@ -254,18 +266,29 @@ async def apply_bindings(
         # Publishing cannot remove the server's consent requirement by editing
         # a draft flag. Unknown tools are also confirmation-only at runtime.
         metadata = {item.get("name"): item for item in mcp_record.discovered_tools}
+        if any(name not in metadata for name in names):
+            raise SpecPatchError("Công cụ không còn trong catalog MCP; hãy đồng bộ và kiểm tra lại.")
         required = set(client.confirm_tools or []) | set(confirm.get(mcp_id) or [])
         required.update(name for name in names if not catalog_allows_read(metadata.get(name, {})))
         client.confirm_tools = sorted(required.intersection(names)) or None
-        await workspace.add_mcp(client, agent_id=record.id, session_id=primary.id)
+        if stage:
+            await workspace.set_mcp_declarations(
+                [*workspace.declared_mcps(agent_id=record.id), client], agent_id=record.id,
+            )
+        else:
+            await workspace.add_mcp(client, agent_id=record.id, session_id=primary.id)
     wanted = {item.skill_id: item for item in spec.skills}
     if install_skill is not None:
         for skill_id in wanted:
             await install_skill(workspace, skill_id)
-    for item in previous.skills if previous is not None else []:
+    for item in previous.skills if previous is not None and not stage else []:
         if item.skill_id not in wanted and item.name:
             await workspace.remove_skill(item.name, agent_id=record.id)
     knowledge_ids = [item.kb_id for item in spec.knowledge]
+    if knowledge_ids:
+        available = {kb.id for kb in await storage.list_knowledge_bases(user_id)}
+        if set(knowledge_ids) - available:
+            raise SpecPatchError("Knowledge không còn trong thư viện của người quản lý.")
     config = primary.config
     if knowledge_ids:
         from ..storage._model._session import SessionKnowledgeConfig
@@ -278,6 +301,8 @@ async def apply_bindings(
     else:
         config.knowledge_config = None
     # Pass state/origin explicitly: an update without them resets the state.
+    if stage:
+        return
     await storage.upsert_session(
         user_id=user_id,
         agent_id=record.id,
@@ -339,7 +364,7 @@ async def skill_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
             "description": record.description or record.display_name or "",
         }
         for record in await storage.list_skills(user_id)
-        if getattr(record, "enabled", True)
+        if getattr(record, "enabled", True) and getattr(record, "review_status", "approved") == "approved"
     }
 
 

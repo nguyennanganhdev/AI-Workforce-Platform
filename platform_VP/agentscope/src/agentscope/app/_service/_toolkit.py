@@ -56,6 +56,7 @@ async def get_toolkit(
     channel_tools: list[ToolBase] | None = None,
     sop_dispatch: str | None = None,
     shared_context_service: SharedContextService | None = None,
+    management_auth_service=None,
 ) -> Toolkit:
     """Assemble the complete :class:`Toolkit` for one chat turn.
 
@@ -274,14 +275,15 @@ time or interval"
     if channel_tools:
         tools += channel_tools
 
+    mcps = [] if is_leader else await workspace.list_mcps(agent_id=agent_record.id, session_id=session_record.id)
+    if any(t.get("tool_name", "").startswith("vh_management_") for t in (agent_record.data.spec or {}).get("tools", [])):
+        from ._management_mcp import manager_clients
+        mcps = await manager_clients(storage, management_auth_service, user_id, agent_record, mcps)
     return Toolkit(
         tools=tools,
         skills_or_loaders=[] if is_leader else await workspace.list_skills(
             agent_id=agent_record.id,
         ),
-        mcps=[] if is_leader else await workspace.list_mcps(
-            agent_id=agent_record.id,
-            session_id=session_record.id,
-        ),
+        mcps=mcps,
         tool_groups=tool_groups,
     )

@@ -738,6 +738,8 @@ export interface DirectInstallMCPRequest {
  * re-fetched from the hub when the skill reaches a workspace.
  */
 export interface SkillView {
+	review_status?: 'candidate' | 'approved' | 'revoked';
+	archive_cached?: boolean;
 	id: string;
 	/** Unique per user — the handle a workspace refers to it by. */
 	name: string;
@@ -912,6 +914,7 @@ export interface ListChunkersResponse {
  * :class:`agentscope.app._service.KnowledgeBaseView`.
  */
 export interface KnowledgeBaseView {
+	retrieval_mode?: 'vector' | 'lexical';
 	id: string;
 	name: string;
 	description: string;

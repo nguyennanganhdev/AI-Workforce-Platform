@@ -41,7 +41,9 @@ class ContextChange(BaseModel):
     note: str | None = Field(default=None, min_length=1, max_length=4000)
 
 
-def group_view(root):
+def group_view(root, agents=()):
+    from .._service._agent_readiness import publication_issue
+    issues = [issue for agent in agents if (issue := publication_issue(agent))]
     config = root.config.personal_chat
     return {
         "sessionId": root.id, "agentId": root.agent_id,
@@ -49,6 +51,7 @@ def group_view(root):
         "memberIds": [m.agent_id for m in config.members if m.session_id != root.id],
         "members": [m.model_dump() for m in config.members], "goal": config.goal,
         "teamId": root.team_id, "coordinatorAgentId": root.agent_id,
+        "ready": not issues, "readiness_issues": issues,
     }
 
 
@@ -70,7 +73,8 @@ async def list_groups(
         for session in await storage.list_sessions(user_id, agent.id):
             config = session.config.personal_chat
             if config and config.kind == "group" and config.root_session_id == session.id:
-                groups.append(group_view(session))
+                roster = [await access.resolve_agent(user_id, m.agent_id) for m in config.members]
+                groups.append(group_view(session, roster))
     return groups
 
 
@@ -116,7 +120,7 @@ async def create_group(
         for member in created:
             await storage.delete_session(user_id, member.agent_id, member.session_id)
         raise
-    return group_view(root)
+    return group_view(root, agents)
 
 
 @personal_chat_router.post("/groups/{session_id}/activate")
@@ -127,7 +131,9 @@ async def activate_existing_group(
 ):
     await access.resolve_agent(user_id, agent_id)
     session = await owned_session(storage, user_id, agent_id, session_id)
-    return group_view(await activate_group(storage, shared_storage, bus, access, user_id, session))
+    root = await activate_group(storage, shared_storage, bus, access, user_id, session)
+    roster = [await access.resolve_agent(user_id, m.agent_id) for m in root.config.personal_chat.members]
+    return group_view(root, roster)
 
 
 @personal_chat_router.get("/groups/{session_id}/messages")

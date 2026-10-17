@@ -10,6 +10,8 @@ export interface PersonalGroup {
 	goal: string;
 	teamId: string | null;
 	coordinatorAgentId: string;
+	ready?: boolean;
+	readiness_issues?: string[];
 	members: { agent_id: string; session_id: string; name: string }[];
 }
 

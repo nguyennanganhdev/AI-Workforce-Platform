@@ -188,6 +188,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(platform_router)
     platform_mcp.mount(app)
     app.include_router(platform_access_router)
+    from .platform_management import router as platform_management_router
+    app.include_router(platform_management_router)
     app.include_router(resident_services_router)
     app.include_router(operations_services_router)
     from .direct_uploads import router as direct_uploads_router

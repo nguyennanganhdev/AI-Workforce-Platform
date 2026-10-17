@@ -508,6 +508,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 			<div className="flex flex-1 min-w-0 flex-col">
 				{activeGroup && <section aria-label={t('personal.selectAgent')} className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-3">
 					<div className="mr-2 min-w-0"><p className="text-sm font-semibold">{activeGroup.name}</p><p className="text-xs text-muted-foreground">{t('personal.selectAgent')}</p></div>
+					{activeGroup.ready === false && <p role="status" className="w-full text-sm text-amber-700 dark:text-amber-400">Nhóm chưa sẵn sàng: {activeGroup.readiness_issues?.join(' ')} Hãy phát hành các agent trước khi gửi yêu cầu.</p>}
 					{activeGroup.members.map(member => <span key={member.session_id} className="flex items-center gap-1 rounded-lg border bg-background px-2 text-xs">
 						<span>{member.name}{member.agent_id === activeGroup.agentId ? ` · ${t('personal.coordinator')}` : ''}</span>
 						<PersonalContextPanel agentId={member.agent_id} sessionId={member.session_id} agentName={member.name} busy={false} />

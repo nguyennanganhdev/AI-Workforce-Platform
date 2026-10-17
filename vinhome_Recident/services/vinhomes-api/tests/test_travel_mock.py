@@ -348,7 +348,8 @@ def test_travel_tools_are_scoped_and_fail_closed_when_disabled(
     ticket, token = travel_ticket
     with door(database) as client:
         tools = rpc(client, BOOTSTRAP, "tools/list").json()["result"]["tools"]
-        assert {tool["name"] for tool in tools} == set(TOOLS) and len(tools) == 16
+        from vinhomes_api.platform_management import TOOLS as MANAGEMENT_TOOLS
+        assert {tool["name"] for tool in tools} == set(TOOLS) | set(MANAGEMENT_TOOLS)
         assert not any(
             tool["name"]
             in {"list_customer_bookings", "book_hotel", "calculate_expression"}

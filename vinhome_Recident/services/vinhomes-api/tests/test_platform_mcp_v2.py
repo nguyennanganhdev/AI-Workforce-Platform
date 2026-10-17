@@ -59,7 +59,8 @@ def test_bootstrap_is_discovery_only_and_catalog_has_seven_tools(database,handed
     ticket,token,_=handed
     with door(database) as client:
         tools=rpc(client,BOOTSTRAP,'tools/list').json()['result']['tools']
-        assert {t['name'] for t in tools}==set(TOOLS)
+        from vinhomes_api.platform_management import TOOLS as MANAGEMENT_TOOLS
+        assert {t['name'] for t in tools}==set(TOOLS) | set(MANAGEMENT_TOOLS)
         assert 'confirmation' in next(t for t in tools if t['name']=='vh_ticket_get')['outputSchema']['properties']
         assert call(client,BOOTSTRAP,'vh_ticket_get',{'ticket_id':str(ticket)},True)['error']['code']=='TICKET_GRANT_REQUIRED'
         result=call(client,token,'vh_ticket_get',{'ticket_id':str(ticket)})
