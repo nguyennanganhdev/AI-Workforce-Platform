@@ -31,7 +31,7 @@ type Mode = 'login' | 'register';
 export function AuthPage({ onAuthenticated }: Props) {
 	useCueTheme();
 	const { t } = useTranslation();
-	const [mode, setMode] = useState<Mode>('login');
+	const [mode, setMode] = useState<Mode>(() => window.location.pathname === '/register' ? 'register' : 'login');
 	const [identity, setIdentity] = useState('');
 	const [email, setEmail] = useState('');
 	const [username, setUsername] = useState('');

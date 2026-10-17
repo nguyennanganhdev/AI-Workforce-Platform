@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { canConfirm, classifierLabel, decisionLabels } from './review';
+import { canConfirm, canRetryClassification, classifierLabel, decisionLabels, planDecisionLabel } from './review';
 import { workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
@@ -255,9 +255,9 @@ export function AgentBuilderPage() {
 		await loadConversations();
 	};
 
-	const prepare = async (confirmOutline = false) => {
-		if (!message.trim() || !selectedModel) return;
-		const userText = message.trim();
+	const prepare = async (confirmOutline = false, retryMessage?: string) => {
+		const userText = (retryMessage ?? message).trim();
+		if (!userText || !selectedModel || working) return;
 		setConversation((current) => [...current, { role: 'user', text: userText }]);
 		setMessage('');
 		setWorking(true);
@@ -478,6 +478,13 @@ export function AgentBuilderPage() {
                                     {' · '}Token: {proposal.classifier_status.input_tokens ?? 'chưa rõ'} vào / {proposal.classifier_status.output_tokens ?? 'chưa rõ'} ra
                                     {' · '}Chi phí: {proposal.classifier_status.cost_usd == null ? 'chưa có giá đối soát' : `$${proposal.classifier_status.cost_usd}`}
                                 </p>}
+                                {canRetryClassification(proposal) && <div className="flex flex-wrap items-center gap-3">
+                                    <Button variant="outline" disabled={working || !selectedModel || !conversation.some((item) => item.role === 'user')}
+                                        onClick={() => void prepare(false, [...conversation].reverse().find((item) => item.role === 'user')?.text)}>
+                                        Lập lại phương án
+                                    </Button>
+                                    <p className="text-xs text-muted-foreground">Chạy lại Builder và JEV với yêu cầu gần nhất; có sử dụng model.</p>
+                                </div>}
 
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div className="min-w-0 flex-1">
@@ -509,7 +516,7 @@ export function AgentBuilderPage() {
 												<ClayAvatar id={agent.name} label={agent.name} size={40} />
 												<div className="min-w-0 flex-1">
 													<p className="text-sm font-semibold">{agent.name}</p>
-                                                    <Badge variant="secondary">{decisionLabels[agent.decision?.action ?? 'clarify']}</Badge>
+                                                    <Badge variant="secondary">{planDecisionLabel(proposal, agent.decision?.action ?? 'clarify')}</Badge>
                                                     <p className="mt-1 text-xs text-muted-foreground">{agent.decision?.reason ?? 'Cần kiểm tra trùng trước khi tiếp tục.'}</p>
                                                     {!!agent.missing_tools?.length && <p role="alert" className="mt-2 text-sm text-destructive">Thiếu tool: {agent.missing_tools.join('; ')}</p>}
                                                     {!!agent.missing_knowledge?.length && <p className="mt-2 text-sm text-muted-foreground">{agent.knowledge_required ? 'Thiếu kiến thức bắt buộc' : 'Kiến thức có thể bổ sung sau'}: {agent.missing_knowledge.join('; ')}</p>}

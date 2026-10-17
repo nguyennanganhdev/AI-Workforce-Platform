@@ -82,6 +82,9 @@ const router = createBrowserRouter([
 		],
 	},
 	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
+	// Auth is rendered above the router. A restored session may still be on
+	// an authentication URL, so resolve it to the user's chat instead of a 404.
+	...['/login', '/register', '/auth'].map((path) => ({ path, element: <Navigate to="/chat" replace /> })),
 ]);
 
 function PlatformApp() {

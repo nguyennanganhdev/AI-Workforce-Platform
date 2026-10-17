@@ -305,8 +305,9 @@ async def test_single_oversized_candidate_remains_unresolved_without_truncation(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("server_state_limit", [32_000, 16_000])
+@pytest.mark.parametrize("plan_count", [1, 3])
 async def test_vietnamese_context_uses_real_sdk_wire_without_provider_calls(
-    storage, server_state_limit
+    storage, server_state_limit, plan_count
 ):
     """Exercise the adapter/SDK seam: character limits do not bound tokens.
 
@@ -379,21 +380,19 @@ async def test_vietnamese_context_uses_real_sdk_wire_without_provider_calls(
         result = await decisions.decide_identities(
             [
                 console.PlannedAgent(name=f"Vai trò {i}", objective=f"Nghiệp vụ {i}")
-                for i in range(3)
+                for i in range(plan_count)
             ],
             records,
             value,
         )
     finally:
         await value.close()
-    assert [d.action for d in result] == [
-        "reuse",
-        "create",
-        "create",
-    ], value.status.reason
+    assert [d.action for d in result] == ["reuse"] + ["create"] * (plan_count - 1), value.status.reason
     assert result[0].agent_id == "agent-6"
     assert len(requests) > 1
-    assert sum(len(body["questions"]) for body in accepted) == 45
+    assert sum(len(body["questions"]) for body in accepted) == (
+        14 * plan_count + plan_count * (plan_count - 1) // 2
+    )
     assert value.status.calls == len(requests)
     assert value.status.state == "active" and value.status.error_code is None
     if server_state_limit == 16_000:
@@ -592,7 +591,8 @@ async def test_jev_selects_tool_kb_skill_and_reports_missing_operation(storage):
 
 
 async def planned(
-    storage, *, records=(), requirements=(), answers=None, knowledge=None, skills=None
+    storage, *, records=(), requirements=(), answers=None, knowledge=None, skills=None,
+    failure=None,
 ):
     for record in records:
         await storage.upsert_agent("u", record)
@@ -605,7 +605,7 @@ async def planned(
             )
         ]
     )
-    value = classifier(storage, answers)
+    value = classifier(storage, answers, failure)
     with patch.object(flow, "BuilderClassifier", return_value=value):
         return await flow.plan_proposal(
             outline,
@@ -622,6 +622,18 @@ async def planned(
             SCOPE,
             1,
         )
+
+
+@pytest.mark.asyncio
+async def test_classifier_failure_does_not_ask_user_to_clarify_business_scope(storage):
+    proposal = await planned(storage, records=[existing()], failure=TimeoutError())
+    assert proposal.classifier_status.state == "unavailable"
+    assert proposal.planned_agents[0].decision.action == "clarify"
+    assert "lỗi kiểm tra hệ thống" in proposal.clarification_question
+    assert "giữ nguyên mô tả" in proposal.clarification_question
+    assert "bổ sung" not in proposal.clarification_question
+    assert await storage.get_agent("u", "old") is not None
+    assert len(await storage.list_agents("u")) == 1
 
 
 async def generated(storage, proposal):

@@ -321,7 +321,11 @@ async def plan_proposal(
             status="needs_input",
             assistant_message=outline.assistant_message
             or "Hãy xem phương án dùng lại, cập nhật và tài nguyên trước khi chốt.",
-            clarification_question="Hãy bổ sung hoặc làm rõ các mục đang bị chặn rồi lập lại phương án."
+            clarification_question=(
+                "Đây là lỗi kiểm tra hệ thống JEV; hãy giữ nguyên mô tả và lập lại phương án sau khi khắc phục."
+                if classifier.status.state == "unavailable"
+                else "Hãy bổ sung hoặc làm rõ các mục đang bị chặn rồi lập lại phương án."
+            )
             if blocked
             else None,
             planned_agents=views,
