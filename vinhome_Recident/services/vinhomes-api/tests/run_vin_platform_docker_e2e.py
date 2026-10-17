@@ -66,10 +66,14 @@ def up(source, output):
            "POSTGRES_PASSWORD=offline-vin-fixture-only", "-e", "POSTGRES_DB=vinfixture", "pgvector/pgvector:pg17")
     for _ in range(80):
         try:
-            docker("exec", pg, "pg_isready", "-U", "vinfixture")
+            # The image briefly starts a Unix-socket-only init server, then
+            # stops it. Wait for TCP so CREATE DATABASE cannot hit that window.
+            docker("exec", pg, "pg_isready", "-h", "127.0.0.1", "-U", "vinfixture")
             break
         except RuntimeError:
             time.sleep(.25)
+    else:
+        raise RuntimeError("Fixture PostgreSQL did not accept TCP connections")
     for name in ("domain_e2e", "platform_e2e"):
         docker("exec", pg, "psql", "-U", "vinfixture", "-d", "vinfixture", "-c", "CREATE DATABASE " + name)
     redis = prefix + "-redis"
