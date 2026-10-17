@@ -401,6 +401,38 @@ class DiscordChannel(ChannelBase):
         if confirm is not None:
             await self._present_confirm(event, confirm)
 
+    async def send_saved_private(self, body):
+        """Deliver an immutable C09 outbox text, with Discord nonce dedup."""
+        import httpx
+        from ...vin_platform import PlatformError
+
+        if not self.may_chat(body["recipient_id"]) or not body["chat_id"].isascii() or not body["chat_id"].isdigit():
+            raise PlatformError("PRIVATE_CHANNEL_DENIED", 403)
+
+        async def send(client):
+            headers = {"Authorization": "Bot " + self._bot_token}
+            url = "https://discord.com/api/v10/channels/" + body["chat_id"]
+            target = await client.get(url, headers=headers)
+            if target.status_code != 200:
+                raise PlatformError("DELIVERY_CHANNEL_UNAVAILABLE", 503)
+            detail = target.json()
+            if detail.get("type") != 1 or [item["id"] for item in detail.get("recipients", [])] != [body["recipient_id"]]:
+                raise PlatformError("PRIVATE_CHANNEL_DENIED", 403)
+            result = await client.post(url + "/messages", headers=headers, json={"content": body["body"],
+                "nonce": body["nonce"], "enforce_nonce": True, "allowed_mentions": {"parse": []}})
+            if result.status_code not in {200, 201}:
+                raise PlatformError("DELIVERY_TRANSPORT_UNAVAILABLE", 503)
+            return {"state": "delivered", "message_id": result.json()["id"]}
+
+        try:
+            injected = getattr(self, "_saved_http_client", None)
+            if injected is not None:
+                return await send(injected)
+            async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=False) as client:
+                return await send(client)
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            raise PlatformError("DELIVERY_OUTCOME_UNKNOWN", 503) from exc
+
     async def _present_confirm(
         self,
         event: ChannelEvent,

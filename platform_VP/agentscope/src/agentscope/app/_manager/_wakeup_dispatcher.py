@@ -111,6 +111,7 @@ class WakeupDispatcher:
         # Held so they are not garbage-collected mid-sleep and can be
         # cancelled on shutdown.
         self._retry_tasks: set[asyncio.Task] = set()
+        self._personal_task: asyncio.Task | None = None
 
     async def __aenter__(self) -> Self:
         """Start the dispatcher loop and wait until its bus
@@ -130,10 +131,17 @@ class WakeupDispatcher:
         )
         await ready.wait()
         await self._drain_and_dispatch()
+        from ..vin_platform import enabled
+        if enabled():
+            self._personal_task = asyncio.create_task(self._personal_loop(), name="vin-personal-jobs")
         return self
 
     async def __aexit__(self, *exc: object) -> None:
         """Cancel the dispatcher loop and any pending retries."""
+        if self._personal_task is not None:
+            self._personal_task.cancel()
+            await asyncio.gather(self._personal_task, return_exceptions=True)
+            self._personal_task = None
         retries = list(self._retry_tasks)
         for retry in retries:
             retry.cancel()
@@ -151,6 +159,19 @@ class WakeupDispatcher:
         except asyncio.CancelledError:
             pass
         self._task = None
+
+    async def _personal_loop(self):
+        from .._service._personal_jobs import PersonalJobWorker
+        worker = PersonalJobWorker(self._storage, self._chat_service, self._chat_service._workspace_manager)
+        while True:
+            try:
+                if not await worker.run_one():
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Personal durable queue unavailable")
+                await asyncio.sleep(2)
 
     # ------------------------------------------------------------------
     # Internals

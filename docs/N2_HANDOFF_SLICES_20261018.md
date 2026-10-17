@@ -247,3 +247,9 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - External network attempts trong harness: 0; browser chặn ngoài origin; paid model calls: 0. Không đọc key/.env, không dùng Domain/Discord thật, không push/deploy.
 - **N2-03 chưa nghiệm thu toàn task**: cần N1 bổ sung C07 `pending_decisions[].version` (revision work approval, không phải ticket_version), projection phương án (`plan_id`, own revision, title/amount/steps/canDecide) và route đọc phương án nếu cần. Consumer không đoán revision hoặc bật duyệt khi thiếu. Test mong đợi: quote/plan cập nhật giữa review/click bị từ chối; đúng owner + đúng revision có receipt, replay không duyệt lần hai. Các consumer decision này sẽ nối khi owner giao contract; chưa sửa Domain/authority của N1.
 - Đính chính phạm vi lint: Ruff F401 cho console còn 1 import MCPClient không dùng đã có ở baseline; không xóa dead code ngoài slice. Ruff F821/F811 toàn file sửa và F401 các module/test mới đạt. Không tính lỗi nền này là PASS.
+
+## S08 — N2-06/07 C09 và danh tính Discord — ĐANG TRIỂN KHAI
+
+- Owner bổ sung theo lane schedule/channel/runtime: `_service/_discord_identity.py`, `_service/_personal_jobs.py`, `_manager/_wakeup_dispatcher.py` (mount consumer personal jobs vào dispatcher hiện có), test `test_vin_personal_automation.py` và `test_vin_discord_identity.py`; frontend identity/run-ledger component/API/test. Không sửa lifecycle/bootstrap hoặc C09 persistence của N1.
+- Dùng C09 claim/lease/fence/checkpoint, một run không tự lặp sau crash; delivery outbox lưu body riêng, retry không gọi lại model. Chủ bot phải từ OAuth identify server, không tin ID nhập tay.
+- WIP checkpoint trước tích hợp N1 f52420d9: OAuth suite 262 PASS / 16 browser SKIP / 0 FAIL / 0 ERROR. Lượt đầu consumer C09 mới: 263 PASS / 16 SKIP / 0 FAIL / 6 ERROR (fixture thiếu required AgentData/ChatModelConfig; đang sửa); chưa ghi S08 xong. Cần 0023 và jobs.context_for(job) mới của N1 trước worker acceptance.

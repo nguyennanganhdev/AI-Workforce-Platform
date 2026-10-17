@@ -515,7 +515,10 @@ class ChatService:
                     session = await self._storage.get_session(user_id, agent_id, session_id)
                     origin = getattr(getattr(session, "origin", None), "type", "user")
                     purpose = origin if origin in {"schedule", "channel"} else "chat"
-                    context = await authority.context(user_id, purpose=purpose)
+                    from ._personal_jobs import personal_job
+                    job = personal_job.get()
+                    context = await authority.context(user_id, purpose=purpose,
+                        **({"workspace_id": job.payload["workspace_id"], "environment": job.payload["environment"]} if job is not None else {}))
                     stack.enter_context(execution_scope(context))
                     stack.enter_context(usage_scope(purpose=purpose))
                 await self._run_impl(
@@ -2243,9 +2246,11 @@ class ChatService:
                     channel_id=delivery.deliver_channel_id,
                     chat_id=delivery.deliver_chat_id,
                 )
+            from ._personal_jobs import personal_job
             if (
                 isinstance(delivery, ChannelOrigin)
                 and self._channel_clients is not None
+                and personal_job.get() is None
             ):
                 # Who may answer a confirmation card: the platform user
                 # whose message started this run, else the session opener.

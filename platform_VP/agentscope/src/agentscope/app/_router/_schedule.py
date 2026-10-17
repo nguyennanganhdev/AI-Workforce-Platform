@@ -37,6 +37,18 @@ schedule_router = APIRouter(
 )
 
 
+@schedule_router.get("/{schedule_id}/runs")
+async def personal_schedule_runs(schedule_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._personal_jobs import ledger
+    from ..vin_platform import PlatformError
+    if await storage.get_schedule(user_id, schedule_id) is None:
+        raise HTTPException(404, "Schedule not found")
+    try:
+        return await ledger(storage, user_id, "schedule-run", schedule_id)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
 @schedule_router.get(
     "/",
     response_model=ListSchedulesResponse,

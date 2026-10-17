@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
+from vin_fixtures import authority as authority  # noqa: F401
 
 from agentscope.app.channel import DiscordChannel, ChannelEvent, ChannelTypeRegistry
 from agentscope.app._service._channel import ChannelService
@@ -87,14 +88,21 @@ async def test_vin_enabled_bql_bot_without_list_still_answers_guild_mention(monk
 
 
 @pytest.mark.asyncio
-async def test_customer_channel_creation_requires_owner_and_defaults_access_to_owner():
-    storage = SimpleNamespace(vin_platform_service=SimpleNamespace(context=AsyncMock(return_value=SimpleNamespace(role="VIN_USER"))))
+async def test_customer_channel_creation_requires_owner_and_defaults_access_to_owner(authority):
+    from agentscope.app._service._discord_identity import _identity_id
+    storage = authority.storage
+    storage.vin_platform_service = authority
+    context = await authority.context("alice")
     service = ChannelService(storage, None, ChannelTypeRegistry([DiscordChannel]))
     with pytest.raises(ChannelError) as missing:
         await service._discord_config("alice", "discord", {}, creating=True)
-    assert missing.value.status_code == 400
-    config = await service._discord_config("alice", "discord", {"owner_user_id": "100"}, creating=True)
+    assert missing.value.status_code == 403
+    await authority.automation_put(context, _identity_id(context), "channel", {"state": "verified", "discord_user_id": "100", "verified_at": 1})
+    config = await service._discord_config("alice", "discord", {}, creating=True)
     assert config["allowed_user_ids"] == config["approver_user_ids"] == ["100"]
+    assert config["owner_user_id"] == "100"
+    with pytest.raises(ChannelError, match="DISCORD_OWNER_MISMATCH"):
+        await service._discord_config("alice", "discord", {"owner_user_id": "200"}, creating=True)
     with pytest.raises(ChannelError):
         await service._discord_config("alice", "discord", {"owner_user_id": "100", "allowed_user_ids": []}, creating=True)
     # An existing channel may deliberately block everyone.

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { parseCronExpression, getFrequencyLabel } from './schedule-utils';
 import type { ScheduleRecord, SessionRecord } from '@/api';
 import { scheduleApi } from '@/api';
+import { PersonalRuns } from '@/components/PersonalRuns';
 import { StatusBadge } from '@/components/badge/StatusBadge';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { Button } from '@/components/ui/button';
@@ -163,6 +164,7 @@ export function ScheduleDetailDrawer({
 							</div>
 						</div>
 						<Separator />
+						<PersonalRuns kind="schedule" sourceId={schedule.id} />
 						<div className="space-y-2 flex flex-col flex-1 overflow-hidden">
 							<h3 className="text-sm font-semibold">
 								{t('schedule.executionHistory')}
