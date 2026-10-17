@@ -15,6 +15,9 @@ def main():
     parser.add_argument(
         "--storage", action="store_true", help="Also run SQL storage regressions"
     )
+    parser.add_argument(
+        "--runtime", action="store_true", help="Also run private chat/team and Leader regressions"
+    )
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     os.chdir(root)
@@ -71,6 +74,13 @@ def main():
     suite = ["tests/workforce/console", "tests/audit_publish_atomicity_test.py"]
     if options.storage:
         suite.append("tests/storage_sql_test.py")
+    if options.runtime:
+        suite.extend([
+            "tests/personal_chat_test.py", "tests/personal_chat_challenge_test.py",
+            "tests/team_collaboration_test.py", "tests/team_say_shared_context_test.py",
+            "tests/team_shared_context_test.py", "tests/leader_evidence_middleware_test.py",
+            "tests/leader_runtime_gaps_test.py", "tests/room_realtime_test.py",
+        ])
     started = perf_counter()
     result = pytest.main(
         [

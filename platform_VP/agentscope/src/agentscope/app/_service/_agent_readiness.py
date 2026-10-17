@@ -1,5 +1,6 @@
 """Side-effect-free publication/resource readiness shared by console and chat."""
 from datetime import datetime, timezone
+from fastapi import HTTPException
 from ..storage import AgentRecord
 
 
@@ -14,15 +15,27 @@ def publication_issue(agent: AgentRecord) -> str | None:
     return None
 
 
-async def resource_manifest(storage, user_id, agent):
+async def resource_manifest(storage, user_id, agent, access=None):
     spec = agent.data.spec or {}
     issues = [issue] if (issue := publication_issue(agent)) else []
     knowledge, tools, skills = [], [], []
-    visible_kbs = {kb.id: kb for kb in await storage.list_knowledge_bases(user_id)}
+    authority_requires_resolver = access is None and getattr(storage, "vin_platform_service", None) is not None
+    visible_kbs = {kb.id: kb for kb in await storage.list_knowledge_bases(user_id)} if access is None and not authority_requires_resolver else {}
+    if authority_requires_resolver:
+        issues.append("Chưa xác minh được quyền tài nguyên; hãy thử lại sau.")
     for item in spec.get("knowledge", []):
         kb_id = item["kb_id"]
         kb = visible_kbs.get(kb_id)
-        docs = await storage.list_knowledge_documents(user_id, kb_id) if kb else []
+        if access is not None:
+            try:
+                kb = await access.resolve_knowledge_base(user_id, kb_id)
+            except HTTPException as exc:
+                if exc.status_code not in (403, 404):
+                    raise
+                kb = None
+        # Shared records retain their service owner. Never read documents from
+        # a resident namespace simply because that resident selected the KB.
+        docs = await storage.list_knowledge_documents(kb.user_id, kb_id) if kb else []
         today = datetime.now(timezone.utc).date().isoformat()
         ready = sum(doc.status == "ready" and doc.data.review_status == "approved"
                     and (not doc.data.effective_from or doc.data.effective_from <= today)

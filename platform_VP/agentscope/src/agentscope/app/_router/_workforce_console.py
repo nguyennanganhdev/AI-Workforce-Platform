@@ -1355,12 +1355,12 @@ def _agent_checks(
     }
 
 
-async def _library(storage: StorageBase, user_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
+async def _library(storage: StorageBase, user_id: str, access=None) -> tuple[dict[str, dict], dict[str, dict]]:
     """The manager's knowledge bases and enabled library skills, by id."""
 
     from .._service._agent_studio import knowledge_catalog, skill_catalog
 
-    knowledge, skills = await knowledge_catalog(storage, user_id), await skill_catalog(storage, user_id)
+    knowledge, skills = await knowledge_catalog(storage, user_id, access=access), await skill_catalog(storage, user_id)
     for record in await storage.list_knowledge_bases(user_id):
         if record.id in knowledge:
             knowledge[record.id]["revision"] = record.updated_at.isoformat()
@@ -1463,7 +1463,7 @@ async def _prepare_builder(
         previous_transcript or body.message,
     )
     tools = await _catalog(storage, user_id)
-    knowledge, skills = await _library(storage, user_id)
+    knowledge, skills = await _library(storage, user_id, access=access)
     library = _library_note(knowledge, skills)
     model = await get_model(user_id, body.chat_model_config, access)
     model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "builder"}
@@ -1780,6 +1780,7 @@ async def publish_builder(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> PublishResponse:
     async with _proposal_locks[user_id]:
         session = await storage.get_session(
@@ -1899,6 +1900,7 @@ async def publish_builder(
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
             install_skill=_skill_installer(request, storage, user_id, record.id), stage=True,
+            access=access,
         )
         if item.skill_markdown.strip():
             await workspace.add_skill_archive(

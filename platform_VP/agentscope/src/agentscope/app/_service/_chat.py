@@ -1563,7 +1563,7 @@ class ChatService:
                 # -------------------------------------------------------------
                 if agent_record.data.resource_workspace_id:
                     from ._agent_readiness import resource_manifest
-                    manifest = await resource_manifest(self._storage, user_id, agent_record)
+                    manifest = await resource_manifest(self._storage, user_id, agent_record, access=self._access)
                     if not manifest["ready"]:
                         raise HTTPException(409, detail={"code": "RESOURCE_NOT_READY", "issues": manifest["issues"]})
                 toolkit = await get_toolkit(
