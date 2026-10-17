@@ -55,7 +55,7 @@ export function EligibilityRecords({ perform, busy }: { perform: AdminAction; bu
 
 export function LibraryReview({ catalogId, perform, busy }: { catalogId: string; perform: AdminAction; busy: boolean }) {
 	const [status, setStatus] = useState('');
-	return <div className="space-y-3"><label className="grid gap-2 text-sm">Trạng thái duyệt<select className="h-9 rounded-md border bg-background px-2" value={status} onChange={(event) => setStatus(event.target.value)}>
+	return <div className="space-y-3"><label className="grid gap-2 text-sm">Trạng thái duyệt<select aria-label="Trạng thái duyệt" className="h-9 rounded-md border bg-background px-2" value={status} onChange={(event) => setStatus(event.target.value)}>
 		<option value="">Tất cả</option><option value="candidate">Chờ duyệt</option><option value="approved">Đã duyệt</option><option value="retired">Ngừng dùng</option></select></label>
 		<AdminRecords title="Tài liệu thư viện Vin" filters={{ review_status: status, catalogId }} load={(filters) => vinAdminApi.documents(catalogId, { review_status: filters.review_status, offset: filters.offset, limit: filters.limit })} render={(doc) => <>
 			<span>{doc.filename} · {doc.status} · {doc.review_status} · bản {doc.version}<br />Nguồn: {doc.source_ref || 'Chưa khai báo'}</span>
