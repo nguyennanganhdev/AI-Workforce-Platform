@@ -31,6 +31,7 @@ def test_management_client_uses_current_auth_area_and_never_mutates_ticket_clien
     monkeypatch.setattr(module.httpx,'AsyncClient',lambda **kwargs: original_http(**kwargs,transport=httpx.MockTransport(handler)))
     class DB:
         async def execute(self,*args):
+            assert isinstance(args[1]['id'], str), 'auth_users.id is a string column'
             return SimpleNamespace(mappings=lambda:SimpleNamespace(first=lambda:{'tenant_id':'t','domain_id':'d','area_id':'current-op2','role':'AREA_MANAGER','status':'active'}))
     class Engine:
         @asynccontextmanager

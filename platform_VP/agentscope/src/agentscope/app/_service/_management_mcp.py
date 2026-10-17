@@ -22,7 +22,7 @@ async def manager_clients(storage, auth_service, user_id, agent, clients):
     # a copied AgentSpec are authority to pick a different manager or area.
     async with auth_service._require_engine().connect() as db:
         row = (await db.execute(text('select tenant_id,domain_id,area_id,role,status from auth_users where id=:id'),
-                                {'id': UUID(user_id)})).mappings().first()
+                                {'id': str(UUID(user_id))})).mappings().first()
     if not row or row['role'] != 'AREA_MANAGER' or row['status'] != 'active':
         raise HTTPException(403, 'Active BQL account required')
     output = list(clients)

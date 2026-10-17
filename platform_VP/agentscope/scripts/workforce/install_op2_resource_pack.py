@@ -45,7 +45,7 @@ SKILLS = {
 async def install(owner):
     engine = create_async_engine(os.environ['AGENTSCOPE_SQL_URL'])
     async with engine.connect() as db:
-        user = (await db.execute(text('select username,role,status,area_id from auth_users where id=:id'), {'id': UUID(owner)})).mappings().one()
+        user = (await db.execute(text('select username,role,status,area_id from auth_users where id=:id'), {'id': str(UUID(owner))})).mappings().one()
     await engine.dispose()
     if user['role'] != 'AREA_MANAGER' or user['status'] != 'active' or user['area_id'] != 'ocean-park-2':
         raise ValueError('Explicit active OP2 BQL owner required')
