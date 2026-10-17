@@ -5,15 +5,18 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 // Execute the actual client with only Vite's build-time env and browser I/O mocked.
-function clientWith(fetch) {
+function clientWith(fetch, { apiBase, savedServer = null } = {}) {
   const source = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
-    .replace('import.meta.env.VITE_API_BASE_URL', 'undefined');
+    .replace('import.meta.env.VITE_API_BASE_URL', JSON.stringify(apiBase) ?? 'undefined');
   const events = [];
   const context = {
     exports: {}, require: () => ({ toast: { error() {} } }),
     URL, AbortSignal, DOMException, Event, fetch,
-    localStorage: { getItem: () => null },
-    window: { dispatchEvent: (event) => events.push(event.type) },
+    localStorage: { getItem: () => savedServer },
+    window: {
+      location: { origin: 'https://vagen-platform.duckdns.org' },
+      dispatchEvent: (event) => events.push(event.type),
+    },
   };
   vm.runInNewContext(ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -22,6 +25,31 @@ function clientWith(fetch) {
 }
 const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
 const unauthorized = () => new Response('expired', { status: 401 });
+
+test('bundled login uses its same-origin API despite a saved legacy server URL', async () => {
+  for (const savedServer of ['http://localhost:8000', 'http://103.238.234.172:8000', 'https://old.example/api', '', null]) {
+    const requests = [];
+    const api = clientWith(async (url) => {
+      requests.push(String(url));
+      if (String(url) !== 'https://vagen-platform.duckdns.org/api/auth/login') {
+        throw new TypeError('Failed to fetch');
+      }
+      return ok({ access_token: 'offline-fixture' });
+    }, { apiBase: '/api', savedServer });
+    const result = await api.client.post('/auth/login', { identity: 'offline', password: 'fixture' }, undefined, { silent: true });
+    assert.equal(result.access_token, 'offline-fixture');
+    assert.equal(api.getBaseUrl(), '/api');
+    assert.deepEqual(requests, ['https://vagen-platform.duckdns.org/api/auth/login']);
+  }
+});
+
+test('standalone frontend retains explicitly saved remote server support', () => {
+  const api = clientWith(() => { throw new Error('No request expected'); }, {
+    apiBase: 'http://localhost:8000', savedServer: 'https://remote.example/service',
+  });
+  assert.equal(api.getBaseUrl(), 'https://remote.example/service');
+  assert.equal(api.getApiUrl('/auth/login').href, 'https://remote.example/service/auth/login');
+});
 
 test('a late 401 reuses the already refreshed token without rotating again', async () => {
   let late;

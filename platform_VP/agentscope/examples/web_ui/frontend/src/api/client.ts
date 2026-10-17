@@ -3,7 +3,12 @@ import { toast } from 'sonner';
 const DEFAULT_API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
 export const AUTH_EXPIRED_EVENT = 'agentscope:auth-expired';
-export const getBaseUrl = () => localStorage.getItem('server_url') ?? DEFAULT_API_URL;
+// A bundled same-origin deployment owns its API route. Saved standalone URLs
+// must not redirect login, refresh cookies or uploads to a previous server.
+export const getBaseUrl = () =>
+	DEFAULT_API_URL.startsWith('/')
+		? DEFAULT_API_URL
+		: (localStorage.getItem('server_url') ?? DEFAULT_API_URL);
 
 /** Preserve a reverse proxy prefix such as /api for requests and uploads. */
 export const getApiUrl = (path: string, baseUrl = getBaseUrl()) => {
