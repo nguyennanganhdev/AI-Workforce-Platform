@@ -5,6 +5,10 @@ Không dashboard BQL, exception queue, operator grant/approval bridge hoặc bot
 Khách hàng dùng cùng UI/các trang Platform, dữ liệu riêng; Provider/MCP/Skill được cấp chỉ xem/chọn/dùng.
 Không chạy test bằng model key thật; không bật production/cutover bằng kết quả fixture.
 
+**Trạng thái mới nhất:** các sửa review R01/R02 bên dưới đã được kiểm tra trên bản ghép hai branch.
+S00–S06 là lịch sử kiểm thử trước review, không phải trạng thái hiện tại. S03 chưa nghiệm thu E2E;
+contract gate offline hiện **PASS 24 / SKIP 0 / ERROR 0 / FAIL 0**. Không coi các test SKIP là PASS.
+
 ## S00 — Rebase
 
 - WIP đã commit trước đó: `e6cb3495`, `88098c39`, `f64a07fc`; không còn file chưa commit trước rebase.
@@ -156,7 +160,7 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - U01–U30 **chưa được đánh dấu đạt tổng thể**. Các số test trên là offline/scripted hoặc browser fixture.
   Skip SQL concurrent runtime trong harness là gate PostgreSQL, không phải coverage SQL đã đạt.
 
-## R01 — Sửa review Người 2 ngày 18/10 (đang triển khai)
+## R01 — Sửa review Người 2 ngày 18/10 — ĐÃ SỬA, kiểm thử offline
 
 - Worktree sạch trước rebase; backup `backup/vin-user2-before-review-rebase-20261018`.
 - Đã fetch/rebase lên `origin/dev_Chien@83e3e6d3`, không conflict; không sửa WIP Người 1.
@@ -176,7 +180,7 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   kết quả này **không** đóng S03. Node form **PASS 2 / SKIP 0 / FAIL 0**; TypeScript/ESLint đạt.
 - Owner test mới `test_vin_review_regressions.py` theo eval/workspace lane Người 2.
 
-## R02 — Tích hợp C01/C02/C03 và fixture chung (đang kiểm tra)
+## R02 — Tích hợp C01/C02/C03 và fixture chung — CONTRACT GATE PASS
 
 - Đã nhận commit Người 1: C01 `e67a56d9`, C02 `f5126e4b`, C03 `bb485b92`, fixture `dded5f66`.
 - Chuyển consumer từ auth DDL rút gọn sang `vin_fixtures.authority` + `seed_policy_catalog`;
@@ -188,3 +192,31 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Lượt ghép đầu `9caf36ed`: **PASS 14 / SKIP 0 / ERROR 10 / FAIL 0**, lỗi đăng ký dependency fixture
   ở test consumer (đã sửa); chưa đóng S03 bằng lượt này. Browser đầu **PASS 12 / FAIL 1** do favicon từ
   schema Discord trong fixture bị outbound guard chặn; fixture đổi icon rỗng, giữ chặn outbound.
+- Commit sửa Người 2: `ccb6e303` (R01), `c70f91cf` (fixture chung/harness), `30f26f11`
+  (helper flag/đăng ký fixture). Đã rebase nhánh lên `origin/dev_Chien@83e3e6d3`; SHA S00–S06 cũ
+  là mốc trước rebase, xem lịch sử Git cho SHA mới tương ứng. Worktree Người 1 và WIP không bị sửa.
+- Bản ghép kiểm thử **`13e4605a403fd6b7b21efa7a2b938a25f6364596`**, branch
+  `integration/vin-n1-n2-review-20261018`, worktree `E:/AI-Workforce-Platform-vin-integration-20261018`.
+  Gồm Người 1 đến `2e2caa00` và Người 2 đến `30f26f11`; merge commit đã chốt, không module overlay.
+
+### Kết quả chạy lại trên bản ghép
+
+| Gate | PASS | SKIP | FAIL | ERROR | Ghi chú |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `check_builder.py --contracts-only` | 24 | 0 | 0 | 0 | N1 fixture thật theo auth migrations + consumer C01/C02/C03, catalog/KB/workspace |
+| `check_builder.py --runtime --automation` | 451 | 14 | 0 | 0 | Browser không nằm trong harness cấm socket; một gate SQL concurrent cần PostgreSQL |
+| Browser Chromium bản build ghép | 13 | 0 | 0 | 0 | 375/1280px; catalog, link, auth; Discord owner bắt buộc, auto-fill allowlist và hướng dẫn rỗng=chặn hết |
+| Frontend C01 / form / eval render / client PR #99 | 18 | 0 | 0 | 0 | Lần lượt 8 + 2 + 3 + 5 |
+
+- 13/14 SKIP ở runtime là 13 browser đã chạy riêng và PASS; SKIP còn lại là
+  `personal_chat_test::test_group_runs_real_agents_and_dispatcher_with_deterministic_provider[sql]`
+  (SQLite không thay kiểm thử concurrency PostgreSQL). Không cộng trùng hai suite thành coverage tổng.
+- Build ghép (`VITE_VIN_EXPERIENCE_ENABLED=true`, `VITE_API_BASE_URL=/api`), TypeScript, ESLint,
+  Ruff F821/F811/F401 các module/test sửa: **PASS**. Build còn cảnh báo chunk size, không phải lỗi.
+- Logs tại `P/.artifacts/n2-review-contracts.log`, `n2-review-integrated-runtime.log`,
+  `n2-review-browser.log`, `n2-review-integrated-build.log` trong worktree ghép. Không commit log/artifact.
+- Harness: **external network attempts 0, paid model calls 0**; browser chặn mọi request ngoài origin.
+  Không đọc .env hoặc dùng key model thật, không đăng nhập Discord/Domain thật, không push/deploy.
+- Đã đáp ứng 8 điểm review trong phạm vi sửa code/contract offline. S03 vẫn **CHỜ E2E** cho
+  pin resource/artifact xuyên publish→runtime, KB upload/index/citation thật và gate còn mở ở kế hoạch;
+  không đánh dấu task N2-02/N2-05/N2-07 hay U01–U30 hoàn tất chỉ từ các số PASS này.
