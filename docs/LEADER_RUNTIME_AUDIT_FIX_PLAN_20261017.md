@@ -4,7 +4,9 @@ Ngày rà soát: 17/10/2026. Workspace `E:\AI-Workforce-Platform`, nhánh `devel
 
 ## Trạng thái
 
-Bản sửa đang ở source cục bộ, chưa phát hành lên VPS. Các kiểm tra dùng model có kịch bản, MCP giả lập và PostgreSQL tách biệt. Replay dùng dữ liệu case B2 đã lưu; không gọi model trả phí. Đây chưa phải nghiệm thu nghiệp vụ với model và cư dân trên production.
+Bản sửa đã push lên `develop2` và phát hành trên VPS ngày 17/10/2026. Backend Platform chạy source `90ad2c90`, bao gồm sửa Leader `a130fa56` và sửa tích hợp `02437150`. Web chạy image `02437150`; hai file thay đổi ở `90ad2c90` chỉ thuộc backend. Domain API/sync/scheduler giữ image `9dd7504f`, có toàn bộ sửa Domain của bản này; mã nguồn Domain không đổi từ đó tới `90ad2c90`.
+
+CI của `90ad2c90` qua 1.580 test, không lỗi hoặc bỏ qua. Kiểm tra HTTPS/realtime và điều kiện nghiệm thu B2 đã qua trên hai VPS. Các kiểm tra phát hành không gọi model thật và không gửi quyết định cư dân. Đây chưa phải nghiệm thu chất lượng phân tích của model và toàn bộ hành trình nghiệp vụ trên production.
 
 Phần Agent Builder/JEV được sửa ở commit riêng `0f026557`; báo cáo này tập trung Leader, team, bằng chứng, tiến độ và nghiệm thu.
 
@@ -78,7 +80,7 @@ flowchart LR
 - Domain: 106 test qua trên PostgreSQL có migration/seed và runtime role hạn chế; test provider dùng ký HMAC, biên nhận và chống lặp. Bao gồm nghiệm thu khi Leader lỗi và từ chối receipt của công việc khác. Test không thay thế nghiệm thu với hai VPS thực.
 - Frontend đã qua TypeScript và production build.
 
-## Kế hoạch phát hành và nghiệm thu còn lại
+## Quy trình phát hành và nghiệm thu
 
 1. Chốt commit theo đúng danh sách file Leader/Domain; giữ riêng thay đổi Builder, tài liệu khác và `.env`.
 2. Sao lưu Platform PostgreSQL/Redis và dữ liệu Domain, ghi lại image hiện hành, dựng image từ revision đã chốt. Chạy migration 0020 trước app mới. Đây là migration nullable cộng thêm; rollback app không cần xóa hai cột ngay.
@@ -89,3 +91,19 @@ flowchart LR
 7. Với case B2 cũ, đọc trạng thái và biên nhận hiện hành trước. Khi đã có receipt đúng công việc thì mở bước cư dân quyết định theo luồng nghiệp vụ; không tự nghiệm thu, không tự đóng phiếu, không dispatch lại chỉ để khôi phục context.
 
 Điều kiện nghiệm thu: thông tin đã có không bị hỏi lại trong các kịch bản kiểm thử; specialist trao đổi trực tiếp khi cần; mỗi thao tác chỉ có một hiệu ứng nghiệp vụ; tiến độ cùng owner hiện realtime; kết quả hợp lệ mở được quyết định cư dân dù Leader lỗi; chưa có bằng chứng hoặc chưa được cư dân chấp nhận thì không báo đã nghiệm thu/đóng phiếu.
+
+## Kết quả phát hành ngày 17/10/2026
+
+- Platform app: `agentscope-platform:90ad2c90-leader-integrated-20261017`, healthy. Web: `agentscope-platform-web:02437150-leader-integrated-20261017`.
+- Domain API/sync/scheduler: `vinhomes-domain-api:9dd7504f-op2-capabilities-20261017`; API healthy, hai worker chạy. Image giữ cả sửa OP2 mới hơn; không hạ về image Leader cũ.
+- [CI đã qua](https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/39033342233): 1.580 test, 0 failure, 0 error, 0 skipped. Sandbox nghiệp vụ vẫn `NOT_VERIFIED`.
+- Đối chiếu 401 file Python của app Platform và 91 file Python Domain đang chạy với source phát hành: khớp sau chuẩn hóa CRLF/LF. Các lớp image của gói Docker khớp VPS; app/web đã nạp lại thành công vào Docker Desktop.
+- Migration thực tế: `0020_unified_operation_owner`; hai cột owner đã có. Các biến môi trường giữ nguyên ngoài hai image tag.
+- Sao lưu Platform mới: `/opt/awp-platform/backups/20261017T123826Z-awp-platform`. Khôi phục thử độc lập cả PostgreSQL, Redis, MinIO và workspace: PASS; 439 khóa Redis bền và giá trị khớp. Bản sao lưu mã hóa đã được tải lên kho ngoài VPS. Bản sao lưu Domain trước phát hành được giữ riêng trên VPS Domain.
+- HTTPS health và trang Leader trả 200. Phòng đúng chủ trả 200; khác chủ trả 404; stream chưa xác thực trả 401. Stream nhận tín hiệu Redis trong 0,129 giây và reconnect lấy snapshot hiện hành. Đây là độ trễ tín hiệu thông báo, không phải thời gian model xử lý nghiệp vụ.
+- Ba tuyến active đều qua readiness: 4 thành viên/tuyến, một coordinator. Brief mới dùng roster hiện hành, ưu tiên context đã có và cập nhật theo sự kiện; chỉ áp dụng cho phiếu mới. Không sửa hợp đồng đã ghim hoặc phiên bản agent của phiếu đang chạy.
+- B2: công việc completed, receipt `job.result_published` đúng công việc đã applied, approval pending; Domain cho phép cư dân quyết định dù workflow còn `needs_attention`. Chưa gửi chấp nhận/từ chối và chưa đóng phiếu. Một số session cũ không còn trong Redis; kiểm tra realtime dùng phòng còn tồn tại, không khôi phục hay tạo lại lịch sử đã mất.
+- Gói giao nhận: `E:\AWP-Releases\leader-integrated-20261017-90ad2c90`, gồm image Platform/web/Domain, checksum, source archive, bằng chứng CI và script nạp image. Không chứa `.env`, credential hoặc bản sao lưu dữ liệu khách hàng.
+- Image đã được chuyển và nạp trực tiếp trên VPS. Chưa publish thêm vào registry vì chưa xác định repository đích; tên registry trong tài liệu hiện chỉ là ví dụ.
+
+Còn nghiệm thu: luồng cư dân → đội agent → nhân viên → báo giá/kết quả → cư dân chấp nhận hoặc yêu cầu làm lại với model thật; chất lượng trao đổi ngang, số vòng model và mức tiết kiệm token trong các case mới. Replay B2 và test kịch bản không thay thế bước này.
