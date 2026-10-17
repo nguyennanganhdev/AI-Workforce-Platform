@@ -5,32 +5,15 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-import pytest_asyncio
-from cryptography.fernet import Fernet
 from sqlalchemy import insert, select, text
-from sqlalchemy.ext.asyncio import create_async_engine
 
-from agentscope.app.vin_platform import ExecutionContext, PlatformError, QuotaPolicy, VinPlatformService
+from agentscope.app.vin_platform import ExecutionContext, PlatformError, QuotaPolicy
 from agentscope.app.vin_platform import _tables as t
 from agentscope.app.vin_platform._contracts import CatalogEntry, ResourceGrant
 from agentscope.app.vin_platform._domain import DomainAdapter
 
 
-@pytest_asyncio.fixture
-async def authority(tmp_path):
-    engine = create_async_engine("sqlite+aiosqlite:///" + str(tmp_path / "authority.db"))
-    async with engine.begin() as db:
-        await db.run_sync(t.metadata.create_all)
-        await db.execute(text("""CREATE TABLE auth_users (id TEXT PRIMARY KEY,tenant_id TEXT,role TEXT,status TEXT,
-            email TEXT,username TEXT,password_hash TEXT,domain_id TEXT,area_id TEXT,created_at TIMESTAMP,updated_at TIMESTAMP,last_login_at TIMESTAMP)"""))
-        for user, tenant, role in [("admin", "vin", "PLATFORM_ADMIN"), ("alice", "vin", "VIN_USER"),
-                                   ("bob", "vin", "VIN_USER"), ("other", "foreign", "PLATFORM_ADMIN")]:
-            await db.execute(text("INSERT INTO auth_users (id,tenant_id,role,status) VALUES (:u,:t,:r,'active')"),
-                {"u": user, "t": tenant, "r": role})
-            await db.execute(insert(t.accounts).values(user_id=user, tenant_id=tenant, eligible=True, revision=1))
-    service = VinPlatformService(SimpleNamespace(_require_engine=lambda: engine), SimpleNamespace(), encryption_key=Fernet.generate_key())
-    yield service
-    await engine.dispose()
+from vin_fixtures import authority as authority  # noqa: F401
 
 
 def limits(**kwargs):
