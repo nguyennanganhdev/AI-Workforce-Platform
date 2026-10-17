@@ -21,6 +21,9 @@ def main():
     for path in (root, root / "tests", root / "src"):
         sys.path.insert(0, str(path))
     for name in list(os.environ):
+        if name == "TIKTOKEN_CACHE_DIR":
+            # Local tokenizer assets contain no credential; retain offline cache.
+            continue
         if any(
             marker in name for marker in ("API_KEY", "TOKEN", "SECRET")
         ) or name.endswith("_DATABASE_URL"):

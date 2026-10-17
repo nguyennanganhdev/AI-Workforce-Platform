@@ -36,9 +36,9 @@ class BuilderScope(BaseModel):
 
 
 class BuilderDecision(BaseModel):
-    action: Literal["create", "reuse", "resume", "revise", "repair", "clarify"] = (
-        "clarify"
-    )
+    action: Literal[
+        "create", "reuse", "resume", "revise", "repair", "clarify"
+    ] = "clarify"
     agent_id: str | None = None
     expected_revision: int | None = None
     probability: float | None = None
@@ -56,10 +56,30 @@ class ClassifierStatus(BaseModel):
     input_tokens: int | None = 0
     output_tokens: int | None = 0
     cost_usd: str | None = None
+    http_status: int | None = None
+    error_code: str | None = None
 
 
 class ClassifierUnavailable(ValueError):
     """An operator-actionable local error, safe to show without provider data."""
+
+
+def provider_error(exc) -> tuple[int | None, str | None]:
+    """Keep only status and a known code; provider bodies can contain secrets."""
+    status = getattr(exc, "status", None)
+    if type(status) is not int or not 100 <= status <= 599:
+        status = None
+    body = getattr(exc, "body", None)
+    values = [body]
+    if isinstance(body, dict):
+        values += [
+            body.get(key) for key in ("code", "type", "error_type", "error", "detail")
+        ]
+        for item in list(values):
+            if isinstance(item, dict):
+                values += [item.get(key) for key in ("code", "type", "error_type")]
+    code = "max_tokens_exceeded" if "max_tokens_exceeded" in values else None
+    return status, code
 
 
 def digest(value) -> str:
@@ -193,9 +213,14 @@ class BuilderClassifier:
                     usage_complete=True,
                 )
             self.status.state = "active"
+            self.status.http_status = self.status.error_code = None
+            self.status.reason = ""
             return response
         except BaseException as exc:
             event.update(status="failed", error_type=type(exc).__name__)
+            status, code = provider_error(exc)
+            self.status.http_status, self.status.error_code = status, code
+            event.update(http_status=status, provider_error_code=code)
             raise
         finally:
             event.update(
@@ -252,42 +277,101 @@ async def classify_catalog(base, entries, classifier, purpose, initial_questions
     Callers receive results only after ALL batches succeed.
     """
 
-    def fits(state, questions):
+    import tiktoken
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+
+    def tokens(value):
+        return len(
+            encoding.encode(
+                json.dumps(value, ensure_ascii=False), disallowed_special=()
+            )
+        )
+
+    # Jev has 32k state+one-question and 64k state+all-questions limits.
+    # This local tokenizer is an estimate, with headroom. The provider may
+    # tokenize differently, so an explicit context rejection also splits below.
+    # https://docs.typesafe.ai/models#context-length
+    base_tokens = tokens(base)
+    question_tokens = {}
+    locations = {}
+
+    def fits(state, questions, state_tokens):
         return (
             len(questions) <= 1000
             and len(json.dumps(state, ensure_ascii=False)) <= 120_000
+            and state_tokens + max((question_tokens[k] for k in questions), default=0)
+            <= 28_000
+            and state_tokens + sum(question_tokens[k] for k in questions) <= 56_000
         )
 
     state, questions = dict(base), dict(initial_questions or {})
-    if not fits(state, questions):
+    question_tokens.update(
+        {k: tokens(q.model_dump()) + 16 for k, q in questions.items()}
+    )
+    state_tokens = base_tokens
+    if not fits(state, questions, state_tokens):
         raise ClassifierUnavailable(
             "Yêu cầu hoặc dàn ý quá dài cho JEV; hãy tách nhỏ nghiệp vụ."
         )
     batches = []
     for kind, rid, evidence, entry_questions in entries:
+        question_tokens.update(
+            {k: tokens(q.model_dump()) + 16 for k, q in entry_questions.items()}
+        )
+        locations.update({k: (kind, rid, evidence) for k in entry_questions})
+        entry_tokens = tokens({kind: {rid: evidence}}) + 16
         items = list(entry_questions.items())
         for offset in range(0, len(items), 1000):
             chunk = dict(items[offset : offset + 1000])
             next_state = {**state, kind: {**state.get(kind, {}), rid: evidence}}
             next_questions = {**questions, **chunk}
-            if not fits(next_state, next_questions):
+            next_tokens = state_tokens + (
+                0 if rid in state.get(kind, {}) else entry_tokens
+            )
+            if not fits(next_state, next_questions, next_tokens):
                 if questions:
                     batches.append((state, questions))
                 state, questions = dict(base), {}
                 next_state = {**state, kind: {rid: evidence}}
                 next_questions = chunk
-                if not fits(next_state, next_questions):
+                next_tokens = base_tokens + entry_tokens
+                if not fits(next_state, next_questions, next_tokens):
                     raise ClassifierUnavailable(
-                        "Một mục catalog có nội dung quá dài cho JEV; "
+                        "Một mục catalog hoặc nhóm câu hỏi vượt context JEV; "
                         "hãy rút gọn cấu hình hoặc tài nguyên đó rồi thử lại."
                     )
             state, questions = next_state, next_questions
+            state_tokens = next_tokens
     if questions:
         batches.append((state, questions))
+
+    async def classify(state, questions):
+        try:
+            response = await classifier.call(state, questions, purpose)
+            return {key: probability(response, key) for key in questions}
+        except Exception as exc:
+            if provider_error(exc) != (400, "max_tokens_exceeded"):
+                raise
+            if len(questions) == 1:
+                raise ClassifierUnavailable(
+                    "Một mục catalog vượt context JEV ngay cả khi đánh giá riêng; "
+                    "hãy rút gọn cấu hình hoặc tài nguyên đó."
+                ) from exc
+            keys = list(questions)
+            matches = {}
+            for part in (keys[: len(keys) // 2], keys[len(keys) // 2 :]):
+                subset = dict(base)
+                for key in part:
+                    if key in locations:
+                        kind, rid, evidence = locations[key]
+                        subset[kind] = {**subset.get(kind, {}), rid: evidence}
+                matches.update(await classify(subset, {k: questions[k] for k in part}))
+            return matches
+
     matches = {}
     for state, questions in batches:
-        response = await classifier.call(state, questions, purpose)
-        matches.update({key: probability(response, key) for key in questions})
+        matches.update(await classify(state, questions))
     return matches
 
 
@@ -404,6 +488,8 @@ async def decide_identities(
         classifier.status.reason = (
             str(exc)
             if isinstance(exc, ClassifierUnavailable)
+            else "JEV từ chối request (HTTP 400); cần kiểm tra cấu trúc request hoặc cấu hình dịch vụ."
+            if classifier.status.http_status == 400
             else f"JEV chưa kết luận ({type(exc).__name__}); thử lại sau khi kiểm tra cấu hình/kết nối."
         )
         return [BuilderDecision(reason=classifier.status.reason) for _ in plans]

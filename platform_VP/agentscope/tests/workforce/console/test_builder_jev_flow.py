@@ -200,9 +200,9 @@ async def test_large_identity_state_preserves_published_draft_and_legacy_instruc
 ):
     records = [existing(agent_id=f"agent-{i}", state="draft") for i in range(3)]
     for record in records:
-        record.data.spec["prompt_override"] = "P" * 25_000
-        record.data.draft_spec["prompt_override"] = "D" * 25_000
-        record.data.system_prompt = "L" * 20_000 + "Không được đóng phiếu"
+        record.data.spec["prompt_override"] = "P" * 15_000
+        record.data.draft_spec["prompt_override"] = "D" * 15_000
+        record.data.system_prompt = "L" * 10_000 + "Không được đóng phiếu"
     value = classifier(storage, {"same_0_2": 0.95})
     result = await decisions.decide_identities(
         [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")],
@@ -211,8 +211,8 @@ async def test_large_identity_state_preserves_published_draft_and_legacy_instruc
     )
     assert result[0].action == "resume" and result[0].agent_id == "agent-2"
     evidence = json.dumps([state for state, _ in value.model.calls], ensure_ascii=False)
-    assert "P" * 25_000 in evidence and "D" * 25_000 in evidence
-    assert "L" * 20_000 + "Không được đóng phiếu" in evidence
+    assert "P" * 15_000 in evidence and "D" * 15_000 in evidence
+    assert "L" * 10_000 + "Không được đóng phiếu" in evidence
     assert_bounded_calls(value)
 
 
@@ -250,7 +250,7 @@ async def test_large_resource_catalog_selects_last_tool_kb_and_skill(
     assert value.status.calls > 1
     assert_bounded_calls(value)
     if not evidence_size:
-        assert max(len(questions) for _, questions in value.model.calls) == 1000
+        assert max(len(questions) for _, questions in value.model.calls) < 1000
 
 
 @pytest.mark.asyncio
@@ -301,6 +301,176 @@ async def test_single_oversized_candidate_remains_unresolved_without_truncation(
     )
     assert result[0].action == "clarify"
     assert value.status.calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("server_state_limit", [32_000, 16_000])
+async def test_vietnamese_context_uses_real_sdk_wire_without_provider_calls(
+    storage, server_state_limit
+):
+    """Exercise the adapter/SDK seam: character limits do not bound tokens.
+
+    The transport models TypeSafe's documented 32k per-question / 64k
+    per-request contract using a local tokenizer. It cannot reach a provider.
+    """
+    import httpx2
+    import tiktoken
+    from typesafe_sdk import AsyncTypeSafeClient
+    from typesafe_sdk._schemas.models import SystemOneRequest
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+    requests = []
+    accepted = []
+
+    def tokens(value):
+        return len(encoding.encode(json.dumps(value, ensure_ascii=False)))
+
+    def respond(request):
+        body = json.loads(request.content)
+        SystemOneRequest.model_validate(body)
+        requests.append(body)
+        state_tokens = tokens(body["state"])
+        sizes = [tokens(q) for q in body["questions"].values()]
+        if (
+            state_tokens + max(sizes) > server_state_limit
+            or state_tokens + sum(sizes) > 64_000
+        ):
+            return httpx2.Response(400, json={"error": {"code": "max_tokens_exceeded"}})
+        accepted.append(body)
+        return httpx2.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "answers": {
+                    key: {
+                        "type": "noul",
+                        "noul": 0.95 if key in ("same_0_6", "covers_0_6") else 0.05,
+                    }
+                    for key in body["questions"]
+                },
+                "usage": {
+                    "input_tokens": state_tokens + sum(sizes),
+                    "output_tokens": len(sizes),
+                },
+            },
+        )
+
+    records = [existing(agent_id=f"agent-{i}") for i in range(7)]
+    for record in records:
+        record.data.system_prompt = "Sự cố kỹ thuật của cư dân. " * 420
+    value = decisions.BuilderClassifier(object(), storage, SCOPE, "wire-offline")
+    value.url = "https://offline.invalid"
+    client = AsyncTypeSafeClient(
+        api_key="offline-placeholder",
+        base_url=value.url,
+        compression=None,
+        transport=httpx2.MockTransport(respond),
+    )
+    from agentscope.classifier import JevClassifierModel
+    from agentscope.credential import TypeSafeCredential
+
+    with patch("typesafe_sdk.AsyncTypeSafeClient", return_value=client):
+        value.model = JevClassifierModel(
+            TypeSafeCredential(api_key="offline-placeholder"),
+            model="jev-1.13.0",
+            max_retries=0,
+        )
+    try:
+        result = await decisions.decide_identities(
+            [
+                console.PlannedAgent(name=f"Vai trò {i}", objective=f"Nghiệp vụ {i}")
+                for i in range(3)
+            ],
+            records,
+            value,
+        )
+    finally:
+        await value.close()
+    assert [d.action for d in result] == [
+        "reuse",
+        "create",
+        "create",
+    ], value.status.reason
+    assert result[0].agent_id == "agent-6"
+    assert len(requests) > 1
+    assert sum(len(body["questions"]) for body in accepted) == 45
+    assert value.status.calls == len(requests)
+    assert value.status.state == "active" and value.status.error_code is None
+    if server_state_limit == 16_000:
+        assert len(requests) > len(accepted)
+
+
+@pytest.mark.asyncio
+async def test_unknown_bad_request_is_not_retried_or_exposed(storage):
+    import httpx2
+    from typesafe_sdk import TypeSafeBadRequestError
+
+    error = TypeSafeBadRequestError(
+        400, {"error": {"message": "secret-from-provider"}}, httpx2.Headers()
+    )
+    value = classifier(storage, failure=error)
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")],
+        [existing()],
+        value,
+    )
+    assert result[0].action == "clarify"
+    assert "HTTP 400" in result[0].reason
+    assert "secret-from-provider" not in result[0].reason
+    assert value.status.calls == 1
+    rows = await storage.list_model_calls("u", since="2020-01-01T00:00:00+00:00")
+    assert rows[0]["http_status"] == 400 and rows[0]["provider_error_code"] is None
+    assert "secret-from-provider" not in json.dumps(rows)
+
+
+@pytest.mark.asyncio
+async def test_context_rejection_of_single_candidate_stays_unresolved(storage):
+    import httpx2
+    from typesafe_sdk import TypeSafeBadRequestError
+
+    error = TypeSafeBadRequestError(
+        400, {"error": "max_tokens_exceeded"}, httpx2.Headers()
+    )
+    value = classifier(storage, failure=error)
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")],
+        [existing()],
+        value,
+    )
+    assert result[0].action == "clarify" and "context" in result[0].reason
+    assert value.status.calls == 2  # Original pair of questions, then one question.
+    assert value.status.error_code == "max_tokens_exceeded"
+    rows = await storage.list_model_calls("u", since="2020-01-01T00:00:00+00:00")
+    assert all(r["provider_error_code"] == "max_tokens_exceeded" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_adaptive_context_split_failure_discards_partial_match(storage):
+    import httpx2
+    from typesafe_sdk import TypeSafeBadRequestError
+
+    class PartialFailure(ScriptedClassifier):
+        async def __call__(self, **kwargs):
+            self.failure = (
+                TypeSafeBadRequestError(
+                    400, {"error_type": "max_tokens_exceeded"}, httpx2.Headers()
+                )
+                if not self.calls
+                else TimeoutError()
+                if len(self.calls) == 2
+                else None
+            )
+            return await super().__call__(**kwargs)
+
+    value = classifier(storage)
+    value.model = PartialFailure({"same_0_0": 0.95, "covers_0_0": 0.95})
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")],
+        [existing(agent_id="a"), existing(agent_id="b")],
+        value,
+    )
+    assert result[0].action == "clarify" and result[0].agent_id is None
+    assert value.status.calls == 3
 
 
 @pytest.fixture
