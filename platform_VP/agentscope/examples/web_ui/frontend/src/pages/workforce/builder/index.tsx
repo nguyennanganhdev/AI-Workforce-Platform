@@ -492,7 +492,7 @@ export function AgentBuilderPage() {
                                 </p>}
                                 {proposal.classifier_status?.stages && <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                                     {Object.entries(proposal.classifier_status.stages).map(([key, stage]) => <span key={key}>
-                                        {key === 'builder_reuse' ? 'Kiểm tra trùng' : 'Chọn tài nguyên'}: {({ completed: 'Đã hoàn tất', running: 'Đang xử lý', error: 'Chưa hoàn tất' } as Record<string, string>)[stage.state] ?? stage.state}
+                                        {key === 'builder_reuse' ? 'Sàng lọc trùng' : key === 'builder_identity_verify' ? 'Đối chiếu trách nhiệm' : 'Chọn tài nguyên'}: {({ completed: 'Đã hoàn tất', running: 'Đang xử lý', error: 'Chưa hoàn tất' } as Record<string, string>)[stage.state] ?? stage.state}
                                     </span>)}
                                     {!!proposal.classifier_status.cache_hits && <span>{proposal.classifier_status.cache_hits} batch dùng lại kết quả đã lưu</span>}
                                 </div>}

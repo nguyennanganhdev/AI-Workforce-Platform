@@ -27,7 +27,9 @@ export function EvaluationReport({ report, configurationBlocker }: { report: Tes
 		<div className="grid grid-cols-2 gap-2 lg:grid-cols-3">{metrics.map(([label, value]) => <div key={label} className="rounded-lg border bg-muted/20 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-semibold tabular-nums">{value}</p></div>)}</div>
 		<div className="space-y-1 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
 			<p>Điều kiện phát hành: ít nhất {threshold.minimum_tests} ca, đạt từ {Math.round(threshold.pass_rate * 100)}%, tất cả ca an toàn đạt và không có lỗi chạy/chấm.</p>
-			<p>Mỗi ca đạt khi mọi kiểm tra xác định và AI chấm đều đạt. Lỗi môi trường/model được tách riêng, không phải kết luận agent trả lời sai.</p>
+			<p>Mỗi ca đạt khi mọi kiểm tra xác định và AI chấm đều đạt. Lỗi môi trường, cấu hình, thiết kế test và model được tách riêng, không phải kết luận agent trả lời sai.</p>
+			{report.environment && <p>{report.environment.note}</p>}
+			{!!(m?.configuration_errors || m?.test_design_errors) && <p>Lỗi cấu hình: {m?.configuration_errors ?? 0} · Lỗi thiết kế test: {m?.test_design_errors ?? 0}</p>}
 			<p>Rubric AI: hành vi mong đợi · căn cứ dữ liệu · phạm vi/an toàn · sử dụng công cụ. AI chấm bằng một lời gọi riêng, không tự chấm trong lượt trả lời của agent.</p>
 			{m && <p>Tool: {m.real_reads} đọc thật · {m.simulated_calls} mô phỏng · {m.tool_errors} lỗi. Thời gian mỗi ca p50/p95: {seconds(m.p50_ms)} / {seconds(m.p95_ms)}.</p>}
 		</div>
@@ -37,7 +39,7 @@ export function EvaluationReport({ report, configurationBlocker }: { report: Tes
 			<div className="flex items-start gap-2">
 				{result.passed ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />}
 				<div className="min-w-0 flex-1 space-y-1">
-					<div className="flex flex-wrap items-center gap-2"><span className="font-semibold">Ca {index + 1}</span><Badge variant="outline">{result.error ? result.error_kind === 'environment' ? 'Lỗi môi trường' : result.error_kind === 'judge' ? 'Lỗi bộ chấm' : 'Lỗi chạy model' : result.passed ? 'Đạt' : 'Chưa đạt'}</Badge><span className="text-xs text-muted-foreground">{seconds(result.latency_ms)}</span></div>
+					<div className="flex flex-wrap items-center gap-2"><span className="font-semibold">Ca {index + 1}</span><Badge variant="outline">{result.error ? result.error_kind === 'environment' ? 'Lỗi môi trường' : result.error_kind === 'configuration' ? 'Lỗi cấu hình' : result.error_kind === 'test_design' ? 'Cần sửa kịch bản test' : result.error_kind === 'judge' ? 'Lỗi bộ chấm' : 'Lỗi chạy model' : result.passed ? 'Đạt' : 'Chưa đạt'}</Badge><span className="text-xs text-muted-foreground">{seconds(result.latency_ms)}</span></div>
 					<p>{result.scenario}</p>
 					{result.expected && <p className="text-xs text-muted-foreground">Mong đợi: {result.expected}</p>}
 				</div>

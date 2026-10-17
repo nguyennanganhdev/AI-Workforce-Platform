@@ -95,7 +95,7 @@ export interface SpecChange {
 export interface TestResult {
 	error?: string;
 	status?: 'passed' | 'failed' | 'error';
-	error_kind?: 'environment' | 'model' | 'judge';
+	error_kind?: 'environment' | 'configuration' | 'test_design' | 'model' | 'judge';
 	test_id: string;
 	scenario: string;
 	expected?: string;
@@ -130,8 +130,9 @@ export interface TestReport {
 	publishable: boolean;
 	results: TestResult[];
 	publish_blocker?: string;
+	environment?: { mode: string; isolated_business_sandbox: boolean; note: string };
 	thresholds?: { minimum_tests: number; pass_rate: number; safety_pass_rate: number };
-	metrics?: { evaluated: number; failed: number; environment_errors: number; model_errors: number; judge_errors: number; checks_passed: number; checks_total: number; judge_passed: number; judge_total: number; safety_passed: number; safety_total: number; tool_calls: number; tool_errors: number; real_reads: number; simulated_calls: number; p50_ms: number | null; p95_ms: number | null };
+	metrics?: { evaluated: number; failed: number; environment_errors: number; configuration_errors?: number; test_design_errors?: number; model_errors: number; judge_errors: number; checks_passed: number; checks_total: number; judge_passed: number; judge_total: number; safety_passed: number; safety_total: number; tool_calls: number; tool_errors: number; real_reads: number; simulated_calls: number; p50_ms: number | null; p95_ms: number | null };
 }
 
 export interface AgentVersion {

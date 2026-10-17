@@ -34,7 +34,7 @@ async def test_simulated_collaboration_never_reaches_connector_or_overrides_mcp(
     schema = {"type": "function", "function": {"name": "TeamSay", "parameters": {"type": "object"}}}
     report = await evaluation.run_spec_tests(
         spec=_spec(read_only=True), model=_CallingModel("TeamSay"), judge_model=None,
-        discovered={}, run_tool=connector, simulated_tool_schemas=[schema],
+        discovered={"m:dispatch": {"read_only": True}}, run_tool=connector, simulated_tool_schemas=[schema],
     )
     assert report["simulated_runtime_tools"] == ["TeamSay"]
     assert report["results"][0]["tool_calls"][0]["executed"] is False
@@ -100,7 +100,8 @@ async def test_missing_server_tool_cannot_run_even_when_draft_claims_read_only()
         spec=_spec(read_only=True), model=_CallingModel(), judge_model=None,
         discovered={}, run_tool=connector,
     )
-    assert report["results"][0]["tool_calls"][0]["mode"] == "simulated"
+    assert report["results"][0]["tool_calls"] == []
+    assert report["results"][0]["error_kind"] == "environment"
 
 
 @pytest.mark.asyncio
