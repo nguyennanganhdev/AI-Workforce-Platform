@@ -17,7 +17,8 @@ accounts = table("accounts", string("user_id", primary_key=True), string("tenant
     sa.Column("eligible", sa.Boolean, nullable=False), sa.Column("revision", sa.Integer, nullable=False))
 memberships = table("memberships", string("id", primary_key=True), string("tenant_id", nullable=False),
     string("user_id", nullable=False), string("group_id", nullable=False), string("domain_id"), string("area_id"),
-    sa.Column("active", sa.Boolean, nullable=False), sa.Column("expires_at", sa.DateTime(timezone=True)))
+    sa.Column("active", sa.Boolean, nullable=False), sa.Column("expires_at", sa.DateTime(timezone=True)),
+    sa.Column("revision", sa.Integer, nullable=False, server_default="1"))
 catalog = table("catalog", string("id", primary_key=True), string("tenant_id", nullable=False),
     string("kind", nullable=False), string("resource_id", nullable=False), string("owner_id", nullable=False),
     sa.Column("version", sa.Integer, nullable=False), sa.Column("data", sa.JSON, nullable=False),
@@ -26,9 +27,11 @@ catalog = table("catalog", string("id", primary_key=True), string("tenant_id", n
 grants = table("grants", string("id", primary_key=True), string("tenant_id", nullable=False),
     string("catalog_id", nullable=False), string("subject_kind", nullable=False), string("subject_id", nullable=False),
     sa.Column("permissions", sa.JSON, nullable=False), sa.Column("active", sa.Boolean, nullable=False),
-    sa.Column("expires_at", sa.DateTime(timezone=True)))
+    sa.Column("expires_at", sa.DateTime(timezone=True)),
+    sa.Column("revision", sa.Integer, nullable=False, server_default="1"))
 policies = table("quota_policies", string("tenant_id", primary_key=True), string("subject", primary_key=True),
-    sa.Column("data", sa.JSON, nullable=False), sa.Column("revision", sa.Integer, nullable=False))
+    sa.Column("data", sa.JSON, nullable=False), sa.Column("revision", sa.Integer, nullable=False),
+    sa.Column("active", sa.Boolean, nullable=False, server_default=sa.true()))
 subjects = table("subject_usage", string("tenant_id", primary_key=True), string("subject", primary_key=True),
     sa.Column("active_calls", sa.Integer, nullable=False), sa.Column("stored_bytes", sa.BigInteger, nullable=False),
     sa.Column("reserved_bytes", sa.BigInteger, nullable=False))

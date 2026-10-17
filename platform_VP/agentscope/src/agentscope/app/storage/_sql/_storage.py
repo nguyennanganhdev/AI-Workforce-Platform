@@ -2410,6 +2410,22 @@ class AsyncSQLAlchemyStorage(StorageBase):
     # Knowledge documents
     # ------------------------------------------------------------------
 
+    async def replace_knowledge_document(self, expected, replacement):
+        from sqlalchemy import select, update
+        if (expected.id, expected.user_id, expected.knowledge_base_id) != (replacement.id, replacement.user_id, replacement.knowledge_base_id):
+            raise ValueError("Document identity is immutable")
+        async with self._session() as sess:
+            row = (await sess.execute(select(KnowledgeDocumentRow).where(KnowledgeDocumentRow.id == expected.id,
+                KnowledgeDocumentRow.user_id == expected.user_id,
+                KnowledgeDocumentRow.knowledge_base_id == expected.knowledge_base_id).with_for_update())).scalar_one_or_none()
+            if row is None or _to_record(row, KnowledgeDocumentRecord) != expected:
+                return False
+            changed = await sess.execute(update(KnowledgeDocumentRow).where(KnowledgeDocumentRow.id == expected.id,
+                KnowledgeDocumentRow.updated_at == row.updated_at).values(
+                    payload={**row.payload, "data": replacement.data.model_dump(mode="json")}, updated_at=_utcnow()))
+            await sess.commit()
+            return changed.rowcount == 1
+
     async def upsert_knowledge_document(
         self,
         user_id: str,

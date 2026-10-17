@@ -1309,6 +1309,10 @@ class StorageBase(ABC):
     # Knowledge document persistence
     # ------------------------------------------------------------------
 
+    async def replace_knowledge_document(self, expected: KnowledgeDocumentRecord, replacement: KnowledgeDocumentRecord) -> bool:
+        """CAS reviewed metadata; false when content/lifecycle changed since read."""
+        raise NotImplementedError("Document review requires a CAS-capable adapter")
+
     @abstractmethod
     async def upsert_knowledge_document(
         self,
