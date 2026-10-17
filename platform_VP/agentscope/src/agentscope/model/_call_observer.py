@@ -68,7 +68,8 @@ async def observed_call(model, call, *args, **kwargs):
     """Observe exactly one adapter invocation, including each retry/fallback."""
 
     sink = getattr(model, "_usage_sink", None)
-    if sink is None:
+    guard = getattr(model, "_quota_guard", None)
+    if sink is None and guard is None:
         return await call(*args, **kwargs)
     started = time.monotonic()
     attributes = {**getattr(model, "_usage_attributes", {}), **_attribution.get()}
@@ -96,8 +97,15 @@ async def observed_call(model, call, *args, **kwargs):
     }
     record.setdefault("purpose", "unclassified")
 
+    guard_context = None
+    if guard is not None:
+        # Authorization/reservation errors deliberately propagate before IO.
+        guard_context = await guard.before(model, args, kwargs, attributes, record["id"])
+
     async def persist():
         global _recording_failures
+        if sink is None:
+            return
         try:
             await sink(record)
         except Exception:  # noqa: BLE001 - telemetry cannot break a paid call
@@ -145,6 +153,10 @@ async def observed_call(model, call, *args, **kwargs):
             request_id = getattr(error, "request_id", None)
             if request_id:
                 record["provider_request_id"] = str(request_id)[:255]
+        if guard is not None:
+            # A cancelled/failed attempt keeps its reserved budget pending
+            # reconciliation. Unlike telemetry, this is not fail-open.
+            await asyncio.shield(guard.finish(guard_context, record))
         await persist()
 
     await persist()  # A durable started row makes worker crashes visible as backlog.

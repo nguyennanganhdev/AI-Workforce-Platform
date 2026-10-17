@@ -341,8 +341,13 @@ class KnowledgeBaseService:
             owner_id,
             knowledge_base_id,
         )
-        for document in documents:
-            await self._delete_blob_quietly(document.data.blob_uri)
+        authority = getattr(self._storage, "vin_platform_service", None)
+        if authority is not None:
+            for document in documents:
+                await self.delete_document(user_id, knowledge_base_id, document.id)
+        else:
+            for document in documents:
+                await self._delete_blob_quietly(document.data.blob_uri)
 
         deleted = await self._manager.delete_knowledge_base(
             owner_id,
@@ -410,10 +415,37 @@ class KnowledgeBaseService:
         kb = await self._storage.get_knowledge_base(owner_id, knowledge_base_id)
         if kb.data.retrieval_mode == "lexical":
             raise HTTPException(409, "Kho văn bản dùng mục tài liệu tham chiếu; không chạy embedding khi tải file.")
-        blob_uri = await self._blob_store.write_stream(
-            key=f"kb/{knowledge_base_id}/{document_id}",
-            stream=stream,
-        )
+        authority = getattr(self._storage, "vin_platform_service", None)
+        context = None
+        if authority is not None:
+            from ..vin_platform._contracts import PlatformError
+            context = await authority.context(owner_id, purpose="embedding")
+            policy, _ = await authority.quota.policy(context)
+            # UploadFile is already spooled by Starlette. Measure actual bytes,
+            # bound the scan and rewind; never trust the multipart size field.
+            try:
+                offset = stream.tell()
+                measured = 0
+                while True:
+                    chunk = stream.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    measured += len(chunk)
+                    if measured > policy.max_file_bytes:
+                        raise PlatformError("FILE_QUOTA_EXCEEDED", 413)
+                stream.seek(offset)
+            except (AttributeError, OSError) as exc:
+                raise PlatformError("SEEKABLE_UPLOAD_REQUIRED", 422) from exc
+            size = measured
+            await authority.reserve_upload(context, document_id, size)
+        try:
+            blob_uri = await self._blob_store.write_stream(
+                key=f"kb/{knowledge_base_id}/{document_id}", stream=stream,
+            )
+        except BaseException:
+            if context is not None:
+                await authority.settle_upload(context, document_id, stored=False)
+            raise
 
         record = KnowledgeDocumentRecord(
             id=document_id,
@@ -434,9 +466,17 @@ class KnowledgeBaseService:
         except Exception:
             # Storage write failed — drop the blob so the orphan
             # sweeper doesn't later see a referenced-by-nobody file.
-            await self._delete_blob_quietly(blob_uri)
+            if context is not None:
+                # Only release bytes after confirmed cleanup. A failed delete
+                # leaves a durable reservation for operator reconciliation.
+                await self._blob_store.delete(blob_uri)
+                await authority.settle_upload(context, document_id, stored=False)
+            else:
+                await self._delete_blob_quietly(blob_uri)
             raise
 
+        if context is not None:
+            await authority.settle_upload(context, document_id, stored=True)
         await enqueue_index_task(
             self._bus,
             user_id=owner_id,
@@ -800,12 +840,19 @@ class KnowledgeBaseService:
 
         knowledge = await self._resolve_knowledge(user_id, knowledge_base_id)
         await knowledge.delete_document(document_id)
+        authority = getattr(self._storage, "vin_platform_service", None)
+        if authority is not None and not record.data.blob_uri.startswith("inline://"):
+            await self._blob_store.delete(record.data.blob_uri)
         await self._storage.delete_knowledge_document(
             owner_id,
             knowledge_base_id,
             document_id,
         )
-        await self._delete_blob_quietly(record.data.blob_uri)
+        if authority is not None:
+            context = await authority.context(owner_id)
+            await authority.settle_upload(context, document_id, stored=False)
+        else:
+            await self._delete_blob_quietly(record.data.blob_uri)
 
     # ------------------------------------------------------------------
     # Search

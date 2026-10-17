@@ -2,6 +2,7 @@
 """AgentScope app factory."""
 
 import secrets
+import os
 from typing import TYPE_CHECKING, Any, Type
 
 from .._logging import logger
@@ -110,6 +111,7 @@ def create_app(
     workforce_bootstrap: Any | None = None,
     shared_context_storage: StorageBase | None = None,
     download_secret: str | None = None,
+    vin_platform_enabled: bool | None = None,
     title: str = "AgentScope",
     version: str = __version__,
     **kwargs: Any,
@@ -305,7 +307,7 @@ def create_app(
     Returns:
         `FastAPI`: A fully configured application ready to serve requests.
     """
-    from fastapi import FastAPI, Request, status
+    from fastapi import FastAPI, HTTPException, Request, status
     from fastapi.responses import JSONResponse
 
     # Register any user-supplied credential types before the app starts
@@ -356,6 +358,44 @@ def create_app(
     app.state.resource_access_policy = (
         resource_access_policy or DenyAllResourceAccessPolicy()
     )
+    enabled = vin_platform_enabled if vin_platform_enabled is not None else os.getenv("VIN_PLATFORM_ENABLED", "false").lower() == "true"
+    app.state.vin_platform_service = None
+    if enabled:
+        if auth_service is None:
+            raise ValueError("VIN_PLATFORM_ENABLED requires authenticated SQL authority")
+        from .vin_platform import PlatformError, VinPlatformService
+        from .vin_platform._resources import PersistedResourcePolicy
+        from .vin_platform._router import router as vin_router
+        authority = VinPlatformService(auth_service, storage)
+        app.state.vin_platform_service = authority
+        storage.vin_platform_service = authority
+        app.state.resource_access_policy = resource_access_policy or PersistedResourcePolicy(authority)
+        app.include_router(vin_router)
+
+        @app.exception_handler(PlatformError)
+        async def platform_error_handler(request, exc):
+            return JSONResponse(status_code=exc.status, content={"detail": {"code": exc.code, **exc.details}})
+
+        @app.middleware("http")
+        async def vin_capability_boundary(request, call_next):
+            from .deps import get_current_principal
+            from .vin_platform._context import execution_scope
+            path = request.url.path.rstrip("/")
+            catalog_mutation = request.method not in {"GET", "HEAD", "OPTIONS"} and any(
+                path == prefix or path.startswith(prefix + "/") for prefix in ("/credential", "/mcp", "/skill", "/hub"))
+            context = None
+            if catalog_mutation or request.headers.get("authorization"):
+                try:
+                    principal = await get_current_principal(request, authorization=request.headers.get("authorization"))
+                    context = await authority.context(principal.user_id)
+                    if catalog_mutation:
+                        authority.admin(context)
+                except PlatformError as exc:
+                    return JSONResponse(status_code=exc.status, content={"detail": {"code": exc.code}})
+                except HTTPException as exc:
+                    return JSONResponse(status_code=exc.status_code, content={"detail": "AUTH_REQUIRED"})
+            with execution_scope(context):
+                return await call_next(request)
     # Channel types this service allows. A channel class self-describes
     # its credentials / config, so the registry is built straight from
     # the list — it has no lifecycle, so it lives on app.state directly

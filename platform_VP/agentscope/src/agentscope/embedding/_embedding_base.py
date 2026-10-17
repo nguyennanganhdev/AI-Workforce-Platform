@@ -326,6 +326,9 @@ class EmbeddingModelBase(Generic[InputT]):
 
         for attempt in range(self.max_retries + 1):
             try:
+                if getattr(self, "_vin_authority", None) is not None:
+                    from ..app.vin_platform._embedding_guard import embedding_attempt
+                    return await embedding_attempt(self, inputs, kwargs)
                 return await self._call_api(inputs, **kwargs)
             except Exception as e:
                 if not isinstance(e, retryable):

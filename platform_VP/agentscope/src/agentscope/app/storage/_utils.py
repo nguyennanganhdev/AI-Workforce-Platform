@@ -34,7 +34,10 @@ def _dump_with_secrets(model: BaseModel) -> dict:
         if isinstance(value, SecretStr):
             result[field_name] = value.get_secret_value()
 
-    return result
+    # The legacy console can still call upsert while the runtime consumer is
+    # being migrated. Never let it persist a copy of the shared platform key.
+    from ..vin_platform._resources import reference_platform_key
+    return reference_platform_key(result)
 
 
 async def _ensure_team_members(

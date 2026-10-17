@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Shared FastAPI dependencies for the agentscope app."""
+from datetime import datetime, timezone
+
 from fastapi import Depends, Header, HTTPException, Request, status
 
 from .auth import AuthPrincipal, AuthService, InvalidTokenError
@@ -88,7 +90,22 @@ async def get_current_principal(
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        return service.verify_access_token(token)
+        principal = service.verify_access_token(token)
+        if getattr(request.app.state, "vin_platform_service", None) is not None:
+            from sqlalchemy import text
+            user = await service.get_user(principal)
+            if user is None or user.status != "active" or (user.role, user.domain_id, user.area_id) != (
+                principal.role, principal.domain_id, principal.area_id,
+            ):
+                raise InvalidTokenError("account or role scope has changed")
+            async with service._require_engine().connect() as db:
+                valid = (await db.execute(text("""SELECT id FROM auth_sessions WHERE id=:s AND user_id=:u
+                    AND tenant_id=:t AND revoked_at IS NULL AND expires_at>:now"""),
+                    {"s": principal.session_id, "u": principal.user_id, "t": principal.tenant_id,
+                     "now": datetime.now(timezone.utc)})).scalar_one_or_none()
+            if not valid:
+                raise InvalidTokenError("session revoked or expired")
+        return principal
     except InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

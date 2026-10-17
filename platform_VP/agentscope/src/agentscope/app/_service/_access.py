@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal, TypeVar, overload
 
 from fastapi import HTTPException, status
-from pydantic import AliasChoices, BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 from ..access import (
     ResourceAccessPolicyBase,
@@ -59,6 +59,12 @@ class CredentialView(CredentialRecord):
             "Whether the current viewer may PATCH/DELETE this credential."
         ),
     )
+
+    @field_validator("data")
+    @classmethod
+    def safe_payload(cls, value):
+        # API views never reveal a secret, including legacy owner credentials.
+        return {key: value[key] for key in ("type", "name") if key in value}
 
 
 class KnowledgeBaseStatusCounts(BaseModel):
@@ -386,8 +392,17 @@ class ResourceAccessService:
         provider client. Restrict use to trusted runtime paths
         (chat / embedding / TTS model construction).
         """
+        authority = getattr(self._storage, "vin_platform_service", None)
+        if authority is not None:
+            from ..vin_platform._resources import resolve_platform_credential
+            managed = await resolve_platform_credential(authority, viewer_id, credential_id)
+            if managed is not None:
+                return managed
         record = await self._storage.get_credential(viewer_id, credential_id)
         if record is not None:
+            if authority is not None:
+                from ..vin_platform._resources import hydrate_platform_credential
+                record = hydrate_platform_credential(record)
             return record
 
         for ref in await self._list_refs(viewer_id, ResourceKind.CREDENTIAL):
@@ -560,7 +575,7 @@ class ResourceAccessService:
         """
         if isinstance(record, CredentialRecord):
             payload = record.model_dump()
-            if record.user_id != viewer_id:
+            if record.user_id != viewer_id or getattr(self._storage, "vin_platform_service", None) is not None:
                 payload["data"] = {
                     k: payload["data"][k]
                     for k in ("type", "name")

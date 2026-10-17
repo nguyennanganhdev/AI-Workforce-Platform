@@ -206,6 +206,8 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
         embedding_model = build_embedding_model(
             credential_record=credential_record,
             config=record.data.embedding_model_config,
+            authority=getattr(self._storage, "vin_platform_service", None),
+            billing_user_id=record.user_id,
         )
         return KnowledgeBase(
             name=record.data.name,
