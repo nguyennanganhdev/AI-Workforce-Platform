@@ -26,6 +26,12 @@ test('a sandbox write is labelled separately from production reads and simulatio
   assert.equal(executionLabel({ mode: 'sandbox', executed: true, error_code: 'REVOKED' }), 'Lỗi công cụ');
 });
 
+test('pending customer fixture cleanup blocks a contradictory publishable report', () => {
+  const report = { publishable: true, results: [{ passed: true, status: 'passed' }], environment: { cleanup: { status: 'pending' } } };
+  assert.equal(canPresentPublishable(report), false);
+  assert.equal(canPresentPublishable({ ...report, environment: { cleanup: { status: 'completed' } } }), true);
+});
+
 test('the rendered report shows assumed consent and refuses a green inconclusive case', () => {
   const require = createRequire(import.meta.url);
   const source = readFileSync(new URL('../src/components/workforce/EvaluationReport.tsx', import.meta.url), 'utf8');

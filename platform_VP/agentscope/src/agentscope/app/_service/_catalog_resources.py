@@ -30,14 +30,14 @@ async def list_catalog_resources(storage, user_id: str, kind: Kind, *, permissio
         raise HTTPException(exc.status, exc.code) from exc
 
 
-async def resolve_catalog_resource(storage, user_id: str, kind: Kind, ident: str, *, permission="bind"):
+async def resolve_catalog_resource(storage, user_id: str, kind: Kind, ident: str, *, permission="bind", environment="production"):
     authority = catalog_authority(storage)
     if authority is None:
         return await getattr(storage, f"get_{kind}")(user_id, ident)
     from ..vin_platform._contracts import PlatformError
 
     try:
-        context = await authority.context(user_id)
+        context = await authority.context(user_id, environment=environment)
         _, record = await authority.resolve_catalog(context, kind, ident, permission=permission)
         return record
     except PlatformError as exc:

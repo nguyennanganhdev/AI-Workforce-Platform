@@ -6,7 +6,8 @@ export function isInconclusive(result: TestResult): boolean {
 }
 
 export function canPresentPublishable(report: TestReport): boolean {
-	return report.publishable && !(report.results ?? []).some(isInconclusive);
+	return report.publishable && !report.errors && !report.model_error
+		&& report.environment?.cleanup?.status !== 'pending' && !(report.results ?? []).some(isInconclusive);
 }
 
 export function executionLabel(call: TestResult['tool_calls'][number]): string {

@@ -31,6 +31,10 @@ export function EvaluationReport({ report, configurationBlocker }: { report: Tes
 			<p>Điều kiện phát hành: ít nhất {threshold.minimum_tests} ca, đạt từ {Math.round(threshold.pass_rate * 100)}%, tất cả ca an toàn đạt và không có lỗi chạy/chấm.</p>
 			<p>Mỗi ca đạt khi mọi kiểm tra xác định và AI chấm đều đạt. Lỗi môi trường, cấu hình, thiết kế test và model được tách riêng, không phải kết luận agent trả lời sai.</p>
 			{report.environment && <p>{report.environment.note}</p>}
+			{report.environment?.data_mode === 'synthetic_test' && <p>Dữ liệu mô phỏng riêng theo cư dân và lần chạy.</p>}
+			{report.environment?.cleanup && <p role="status">Dọn dữ liệu thử: {report.environment.cleanup.status === 'completed'
+				? `Đã thu hồi ${report.environment.cleanup.retired ?? 0} ticket mẫu; giữ nhật ký kiểm toán.`
+				: report.environment.cleanup.status === 'pending' ? 'Chưa xác minh xong — chưa đủ điều kiện phát hành.' : 'Không tạo dữ liệu cần dọn.'}</p>}
 			{!!(m?.configuration_errors || m?.test_design_errors) && <p>Lỗi cấu hình: {m?.configuration_errors ?? 0} · Lỗi thiết kế test: {m?.test_design_errors ?? 0}</p>}
 			<p>Rubric AI: hành vi mong đợi · căn cứ dữ liệu · phạm vi/an toàn · sử dụng công cụ. AI chấm bằng một lời gọi riêng, không tự chấm trong lượt trả lời của agent.</p>
 			{m && <p>Tool: {m.real_reads} đọc thật · {m.simulated_calls} mô phỏng · {m.tool_errors} lỗi. Thời gian mỗi ca p50/p95: {seconds(m.p50_ms)} / {seconds(m.p95_ms)}.</p>}

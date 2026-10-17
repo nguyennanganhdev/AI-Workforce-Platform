@@ -283,3 +283,18 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Runtime + automation trước khi nhân đôi fixture SQL: **475 PASS / 19 SKIP / 0 FAIL / 0 ERROR**; 18 browser đã PASS ở S08, 1 PostgreSQL concurrency baseline còn SKIP. Browser mới phục hồi batch **1 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. TypeScript/ESLint/Ruff module/test mới/build PASS; chunk-size warning như trước.
 - Log `.artifacts/n2-batch-{contracts,runtime,browser,build}.log`. External network attempts trong harness 0; paid model calls 0. Không push/deploy, không thay UI shell và không sửa storage/Domain/authority N1.
 - Không đóng S03 chỉ từ batch gate: resource pins trong manifest publish đã có; tài nguyên KB/skill runtime business thực, model chất lượng thật và UAT vẫn chưa nghiệm thu. C09 pagination >100 job đang chờ producer như S08.
+
+## S10 — N2-05 linked-customer sandbox C08 — ĐANG TRIỂN KHAI
+
+- Owner bổ sung `_service/_customer_eval_sandbox.py`, `test_vin_customer_eval.py`, phần environment/cleanup report và component presentation theo lane eval Người 2. Mở rộng EvalSandbox PR #99, không tạo engine eval thứ hai.
+- Chọn sandbox profile do server cấu hình, resolve catalog sandbox đúng entitlement, tìm link thuộc cư dân, C08 seed/cleanup theo run; grant chỉ ở backend. Không fallback về production fixture hoặc quyền quản lý.
+
+### S10 — Kết quả slice C08
+
+- CustomerEvalSandbox mở rộng EvalSandbox PR #99; C08 prepare/cleanup qua DomainAdapter với context sandbox của đúng cư dân. Profile server cần source_mcp_id, sandbox_mcp_id, domain_provider_id, mcp_url và grant_path; mcp_url cùng trust origin provider sandbox. Catalog sandbox phải cấp execute; schema/classification tool hai bên khớp. Recheck link/provider/catalog trước từng ca/tool; không fallback production hoặc link người khác.
+- C08 tạo fixture theo run; backend giữ ticket grant, không đưa bearer/bootstrap vào model/UI. Cleanup sau run (kể cả seed mất phản hồi/cancel), report lưu receipt synthetic_test/retired/audit_retained. Cleanup pending chặn publish, vẫn giữ đúng kết quả từng ca đã PASS; UI nói rõ dữ liệu mô phỏng, giả định consent và cleanup.
+- Strict contracts **59 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. Có ca dương tính C08: 5/5 kịch bản fake model/judge PASS, 5 grants riêng/10 tool calls sandbox trên in-process fake Domain/MCP transport, receipt cleanup 5 ticket. Đây là consumer integration offline dùng schema/adapter thật; chưa phải Domain sandbox business UAT thật. Ca cleanup lỗi giữ 5 PASS nhưng run không publishable; wrong resident/revoked sandbox không seed/gọi production.
+- Runtime+automation **483 PASS / 20 SKIP / 0 FAIL / 0 ERROR**. 19 browser SKIP đã có 18 PASS S08 + 1 PASS S09 trên build; 1 concurrency PostgreSQL personal_chat baseline còn SKIP, không đánh dấu S03 xong.
+- Frontend eval presentation **4 PASS / 0 SKIP / 0 FAIL**; TypeScript/ESLint/Ruff module mới và build PASS (chunk-size warning). Log `.artifacts/n2-customer-eval-{contracts,runtime,build}.log`.
+- External network attempts 0, paid model calls 0 trong harness. Không model key thật, không request tới production, không sửa Domain/authority N1, không push/deploy.
+- Gate còn: operator provision sandbox profile/entitlements và linked synthetic resident; chạy nghiệm thu Domain sandbox thật bằng fake provider sau khi môi trường được bàn giao. Chưa đo chất lượng/latency/cost model thật và chưa đóng S03/business UAT.
