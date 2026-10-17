@@ -517,6 +517,17 @@ class SharedContextService:
         ]
 
     @staticmethod
+    def _partner_evidence_event(event: SharedContextEvent) -> bool:
+        if event.kind != "external_event":
+            return False
+        try:
+            value = json.loads(event.content)
+            return bool(value.get("tool_result", {}).get("metadata", {}).get("external_evidence"))
+        except (ValueError, TypeError, AttributeError):
+            # Legacy partner results used a labelled tool/arguments envelope.
+            return bool(re.match(r"^\w+ \{.*\}\nE\d+:", event.content))
+
+    @staticmethod
     def _compact_tool_facts(items: list[dict]) -> list[dict]:
         """Lossless business-value projection; raw calls stay in source events.
 
@@ -596,7 +607,11 @@ class SharedContextService:
                 and isinstance(version, int)
                 and not arguments.get("history_before_seq")
             ):
-                snapshot_key = SharedContextService._json([item["task_id"], arguments])
+                # Omitted and explicit null cursors both request the full
+                # snapshot; history pages remain separate evidence.
+                snapshot_arguments = {key: value for key, value in arguments.items()
+                                      if key != "history_before_seq" or value is not None}
+                snapshot_key = SharedContextService._json([item["task_id"], snapshot_arguments])
                 sequence = snapshot.get("snapshot_seq")
                 rank = (version, sequence if isinstance(sequence, int) else 0)
                 previous = snapshots.get(snapshot_key)
@@ -1303,11 +1318,11 @@ class SharedContextService:
         """Keep each authoritative source separate, with its durable event id."""
 
         support = [
-            EvidenceSource(event.content, event.id)
+            EvidenceSource(event.content, event.id, authority="customer")
             for event in record.state.events
             if event.task_id == task.id
             and not event.stale
-            and event.kind in {"customer_message", "customer_reply"}
+            and event.kind == "customer_message"
             and event.report_type != "analysis"
         ]
         trusted = cls._trusted_event_ids(current)
@@ -1345,11 +1360,13 @@ class SharedContextService:
         # Peer prose may synthesize a result, but must not become a new
         # independent source for entity/value associations. Its raw lineage
         # is already selected above and remains authoritative.
-        support.extend(
-            EvidenceSource(current[event_id].content, event_id)
-            for event_id in sorted(selected)
-            if current[event_id].kind == "external_event"
-        )
+        facts = cls._compact_tool_facts([
+            {"id": event.id, "task_id": task.id, "kind": "fact", "authority": "tool_verified",
+             "source_event_ids": [event.id], "text": event.content}
+            for event in current.values() if event.id in selected and event.kind == "external_event"
+        ])
+        support.extend(EvidenceSource(current[event_id].content, event_id)
+                       for item in facts for event_id in item["source_event_ids"])
         support.extend(
             EvidenceSource(assignment.agent_name, "roster:" + session_id)
             for session_id, assignment in task.assignments.items()
@@ -2616,29 +2633,21 @@ class SharedContextService:
                 ],
             ),
         )
-        # Partner tools already persist exact evidence and current items. When
-        # every material source is represented there, an index is lossless
-        # and avoids asking another model to paraphrase the same facts.
-        all_covered = [event for event in record.state.events
-                       if event.task_id == task_id and event.revision <= target_revision]
-        superseded = {source for item in record.state.items if item.status == "superseded"
-                      for source in item.source_event_ids}
-        unrepresented, _ = self._project_represented_events(all_covered, self._active_items(record), superseded)
+        # Partner history is retrievable through CaseEvidence. An index avoids
+        # asking another model to paraphrase the same durable facts.
         partner_sources = any(
-            "external_evidence" in event.content
-            or re.match(r"^\w+ \{.*\}\nE\d+:", event.content)
-            for event in all_covered if event.kind == "external_event"
+            self._partner_evidence_event(event)
+            for event in record.state.events if event.task_id == task_id and event.kind == "external_event"
         )
-        use_index = partner_sources and all(
-            event.kind in {"progress", "handoff", "question", "error"} or event.stale
-            for event in unrepresented
-        )
+        # Partner CaseEvidence can retrieve immutable sources by event id or
+        # history cursor. Summarizer prose must never gate a long-running job.
+        use_index = partner_sources
         try:
             if use_index:
                 summary_text = (
-                    f"History through revision {target_revision} is represented by authoritative "
-                    "constraints, verified facts, outputs and the task ledger below. Raw sources "
-                    "remain stored. Read archived E cites with CaseEvidence before using their details. "
+                    f"History through revision {target_revision} is archived. Current authoritative "
+                    "constraints, verified facts, outputs and the task ledger are below. Raw sources "
+                    "remain stored. Read history:0/event_ids or archived E cites with CaseEvidence before using earlier details. "
                     "Check current pending approvals and operations; never repeat a side effect to recall it."
                 )
                 input_tokens = 0
@@ -2708,12 +2717,16 @@ class SharedContextService:
             else []
         )
         for task in tasks:
+            from ._customer_questions import known_inputs
+            task["known_customer_inputs"] = known_inputs(
+                event for event in record.state.events if event.task_id == task["id"]
+            )
             for key in ("created_at", "updated_at", "learned_revision", "thread_id"):
                 task.pop(key, None)
             for branch in task.get("collaboration", {}).values():
                 branch.pop("receipts", None)
                 branch.pop("signatures", None)
-                for key in ("input_tokens", "output_tokens", "tokens", "model_calls", "active_seconds", "exchanges", "started_at", "updated_at"):
+                for key in ("input_tokens", "output_tokens", "tokens", "measured_tokens", "model_calls", "active_seconds", "exchanges", "started_at", "updated_at"):
                     branch.pop(key, None)
             for assignment in task.get("assignments", {}).values():
                 assignment.pop("pending_payload", None)
@@ -2765,7 +2778,15 @@ class SharedContextService:
             and event.kind in {"answer", "result"}
             and event.source_session_id
         }
-        represented_tool_source_ids: set[str] = set()
+        # Review instructions are also held verbatim by the current ledger.
+        # Project an exact duplicate once; keep the immutable event in storage.
+        ledger_texts = {branch.get("reason") for task in tasks
+                        for branch in task.get("collaboration", {}).values()
+                        if branch.get("reason")}
+        represented_tool_source_ids: set[str] = {
+            event.id for event in events
+            if event.kind == "handoff" and event.content in ledger_texts
+        }
         if reported_sessions:
             retained_items: list[dict] = []
             for item in active_items:
@@ -2866,6 +2887,7 @@ class SharedContextService:
                 else None
             ),
             "history_omission": None,
+            "history_read_ref": "history:0" if any(self._partner_evidence_event(e) for e in record.state.events) else None,
             "recent_events": [
                 {key: value for key, value in self._event_dict(event).items()
                  if value is not None and value != [] and value != () and value is not False}
@@ -2958,7 +2980,17 @@ class SharedContextService:
         # Large partner evidence is already durable and can be read by label
         # through CaseEvidence. Explicit references keep the current task and
         # approvals available without resending every historical tool result.
-        if mode == "task" and tokens > self.config.packet_max_tokens:
+        partner_packet = any(self._partner_evidence_event(e) for e in record.state.events)
+        if mode == "task" and partner_packet and tokens > self.config.packet_max_tokens:
+            for event in sorted(packet["recent_events"], key=lambda value: len(value.get("content", "")), reverse=True):
+                if tokens <= self.config.packet_max_tokens:
+                    break
+                if event["kind"] == "customer_message" or len(event.get("content", "")) < 300:
+                    continue
+                event["content"] = self._json({"archived_event_ids": [event["id"]],
+                    "read_tool": "CaseEvidence", "instruction": "Read before using details; raw source retained."})
+                text = self._json(packet)
+                tokens = await self._tokens(model, text)
             candidates = sorted(
                 (item for item in packet["authoritative_state"]["items"]
                  if item["authority"] == "tool_verified"
@@ -2977,6 +3009,38 @@ class SharedContextService:
                 })
                 text = self._json(packet)
                 tokens = await self._tokens(model, text)
+            # If raw tool reads alone were insufficient, archive full older
+            # reports as retrievable sources too. Keep live tasks, dependencies,
+            # questions, operations and latest customer input in the packet.
+            if tokens > self.config.packet_max_tokens:
+                latest_customer = max((e.revision for e in record.state.events
+                                       if e.kind == "customer_message"), default=0)
+                event_by_id = {e.id: e for e in record.state.events}
+                for item in sorted(packet["authoritative_state"]["items"],
+                                   key=lambda value: len(value["text"]), reverse=True):
+                    if tokens <= self.config.packet_max_tokens:
+                        break
+                    source_ids = item.get("source_event_ids") or []
+                    if not source_ids or any(event_by_id[sid].revision == latest_customer
+                                             for sid in source_ids if sid in event_by_id):
+                        continue
+                    if len(item["text"]) < 300:
+                        continue
+                    item["text"] = self._json({"archived_event_ids": source_ids,
+                        "read_tool": "CaseEvidence", "instruction": "Read before using details; original sources retained."})
+                    text = self._json(packet)
+                    tokens = await self._tokens(model, text)
+            if tokens > self.config.packet_max_tokens:
+                for task in packet["authoritative_state"]["tasks"]:
+                    for sid, assignment in task.get("assignments", {}).items():
+                        if tokens <= self.config.packet_max_tokens:
+                            break
+                        # Status/dependencies stay visible to every member.
+                        for key in ("goal", "expected_output", "done_when", "last_feedback"):
+                            assignment.pop(key, None)
+                        assignment["brief_ref"] = "assignment:" + sid
+                        text = self._json(packet)
+                        tokens = await self._tokens(model, text)
         source_event_count = len(events)
         projected_event_count = (
             packet["history_projection"]["projected_event_count"]

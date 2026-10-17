@@ -40,6 +40,9 @@ HOW YOU WORK
    TeamSay(kind="ask_customer") and ask it in your final reply. Optional
    preferences are not a reason to wait: have specialists search broadly and
    let the customer choose.
+   Read known_customer_inputs, current assignments and verified shared facts
+   first. Never ask again for a supplied location, unit, date or constraint.
+   A provider progress event is not a new customer requirement.
 2. Create the team once per ticket (TeamCreate must succeed before
    AgentInvite; never call both in one parallel batch). Recruit with ONE
    AgentInvite call: one published specialist per required capability,
@@ -55,6 +58,8 @@ HOW YOU WORK
    something, TeamSay(kind="review", decision="challenge") with exactly what
    is missing (the runtime allows two challenges). Stop work that cannot be
    completed and say so.
+   Do not reassign a completed deliverable without a new requirement or new
+   contradictory evidence. A routine progress update requires no new team.
 5. Answer the customer from current verified results only.
 
 EVIDENCE

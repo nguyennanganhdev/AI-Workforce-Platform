@@ -47,6 +47,44 @@ def test_partner_snapshot_projection_replaces_old_versions_keeps_evidence():
     assert 'E99' not in projected[0]['text']
 
 
+def test_partner_snapshot_null_cursor_is_the_same_full_read():
+    items = []
+    for version, arguments in ((1, {"ticket_id": "T1"}),
+                               (2, {"ticket_id": "T1", "history_before_seq": None}),
+                               (3, {"ticket_id": "T1", "history_before_seq": 7})):
+        value = {"ticket_id": "T1", "ticket_version": version, "snapshot_seq": version}
+        items.append({"id": f"item-{version}", "task_id": "task", "kind": "fact",
+            "authority": "tool_verified", "source_event_ids": [f"event-{version}"],
+            "text": json.dumps({"state": "success", "tool_call": {"name": "vh_ticket_get",
+                "input": json.dumps(arguments)}, "tool_result": {"metadata": {"external_evidence": True},
+                "output": [{"type": "text", "text": f"E{version}: " + json.dumps(value)}]}})})
+    projected = SharedContextService._compact_tool_facts(items)
+    assert len(projected) == 2  # The historical page must remain separate.
+    assert projected[0]['source_event_ids'] == ['event-2']
+    assert projected[0]['superseded_source_event_ids'] == ['event-1']
+    assert projected[1]['source_event_ids'] == ['event-3']
+
+
+@pytest.mark.asyncio
+async def test_handoff_represented_by_current_review_ledger_is_not_repeated():
+    from team_shared_context_test import _Storage
+    from agentscope.app.message_bus import InMemoryMessageBus
+    storage = _Storage()
+    service = SharedContextService(storage, InMemoryMessageBus())
+    customer = await service.append_event(user_id='u', team_id='t', kind='customer_message', content='Check result')
+    handoff = await service.append_event(user_id='u', team_id='t', kind='handoff', content='Read E22 before replying')
+    record = await storage.get_team_shared_context('u', 't')
+    task = record.state.tasks[customer.task_id]
+    service._branch(task, 'worker').reason = handoff.content
+    packet = service._packet_value(record, record.state.events, mode='task', task_id=customer.task_id)
+    assert handoff.id not in [e['id'] for e in packet['recent_events']]
+    assert packet['authoritative_state']['tasks'][0]['collaboration']['worker']['reason'] == handoff.content
+    assert len(record.state.events) == 2
+    service._branch(task, 'worker').reason = 'A different instruction'
+    packet = service._packet_value(record, record.state.events, mode='task', task_id=customer.task_id)
+    assert handoff.id in [e['id'] for e in packet['recent_events']]
+
+
 @pytest.mark.asyncio
 async def test_management_middleware_has_read_tools_and_no_resident_delivery():
     from agentscope.app.workforce.integrations.unified._case import ManagementCaseMiddleware

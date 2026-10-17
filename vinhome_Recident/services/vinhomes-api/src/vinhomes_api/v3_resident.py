@@ -126,10 +126,13 @@ async def list_chats(scope: ResidentScope, limit: int = Query(50, ge=1, le=100),
                -- A handed-over request whose result waits for the resident's answer: the chat shows the card to
                -- confirm it (never without a link). Not tied to the coordinator's turn, which may say nothing.
                exists(select 1 from platform_links l where l.ticket_id=t.id and l.tenant_id=c.tenant_id
-                 and l.status='open' and l.state='awaiting_confirmation')
+                 and l.status='open') and t.status='resolved'
                  and exists(select 1 from work_approvals a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
                    where w.ticket_id=t.id and a.tenant_id=c.tenant_id and a.kind='customer_completion' and a.status='pending'
-                     and (a.expires_at is null or a.expires_at>now())) as confirm_close,
+                     and (a.expires_at is null or a.expires_at>now()) and w.status='completed'
+                     and exists(select 1 from platform_outbox o where o.ticket_id=t.id and o.tenant_id=c.tenant_id
+                       and o.external_job_id=cast(w.id as text) and o.event_type='job.result_published'
+                       and o.receipt->>'ingestion_status'='applied')) as confirm_close,
                (select count(*) from messages msg where msg.channel_id=c.id and msg.seq>m.last_read_seq
                  and msg.visibility in ('room','customer') and msg.sender_user_id is distinct from :actor_id) as unread_count
         from channels c

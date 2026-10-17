@@ -29,7 +29,10 @@ async def approval_ready(db, approval_id) -> bool:
               (a.kind='customer_repair' and exists(select 1 from platform_outbox o
                 where o.ticket_id=w.ticket_id and o.tenant_id=a.tenant_id and o.event_type='job.quote_ready'
                   and o.data->>'approval_id'=cast(a.id as text) and o.receipt->>'ingestion_status'='applied'))
-              or (a.kind='customer_completion' and l.state='awaiting_confirmation')))
+              or (a.kind='customer_completion' and w.status='completed' and exists(
+                select 1 from platform_outbox o where o.ticket_id=w.ticket_id and o.tenant_id=a.tenant_id
+                  and o.external_job_id=cast(w.id as text) and o.event_type='job.result_published'
+                  and o.receipt->>'ingestion_status'='applied'))))
         from work_approvals a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
         where a.id=:id and a.tenant_id={TENANT}
     """), {"id": approval_id})).scalar_one_or_none())

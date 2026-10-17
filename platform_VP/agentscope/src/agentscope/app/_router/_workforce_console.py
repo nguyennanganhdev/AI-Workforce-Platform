@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from ..._logging import logger
@@ -1934,6 +1935,10 @@ class RoomParticipant(BaseModel):
     input_tokens: int = 0
     cached_input_tokens: int = 0
     output_tokens: int = 0
+    status: str = ""
+    goal: str = ""
+    waiting_for: list[str] = []
+    blocker: str = ""
 
 
 class RoomEntry(BaseModel):
@@ -1948,8 +1953,10 @@ class RoomEntry(BaseModel):
 
 
 class RoomView(BaseModel):
+    revision: int = 0
     participants: list[RoomParticipant]
     timeline: list[RoomEntry]
+    tracked_work: list[dict] = Field(default_factory=list)
     packet_tokens: int = 0
     peak_packet_tokens: int = 0
     packet_budget: int = 0
@@ -1999,6 +2006,7 @@ async def session_room(
         names.setdefault(agent_id, _display(usage.agent_name))
     by_session: dict[str, str] = {}
     timeline: list[RoomEntry] = []
+    tracked_work: dict[str, dict] = {}
     for task in state.tasks.values():
         for assignment_session, assignment in task.assignments.items():
             name = _display(assignment.agent_name) or names.get(assignment.agent_id, "")
@@ -2025,7 +2033,15 @@ async def session_room(
             timeline.append(RoomEntry(at=at, kind="reply", sender=leader, to="Người dùng",
                                       text=event.content[:_ROOM_TEXT]))
         elif event.kind == "external_event":
-            if event.source_session_id == team.session_id:
+            if event.id.startswith("provider:") and "\n" in event.content:
+                try:
+                    payload = json.loads(event.content.split("\n", 1)[1])
+                    work = payload.get("tracked_work") if isinstance(payload, dict) else None
+                    if isinstance(work, dict) and work.get("operation_id"):
+                        tracked_work[work["operation_id"]] = work
+                except (ValueError, TypeError):
+                    work = None  # Older progress messages have no structured tracking data.
+            if event.source_session_id == team.session_id or event.id.startswith("provider:"):
                 timeline.append(RoomEntry(at=at, kind="partner_event", sender="Hệ thống đối tác",
                                           text=event.content[:_ROOM_TEXT]))
             else:
@@ -2057,10 +2073,65 @@ async def session_room(
         )
         for agent_id, usage in state.metrics.provider_usage.items()
     ]
+    task = state.tasks.get(state.active_task_id)
+    if task:
+        for sid, assignment in task.assignments.items():
+            participant = next((p for p in participants if p.agent_id == assignment.agent_id), None)
+            if participant is None:
+                participant = RoomParticipant(agent_id=assignment.agent_id, name=_display(assignment.agent_name))
+                participants.append(participant)
+            branch = task.collaboration.get(sid)
+            participant.status = branch.status if branch else assignment.status
+            participant.goal = assignment.goal
+            participant.waiting_for = [by_session.get(wait, wait) for wait in (branch.waiting_for.values() if branch else assignment.depends_on)]
+            participant.blocker = branch.reason if branch and branch.status in {"stopped", "waiting_peer"} else ""
     return RoomView(
+        revision=state.revision,
         participants=participants,
         timeline=timeline,
+        tracked_work=list(tracked_work.values()),
         packet_tokens=state.metrics.last_packet_tokens,
         peak_packet_tokens=state.metrics.peak_packet_tokens,
         packet_budget=SharedContextConfig.from_env().packet_max_tokens,
     )
+
+
+@workforce_console_router.get("/sessions/{session_id}/room/stream")
+async def stream_room(session_id: str, request: Request,
+                      user_id: str = Depends(get_current_user_id),
+                      storage: StorageBase = Depends(get_storage),
+                      shared_storage: StorageBase = Depends(get_shared_context_storage),
+                      message_bus=Depends(get_message_bus)):
+    # Owner-scoped lookup before opening the stream. Every reconnect starts
+    # with the current full snapshot, so missed pubsub signals lose no state.
+    session = await storage.get_session(user_id, "", session_id)
+    if session is None:
+        raise HTTPException(404, "Session not found")
+    from .._shared_context import SharedContextService
+
+    async def frames():
+        service = SharedContextService(shared_storage, message_bus)
+        while not await request.is_disconnected():
+            current = await storage.get_session(user_id, "", session_id)
+            if current is None:
+                return
+            if not current.team_id:
+                # A newly opened ticket may not have its team yet.
+                room = await session_room(session_id, user_id, storage, shared_storage)
+                yield f"event: room\ndata: {room.model_dump_json()}\n\n"
+                await asyncio.sleep(1)
+                continue
+            async with service.watch(current.team_id) as changes:
+                while not await request.is_disconnected():
+                    room = await session_room(session_id, user_id, storage, shared_storage)
+                    yield f"id: {room.revision}\nevent: room\ndata: {room.model_dump_json()}\n\n"
+                    try:
+                        await asyncio.wait_for(changes.get(), timeout=15)
+                        await asyncio.sleep(0.1)
+                        while not changes.empty():
+                            changes.get_nowait()
+                    except TimeoutError:
+                        # Re-read periodically to cover a lost Redis signal.
+                        yield ": heartbeat\n\n"
+    return StreamingResponse(frames(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

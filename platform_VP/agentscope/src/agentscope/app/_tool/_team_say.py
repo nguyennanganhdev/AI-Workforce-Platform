@@ -235,8 +235,8 @@ _DECISION_TO_RESOLUTION = {
 def _derived_question_key(content: str) -> str:
     """Stable key for a customer question when the model gave none."""
 
-    normalized = " ".join(content.casefold().split())
-    return "auto:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+    from .._customer_questions import question_key
+    return question_key(content)
 
 
 class TeamSay(_TeamToolBase):
@@ -702,6 +702,17 @@ class TeamSay(_TeamToolBase):
                 kind = "progress"
 
             if kind == "requires_user_input" and is_reply_owner:
+                from .._customer_questions import known_inputs, question_fields
+                snapshot = await shared_context.storage.get_team_shared_context(self._user_id, team.id)
+                known = known_inputs(e for e in snapshot.state.events
+                                     if e.task_id == effective_task_id) if snapshot else {}
+                fields = question_fields(content)
+                if fields and all(field in known for field in fields):
+                    return ToolChunk(state=ToolResultState.ERROR, content=[TextBlock(text=(
+                        "Customer already supplied these inputs: "
+                        + json.dumps({field: known[field] for field in fields}, ensure_ascii=False)
+                        + ". Use them. Ask only for a different required detail that is still missing."
+                    ))])
                 turn, duplicate, _first = await register_user_input_request(
                     self._message_bus,
                     team.id,

@@ -666,8 +666,9 @@ class WorkflowService:
                     "close revision conflict", record.revision
                 )
             checkpoint = aggregate.checkpoint
+            completion_ready = False
             if self.completion_close_guard is not None:
-                await self.completion_close_guard(aggregate, parsed, tx)
+                completion_ready = await self.completion_close_guard(aggregate, parsed, tx) is True
             if checkpoint.pending_approval_ids and not parsed.stop_tracking_only:
                 raise WorkflowApprovalPending(
                     "pending approval prevents completion close"
@@ -684,6 +685,7 @@ class WorkflowService:
             if (
                 record.state != WorkflowState.AWAITING_CONFIRMATION
                 and not parsed.stop_tracking_only
+                and not completion_ready
             ):
                 raise WorkflowNotReadyToClose(
                     "workflow is not ready for completion close"

@@ -17,25 +17,28 @@ export function useAgentId(name: string): string {
 /** Whether the open session is a partner ticket of the Leader page. */
 export const TicketViewContext = createContext(false);
 
-const ROOM_REFRESH_MS = 5000;
-
-/** A team session's room (who said what, the members' tool calls, cost), polled. */
+/** A ticket's live room. Reconnects receive the latest durable snapshot. */
 export function useRoom(sessionId: string | null): RoomView | null {
 	const [room, setRoom] = useState<RoomView | null>(null);
 	useEffect(() => {
 		setRoom(null);
 		if (!sessionId) return;
-		let active = true;
-		const load = () =>
-			workforceApi
-				.room(sessionId)
-				.then((value) => active && setRoom(value))
-				.catch(() => active && setRoom(null));
-		load();
-		const timer = setInterval(load, ROOM_REFRESH_MS);
+		const controller = new AbortController();
+		let retryTimer: ReturnType<typeof setTimeout> | undefined;
+		const connect = async () => {
+			try {
+				for await (const value of workforceApi.streamRoom(sessionId, controller.signal)) {
+					if (!controller.signal.aborted) setRoom(value);
+				}
+			} catch {
+				// Keep the last durable snapshot visible while reconnecting.
+			}
+			if (!controller.signal.aborted) retryTimer = setTimeout(connect, 2000);
+		};
+		void connect();
 		return () => {
-			active = false;
-			clearInterval(timer);
+			controller.abort();
+			clearTimeout(retryTimer);
 		};
 	}, [sessionId]);
 	return room;

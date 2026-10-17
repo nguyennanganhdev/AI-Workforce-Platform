@@ -685,6 +685,7 @@ class ChatLeaderTurnRunner:
         else:
             parts = []
             heard = await store.take_pending(workflow.workflow_id)
+            confirmed = not text and await self._case.confirm_completed_work(workflow.workflow_id, route, heard)
             if heard:
                 parts.append(
                     "(Hệ thống) Sự kiện mới của việc đang theo dõi:\n"
@@ -697,11 +698,11 @@ class ChatLeaderTurnRunner:
             images = await self._new_images(workflow.workflow_id)
             if images:
                 parts.append(f"(Hệ thống) Người dùng gửi kèm {len(images)} ảnh bên dưới.")
-            if parts:
+            if parts and not confirmed:
                 message = UserMsg(
                     id=f"{trigger_id}:input", name="customer", content=[TextBlock(text="\n\n".join(parts)), *images],
                     # The room shows the ticket as a card, not the lines the Leader reads.
-                    metadata={"actor": "resident" if cause.get("kind") == "request" else "system",
+                    metadata={"actor": "resident" if text else "system",
                               **({"ticket": card} if card else {})},
                 )
                 await state.chat_service.run(user_id, session.id, agent_id, message)

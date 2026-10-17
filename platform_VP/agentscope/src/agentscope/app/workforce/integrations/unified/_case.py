@@ -39,7 +39,14 @@ from .....tool import MCPTool, ParamsBase, ToolBase, ToolChunk
 from ...._evidence_claims import ClaimValidation, EvidenceSource, validate_claims
 from ...contracts import Scope
 from ...orchestration._tables import partner_requests, workflow_inputs, workflows
-from ._tables import case_entries, case_sessions, operations, routes
+from ._tables import (
+    approvals,
+    case_entries,
+    case_sessions,
+    operations,
+    receipts,
+    routes,
+)
 
 EXPECTS = ("none", "reply", "confirmation")
 # The ticket's room lasts as long as the ticket: no TeamDelete (its schema
@@ -49,7 +56,6 @@ TEAM_TOOLS = ("AgentInvite", "TeamSay")
 # Rounds of member reports the leader may wait for within one turn.
 MAX_TEAM_ROUNDS = 4
 MAX_TEXT = 4000
-EVIDENCE_TEXT = 6000
 LABEL = re.compile(r"^E(\d+)$")
 
 
@@ -61,7 +67,7 @@ def _say_claims(text: str, cited: dict[str, str], trusted: list[str]) -> ClaimVa
     return validate_claims(
         text,
         [EvidenceSource(content=value, source_id=label) for label, value in cited.items()]
-        + [EvidenceSource(content=value, source_id=f"customer:{index}") for index, value in enumerate(trusted)],
+        + [EvidenceSource(content=value, source_id=f"customer:{index}", authority="customer") for index, value in enumerate(trusted)],
     )
 
 
@@ -94,10 +100,18 @@ def check_say(
     sources = " ".join(cited.values()).lower()
     for rule in (rules or {}).get("phrase_rules") or []:
         unless = [str(item).lower() for item in rule.get("unless") or []]
-        if unless and any(item in sources for item in unless):
+        # Match affirmative evidence, not a negated occurrence such as
+        # "không miễn phí". A substring alone cannot grant an exception.
+        if unless and any(
+            any(not re.search(r"(?:không|chưa|not|never)\s+(?:\w+\s+){0,2}$", sources[max(0, match.start()-50):match.start()])
+                for match in re.finditer(re.escape(item), sources))
+            for item in unless
+        ):
             continue
         for phrase in rule.get("phrases") or []:
-            if str(phrase).lower() in lowered:
+            matches = re.finditer(re.escape(str(phrase).lower()), lowered)
+            if any(not re.search(r"(?:không|chưa|not|never)\s+(?:\w+\s+){0,2}$",
+                                 lowered[max(0, match.start()-50):match.start()]) for match in matches):
                 problems.append(f'Không được viết "{phrase}": {rule.get("reason", "")}'.strip())
                 break
     claims = claim_validation if claim_validation is not None else _say_claims(text, cited, trusted)
@@ -287,6 +301,13 @@ class CaseStore:
             ))).mappings().first()
         return dict(row) if row else None
 
+    async def progress_operation(self, workflow_id: str, receipt_id: str) -> dict | None:
+        async with self._uows() as uow:
+            row = (await uow.execute(select(operations).join(receipts,
+                receipts.c.operation_id == operations.c.operation_id).where(
+                receipts.c.receipt_id == receipt_id, operations.c.workflow_id == workflow_id))).mappings().first()
+        return dict(row) if row else None
+
     async def record_operation(self, values: dict) -> bool:
         async with self._uows() as uow:
             workflow = (await uow.execute(select(workflows).where(
@@ -337,6 +358,16 @@ class CaseStore:
                 or 0,
             )
 
+    async def completion_ready(self, workflow_id: str) -> bool:
+        async with self._uows() as uow:
+            work = (await uow.execute(select(operations).where(
+                operations.c.workflow_id == workflow_id))).mappings().all()
+            pending = await uow.scalar(select(func.count()).select_from(approvals).where(
+                approvals.c.workflow_id == workflow_id, approvals.c.status == "pending"))
+        return bool(work) and not pending and all(
+            row["terminal"] and row["outcome"] == "completed" and row["status"] == "result_published"
+            for row in work)
+
     async def settle_operation(self, reference: str, status: str, external_job_id: str | None = None) -> None:
         async with self._uows() as uow:
             # An event can arrive while the tool call is still returning. Never roll it back.
@@ -365,7 +396,8 @@ class CaseStore:
 class _Case:
     """What the tools of one session need to know at call time."""
 
-    def __init__(self, store: CaseStore, session: dict, route: dict, on_say: Callable | None = None) -> None:
+    def __init__(self, store: CaseStore, session: dict, route: dict, on_say: Callable | None = None,
+                 context_reader: Callable | None = None) -> None:
         self.store = store
         self.workflow_id = session["workflow_id"]
         self.session_id = session["session_id"]
@@ -373,6 +405,8 @@ class _Case:
         self.rules = (route.get("config") or {}).get("rules") or {}
         # Tells the ticket's room what the end user was sent.
         self.on_say = on_say
+        self.context_reader = context_reader
+        self.operation_owner = (session.get("agent_id"), session["session_id"])
 
     async def trigger_id(self) -> str:
         current = await self.store.session(self.session_id)
@@ -450,15 +484,23 @@ class _CaseTool(ToolBase):
         if not problems:
             cited = await case.store.labelled(case.workflow_id, cites)
             trusted = await case.store.customer_texts(case.workflow_id)
+            if expects == "reply":
+                from ...._customer_questions import known_text_inputs, question_fields
+                fields = question_fields(text)
+                known = known_text_inputs((f"customer:{i}", value) for i, value in enumerate(trusted))
+                if fields and all(field in known for field in fields):
+                    supplied = {field: known[field] for field in fields}
+                    problems.append("Người dùng đã cung cấp thông tin này: " + json.dumps(supplied, ensure_ascii=False)
+                                    + ". Dùng dữ liệu đã có; chỉ hỏi chi tiết còn thiếu cụ thể.")
             claims = _say_claims(text, cited, trusted)
-            problems = check_say(
+            problems.extend(check_say(
                 text,
                 list(cites),
                 case.rules,
                 cited,
                 trusted,
                 claim_validation=claims,
-            )
+            ))
         if problems:
             await case.store.append(case.workflow_id, "rejected", text or "-", trigger_id=trigger_id)
             message = f"{self.name} bị từ chối, chưa gửi gì cho người dùng:\n- " + "\n- ".join(problems)
@@ -493,7 +535,9 @@ class _CaseTool(ToolBase):
 
 
 class _EvidenceParams(ParamsBase):
-    cites: list[str] = Field(min_length=1, max_length=4, description="Mã E.. cần đọc lại từ bằng chứng đã lưu của phiếu này.")
+    cites: list[str] = Field(default_factory=list, max_length=4, description="Mã E.. cần đọc lại từ bằng chứng đã lưu của phiếu này.")
+    event_ids: list[str] = Field(default_factory=list, max_length=4,
+        description="Archived source_event_ids or assignment:<session_id> from shared context. Same ticket only.")
 
 
 class CaseEvidence(_CaseTool):
@@ -502,12 +546,25 @@ class CaseEvidence(_CaseTool):
     input_schema = _EvidenceParams.model_json_schema()
     is_concurrency_safe = True
 
-    async def call(self, cites: list[str]) -> ToolChunk:
+    async def call(self, cites: list[str] | None = None, event_ids: list[str] | None = None) -> ToolChunk:
+        cites, event_ids = cites or [], event_ids or []
+        if not cites and not event_ids:
+            return ToolChunk(content=[TextBlock(text="Provide cites or archived event_ids.")], state=ToolResultState.ERROR)
         found = await self._case.store.labelled(self._case.workflow_id, cites)
         if set(found) != set(cites):
             return ToolChunk(content=[TextBlock(text="Không tìm thấy bằng chứng trong phiếu này.")], state=ToolResultState.ERROR)
+        if event_ids:
+            if self._case.context_reader is None:
+                return ToolChunk(content=[TextBlock(text="Shared source reader unavailable.")], state=ToolResultState.ERROR)
+            sources = await self._case.context_reader(self._case.workflow_id, event_ids)
+            if set(sources) != set(event_ids):
+                return ToolChunk(content=[TextBlock(text="Source does not belong to this ticket.")], state=ToolResultState.ERROR)
+            found.update(sources)
         return ToolChunk(content=[TextBlock(text="\n".join(f"{label}: {value}" for label, value in found.items()))],
-                         state=ToolResultState.SUCCESS, metadata={"external_evidence": True})
+                         state=ToolResultState.SUCCESS,
+                         # Archived shared reports retain their original authority.
+                         # Reading them must not promote agent prose to MCP facts.
+                         metadata={"external_evidence": bool(cites) and not event_ids})
 
 
 class CaseSay(_CaseTool):
@@ -597,6 +654,7 @@ class PartnerTool(ToolBase):
         if tracking:
             dispatch = await self._case.store.record_operation({"workflow_id": self._case.workflow_id,
                 "integration_id": self._integration_id, "tool_name": self.name,
+                "owner_agent_id": self._case.operation_owner[0], "owner_session_id": self._case.operation_owner[1],
                 "client_reference": reference, "external_job_id": None, "status": "dispatching"})
         try:
             if not dispatch:
@@ -624,7 +682,7 @@ class PartnerTool(ToolBase):
         label = await self._case.store.append(
             self._case.workflow_id,
             "evidence",
-            f"{self.name}: {text}"[:EVIDENCE_TEXT],
+            f"{self.name}: {text}",
             trigger_id=await self._case.trigger_id(),
         )
         # A call to the partner's MCP under another name: in a ticket's room
@@ -661,6 +719,8 @@ PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflictin
 
 
 PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ PHIẾU (bắt buộc):
+- Leader lập kế hoạch và trả lời khách; Điều Phối thực hiện và theo dõi nghiệp vụ, không lập lại kế hoạch. Chuyên viên phân tích đúng phần được giao, tự trao đổi ngang hàng khi cần dữ liệu hoặc thấy mâu thuẫn cụ thể. Không bắt buộc một vòng tranh luận khi bằng chứng đã rõ.
+- Đọc known_customer_inputs, sổ nhiệm vụ và tiến độ tracked_work trước. Không giao lại cùng đầu việc, không hỏi lại điều khách đã nói. Sự kiện nhân viên chỉ cập nhật tiến độ, không phải yêu cầu mới của khách. Công việc đã có nhân viên thực hiện thì chờ sự kiện, không gọi giao việc lần nữa.
 - Bạn không có công cụ của đối tác. Tra cứu phiếu, kiến thức, nhân viên, giao việc, hủy hay ghi chú đều do thành viên phòng làm.
 - Phòng của phiếu đã được lập sẵn. Lượt đầu của phiếu: MỘT lệnh AgentInvite: {coordinators} (điều phối của đối tác) luôn có mặt; thêm agent chuyên môn khi phiếu cần đánh giá chuyên môn. Giao việc rõ trong 1-2 câu: cần làm gì, trả về gì, kèm mã phiếu mà công cụ của đối tác cần (ví dụ dòng ticket_id) chép đúng như phiếu. Việc cần kết quả của thành viên khác (ví dụ giao nhân viên sau khi có đánh giá chuyên môn) thì ghi depends_on. Giao cho điều phối viên ở dạng thực hiện ("giao nhân viên phù hợp bằng công cụ rồi báo kết quả"), không chỉ "đề xuất".
 - Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. và câu đề xuất gửi người dùng. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
@@ -669,6 +729,9 @@ PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ PHIẾU (bắt buộc):
 """
 
 PARTNER_MEMBER_POLICY = """PARTNER CASE MEMBER POLICY (server-owned; overrides conflicting instructions above):
+- Đầu lượt đọc nhiệm vụ của mình, đầu ra của đồng đội và dữ liệu khách đã có trong Shared Context. Dùng snapshot còn hiệu lực; chỉ đọc công cụ lại khi phiên bản thay đổi hoặc cần kiểm tra trước thao tác ghi. Không hỏi khách lại vị trí/căn hộ/thời gian đã có.
+- Điều Phối sở hữu công việc đã giao cho nhân viên; tiến độ từ hệ thống tự cập nhật vào tracked_work trong phòng. Chờ sự kiện khi chưa cần quyết định mới, không gọi công cụ chỉ để hỏi "đã xong chưa". Các agent khác chỉ phân tích chuyên môn và trao đổi dữ liệu cần thiết.
+- Báo cáo tách rõ: dữ kiện đã xác minh kèm mã E, phân tích/đề xuất, việc đã thực hiện, điều còn thiếu. Khi context lưu tham chiếu, dùng CaseEvidence(event_ids=[...]) để đọc nguyên nguồn hoặc brief_ref; không gọi lại thao tác để nhớ kết quả.
 - Bạn là thành viên phòng xử lý một phiếu của đối tác, do Leader của platform lập. Bạn không nói với người dùng; chỉ Leader gửi tin cho họ.
 - Mỗi kết quả công cụ bắt đầu bằng mã E.. (ví dụ "E7: ..."). Làm phần việc được giao bằng công cụ của bạn, rồi báo lại Leader bằng MỘT TeamSay: kết luận ngắn, các mã E.. chứa dữ liệu bạn dùng, và câu đề xuất gửi người dùng (theo cách xưng hô của đối tác). Báo cáo tối đa 5 dòng; không chép lại kết quả công cụ, mã E.. đã chỉ tới đó.
 - Không đoán. Thiếu dữ liệu thì nói rõ thiếu gì.
@@ -998,12 +1061,60 @@ class CaseRuntime:
         """
 
         line = "Tiến độ từ hệ thống đối tác: " + text
+        operation = await self.store.progress_operation(workflow_id, event_id.removeprefix("provider:")) if event_id else None
+        if operation:
+            line += "\n" + json.dumps({"tracked_work": {key: operation[key] for key in (
+                "operation_id", "tool_name", "external_job_id", "owner_agent_id", "owner_session_id",
+                "status", "terminal", "outcome", "provider_version")}}, ensure_ascii=False)
         return await self._share(workflow_id, "external_event", line, fact=True, event_id=event_id)
+
+    async def context_sources(self, workflow_id: str, ids: list[str]) -> dict[str, str]:
+        binding = await self.store.session_of_workflow(workflow_id)
+        if binding is None or self._app is None:
+            return {}
+        state = self._app.state
+        session = await state.storage.get_session(binding["manager_account_id"], binding["agent_id"], binding["session_id"])
+        if session is None or not session.team_id:
+            return {}
+        record = await state.shared_context_storage.get_team_shared_context(binding["manager_account_id"], session.team_id)
+        if record is None:
+            return {}
+        found = {event.id: event.content for event in record.state.events if event.id in ids}
+        for key in ids:
+            if key.startswith("history:") and key[8:].isdigit():
+                cursor = int(key[8:])
+                events = [event for event in record.state.events if event.revision > cursor]
+                page = events[:4]
+                found[key] = json.dumps({"events": [e.model_dump(mode="json") for e in page],
+                    "next": "history:" + str(page[-1].revision) if len(events) > len(page) else None}, ensure_ascii=False)
+        for task in record.state.tasks.values():
+            for sid, assignment in task.assignments.items():
+                if "assignment:" + sid in ids:
+                    found["assignment:" + sid] = assignment.model_dump_json(exclude={"pending_payload"})
+        return found
 
     async def share_attention(self, workflow_id: str, reason: str) -> None:
         """Why the ticket needs a person, on the room's timeline."""
 
         await self._share(workflow_id, "error", "Cần xử lý: " + reason)
+
+    async def confirm_completed_work(self, workflow_id: str, route: dict, events: list[dict]) -> bool:
+        """The signed completion step needs no new LLM interpretation."""
+        evidence = [event for event in events if "job.result_published" in event["text"]]
+        if not evidence or not await self.store.completion_ready(workflow_id):
+            return False
+        session = await self.store.session_of_workflow(workflow_id)
+        if session is None:
+            return False
+
+        async def said(text):
+            await self._share(workflow_id, "customer_reply", text)
+
+        case = _Case(self.store, session, route, on_say=said)
+        result = await CaseSay(case).call(
+            text="Nhân viên đã gửi kết quả xử lý. Bạn xem kết quả và xác nhận hoàn thành hoặc báo phần chưa đạt.",
+            expects="confirmation", cites=[f"E{evidence[-1]['seq']}"])
+        return result.state == ToolResultState.SUCCESS
 
     async def _share(self, workflow_id: str, kind: str, text: str, fact: bool = False,
                      event_id: str | None = None) -> bool:
@@ -1081,7 +1192,7 @@ class CaseRuntime:
         async def said(text: str) -> None:
             await self._share(workflow_id, "customer_reply", text)
 
-        case = _Case(self.store, session, route, on_say=said)
+        case = _Case(self.store, session, route, on_say=said, context_reader=self.context_sources)
         members = _members(route)
         waiter = self._waiter(user_id, agent_id, session_id) if members else None
         # The Leader holds no partner tool: the room's members do the work.
@@ -1121,7 +1232,8 @@ class CaseRuntime:
             await workspace.remove_mcp(client.name, agent_id=agent_id, session_id=record.id)
         for default_mcp in workspace.default_mcps:
             await workspace.remove_mcp(default_mcp.name, agent_id=agent_id, session_id=record.id)
-        case = _Case(self.store, leader, route)
+        case = _Case(self.store, leader, route, context_reader=self.context_sources)
+        case.operation_owner = (agent_id, session_id)
         tools = await self._tools(user_id, case, route, only=set(member.get("tools") or []))
         return [PartnerMemberMiddleware(case, tools)]
 

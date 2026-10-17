@@ -79,6 +79,8 @@ operations = Table(
     Column("outcome", String(64), nullable=True),
     Column("provider_version", Integer, nullable=True),
     Column("call_result", JSON, nullable=True),
+    Column("owner_agent_id", String(255), nullable=True),
+    Column("owner_session_id", String(255), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )

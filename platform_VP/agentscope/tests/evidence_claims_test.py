@@ -21,6 +21,22 @@ unsupported_claim_anchors = _CLAIMS.unsupported_claim_anchors
 
 
 class EvidenceClaimsTest(unittest.TestCase):
+    def test_ticket_quote_envelope_keeps_money_and_material_quantity_separate(self):
+        quote = {"currency": "VND", "items": [
+            {"label": "Dây điện (1 mét)", "amount": 50000}],
+            "total": 50000, "warranty_months": 0}
+        source = json.dumps({"tool_call": {"name": "vh_ticket_get", "input": "{}"},
+            "tool_result": {"type": "tool_result", "name": "vh_ticket_get",
+                "output": [{"type": "text", "text": "E20: " + json.dumps({"quote": quote})}]}})
+        report = "Báo giá: Dây điện (1 mét), tổng 50.000đ, bảo hành 0 tháng."
+        self.assertEqual(validate_claims(report, [source]).unsupported, ())
+        self.assertTrue(validate_claims(report.replace("50.000đ", "60.000đ"), [source]).unsupported)
+        self.assertTrue(validate_claims(report.replace("1 mét", "2 mét"), [source]).unsupported)
+        self.assertTrue(validate_claims(report.replace("50.000đ", "50.000 USD"), [source]).unsupported)
+        # A missing currency must still be repaired at the producer.
+        del quote["currency"]
+        self.assertTrue(validate_claims("Tổng 50.000đ.", [json.dumps(quote)]).unsupported)
+
     def setUp(self):
         self.hotels = [
             EvidenceSource(

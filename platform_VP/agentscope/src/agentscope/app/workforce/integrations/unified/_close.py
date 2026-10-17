@@ -11,7 +11,7 @@ from ...orchestration.workflows._models import (
 from ._tables import approvals, operations
 
 
-async def guard_case_close(aggregate, command, uow) -> None:
+async def guard_case_close(aggregate, command, uow) -> bool | None:
     workflow = aggregate.workflow
     # Operation intent creation takes this same lock before it contacts MCP.
     current = (await uow.execute(select(workflows.c.revision).where(
@@ -46,3 +46,6 @@ async def guard_case_close(aggregate, command, uow) -> None:
     }
     if not completed_jobs or not completed_jobs.issubset(set(accepted.work_order_ids)):
         raise WorkflowNotReadyToClose("successful terminal work evidence is required")
+    # Domain has already authenticated this resident's decision and tied it
+    # to completed work. An LLM narration failure must not block that decision.
+    return True

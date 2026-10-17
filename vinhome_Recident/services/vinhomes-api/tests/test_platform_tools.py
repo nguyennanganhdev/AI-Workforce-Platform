@@ -334,7 +334,7 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
 
     seen = call(database, work.ticket_get, ticket)   # `call` also checks the staff member's note with a phone number stays out
     quote = seen["quote"]
-    assert quote == {"approval_id":proposed.json()["id"],"expires_at":None,"warranty_months": 3, "total": 200000, "items": [
+    assert quote == {"approval_id":proposed.json()["id"],"expires_at":None,"warranty_months": 3, "total": 200000, "currency": "VND", "items": [
         {"label": f"{material} (2 {material_unit})", "amount": 150000}, {"label": "Tiền công", "amount": 50000}]}
     [shown] = seen["work_orders"]
     assert (shown["work_status"], shown["staff_name"], shown["offer"]) == ("awaiting_approval", "Kỹ thuật viên Hoa", "accepted")
@@ -443,7 +443,7 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     got = [r["body"] for r in fake.received.values()]
     assert [b["event_type"] for b in got] == [r["event_type"] for r in sent] and all(b["client_reference"] == dispatch for b in got)
     assert sent[1]["data"]["staff_name"] == "Kỹ thuật viên Hoa" and re.fullmatch(WHEN, sent[1]["data"]["eta"])
-    assert sent[4]["data"] == {k:quote[k] for k in ("items","total","warranty_months","approval_id")} and sent[5]["data"] == {}
+    assert sent[4]["data"] == {k:quote[k] for k in ("items","total","currency","warranty_months","approval_id")} and sent[5]["data"] == {}
     # photo_count is what the resident will see in the request: the technician's before, after and verification photos.
     assert sent[8]["data"] == {"summary": f"Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: {result_note}",
                                "photo_count": 3, "reported_by": "Kỹ thuật viên Hoa"}
@@ -452,10 +452,11 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
         assert all(c.get(f"/resident/photos/{fid}").status_code == 200 for fid in file_ids)
     with person(database, CHAU) as other:
         assert all(other.get(f"/resident/photos/{fid}").status_code == 404 for fid in file_ids)
-    # Domain records the report but does not speak for Platform or publish confirmation early.
+    # Signed result acknowledgement opens the resident's decision even if the
+    # Leader cannot render its final message. No decision is made for them.
     assert not any(m['text'].startswith('Nhân viên đã làm xong và gửi kết quả nghiệm thu.') for m in chat(database, channel))
     with person(database, AN) as c:
-        assert next(x for x in c.get('/resident/chats').json()['items'] if x['id'] == channel)['confirm_close'] is False
+        assert next(x for x in c.get('/resident/chats').json()['items'] if x['id'] == channel)['confirm_close'] is True
     flow = next(f for f in fake.flows.values() if f['ticket'] == ticket)
     fake.say(flow, 'Platform đã nhận kết quả. Vui lòng kiểm tra và xác nhận.')
     fake.move(flow, 'awaiting_confirmation', 'operation_completed')
@@ -576,7 +577,7 @@ def test_a_quote_the_resident_refuses_on_the_card_is_reported_as_refused(databas
     sync(database, fake)
     assert [(r["event_type"], r["data"]) for r in outbox(database, ticket)][-2:] == [
         ("job.quote_ready", {"items": [{"label": "Dây điện (1.5 m)", "amount": 30000}, {"label": "Tiền công", "amount": 300000}],
-                             "total": 330000, "warranty_months": 0, "approval_id": proposed.json()["id"]}), ("job.quote_rejected", {})]
+                             "total": 330000, "currency": "VND", "warranty_months": 0, "approval_id": proposed.json()["id"]}), ("job.quote_rejected", {})]
     put_down(database, job)
 
 

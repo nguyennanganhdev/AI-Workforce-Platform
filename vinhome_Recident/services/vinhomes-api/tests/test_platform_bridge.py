@@ -804,7 +804,46 @@ def resolved_with_a_completion_request(database, ticket):
     approval = sql(database, """insert into work_approvals(tenant_id,work_order_id,kind,requested_to_user_id,request_detail,status,request_hash)
         values($1,$2,'customer_completion','local-v3-resident','{"note":"Vui lòng xác nhận"}','pending',$3) returning id""",
                    TENANT, work, f"completion:{ticket}")[0]["id"]
-    return str(approval), sql(database, "update tickets set status='resolved',resolved_at=now() where id=$1 returning version", UUID(ticket))[0]["version"]
+    version = sql(database, "update tickets set status='resolved',resolved_at=now() where id=$1 returning version", UUID(ticket))[0]["version"]
+    # The publication worker must send this result and receive an applied
+    # receipt. A Leader merely asking for confirmation is insufficient.
+    sql(database, """insert into platform_outbox(event_id,tenant_id,ticket_id,client_reference,external_job_id,
+        event_type,provider_version,occurred_at,data)
+        values($1,$2,$3,$4,$5,'job.result_published',$6,now(),$7::jsonb) returning event_id""",
+        uuid4(), TENANT, UUID(ticket), f"completion:{work}", str(work), version,
+        json.dumps({"summary":"Đã thay bóng đèn","photo_count":0,"reported_by":"Ban quản lý"}))
+    return str(approval), version
+
+
+def test_published_completion_can_be_confirmed_while_leader_needs_attention(database, on):
+    fake = FakePlatform()
+    with resident(database) as c:
+        channel, ticket, flow = started(database, c, fake)
+        approval, version = resolved_with_a_completion_request(database, ticket)
+        fake.move(flow, "needs_attention", "context_budget_exceeded")
+        sync(database, fake)
+        assert link(database, ticket)["state"] == "needs_attention"
+        item = next(x for x in c.get("/resident/chats").json()["items"] if x["id"] == channel)
+        assert item["confirm_close"] is True
+        response = c.post(f"/resident/approvals/{approval}/decision", headers=key(), json={
+            "version":version,"approved":True,"note":"Đã kiểm tra và chấp nhận"})
+        assert response.status_code == 200, response.text
+
+
+def test_another_jobs_applied_receipt_cannot_unlock_completion(database, on):
+    fake = FakePlatform()
+    with resident(database) as c:
+        channel, ticket, flow = started(database, c, fake)
+        approval, version = resolved_with_a_completion_request(database, ticket)
+        sql(database, "update platform_outbox set external_job_id=$2 where ticket_id=$1 returning event_id",
+            UUID(ticket), str(uuid4()))
+        fake.move(flow, "awaiting_confirmation", "operation_completed")
+        sync(database, fake)
+        item = next(x for x in c.get("/resident/chats").json()["items"] if x["id"] == channel)
+        assert item["confirm_close"] is False
+        response = c.post(f"/resident/approvals/{approval}/decision", headers=key(), json={
+            "version":version,"approved":True,"note":"Wrong result must be refused"})
+        assert response.status_code == 409
 
 
 def test_confirming_completion_closes_the_ticket_and_the_workflow_at_its_current_revision(database, on, turns):
@@ -1169,7 +1208,8 @@ def test_each_domain_event_becomes_the_progress_event_of_the_table():
         "labor_cost": 150000, "warranty_months": 6, "total": 816000}}
     kind, data = mapped("work_order.repair_proposed", {"workOrderId": WORK}, quote=quote)
     # The quote's id stays in the domain: the resident answers on the card, the coordinator has nothing to record.
-    assert kind == "job.quote_ready" and set(data) == {"items", "total", "warranty_months", "approval_id"} and data["warranty_months"] == 6
+    assert kind == "job.quote_ready" and set(data) == {"items", "total", "currency", "warranty_months", "approval_id"} and data["warranty_months"] == 6
+    assert data["currency"] == "VND"
     # Labour is a line of its own and the total is the sum of the amounts, in whole dong.
     assert data["items"] == [{"label": "Vòi lavabo (1 cái)", "amount": 650000}, {"label": "Băng tan (2 cuộn)", "amount": 16000},
                              {"label": "Tiền công", "amount": 150000}]
@@ -1305,7 +1345,7 @@ def test_staff_progress_is_queued_signed_sent_in_order_and_resent_with_the_same_
         assert [b["event_type"] for b in got] == kinds and [b["provider_version"] for b in got] == sorted(b["provider_version"] for b in got)
         assert all(b["client_reference"] == reference and b["external_job_id"] == order["id"] for b in got)
         assert got[1]["data"]["staff_name"] == staff["name"] and got[1]["data"]["eta"] and got[2]["data"] == {"staff_name": staff["name"]}
-        assert got[4]["data"] == {"approval_id": str(approval), "warranty_months": 3, "total": 200000, "items": [
+        assert got[4]["data"] == {"approval_id": str(approval), "warranty_months": 3, "total": 200000, "currency":"VND", "items": [
             {"label": "Bóng LED (2 cái)", "amount": 150000}, {"label": "Tiền công", "amount": 50000}]}
         assert got[5]["data"] == {}
         # Still one card: passes of the worker do not write it again.

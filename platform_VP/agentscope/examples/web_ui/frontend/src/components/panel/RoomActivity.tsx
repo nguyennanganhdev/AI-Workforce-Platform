@@ -76,6 +76,23 @@ export function RoomActivity() {
 
 	return (
 		<>
+			<section className="space-y-2 border-b px-3 pb-3" aria-label="Tiến độ nhóm" aria-live="polite">
+				<p className="text-xs font-medium text-muted-foreground">Tiến độ nhóm · cập nhật trực tiếp</p>
+				{room.participants.filter((p) => p.status).map((p) => (
+					<div key={p.agent_id} className="text-xs">
+						<div className="flex justify-between gap-2"><strong>{cleanName(p.name)}</strong><span>{({ queued: 'Chờ đầu vào', assigned: 'Đã giao', running: 'Đang xử lý', waiting_peer: 'Chờ đồng đội', review: 'Chờ kiểm tra', reported: 'Đã báo cáo', completed: 'Xong phần việc', verified: 'Đã xác minh', accepted: 'Đã chấp nhận', stopped: 'Cần xử lý', failed: 'Gặp lỗi' } as Record<string, string>)[p.status] ?? p.status}</span></div>
+						<p className="mt-1 line-clamp-2 text-muted-foreground" title={p.goal}>{p.goal}</p>
+						{p.waiting_for.length > 0 && <p>Chờ: {p.waiting_for.map(cleanName).join(', ')}</p>}
+						{p.blocker && <p className="text-amber-700">{p.blocker}</p>}
+					</div>
+				))}
+				{(room.tracked_work ?? []).map((work) => (
+					<p key={work.operation_id} className="text-xs">
+						{work.external_job_id || 'Công việc nhân viên'} · {({ offered: 'Chờ nhận việc', pending: 'Chờ nhận việc', accepted: 'Đã nhận việc', en_route: 'Đang di chuyển', arrived: 'Đã đến', in_progress: 'Đang thực hiện', quote_ready: 'Chờ duyệt báo giá', result_published: 'Chờ cư dân nghiệm thu', completed: 'Đã hoàn thành', cancelled: 'Đã hủy' } as Record<string, string>)[work.status] ?? work.status}
+						<span className="block text-muted-foreground">Theo dõi: {cleanName(room.participants.find((p) => p.agent_id === work.owner_agent_id)?.name ?? 'Điều phối')}</span>
+					</p>
+				))}
+			</section>
 			<section className="flex flex-col gap-y-2 px-2">
 				<div className="flex items-center justify-between px-1">
 					<span className="text-xs font-medium text-muted-foreground">Trao đổi trong phòng</span>

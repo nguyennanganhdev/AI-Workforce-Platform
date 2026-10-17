@@ -352,6 +352,7 @@ class EvidenceSource:
 
     content: str
     source_id: str
+    authority: str = "tool"
 
 
 @dataclass(frozen=True)
@@ -414,7 +415,7 @@ _RATING_RE = re.compile(
     re.IGNORECASE,
 )
 _COUNT_FACT_RE = re.compile(
-    r"(?<![\d/:])(\d+)\s*(người|khách|phòng|đêm|ngày|people|guests|rooms|nights|days)\b",
+    r"(?<![\d/:])(\d+)\s*(người|khách|phòng|đêm|ngày|tháng|mét|people|guests|rooms|nights|days|months|meters|metres)\b",
     re.IGNORECASE,
 )
 
@@ -538,6 +539,17 @@ def _prose_facts(text: str, source_id: str, names: set[str]) -> list[_Fact]:
                     )
                 )
                 occupied.append(match.span())
+        # A material quantity or warranty duration is not money merely because
+        # an earlier label in the sentence says "báo giá".
+        for match in _COUNT_FACT_RE.finditer(unit):
+            if any(left <= match.start() < right for left, right in occupied):
+                continue
+            dimension = match.group(2).casefold().removesuffix("s")
+            dimension = {"people": "person", "guest": "person", "mét": "meter",
+                         "metre": "meter", **_UNIT_NAMES}.get(dimension, dimension)
+            facts.append(_Fact(_entity_at(unit, match.start(), names), "count",
+                               match.group(1), unit=dimension, source_id=source_id))
+            occupied.append(match.span())
         for match in _MONEY_RE.finditer(unit):
             if any(left <= match.start() < right for left, right in occupied):
                 continue
@@ -579,22 +591,6 @@ def _prose_facts(text: str, source_id: str, names: set[str]) -> list[_Fact]:
                     source_id,
                 )
             )
-        for match in _COUNT_FACT_RE.finditer(unit):
-            if any(left <= match.start() < right for left, right in occupied):
-                continue
-            dimension = match.group(2).casefold().removesuffix("s")
-            dimension = {"people": "person", "guest": "person", **_UNIT_NAMES}.get(
-                dimension, dimension
-            )
-            facts.append(
-                _Fact(
-                    _entity_at(unit, match.start(), names),
-                    "count",
-                    match.group(1),
-                    unit=dimension,
-                    source_id=source_id,
-                )
-            )
     return facts
 
 
@@ -602,13 +598,13 @@ def _json_facts(text: str, source_id: str) -> tuple[list[_Fact], set[str]]:
     facts: list[_Fact] = []
     names: set[str] = set()
 
-    def visit(value: object, entity: str = "", depth: int = 0) -> None:
+    def visit(value: object, entity: str = "", depth: int = 0, currency: str = "") -> None:
         if depth > 10:
             return
         if isinstance(value, str):
             nested = _read_json(value)
             if nested is not None:
-                visit(nested, entity, depth + 1)
+                visit(nested, entity, depth + 1, currency)
             else:
                 text_names = _proper_name_anchors(value)
                 names.update(text_names)
@@ -626,9 +622,17 @@ def _json_facts(text: str, source_id: str) -> tuple[list[_Fact], set[str]]:
             return
         if isinstance(value, list):
             for child in value:
-                visit(child, entity, depth + 1)
+                visit(child, entity, depth + 1, currency)
             return
         if not isinstance(value, dict):
+            return
+        # Runtime envelope names identify tools, never the business entity
+        # that owns every amount in their output. Inputs are not results.
+        if "tool_call" in value and isinstance(value.get("tool_result"), dict):
+            visit(value["tool_result"], depth=depth + 1)
+            return
+        if value.get("type") == "tool_result":
+            visit(value.get("output"), depth=depth + 1)
             return
         identity = next(
             (
@@ -648,7 +652,7 @@ def _json_facts(text: str, source_id: str) -> tuple[list[_Fact], set[str]]:
         entity = _normalize(identity)
         if entity:
             names.add(entity)
-        currency = _currency(str(value.get("currency", "")))
+        currency = _currency(str(value.get("currency", currency)))
         for key, child in value.items():
             normalized = re.sub(r"[_-]", " ", key).casefold()
             number = (
@@ -716,10 +720,10 @@ def _json_facts(text: str, source_id: str) -> tuple[list[_Fact], set[str]]:
                 )
             elif (
                 normalized
-                in {"people", "guests", "rooms", "nights", "days", "quantity"}
+                in {"people", "guests", "rooms", "nights", "days", "quantity", "warranty months"}
                 and number is not None
             ):
-                dimension = {"people": "person", "guests": "person"}.get(
+                dimension = {"people": "person", "guests": "person", "warranty months": "month"}.get(
                     normalized, normalized.removesuffix("s")
                 )
                 facts.append(
@@ -746,7 +750,7 @@ def _json_facts(text: str, source_id: str) -> tuple[list[_Fact], set[str]]:
                         )
                     )
             if isinstance(child, (dict, list, str)):
-                visit(child, entity, depth + 1)
+                visit(child, entity, depth + 1, currency)
 
     value = _read_json(text)
     if value is not None:
@@ -764,6 +768,67 @@ def _read_json(text: str) -> object:
         return json.loads(match.group(1))
     except (TypeError, ValueError):
         return None
+
+
+def business_records(text: str) -> list[dict]:
+    """Decode business output, including labelled CaseEvidence documents.
+
+    Tool inputs, tool names and transport metadata are not business facts.
+    Keep records separate so booleans cannot be borrowed across objects.
+    """
+    records: list[dict] = []
+
+    def visit(value, depth=0):
+        if depth > 12:
+            return
+        if isinstance(value, str):
+            parsed = _read_json(value)
+            if parsed is not None:
+                visit(parsed, depth + 1)
+            else:
+                for match in re.finditer(r"(?:^|\n)(?:E\d+:\s*)?[^\n{]*([\[{])", value):
+                    try:
+                        parsed, _ = json.JSONDecoder().raw_decode(value[match.start(1):])
+                        visit(parsed, depth + 1)
+                    except ValueError:
+                        pass
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, depth + 1)
+        elif isinstance(value, dict):
+            if isinstance(value.get("tool_result"), dict):
+                visit(value["tool_result"].get("output"), depth + 1)
+            elif value.get("type") == "tool_result":
+                visit(value.get("output"), depth + 1)
+            else:
+                records.append(value)
+                for child in value.values():
+                    if isinstance(child, (dict, list, str)):
+                        visit(child, depth + 1)
+
+    visit(text)
+    return records
+
+
+def _business_state_failures(text: str, sources: list[EvidenceSource]) -> set[str]:
+    """Guard critical transitions independently of name/number matching."""
+    records = [record for source in sources if source.authority == "tool"
+               for record in business_records(source.content)]
+    checks = (
+        ("ticket_closed", r"(?:phiếu|ticket|yêu cầu)\s+(?:này\s+)?(?:đã\s+)?đóng|ticket\s+(?:is\s+)?closed",
+         lambda r: r.get("ticket_closed") is True or r.get("ticket_status") == "closed"),
+        ("resident_accepted", r"cư dân\s+đã\s+(?:nghiệm thu|xác nhận|chấp nhận)|resident\s+(?:has\s+)?accepted",
+         lambda r: r.get("resident_accepted") is True),
+    )
+    failures = set()
+    for key, pattern, supported in checks:
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        affirmative = [m for m in matches if not re.search(
+            r"(?:không|chưa|not|never)(?:\s+\w+){0,5}\s*$",
+            text[max(0, m.start()-55):m.start()], re.IGNORECASE)]
+        if affirmative and not any(supported(record) for record in records):
+            failures.add("state:" + key)
+    return failures
 
 
 def _entity_key(value: str) -> str:
@@ -915,7 +980,7 @@ def validate_claims(
     has_concrete_claims = False
     for original in _claim_units(claim):
         text = _plain_unit(original)
-        failures: set[str] = set()
+        failures: set[str] = _business_state_failures(text, sources)
         own_names = _proper_name_anchors(text)
         for anchor in own_names:
             if not any(
