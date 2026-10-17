@@ -58,6 +58,13 @@ def browser_app():
                 elif path == "/me/usage":
                     result = {"timezone": "Asia/Ho_Chi_Minh", "pending_reconciliation": 1,
                         "buckets": [{"window": "day:2026-10-18", "used": 1200, "reserved": 300}]}
+                elif path == "/channels/types":
+                    from agentscope.app.channel import ChannelTypeRegistry, DiscordChannel
+                    result = [item.model_dump() for item in ChannelTypeRegistry([DiscordChannel]).list_types()]
+                elif path == "/channels/":
+                    result = []
+                elif path == "/agent/":
+                    result = {"agents": []}
                 elif path == "/me/domain-links":
                     result = {"items": state["links"]}
                 elif path == "/me/domain-links/vinhomes/complete":
@@ -226,4 +233,22 @@ def test_shared_catalog_is_visible_without_configuration_mutations(browser_app, 
         if text in ("xóa", "sửa", "cài đặt", "thêm", "đồng bộ", "thu hồi", "duyệt", "delete", "edit", "install", "add", "sync"):
             assert not button.is_enabled(), text
     assert not [call for call in calls if call[0] not in ("GET",) and call[1].startswith(("/credential", "/mcp", "/skill", "/hub"))]
+    assert not external
+
+
+def test_customer_discord_form_requires_owner_and_explains_empty_allowlist(browser_app):
+    from playwright.sync_api import expect
+
+    page, calls, external, _ = browser_app()
+    page.goto(URL + "/channel")
+    page.get_by_text("Discord", exact=True).first.click()
+    owner = page.get_by_label("Discord ID của chủ tài khoản (bắt buộc)", exact=True)
+    expect(owner).to_be_visible()
+    expect(owner).to_have_attribute("required", "")
+    owner.fill("100")
+    expect(page.locator("#channel-config-allowed_user_ids")).to_have_value("100")
+    expect(page.get_by_text("Danh sách rỗng = chặn tất cả người dùng.", exact=False)).to_be_visible()
+    page.locator("#channel-config-allowed_user_ids").fill("")
+    expect(page.get_by_role("button", name="Tạo", exact=True)).to_be_disabled()
+    assert not [call for call in calls if call[0] == "POST" and call[1] == "/channels/"]
     assert not external

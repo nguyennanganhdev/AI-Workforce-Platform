@@ -9,6 +9,7 @@
 		"test:office": "node --experimental-strip-types --test tests/session-office.test.mjs tests/session-presentation.test.mjs",
 		"test:vin-shell": "node --experimental-strip-types --test tests/vin-shell.test.mjs",
 		"test:workforce-eval": "node --experimental-strip-types --test tests/evaluation-presentation.test.mjs",
+		"test:channel-form": "node --experimental-strip-types --test tests/channel-form.test.mjs",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"preview": "vite preview"

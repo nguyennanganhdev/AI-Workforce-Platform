@@ -22,6 +22,7 @@ from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import httpx
+from fastapi import HTTPException
 
 from ...mcp import HttpMCPConfig, MCPClient
 from ...message import TextBlock
@@ -29,6 +30,20 @@ from .._agent_spec import AgentSpec
 from ._agent_eval import EvalToolError, tool_result_error
 
 ENV = "WORKFORCE_EVAL_SANDBOXES"
+
+
+async def resolve_eval_mcp(storage, user_id, ident):
+    from ._catalog_resources import resolve_catalog_resource
+
+    try:
+        record = await resolve_catalog_resource(storage, user_id, "mcp", ident, permission="execute")
+    except HTTPException as exc:
+        if exc.status_code not in (403, 404, 409, 503):
+            raise
+        raise EvalToolError("MCP đã bị thu hồi, mất quyền hoặc môi trường chưa sẵn sàng; hãy kiểm tra catalog rồi chạy lại.", "TOOL_UNAVAILABLE") from exc
+    if record is None or not record.enabled:
+        raise EvalToolError("MCP đã bị tắt hoặc không còn trong catalog; hãy kiểm tra môi trường rồi chạy lại.", "TOOL_UNAVAILABLE")
+    return record
 
 
 def sandbox_configs() -> list[dict]:
@@ -82,13 +97,16 @@ async def call_tool(client: MCPClient, name: str, arguments: dict, *, require_re
 class EvalSandbox:
     """One eval run on one sandbox MCP: a ticket per case, a grant per ticket."""
 
-    def __init__(self, record, config: dict, tools: list[str], revalidate=None) -> None:
+    def __init__(self, record, config: dict, tools: list[str], revalidate=None, preflight_error=None) -> None:
         self.record, self.config, self.tools = record, config, sorted(set(tools))
         self.revalidate = revalidate
+        self.preflight_error = preflight_error
         self.run_id = "eval-" + uuid4().hex[:24]
         self.tickets: list[dict] = []
 
     async def prepare(self, count: int) -> None:
+        if self.preflight_error is not None:
+            raise self.preflight_error
         if self.revalidate is not None:
             self.record = await self.revalidate()
         client = self.record.client
@@ -140,16 +158,16 @@ async def eval_sandbox(storage, user_id: str, spec: AgentSpec) -> EvalSandbox | 
     if not configs:
         return None
     for mcp_id in dict.fromkeys(tool.mcp_id for tool in spec.tools):
-        from ._catalog_resources import resolve_catalog_resource
-
         async def revalidate(ident=mcp_id):
-            current = await resolve_catalog_resource(storage, user_id, "mcp", ident, permission="execute")
-            if current is None or not current.enabled:
-                raise RuntimeError("Sandbox MCP is no longer available")
-            return current
+            return await resolve_eval_mcp(storage, user_id, ident)
 
-        record = await revalidate()
-        if record is None or not record.enabled or not isinstance(record.client.mcp_config, HttpMCPConfig):
+        try:
+            record = await revalidate()
+        except EvalToolError as exc:
+            # Carry an unavailable connector into the report's environment
+            # preflight, rather than failing the HTTP request or grading a model.
+            return EvalSandbox(None, {}, [], preflight_error=exc)
+        if not isinstance(record.client.mcp_config, HttpMCPConfig):
             continue
         config = configs.get(record.client.mcp_config.url)
         if config:

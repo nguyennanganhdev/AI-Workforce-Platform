@@ -16,20 +16,31 @@ class _Storage:
         return list(self.credentials)
 
     async def upsert_credential(self, user_id, credential):
+        self.seeded_key = credential.api_key.get_secret_value()
         self.credentials.append(SimpleNamespace(id="cred-platform", data=credential.model_dump(mode="json")))
         return "cred-platform"
 
 
 class PlatformCredentialTest(unittest.IsolatedAsyncioTestCase):
-    async def test_shared_platform_key_is_never_seeded_into_user_credentials(self):
+    async def test_disabled_vin_keeps_legacy_platform_key_for_bql(self):
         from agentscope.app._router._workforce_console import _model_config
 
         storage = _Storage()
         with mock.patch.dict(os.environ, {"WORKFORCE_PLATFORM_OPENAI_API_KEY": "offline-sentinel-not-a-key", "VIN_PLATFORM_ENABLED": "false"}):
             for _ in range(2):
-                with self.assertRaises(HTTPException) as raised:
-                    await _model_config(storage, "bql-smart-city")
-                self.assertEqual(409, raised.exception.status_code)
+                config = await _model_config(storage, "bql-smart-city")
+                self.assertEqual("cred-platform", config.credential_id)
+        self.assertEqual(1, len(storage.credentials))
+        self.assertEqual("offline-sentinel-not-a-key", storage.seeded_key)
+
+    async def test_enabled_vin_never_seeds_legacy_key_when_authority_is_missing(self):
+        from agentscope.app._router._workforce_console import _model_config
+
+        storage = _Storage()
+        with mock.patch.dict(os.environ, {"WORKFORCE_PLATFORM_OPENAI_API_KEY": "offline-sentinel-not-a-key", "VIN_PLATFORM_ENABLED": "true"}):
+            with self.assertRaises(HTTPException) as raised:
+                await _model_config(storage, "resident-a")
+        self.assertEqual(503, raised.exception.status_code)
         self.assertEqual([], storage.credentials)
 
     async def test_without_a_platform_key_the_account_is_asked_for_a_credential(self):
@@ -68,7 +79,7 @@ class PlatformCredentialTest(unittest.IsolatedAsyncioTestCase):
         resources.platform_model_config = mock.AsyncMock(return_value=config)
         modules = {parent.__name__: parent, contracts.__name__: contracts, resources.__name__: resources}
         storage, authority = _Storage(), object()
-        with mock.patch.dict(sys.modules, modules):
+        with mock.patch.dict(sys.modules, modules), mock.patch.dict(os.environ, {"VIN_PLATFORM_ENABLED": "true"}):
             self.assertEqual(config, await _model_config(storage, "resident-a", authority=authority))
             resources.platform_model_config.assert_awaited_once_with(authority, "resident-a")
             for code in ("MODEL_NOT_ENTITLED", "QUOTA_EXCEEDED", "QUOTA_POLICY_REQUIRED"):

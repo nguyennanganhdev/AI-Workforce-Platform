@@ -5,12 +5,14 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
-from agentscope.app.channel import DiscordChannel, ChannelEvent
+from agentscope.app.channel import DiscordChannel, ChannelEvent, ChannelTypeRegistry
+from agentscope.app._service._channel import ChannelService
+from agentscope.app.channel._errors import ChannelError
 
 
-def channel(**config):
+def channel(*, private_account=False, **config):
     value = DiscordChannel("private-bot", DiscordChannel.Credentials(bot_token="offline-fixture", application_id="1"),
-        DiscordChannel.Config(**config))
+        DiscordChannel.Config(**config), private_account=private_account)
     value._emit = AsyncMock()
     value._client = SimpleNamespace(user=SimpleNamespace(id=999))
     return value
@@ -25,7 +27,7 @@ def message(user=100, *, guild=None, attachments=()):
 @pytest.mark.parametrize("allowed", [None, [], ["200"]])
 async def test_denied_user_never_downloads_or_emits(monkeypatch, allowed):
     monkeypatch.setenv("VIN_PLATFORM_ENABLED", "true")
-    value = channel(allowed_user_ids=allowed)
+    value = channel(private_account=True, allowed_user_ids=allowed)
     attachment = SimpleNamespace(read=AsyncMock())
     await value._on_message(message(attachments=[attachment]))
     attachment.read.assert_not_awaited()
@@ -55,10 +57,48 @@ def test_removed_users_cannot_approve_even_if_previously_requester_or_approver(m
     assert not value.may_decide("100", "100")
 
 
-def test_legacy_bot_compatibility_requires_flag_off_and_no_explicit_list(monkeypatch):
-    monkeypatch.setenv("VIN_PLATFORM_ENABLED", "false")
+@pytest.mark.parametrize("flag", ["false", "true"])
+def test_bot_privacy_uses_owner_and_explicit_list_independently_of_global_flag(monkeypatch, flag):
+    monkeypatch.setenv("VIN_PLATFORM_ENABLED", flag)
     assert channel().may_chat("100")
+    assert not channel(private_account=True).may_chat("100")
     assert not channel(allowed_user_ids=[]).may_chat("100")
+
+
+@pytest.mark.asyncio
+async def test_vin_enabled_bql_bot_without_list_still_answers_guild_mention(monkeypatch):
+    monkeypatch.setenv("VIN_PLATFORM_ENABLED", "true")
+    registry = ChannelTypeRegistry([DiscordChannel])
+    storage = SimpleNamespace(vin_platform_service=SimpleNamespace(context=AsyncMock(return_value=SimpleNamespace(role="AREA_MANAGER"))))
+    record = SimpleNamespace(channel_type="discord", id="bql-bot", user_id="manager", platform_config={},
+        credentials={"bot_token": "offline-fixture", "application_id": "1"})
+    value = await registry.create_for_record(storage, record)
+    value._emit = AsyncMock()
+    value._client = SimpleNamespace(user=SimpleNamespace(id=999))
+    inbound = message(guild=object())
+    inbound.mentions = [value._client.user]
+    inbound.content = "<@999> hello"
+    await value._on_message(inbound)
+    value._emit.assert_awaited_once()
+    assert value._emit.await_args.args[0].metadata["chat_type"] == "guild"
+    storage.vin_platform_service.context.return_value = SimpleNamespace(role="VIN_USER")
+    customer = await registry.create_for_record(storage, record)
+    assert customer.private_access_required and not customer.may_chat("100")
+
+
+@pytest.mark.asyncio
+async def test_customer_channel_creation_requires_owner_and_defaults_access_to_owner():
+    storage = SimpleNamespace(vin_platform_service=SimpleNamespace(context=AsyncMock(return_value=SimpleNamespace(role="VIN_USER"))))
+    service = ChannelService(storage, None, ChannelTypeRegistry([DiscordChannel]))
+    with pytest.raises(ChannelError) as missing:
+        await service._discord_config("alice", "discord", {}, creating=True)
+    assert missing.value.status_code == 400
+    config = await service._discord_config("alice", "discord", {"owner_user_id": "100"}, creating=True)
+    assert config["allowed_user_ids"] == config["approver_user_ids"] == ["100"]
+    with pytest.raises(ChannelError):
+        await service._discord_config("alice", "discord", {"owner_user_id": "100", "allowed_user_ids": []}, creating=True)
+    # An existing channel may deliberately block everyone.
+    assert (await service._discord_config("alice", "discord", {"allowed_user_ids": []}))["allowed_user_ids"] == []
 
 
 @pytest.mark.parametrize("ident", ["", "0", "abc", "1 2", "-1", "１", "1" * 21])

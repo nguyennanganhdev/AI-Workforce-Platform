@@ -81,7 +81,11 @@ export function toUpdateRequest(v: ChannelFormValue): UpdateChannelRequest {
 	};
 }
 
-export function isChannelFormValid(v: ChannelFormValue, mode: 'create' | 'edit'): boolean {
+export function isDiscordUserId(value: unknown): value is string {
+	return typeof value === 'string' && /^[0-9]{1,20}$/.test(value) && !/^0+$/.test(value);
+}
+
+export function isChannelFormValid(v: ChannelFormValue, mode: 'create' | 'edit', customer = false): boolean {
 	if (!v.name.trim()) return false;
 	if (!v.chatModelConfig) return false;
 	if (v.bindings.length === 0) return false;
@@ -89,5 +93,11 @@ export function isChannelFormValid(v: ChannelFormValue, mode: 'create' | 'edit')
 	if (mode === 'create' && !v.channelType) return false;
 	// An unfinished binding has no credentials to create the channel with.
 	if (mode === 'create' && v.credentialMode === 'binding' && !v.credentialBindingId) return false;
+	if (v.channelType === 'discord' && mode === 'create' && customer) {
+		const owner = v.platformConfig.owner_user_id;
+		const allowed = v.platformConfig.allowed_user_ids;
+		if (!isDiscordUserId(owner) || !Array.isArray(allowed) || !allowed.includes(owner)
+			|| allowed.length > 100 || !allowed.every(isDiscordUserId)) return false;
+	}
 	return true;
 }

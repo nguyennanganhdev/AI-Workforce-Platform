@@ -396,9 +396,9 @@ def tool_runner(storage: StorageBase, user_id: str, spec: AgentSpec):
         tool = by_name.get(name)
         if tool is None or name in ambiguous or tool.tool_id != f"{tool.mcp_id}:{name}":
             raise RuntimeError("Sandbox tool is not uniquely bound to the server catalog")
-        mcp_record = await resolve_catalog_resource(storage, user_id, "mcp", tool.mcp_id, permission="execute")
-        if mcp_record is None or not mcp_record.enabled:
-            raise RuntimeError(f"MCP {tool.mcp_id} unavailable")
+        from ._eval_sandbox import resolve_eval_mcp
+
+        mcp_record = await resolve_eval_mcp(storage, user_id, tool.mcp_id)
         # Fetch the current server record: the draft and the earlier eval
         # snapshot are not authority to execute an external tool.
         matches = [item for item in mcp_record.discovered_tools if item.get("name") == name]

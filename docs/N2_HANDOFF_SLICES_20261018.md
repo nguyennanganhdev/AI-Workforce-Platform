@@ -68,7 +68,7 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   Upsert hiện tại chỉ hỗ trợ mô hình một scheduler owner của PR #99; chưa có chứng minh exactly-once
   nhiều worker hoặc delivery retry. Không bật automation cho cohort production bằng slice này.
 
-## S03 — Consumer catalog MCP/Skill
+## S03 — Consumer catalog MCP/Skill — CHỜ TÍCH HỢP, chưa xong
 
 - Khai báo owner trước khi sửa: helper consumer mới `A/_service/_catalog_resources.py` và test
   `tests/workforce/console/test_shared_catalog_consumer.py` thuộc Người 2; không định nghĩa authority.
@@ -155,3 +155,31 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   load/security UAT/pilot/cutover. Giữ feature flag mặc định off, không rollout bằng kết quả offline.
 - U01–U30 **chưa được đánh dấu đạt tổng thể**. Các số test trên là offline/scripted hoặc browser fixture.
   Skip SQL concurrent runtime trong harness là gate PostgreSQL, không phải coverage SQL đã đạt.
+
+## R01 — Sửa review Người 2 ngày 18/10 (đang triển khai)
+
+- Worktree sạch trước rebase; backup `backup/vin-user2-before-review-rebase-20261018`.
+- Đã fetch/rebase lên `origin/dev_Chien@83e3e6d3`, không conflict; không sửa WIP Người 1.
+- Owner bổ sung: `channel/_registry.py`, `_clients.py`, `_dispatcher.py` theo lane channel runtime Người 2;
+  cập nhật nơi dựng instance để role chủ bot do server quyết định, không đọc flag toàn cục trong Discord.
+- C02/fixture chung và `vin_platform.enabled()` chưa có commit ở lần kiểm tra đầu (N1 HEAD `d6700de1`);
+  sẽ tích hợp commit đã chốt, không coi module overlay WIP là bản ghép hai branch đã đạt.
+- Đã sửa: Discord private theo role chủ bot do authority resolve hoặc allowlist explicit, không đọc env;
+  BQL không list vẫn nhận guild mention kể cả Vin bật. Khách tạo bot bắt buộc owner Discord ID,
+  mặc định allowlist/approver là owner; form giải thích danh sách đã lưu rỗng chặn hết. ID nhập chưa là verified identity.
+- `_model_config`: Vin tắt giữ compatibility key chung cũ cho BQL, không tạo thêm credential ở lần hai;
+  Vin bật bắt buộc resolver, thiếu authority không seed/fallback. Test chỉ dùng sentinel giả và không dựng SDK.
+- Eval disabled/revoked MCP dùng `EvalToolError(TOOL_UNAVAILABLE)` và report environment, không RuntimeError/HTTP fail;
+  bỏ kiểm tra None/disabled đã chết sau revalidate. Skill from-library kiểm enabled/approved trước decode archive.
+- Test độc lập Người 2 sau sửa: `--automation` **PASS 237 / SKIP 16 / FAIL 0 / ERROR 0**,
+  network attempt 0, paid model call 0. Các skip gồm browser chạy riêng và contract cần bản ghép;
+  kết quả này **không** đóng S03. Node form **PASS 2 / SKIP 0 / FAIL 0**; TypeScript/ESLint đạt.
+- Owner test mới `test_vin_review_regressions.py` theo eval/workspace lane Người 2.
+
+## R02 — Tích hợp C01/C02/C03 và fixture chung (đang kiểm tra)
+
+- Đã nhận commit Người 1: C01 `e67a56d9`, C02 `f5126e4b`, C03 `bb485b92`, fixture `dded5f66`.
+- Chuyển consumer từ auth DDL rút gọn sang `vin_fixtures.authority` + `seed_policy_catalog`;
+  không copy WIP của Người 1. Harness `--contracts-only` coi bất kỳ SKIP nào là gate fail.
+- `vin_platform.enabled()` chưa có trong các commit đã nhận; đã gửi yêu cầu bổ sung helper đúng owner,
+  không sửa package authority từ lane Người 2.

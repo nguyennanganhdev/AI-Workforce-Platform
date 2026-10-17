@@ -370,8 +370,8 @@ async def add_skills_from_library(
     failed: dict[str, str] = {}
     for skill_id in body.skill_ids:
         record = await resolve_catalog_resource(storage, user_id, "skill", skill_id)
-        if record is None:
-            failed[skill_id] = "Not in your library."
+        if record is None or not getattr(record, "enabled", True) or getattr(record, "review_status", "approved") != "approved":
+            failed[skill_id] = "Skill is disabled, unreviewed or no longer in your library."
             continue
         if getattr(record, "archive_base64", ""):
             from .._service._skill_packages import archive_bytes, byte_stream

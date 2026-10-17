@@ -14,7 +14,6 @@ needs shard coordination, which is out of scope here.
 import asyncio
 import base64
 import io
-import os
 from typing import AsyncIterator, Awaitable, Callable, TYPE_CHECKING
 
 from pydantic import BaseModel, Field, field_validator
@@ -62,6 +61,11 @@ class DiscordChannel(ChannelBase):
     class Config(BaseModel):
         """Discord platform options."""
 
+        owner_user_id: str | None = Field(
+            default=None,
+            title="Owner Discord user ID",
+            description="Discord ID of the account owner. Required when creating a customer bot.",
+        )
         allowed_user_ids: list[str] | None = Field(
             default=None,
             title="Allowed Discord user IDs",
@@ -103,6 +107,13 @@ class DiscordChannel(ChannelBase):
                 raise ValueError("Discord user IDs must be positive numeric strings (maximum 100).")
             return list(dict.fromkeys(values))
 
+        @field_validator("owner_user_id")
+        @classmethod
+        def validate_owner_id(cls, value):
+            if value is not None:
+                cls.validate_user_ids([value])
+            return value
+
     capabilities = ChannelCapability(
         text=True,
         markdown=True,
@@ -117,6 +128,8 @@ class DiscordChannel(ChannelBase):
         channel_id: str,
         credentials: "DiscordChannel.Credentials",
         config: "DiscordChannel.Config",
+        *,
+        private_account: bool = False,
     ) -> None:
         """Read the bot token and options from the validated models.
 
@@ -131,6 +144,7 @@ class DiscordChannel(ChannelBase):
         self._channel_id = channel_id
         self._bot_token = credentials.bot_token
         self._config = config
+        self._private_account = private_account
         self.status = ChannelStatus()
         self._client: "discord.Client | None" = None
         self._client_lock = asyncio.Lock()
@@ -577,8 +591,8 @@ class DiscordChannel(ChannelBase):
 
     @property
     def private_access_required(self) -> bool:
-        """Vin is private by default; explicit allowlists opt legacy bots in."""
-        return self._config.allowed_user_ids is not None or os.getenv("VIN_PLATFORM_ENABLED", "").lower() in {"true", "1", "yes"}
+        """The server-resolved owner or an explicit allowlist makes this bot private."""
+        return self._private_account or self._config.allowed_user_ids is not None
 
     def may_chat(self, user_id: str) -> bool:
         """Checked before attachment IO or emitting a model-triggering event."""
