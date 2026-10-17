@@ -40,6 +40,13 @@ class ScheduleOrigin(BaseModel):
     schedule_id: str
     """The schedule that created it."""
 
+    deliver_channel_id: str | None = None
+    """Channel the run's reply is posted to, with ``deliver_chat_id``;
+    ``None`` keeps the reply in the session only."""
+
+    deliver_chat_id: str | None = None
+    """The platform chat of ``deliver_channel_id`` to post into."""
+
 
 class ChannelOrigin(BaseModel):
     """A session an inbound platform message opened."""

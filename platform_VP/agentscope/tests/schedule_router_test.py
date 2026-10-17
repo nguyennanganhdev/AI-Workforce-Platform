@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tests for schedule validation before persistence and registration."""
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 
 from fastapi import HTTPException
@@ -25,8 +26,15 @@ from agentscope.permission import PermissionMode
 class _Access:
     """Allow all resources used by the route under test."""
 
-    async def resolve_agent(self, user_id: str, agent_id: str) -> None:
-        """Accept the requested agent."""
+    def __init__(self, lifecycle_state: str = "published") -> None:
+        self.lifecycle_state = lifecycle_state
+
+    async def resolve_agent(self, user_id: str, agent_id: str) -> SimpleNamespace:
+        """Accept the requested agent, published unless told otherwise."""
+        _ = user_id, agent_id
+        return SimpleNamespace(data=SimpleNamespace(
+            name="Agent", system_role="business", lifecycle_state=self.lifecycle_state,
+        ))
 
     async def get_resource(
         self,
@@ -315,6 +323,7 @@ class ScheduleValidationTest(IsolatedAsyncioTestCase):
                 user_id="user-1",
                 storage=storage,
                 scheduler=scheduler,
+                access=_Access(),
             )
 
         self.assertEqual(ctx.exception.status_code, 422)
@@ -334,6 +343,7 @@ class ScheduleValidationTest(IsolatedAsyncioTestCase):
                 user_id="user-1",
                 storage=storage,
                 scheduler=scheduler,
+                access=_Access(),
             )
 
         self.assertEqual(ctx.exception.status_code, 422)
@@ -399,3 +409,55 @@ class ScheduleValidationTest(IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(storage.upserted, [])
+
+
+class WorkforceScheduleRulesTest(IsolatedAsyncioTestCase):
+    """Unattended runs: published agents, no BYPASS, own result channel, one-time."""
+
+    async def _create(self, body, storage=None, access=None):
+        storage = storage or _Storage()
+        await create_schedule(body, user_id="user-1", storage=storage,
+                              access=access or _Access(), scheduler=_Scheduler())
+        return storage
+
+    async def test_a_draft_agent_cannot_run_on_a_schedule(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            await self._create(_request("0 8 * * *"), access=_Access("draft"))
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    async def test_bypass_is_refused_for_an_unattended_run(self) -> None:
+        body = _request("0 8 * * *").model_copy(update={"permission_mode": PermissionMode.BYPASS})
+        with self.assertRaises(HTTPException) as ctx:
+            await self._create(body)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    async def test_once_ends_right_after_its_next_fire(self) -> None:
+        soon = datetime.now().astimezone() + timedelta(days=2)
+        cron = f"{soon.minute} {soon.hour} {soon.day} {soon.month} *"
+        body = _request(cron).model_copy(update={"once": True})
+        storage = await self._create(body)
+        data = storage.upserted[0].data
+        self.assertTrue(data.once)
+        self.assertIsNotNone(data.ended_at)
+        self.assertLess(data.ended_at - data.started_at, timedelta(days=400))
+
+    async def test_result_channel_must_be_complete_and_owned(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            await self._create(_request("0 8 * * *").model_copy(update={"deliver_channel_id": "c1"}))
+        self.assertEqual(ctx.exception.status_code, 400)
+
+        class Channels(_Storage):
+            async def get_channel(self, channel_id):
+                return SimpleNamespace(user_id="someone-else")
+
+        body = _request("0 8 * * *").model_copy(update={"deliver_channel_id": "c1", "deliver_chat_id": "42"})
+        with self.assertRaises(HTTPException) as ctx:
+            await self._create(body, storage=Channels())
+        self.assertEqual(ctx.exception.status_code, 404)
+
+        class Own(_Storage):
+            async def get_channel(self, channel_id):
+                return SimpleNamespace(user_id="user-1")
+
+        stored = await self._create(body, storage=Own())
+        self.assertEqual((stored.upserted[0].data.deliver_channel_id, stored.upserted[0].data.deliver_chat_id), ("c1", "42"))

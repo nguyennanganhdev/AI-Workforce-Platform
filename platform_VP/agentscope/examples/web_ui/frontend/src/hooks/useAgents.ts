@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 import { agentApi } from '../api';
 import type { AgentView, CreateAgentRequest, UpdateAgentRequest } from '../api';
@@ -58,5 +58,13 @@ export function useAgents() {
 		[refetch],
 	);
 
-	return { agents, loading, error, refetch, create, update, remove };
+	// Stable between renders: effects may depend on it.
+	const runnable = useMemo(() => agents.filter(isRunnableAgent), [agents]);
+
+	return { agents, runnable, loading, error, refetch, create, update, remove };
+}
+
+/** Agents that may run unattended from a channel or schedule: the Leader or a published agent. */
+export function isRunnableAgent(agent: AgentView): boolean {
+	return agent.data.system_role === 'leader' || agent.data.lifecycle_state === 'published';
 }

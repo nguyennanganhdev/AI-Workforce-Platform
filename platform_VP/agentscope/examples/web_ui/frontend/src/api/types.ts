@@ -787,6 +787,12 @@ export interface ScheduleData {
 	permission_mode: PermissionMode;
 	source: ScheduleSource;
 	source_session_id: string;
+	once?: boolean;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
+	last_fired_at?: string | null;
+	last_session_id?: string;
+	last_error?: string;
 }
 
 export interface ScheduleRecord extends RecordBase {
@@ -805,6 +811,10 @@ export interface CreateScheduleRequest {
 	enabled?: boolean;
 	stateful?: boolean;
 	permission_mode?: PermissionMode;
+	once?: boolean;
+	ended_at?: string | null;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
 }
 
 export interface CreateScheduleResponse {

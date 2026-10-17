@@ -121,6 +121,16 @@ export function ScheduleDetailDrawer({
 			title: t('schedule.stateful'),
 			content: data.stateful ? t('common.yes') : t('common.no'),
 		},
+		{
+			title: 'Gửi kết quả vào',
+			content: data.deliver_channel_id ? `Kênh · ${data.deliver_chat_id}` : 'Phiên của agent',
+		},
+		{
+			title: 'Lần chạy gần nhất',
+			content: data.last_fired_at
+				? `${new Date(data.last_fired_at).toLocaleString()}${data.last_error ? ` · lỗi: ${data.last_error}` : ''}`
+				: 'Chưa chạy',
+		},
 	];
 
 	return (

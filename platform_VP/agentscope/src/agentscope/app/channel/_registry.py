@@ -115,11 +115,22 @@ class ChannelTypeRegistry:
                 f"Channel type '{channel_type}' is not registered; pass it "
                 f"to create_app(channels=[...]).",
             )
+        from ._secrets import open_credentials
+
         return channel_cls(
             channel_id,
-            channel_cls.Credentials(**credentials),
+            channel_cls.Credentials(**open_credentials(credentials)),
             channel_cls.Config(**config),
         )
+
+    def seal_credentials(self, channel_type: str, credentials: dict) -> dict:
+        """Encrypt the type's secret (``format: password``) fields for storage."""
+        from ._secrets import seal_credentials, secret_fields
+
+        channel_cls = self._classes.get(channel_type)
+        if channel_cls is None:
+            return dict(credentials)
+        return seal_credentials(credentials, secret_fields(channel_cls.Credentials))
 
     def schema_of(
         self,

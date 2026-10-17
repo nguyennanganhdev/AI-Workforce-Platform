@@ -30,6 +30,7 @@ from .._service import (
     CredentialBindingService,
 )
 from .._service._credential_binding import BindingView
+from .._service._runnable_agents import ensure_runnable
 from ..deps import (
     get_channel_clients,
     get_credential_binding_service,
@@ -143,9 +144,12 @@ async def create_channel(
     bindings: CredentialBindingService = Depends(
         get_credential_binding_service,
     ),
+    storage: StorageBase = Depends(get_storage),
     user_id: str = Depends(get_current_user_id),
 ) -> ChannelResponse:
     """Create a channel, from a completed binding or from the body."""
+    for binding in body.routing.bindings:
+        await ensure_runnable(storage, user_id, binding.agent_id)
     credentials = body.credentials
     if body.credential_binding_id:
         try:
@@ -258,6 +262,9 @@ async def update_channel(
             status.HTTP_400_BAD_REQUEST,
             "No fields to update.",
         )
+    if body.routing is not None:
+        for binding in body.routing.bindings:
+            await ensure_runnable(storage, user_id, binding.agent_id)
     try:
         record = await service.update(channel_id, updates)
     except ChannelError as e:
