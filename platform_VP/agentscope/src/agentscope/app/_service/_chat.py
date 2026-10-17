@@ -12,12 +12,13 @@ that wants them subscribes through the
 ``GET /sessions/{sid}/stream`` SSE endpoint.
 """
 
-from ...model._call_observer import usage_purpose
+from ...model._call_observer import usage_purpose, usage_scope
 
 import asyncio
 import inspect
 import json
 import os
+from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -504,13 +505,26 @@ class ChatService:
                 this turn, which gives it a submit tool.
         """
         try:
-            await self._run_impl(
-                user_id,
-                session_id,
-                agent_id,
-                input_msg,
-                sop_dispatch,
-            )
+            with ExitStack() as stack:
+                from ._catalog_resources import catalog_authority
+
+                authority = catalog_authority(self._storage)
+                if authority is not None:
+                    from ..vin_platform._context import execution_scope
+
+                    session = await self._storage.get_session(user_id, agent_id, session_id)
+                    origin = getattr(getattr(session, "origin", None), "type", "user")
+                    purpose = origin if origin in {"schedule", "channel"} else "chat"
+                    context = await authority.context(user_id, purpose=purpose)
+                    stack.enter_context(execution_scope(context))
+                    stack.enter_context(usage_scope(purpose=purpose))
+                await self._run_impl(
+                    user_id,
+                    session_id,
+                    agent_id,
+                    input_msg,
+                    sop_dispatch,
+                )
         except Exception as e:
             logger.exception(
                 "ChatService.run failed for user_id=%s session_id=%s "

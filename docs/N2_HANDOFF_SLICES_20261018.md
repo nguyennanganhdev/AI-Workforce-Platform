@@ -120,3 +120,38 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   ESLint và Vin-enabled build/TypeScript đạt. Chưa chạy model hoặc business sandbox thật.
 - Chờ C08 customer fixture/reset receipts, N1-07 sandbox và C03 integration hoàn thiện để
   nghiệm thu eval theo cư dân; giữ engine PR #99 và endpoint allowlist admin hiện có.
+
+## S06 — Execution scope cho chat/job
+
+- Theo handoff C03 của Người 1 tại `d6700de1`, dùng `vin_platform._context.execution_scope`
+  ở `ChatService.run`, điểm chung HTTP/wakeup/lịch/kênh. Không tạo SDK client/model gateway mới.
+- Test mới `tests/workforce/console/test_vin_runtime_attribution.py` thuộc Người 2 theo ChatService.
+  Context được authority dựng lại từ user hiện hành; purpose lấy origin session server, không lấy body.
+- Đã inject scope + usage attribution vào điểm chạy chung; context cha được khôi phục khi kết thúc/lỗi.
+  Hai run song song khác user giữ billing subject riêng. Vin enabled thiếu authority không vào runtime.
+- Harness có producer overlay: **409 passed, 13 skipped**, 0 network attempts, 0 paid model calls;
+  Ruff test mới và diff whitespace đạt. Browser bản build mới nhất chạy riêng **12/12**;
+  frontend C01 **8/8**, eval presentation/render **3/3**, client PR #99 **5/5**; ESLint/build đạt.
+- Đây là consumer attribution, không thay reserve/settle C03 và không chứng minh job exactly-once.
+
+## Yêu cầu tích hợp tiếp theo và gate còn mở
+
+- S01 `d19388dd`; S02 `984d4e81`; S03 `042ce76b`; S04 `dbc894f4`; S05 `f9d9cb34`.
+  S00/rebase `f650b325`; S06 xem commit đi kèm mục này. Tất cả local trên branch Người 2, chưa push/deploy.
+- Producer mới nhất đã thấy: `d6700de1` C03. Các sửa C02/C05/C07/C09 vẫn có WIP trong worktree Người 1;
+  test overlay chỉ lấy package `vin_platform`, **không** tích hợp storage/foundation/bootstrap WIP của Người 1.
+- **C02/N2-02**: chốt schema/version/artifact/tool allowlist, MCP/skill shared public projection và resolver;
+  kiểm tra alias model picker và KB upload/index/citation qua outbound guard sau khi tích hợp đầy đủ hai lane.
+- **C05/C06/C07/N2-03**: giao fixture/schema event có version, sequence/cursor/receipt, customer Leader session
+  binding và proof Domain `origin=platform` không start route/Leader BQL. Phần UI case/consent/timeline chưa hoàn tất.
+- **C09/N2-04/06/07**: `_jobs.py` mới của Người 1 đang phụ thuộc foundation/storage/migration WIP
+  (personal job owner). Cần commit DTO/method lifecycle, schema migration và bootstrap hook trước khi
+  consumer worker được mount. Chưa có batch stage/activate/repair cursor, logical-run worker, lease/heartbeat,
+  outbox delivery retry, verified Discord owner mặc định và secret-reference binding chạy end-to-end.
+- **N2-08**: catalog read-only UI đã có; quota admin theo nhóm/người, thư viện KB Vin và usage limit/remaining
+  còn chờ API/fixture producer hoàn thiện và chưa nghiệm thu.
+- **C08/N2-05**: nhãn UI/revalidation có; customer sandbox fixture/grant/reset/cleanup receipts còn chờ.
+- **C10/N2-09A/N2-10/N2-09B**: chưa có migration/config manifest đã ký; chưa RC rehearsal/restore,
+  load/security UAT/pilot/cutover. Giữ feature flag mặc định off, không rollout bằng kết quả offline.
+- U01–U30 **chưa được đánh dấu đạt tổng thể**. Các số test trên là offline/scripted hoặc browser fixture.
+  Skip SQL concurrent runtime trong harness là gate PostgreSQL, không phải coverage SQL đã đạt.
