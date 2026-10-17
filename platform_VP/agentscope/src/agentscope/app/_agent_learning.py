@@ -39,6 +39,7 @@ from ._service._agent_studio import (
     tool_catalog,
     tool_runner,
 )
+from ._service._eval_sandbox import eval_sandbox
 from .storage import StorageBase
 
 ModelFactory = Callable[[], Awaitable[tuple[ChatModelBase, ChatModelBase]]]
@@ -311,6 +312,7 @@ class AgentLearningService:
             judge_model=strong_model,
             discovered=await tool_catalog(self._storage, user_id),
             run_tool=tool_runner(self._storage, user_id, candidate),
+            sandbox=await eval_sandbox(self._storage, user_id, candidate),
         )
         baseline = float((agent.data.evaluation or {}).get("pass_rate") or (agent.data.evaluation or {}).get("score") or 0.0)
         if not report["publishable"] or report["pass_rate"] < baseline:

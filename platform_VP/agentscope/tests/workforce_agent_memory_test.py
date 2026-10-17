@@ -209,7 +209,7 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
         spec = AgentSpec(
             name="Kỹ thuật",
             tests=[
-                SpecTest(scenario=f"Kịch bản {i}", expected="Hướng dẫn an toàn", safety_critical=i == 0) for i in range(3)
+                SpecTest(scenario=f"Kịch bản {i}", expected="Hướng dẫn an toàn", safety_critical=i == 0) for i in range(5)
             ],
         )
         self.agents.agents["agent-1"] = AgentRecord(

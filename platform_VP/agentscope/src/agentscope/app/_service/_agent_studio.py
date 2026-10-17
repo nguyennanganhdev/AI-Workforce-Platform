@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from ..._logging import logger
 from ...mcp import MCPClient
-from ...message import TextBlock, UserMsg
+from ...message import UserMsg
 from ...model import ChatModelBase
 from .._agent_spec import (
     AgentSpec,
@@ -39,7 +39,7 @@ from .._agent_spec import (
 from .._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY, governed_system_prompt
 from ..storage import AgentRecord, InviteConfig, StorageBase
 from ._publish_gate import publication_blocker
-from ._agent_eval import catalog_allows_read, tool_result_error
+from ._agent_eval import catalog_allows_read
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -391,34 +391,10 @@ def tool_runner(storage: StorageBase, user_id: str, spec: AgentSpec):
             or name in (mcp_record.client.confirm_tools or [])
         ):
             raise RuntimeError("Sandbox only executes server-classified read-only tools without consent")
+        from ._eval_sandbox import call_tool
+
         client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
-        try:
-            if client.is_stateful:
-                await client.connect()
-            mcp_tool = await client.get_tool(name)
-            # get_tool refreshes the provider descriptor on this isolated
-            # client. Refuse revoked/unknown classification before invoking it.
-            if getattr(mcp_tool, "is_read_only", False) is not True:
-                raise RuntimeError("Sandbox tool classification changed or requires confirmation")
-            result = await mcp_tool(**arguments)
-            content = getattr(result, "content", result)
-            if isinstance(content, list):
-                output = "\n".join(
-                    block.text if isinstance(block, TextBlock) else json.dumps(
-                        getattr(block, "model_dump", lambda **_: str(block))(mode="json"),
-                        ensure_ascii=False,
-                    )
-                    for block in content
-                )
-            else:
-                output = str(content)
-            error = tool_result_error(output, failed=str(getattr(result, "state", "success")) in {"error", "denied", "interrupted"})
-            if error:
-                raise error
-            return output
-        finally:
-            if client.is_stateful and client.is_connected:
-                await client.close()
+        return await call_tool(client, name, arguments, require_read_only=True)
 
     return run
 
@@ -476,7 +452,7 @@ How to work:
   (procedures, prices, policies), and a SKILL from the SKILL LIBRARY when it fits
   a task of the agent; say why in use_for / use_when. Only use listed ids.
 - When creating an agent from a description, also fill name, description,
-  goal, audience and tone, and add 3-5 tests (scenario + expected behaviour)
+  goal, audience and tone, and keep at least 5 tests (scenario + expected behaviour)
   that cover the rules, an out-of-scope request and a case needing consent.
   Mark consent/privacy/safety cases safety_critical=true; at least one is required.
 - When the manager asks to improve tests, add tests; do not weaken rules.

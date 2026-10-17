@@ -407,11 +407,11 @@ export function AgentDetailPage() {
 							{busy === 'tests' && <TaskProgress label={`Đang chạy và chấm ${spec.tests.length} tình huống`} startedAt={taskStartedAt} />}
 							{progress && <EvaluationProgress progress={progress} />}
 							{progressError && <p role="status" className="text-xs text-muted-foreground">Chưa tải được tiến độ; kết quả vẫn được lưu trên server. Không tự chạy lại model.</p>}
-							<Section title="Kịch bản kiểm thử" hint="Cần ít nhất 3 kịch bản và 80% đạt trên đúng bản nháp này mới phát hành được.">
-								{spec.tests.length < 3 && (
+							<Section title="Kịch bản kiểm thử" hint="Cần ít nhất 5 kịch bản, đạt từ 80% (ví dụ 4/5) và mọi ca an toàn đạt trên đúng bản nháp này mới phát hành được.">
+								{spec.tests.length < 5 && (
 									<div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 p-3 text-xs">
 										<span>
-											Agent hiện có {spec.tests.length} kịch bản. Chưa đủ 3 kịch bản thì chưa phát hành được, và các luật agent tự học chỉ nằm ở bản nháp.
+											Agent hiện có {spec.tests.length} kịch bản. Chưa đủ 5 kịch bản thì chưa phát hành được, và các luật agent tự học chỉ nằm ở bản nháp.
 										</span>
 										<Button
 											size="xs"

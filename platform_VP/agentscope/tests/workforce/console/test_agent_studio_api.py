@@ -217,7 +217,7 @@ def test_template_agent_lifecycle_test_publish_copilot_rollback(env) -> None:
     assert saved.status_code == 200
 
     report = client.post(f"{BASE}/agents/{agent_id}/tests/run").json()
-    assert report["total"] == 3 and report["publishable"] is True
+    assert report["total"] == 5 and report["publishable"] is True
 
     published = client.post(f"{BASE}/agents/{agent_id}/publish", json={"note": "v1"})
     assert published.status_code == 200, published.text
@@ -307,7 +307,7 @@ def test_a_description_can_become_a_tested_team(env) -> None:
     }
     model.copilot_operations = [
         {"op": "add", "field": "tests", "value": {"scenario": f"Tình huống {i}", "expected": "Làm đúng vai", "safety_critical": i == 0}}
-        for i in range(3)
+        for i in range(5)
     ]
     composed = client.post(
         f"{BASE}/agents/compose",
@@ -378,9 +378,9 @@ def test_a_model_without_credit_is_reported_not_scored(env) -> None:
     detail = client.get(f"{BASE}/agents/{agent_id}").json()
 
     assert report["publishable"] is False
-    assert report["errors"] == report["total"] == 3
+    assert report["errors"] == report["total"] == 5
     assert "hết credit" in report["model_error"]
-    assert detail["publish_blocker"].startswith("Chưa kiểm thử được 3/3 kịch bản: Tài khoản model hết credit")
+    assert detail["publish_blocker"].startswith("Chưa kiểm thử được 5/5 kịch bản: Tài khoản model hết credit")
 
 
 def test_activity_sums_each_agents_replies_and_tokens(env) -> None:
