@@ -93,6 +93,7 @@ function CaseCard({ item, refresh }: { item: CustomerCase; refresh: () => Promis
 		{item.work_orders?.map((work) => <p key={work.id} className="text-sm">Công việc: {work.status}{work.scheduled_at ? ` · ${new Date(work.scheduled_at).toLocaleString('vi-VN')}` : ''}</p>)}
 		{item.resolution && <div className="space-y-2"><h4 className="text-sm font-medium">Kết quả từ bộ phận xử lý</h4><p className="text-sm whitespace-pre-wrap">{item.resolution.summary}</p>
 			{item.resolution.photos.map((photo) => <EvidencePhoto key={photo.id} photo={photo} />)}</div>}
+		{!item.resolution && item.result_photos && item.result_photos.length > 0 && <div className="space-y-2"><h4 className="text-sm font-medium">Ảnh kết quả từ bộ phận xử lý</h4>{item.result_photos.map((photo) => <EvidencePhoto key={photo.id} photo={photo} />)}</div>}
 		<ol className="space-y-2 border-l pl-3 text-sm" aria-label="Tiến độ yêu cầu">{events.map((event) => <li key={event.id}>
 			<p>{event.label}</p><time className="text-xs text-muted-foreground">{new Date(event.at).toLocaleString('vi-VN')}</time>{event.note && <p>{event.note}</p>}
 		</li>)}</ol>

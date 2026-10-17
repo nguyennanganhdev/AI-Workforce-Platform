@@ -50,7 +50,7 @@ def test_admin_policy_override_inactive_catalog_grants_memberships_and_library(j
             page.get_by_role('button', name='Quota & thư viện Vin', exact=True).click()
             policies = page.get_by_role('region', name='Chính sách đã lưu', exact=True)
             policies.get_by_role('button', name='Trang sau', exact=True).click()
-            expect(policies.get_by_text('user:page-10', exact=False)).to_be_visible()
+            expect(policies.get_by_role('button', name='Gỡ ghi đè user:page-10', exact=True)).to_be_visible()
             page.get_by_label('Loại đối tượng', exact=True).select_option('user')
             page.get_by_label('ID đối tượng', exact=True).fill('alice')
             page.get_by_role('button', name='Đọc chính sách', exact=True).click()
@@ -270,10 +270,6 @@ def link_resident(page, journey):
     page.goto(journey.url + "/connections")
     page.get_by_role("button", name="Liên kết Vinhomes", exact=True).click()
     page.locator('button[name="decision"][value="allow"]').click()
-    page.wait_for_timeout(800)
-    from pathlib import Path
-    folder = Path('.artifacts/vin-journey')
-    (folder / 'link-debug.txt').write_text(page.url + '\n' + page.locator('body').inner_text() + '\n' + repr(journey.browser_calls), encoding='utf-8')
     page.get_by_role("button", name="Hoàn tất liên kết", exact=True).click()
     expect(page.get_by_role("button", name="Thu hồi liên kết", exact=True)).to_be_visible()
 
@@ -381,22 +377,35 @@ def test_customer_leader_staff_photo_final_click_and_revoke(journey, monkeypatch
             domain_case = current["data"]["domain"]
             ticket_id = domain_case["tickets"][0]["id"]
             assert journey.model_calls and not journey.decisions
-            photo_id = staff_complete(journey, domain_case["id"], ticket_id)
             page.get_by_test_id("customer-cases").locator("summary").click()
-            page.get_by_role("button", name="Tải lại tiến độ", exact=True).click()
-            expect(page.get_by_text("Offline repair verified by staff", exact=True)).to_be_visible()
-            expect(page.get_by_test_id("customer-case").locator("img")).to_have_count(1)
-            expect(page.get_by_test_id("customer-case").locator("img")).to_be_visible()
-            assert any(path.endswith("/photos/" + photo_id) for _, path in journey.domain_calls)
-            page.get_by_role("button", name="Xác nhận hoàn tất", exact=True).click()
-            expect(page.get_by_role("dialog")).to_be_visible()
-            assert not journey.decisions
-            page.get_by_role("button", name="Quay lại", exact=True).click()
-            assert not journey.decisions
-            page.get_by_role("button", name="Xác nhận hoàn tất", exact=True).click()
-            page.get_by_role("button", name="Xác nhận gửi quyết định", exact=True).click()
-            expect(page.get_by_text("Dịch vụ đã ghi nhận quyết định của bạn.", exact=True)).to_be_visible()
-            assert len(journey.decisions) == 1 and journey.decisions[0]["action"] == "confirm"
+            workflow = staff_complete(journey, domain_case['id'], ticket_id)
+            try:
+                for index, (stage, photo_id) in enumerate(workflow):
+                    page.get_by_role("button", name="Tải lại tiến độ", exact=True).click()
+                    approve = page.get_by_role('button', name='Đồng ý', exact=True)
+                    expect(approve).to_be_visible()
+                    if stage == 'completion':
+                        expect(page.get_by_test_id('customer-case').locator('img')).to_have_count(1)
+                        expect(page.get_by_test_id('customer-case').locator('img')).to_be_visible()
+                        assert any(path.endswith('/photos/' + photo_id) for _, path in journey.domain_calls)
+                    approve.click()
+                    expect(page.get_by_role('dialog')).to_be_visible()
+                    assert len(journey.decisions) == index
+                    page.get_by_role('button', name='Quay lại', exact=True).click()
+                    assert len(journey.decisions) == index
+                    approve.click()
+                    page.get_by_role('dialog').locator('textarea').fill('Tôi đã xem nội dung và đồng ý bản hiện tại.')
+                    with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith('/decisions')) as response:
+                        page.get_by_role('button', name='Xác nhận gửi quyết định', exact=True).click()
+                    assert response.value.status == 200, response.value.text()
+                    assert len(journey.decisions) == index + 1
+                    exact = response.value.request.post_data_json
+                    jwt = login(journey)
+                    replay = journey.client.post('/service-cases/' + case_id + '/decisions', json=exact, headers={'Authorization': 'Bearer ' + jwt})
+                    assert replay.status_code == 200 and replay.json() == response.value.json()
+            finally:
+                workflow.close()
+            assert len(journey.decisions) == 2 and all(item['action'] == 'work-approval' for item in journey.decisions)
             assert sql(journey.database, "SELECT count(*) AS n FROM platform_commands WHERE ticket_id=$1", UUID(ticket_id))[0]["n"] == 0
             assert sql(journey.database, "SELECT status FROM vh_resident_cases WHERE id=$1", UUID(domain_case["id"]))[0]["status"] == "completed"
             assert not any("ticket-grants" in path for _, path in journey.browser_calls)

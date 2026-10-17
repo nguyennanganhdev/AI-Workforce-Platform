@@ -117,8 +117,8 @@ def decision_actions(domain):
             actions.append({"action": "confirm", "label": "Xác nhận hoàn tất", "payload": {"resolutionRevision": revision}})
         if permissions.get("canRequestRework"):
             actions.append({"action": "reopen", "label": "Yêu cầu làm lại", "payload": {"resolutionRevision": revision}, "requires_note": True})
-    # C07 does not yet expose an approval revision. Do not guess it from a
-    # ticket/case version; the Domain must supply it before offering a button.
+    # C07 supplies the exact version expected by Domain approval decisions
+    # (its ticket version). Never substitute the outer case version.
     for item in domain.get("pending_decisions", []):
         if item.get("status") == "pending" and isinstance(item.get("version"), int):
             for approved, label in ((True, "Đồng ý"), (False, "Từ chối")):

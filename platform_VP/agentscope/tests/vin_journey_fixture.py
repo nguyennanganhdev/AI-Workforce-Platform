@@ -41,7 +41,7 @@ PASSWORD = "Offline-journey-password-20261018"
 @pytest.fixture
 def journey(database, tmp_path, monkeypatch, request):
     from test_account_administration import door
-    from test_platform_customers import register, CLIENT, SECRET, REDIRECT
+    from test_platform_customers import register, CLIENT, SECRET
 
     monkeypatch.setenv("VIN_PLATFORM_ENABLED", "true")
     monkeypatch.setenv("VIN_PLATFORM_ENCRYPTION_KEY", Fernet.generate_key().decode())
@@ -109,6 +109,13 @@ def journey(database, tmp_path, monkeypatch, request):
         enable_scheduler=False, enable_channel_worker=False, enable_index_worker=False)
     state = SimpleNamespace(domain_calls=[], browser_calls=[], decisions=[], forbidden=[], model_calls=[], deliveries=[],
         storage=storage, manager=manager, app=app, database=database, client=None, domain=None)
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    request.addfinalizer(listener.close)
+    state.url = "http://127.0.0.1:" + str(listener.getsockname()[1])
+    from test_resident_contract import sql, TENANT
+    redirect = state.url + '/connections/callback/vinhomes'
+    sql(database, 'UPDATE platform_customer_clients SET redirect_uri=$1 WHERE tenant_id=$2 AND client_id=$3', redirect, TENANT, CLIENT)
     with door(database) as domain:
         state.domain = domain
 
@@ -135,7 +142,7 @@ def journey(database, tmp_path, monkeypatch, request):
                 await DomainAdapter(authority).configure(admin, DomainProvider(id="vinhomes", issuer="https://domain.invalid",
                     client_id=CLIENT, authorization_url="https://domain.invalid/platform/link/authorize",
                     token_url="https://domain.invalid/platform/link/token", api_base_url="https://domain.invalid/platform/customer",
-                    redirect_uri=REDIRECT, client_secret_ref=secret, active=True))
+                    redirect_uri=redirect, client_secret_ref=secret, active=True))
             client.portal.call(configure)
             class SpaFiles(StaticFiles):
                 async def get_response(self, path, scope):
@@ -161,9 +168,6 @@ def journey(database, tmp_path, monkeypatch, request):
                     return await app(inner, receive, proxy_send)
                 return await files(scope, receive, send)
 
-            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            listener.bind(("127.0.0.1", 0))
-            state.url = "http://127.0.0.1:" + str(listener.getsockname()[1])
             server = uvicorn.Server(uvicorn.Config(site, lifespan="off", log_level="error"))
             server_task = client.portal.start_task_soon(server.serve, [listener])
 
@@ -201,7 +205,6 @@ def browser_bridge(page, journey):
             response = journey.domain.request(request.method, request.url,
                 headers={"content-type": request.headers.get("content-type", "")}, content=request.post_data_buffer,
                 follow_redirects=False)
-            Path('.artifacts/vin-journey/domain-browser-debug.txt').write_text(request.method + ' ' + request.url + '\n' + str(response.status_code) + '\n' + str(dict(response.headers)) + '\n' + response.text, encoding='utf-8')
         elif parsed.netloc == "platform.invalid" and parsed.path == "/connections/callback/vinhomes":
             route.fulfill(status=302, headers={"location": base_url + parsed.path + "?" + parsed.query})
             return
@@ -239,11 +242,9 @@ def evidence(journey, name, page):
 
 
 def staff_complete(journey, case_id, ticket_id):
-    """Use existing Domain staff/resident business APIs, including QC and photos."""
+    """Yield for the two real Platform UI consents; never inject workflow SQL."""
     from datetime import datetime, timedelta, timezone
-    from uuid import uuid4
-    from test_resident_contract import BASE, OPS, CATEGORY, client, image
-    headers = lambda: {"Idempotency-Key": str(uuid4())}
+    from test_resident_contract import CATEGORY, client, image
 
     def ok(response, status=200):
         assert response.status_code == status, response.text
@@ -251,18 +252,8 @@ def staff_complete(journey, case_id, ticket_id):
 
     with client(journey.database, "management") as staff:
         ticket = ok(staff.get("/tickets/" + ticket_id))["ticket"]
-        plan = ok(staff.post("/tickets/" + ticket_id + "/plans", json={"title": "Offline repair and verify",
-            "ticket_version": ticket["version"], "idempotency_key": str(uuid4()),
-            "steps": [{"category_id": CATEGORY, "description": "Repair leak"}]}), 201)
-        ok(staff.post("/plans/" + plan["id"] + "/management-decision", json={"version": plan["version"], "decision": "approve", "note": "Fixture staff review"}))
-    # C07 plan decisions are a producer gate. Until its projection is handed
-    # over, this step uses the existing Domain resident endpoint explicitly.
-    with client(journey.database) as resident:
-        plan = ok(resident.get(BASE + "/requests/" + case_id + "/plans"))["items"][0]
-        ok(resident.post(BASE + "/requests/" + case_id + "/plans/" + plan["id"] + "/decision",
-            json={"expectedVersion": plan["version"], "decision": "approve", "note": "Offline resident review"}, headers=headers()))
-    with client(journey.database, "management") as staff:
-        work = ok(staff.get("/tickets/" + ticket_id))["workOrders"][0]
+        work = ok(staff.post('/tickets/' + ticket_id + '/work-orders', json={'category_id': CATEGORY,
+            'required_specialty_id': CATEGORY, 'description': 'Offline repair leak', 'ticket_version': ticket['version']}), 201)
         worker = next(item for item in ok(staff.get("/catalogs"))["staff"] if item["user_id"] == "local-v3-technical")
         assignment = ok(staff.post("/work-orders/" + work["id"] + "/assignments", json={"staff_id": worker["id"],
             "offer_expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(), "work_order_version": work["version"]}), 201)
@@ -270,10 +261,18 @@ def staff_complete(journey, case_id, ticket_id):
             ok(executor.post("/assignments/" + assignment["id"] + "/response", json={"status": "accepted",
                 "eta_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()}))
         work = ok(staff.get("/work-orders/" + work["id"]))["workOrder"]
-        for target in ("en_route", "arrived", "in_progress"):
+        for target in ("en_route", "arrived"):
             with client(journey.database, "technical") as executor:
                 work = ok(executor.patch("/work-orders/" + work["id"] + "/status",
                     json={"version": work["version"], "status": target, "note": "Offline workflow step"}))
+        with client(journey.database, 'technical') as executor:
+            ok(executor.post('/work-orders/' + work['id'] + '/repair-proposal', json={'version': work['version'],
+                'note': 'Offline replace faucet seal', 'labor_cost': 0, 'warranty_months': 1,
+                'lines': [{'name': 'Fixture seal', 'quantity': '1', 'unit': 'piece', 'unit_price': 0}]}), 201)
+        yield 'repair', None
+        work = ok(staff.get('/work-orders/' + work['id']))['workOrder']
+        with client(journey.database, 'technical') as executor:
+            work = ok(executor.patch('/work-orders/' + work['id'] + '/status', json={'version': work['version'], 'status': 'in_progress', 'note': 'Approved repair begins'}))
         for purpose in ("before", "after"):
             photo = ok(staff.post("/tickets/" + ticket_id + "/files", content=image(),
                 headers={"Content-Type": "application/octet-stream"},
@@ -284,7 +283,4 @@ def staff_complete(journey, case_id, ticket_id):
         with client(journey.database, "technical") as executor:
             ok(executor.patch("/work-orders/" + work["id"] + "/status", json={"version": work["version"], "status": "completed", "note": "Repair complete"}))
         ok(staff.post("/work-orders/" + work["id"] + "/qc", json={"outcome": "pass", "criteria": [{"name": "No leak", "passed": True}]}), 201)
-        current = ok(staff.get(OPS + "/" + case_id))["request"]
-        ok(staff.post(OPS + "/" + case_id + "/resolution", json={"expectedVersion": current["version"],
-            "summary": "Offline repair verified by staff", "photoIds": [photo["fileId"]]}, headers=headers()), 201)
-    return photo["fileId"]
+        yield 'completion', photo['fileId']

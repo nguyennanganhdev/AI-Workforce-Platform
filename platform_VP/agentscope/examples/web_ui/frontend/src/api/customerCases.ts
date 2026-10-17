@@ -19,6 +19,7 @@ export interface CustomerCase {
 	next_action: string | null;
 	error?: string;
 	resolution?: { summary: string; photos: { id: string; name: string; url: string }[] };
+	result_photos?: { id: string; name: string; url: string }[];
 	pending_decisions?: { id: string; kind: string; status: string; request_detail: unknown }[];
 	work_orders?: { id: string; status: string; scheduled_at: string | null }[];
 	events: { id: string; sequence: number; at: string; label: string; note?: string }[];
