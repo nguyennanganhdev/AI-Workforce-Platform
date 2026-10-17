@@ -1,6 +1,17 @@
 name: agentscope
 
 services:
+  web:
+    build:
+      context: ./examples/web_ui
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+
   app:
     build:
       context: .
