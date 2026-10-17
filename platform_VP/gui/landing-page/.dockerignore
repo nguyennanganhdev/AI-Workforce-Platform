@@ -1,0 +1,28 @@
+# The build context is an allowlist. Runtime env, keys and repo history stay out.
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!index.html
+!vite.config.ts
+!tsconfig.json
+!postcss.config.mjs
+!src/
+!src/**
+!components/
+!components/**
+!lib/
+!lib/**
+!scripts/
+!scripts/prerender.mjs
+!public/
+!public/**
+!deploy/
+!deploy/container-nginx.conf
+# Even an accidentally placed credential inside a source/public folder stays out.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*secret*
+**/*credential*
