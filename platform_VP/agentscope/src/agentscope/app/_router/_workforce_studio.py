@@ -245,6 +245,7 @@ async def _create_record(
     user_id: str,
     spec: AgentSpec,
 ) -> AgentRecord:
+    config = await _model_config(storage, user_id)
     record = AgentRecord(
         user_id=user_id,
         data=AgentData(
@@ -272,7 +273,7 @@ async def _create_record(
         config=SessionConfig(
             workspace_id=workspace_id,
             name="Agent Studio primary session",
-            chat_model_config=await _model_config(storage, user_id),
+            chat_model_config=config,
         ),
     )
     return record
