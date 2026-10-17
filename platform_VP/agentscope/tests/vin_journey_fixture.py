@@ -104,7 +104,11 @@ def journey(database, tmp_path, monkeypatch, request):
     asyncio.run(initialize())
     storage = AsyncSQLAlchemyStorage(url)
     manager = LocalWorkspaceManager(str(tmp_path / "workspace"))
+    from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
+    from agentscope.rag import QdrantStore
+    knowledge = CollectionPerKbManager(storage=storage, vector_store=QdrantStore(path=str(tmp_path / 'qdrant')))
     app = create_app(storage=storage, message_bus=InMemoryMessageBus(), workspace_manager=manager,
+        knowledge_base_manager=knowledge,
         auth_service=auth, vin_platform_enabled=True, channels=[DiscordChannel],
         enable_scheduler=False, enable_channel_worker=False, enable_index_worker=False)
     state = SimpleNamespace(domain_calls=[], browser_calls=[], decisions=[], forbidden=[], model_calls=[], deliveries=[],

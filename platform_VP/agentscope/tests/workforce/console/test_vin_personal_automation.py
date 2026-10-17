@@ -204,6 +204,10 @@ async def test_worker_cancels_on_lost_heartbeat_without_outbox(automation, monke
     from agentscope.app.vin_platform._jobs import PersonalJobs
     heartbeat = PersonalJobs.heartbeat
     async def lost(jobs, job, worker_id, **kwargs):
+        # Synchronize the fault with the operation we intend to cancel. Under
+        # load the first 10ms tick can precede context_for(), which otherwise
+        # tests startup scheduling rather than cancellation of an active run.
+        await asyncio.wait_for(started.wait(), timeout=5)
         async with jobs.authority.engine.begin() as db:
             await db.execute(update(durable_jobs).where(durable_jobs.c.id == job.job_id).values(fencing_token=job.fencing_token + 1))
         return await heartbeat(jobs, job, worker_id, **kwargs)

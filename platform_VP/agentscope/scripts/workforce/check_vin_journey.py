@@ -3,10 +3,14 @@
 import argparse
 import asyncio
 import json
+import hashlib
 import os
 from pathlib import Path
+import shutil
 import socket
+import subprocess
 import sys
+import tempfile
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 import xml.etree.ElementTree as ET
@@ -90,8 +94,21 @@ def main():
 
     folder = root / ".artifacts/vin-journey"
     folder.mkdir(parents=True, exist_ok=True)
-    asyncio.run(provision())
+    # A build may run in another terminal. Pin a private copy so every browser
+    # case sees one coherent bundle and records the exact asset provenance.
+    frozen = tempfile.TemporaryDirectory(prefix='vin-n2-web-')
+    snapshot = Path(frozen.name) / 'dist'
+    shutil.copytree(ui_dir, snapshot)
+    os.environ['VIN_UI_DIST'] = str(snapshot)
+    provenance = {'source_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
+        'dirty_paths': subprocess.check_output(['git', 'status', '--porcelain'], cwd=root, text=True).splitlines(),
+        'assets': {path.relative_to(snapshot).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(snapshot.rglob('*')) if path.is_file()}}
+    (folder / 'provenance.json').write_text(json.dumps(provenance, indent=2), encoding='utf-8')
+    created = False
     try:
+        asyncio.run(provision())
+        created = True
         selection = 'customer and http-link' if options.scenario == 'customer-runtime' else options.scenario
         result = pytest.main(["tests/vin_journey_browser_test.py", *(["-k", selection] if selection else []), "-q", "--tb=short", "-p", "no:cacheprovider", "-o", "faulthandler_timeout=45",
             f"--junitxml={folder / 'pytest.xml'}"])
@@ -102,7 +119,11 @@ def main():
         print(json.dumps(summary))
         return result or int(bool(forbidden) or summary["skipped"] != 0)
     finally:
-        asyncio.run(cleanup())
+        try:
+            if created:
+                asyncio.run(cleanup())
+        finally:
+            frozen.cleanup()
 
 
 if __name__ == "__main__":

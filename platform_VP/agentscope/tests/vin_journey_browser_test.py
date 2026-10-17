@@ -9,7 +9,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(not os.getenv("VIN_UI_DIST"), reason="Run the disposable journey runner with a Vin frontend build")
 
-from test_resident_contract import database as database, sql  # noqa: E402,F401
+from test_resident_contract import database as database  # noqa: E402,F401
 from vin_journey_fixture import journey as journey, browser_bridge, login, evidence, staff_complete  # noqa: E402,F401
 
 
@@ -338,6 +338,7 @@ def test_customer_leader_staff_photo_final_click_and_revoke(journey, monkeypatch
                 description="Voi nuoc bep ro lien tuc, vui long tao yeu cau sua.", location="Bep duoi bon rua", category_id=CATEGORY)
             page.goto(journey.url + "/workforce/leader")
             editor = page.locator("textarea").last
+            expect(editor).to_have_attribute('placeholder', 'Trao đổi với Leader hoặc @agent của bạn…')
             editor.fill(command["description"])
             editor.press("Enter")
             # Actual chat runtime executes CustomerService; wait for its SQL
@@ -406,8 +407,16 @@ def test_customer_leader_staff_photo_final_click_and_revoke(journey, monkeypatch
             finally:
                 workflow.close()
             assert len(journey.decisions) == 2 and all(item['action'] == 'work-approval' for item in journey.decisions)
-            assert sql(journey.database, "SELECT count(*) AS n FROM platform_commands WHERE ticket_id=$1", UUID(ticket_id))[0]["n"] == 0
-            assert sql(journey.database, "SELECT status FROM vh_resident_cases WHERE id=$1", UUID(domain_case["id"]))[0]["status"] == "completed"
+            async def verify_persisted_closure():
+                import asyncpg
+                db = await asyncpg.connect(journey.database['admin'])
+                try:
+                    assert await db.fetchval('SELECT count(*) FROM platform_commands WHERE ticket_id=$1', UUID(ticket_id)) == 0
+                    assert await db.fetchval('SELECT status FROM vh_resident_cases WHERE id=$1', UUID(domain_case['id'])) == 'completed'
+                finally:
+                    await db.close()
+            journey.client.portal.call(verify_persisted_closure)
+            expect(page.get_by_test_id('customer-case').get_by_text('Hoàn tất', exact=True)).to_be_visible()
             assert not any("ticket-grants" in path for _, path in journey.browser_calls)
             evidence(journey, "customer-completed", page)
             page.goto(journey.url + "/connections")
