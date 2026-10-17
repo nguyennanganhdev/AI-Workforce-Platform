@@ -2,9 +2,11 @@ import type { PermissionContext } from '@agentscope-ai/agentscope/permission';
 import type { TaskContext } from '@agentscope-ai/agentscope/state';
 import {
 	BookText,
+	Building2,
 	ChevronDown,
 	Database,
 	ListTodo,
+	MessageSquareText,
 	PanelRight,
 	ShieldCheck,
 	UsersRound,
@@ -15,6 +17,7 @@ import type {
 	ChatModelConfig,
 	PermissionMode,
 	SessionKnowledgeConfig,
+	TeamDetailResponse,
 	TTSModelConfig,
 	UpdateSessionRequest,
 } from '@/api';
@@ -34,6 +37,7 @@ import { KnowledgeBaseParametersPopover } from '@/components/popover/KnowledgeBa
 import { ModelParametersPopover } from '@/components/popover/ModelParametersPopover';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { PermissionModeSelect } from '@/components/select/PermissionModeSelect.tsx';
+import { MeetingRoomView } from '@/components/team/MeetingRoomView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,6 +57,7 @@ import { useKnowledgeBaseMiddlewareSchema } from '@/hooks/useKnowledgeBaseMiddle
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
 import { useMessages } from '@/hooks/useMessages';
 import { useSessions } from '@/hooks/useSessions';
+import { useTeamActivity, type TeamActivityParticipant } from '@/hooks/useTeamActivity';
 import { useWorkspace } from '@/hooks/useWorkspace.ts';
 import { useWorkspaceStatus } from '@/hooks/useWorkspaceStatus';
 import { useTranslation } from '@/i18n/useI18n';
@@ -85,6 +90,28 @@ const MAX_PANELS_PER_COLUMN = 2;
 
 /** localStorage key holding the dock layout across page navigations. */
 const PANEL_LAYOUT_KEY = 'chat_panel_layout';
+
+const buildTeamParticipants = (team: TeamDetailResponse | null): TeamActivityParticipant[] => {
+	if (!team) return [];
+	const participants: TeamActivityParticipant[] = [];
+	if (team.leader_agent) {
+		participants.push({
+			agentId: team.leader_agent.id,
+			sessionId: team.team.session_id,
+			name: team.leader_agent.data.name,
+			role: 'leader',
+		});
+	}
+	for (const member of team.members) {
+		participants.push({
+			agentId: member.agent.id,
+			sessionId: member.session_id,
+			name: member.agent.data.name,
+			role: 'member',
+		});
+	}
+	return participants;
+};
 
 // Typed as a full Record so adding a PanelKey without listing it here
 // is a compile error rather than a silently unrestorable panel.
@@ -197,10 +224,15 @@ export function ChatViewport({
 	// panels stacked top→bottom. Open order determines placement.
 	// Persisted so leaving and returning to /chat keeps the same panels.
 	const [panelLayout, setPanelLayout] = useState<PanelKey[][]>(loadPanelLayout);
+	const [teamView, setTeamView] = useState<'chat' | 'office'>('chat');
 
 	useEffect(() => {
 		localStorage.setItem(PANEL_LAYOUT_KEY, JSON.stringify(panelLayout));
 	}, [panelLayout]);
+
+	useEffect(() => {
+		setTeamView('chat');
+	}, [sessionId]);
 
 	// When the viewport agent differs from the outer page's selected
 	// agent (i.e. user drilled into a team member), `refetchSessions`
@@ -304,6 +336,20 @@ export function ChatViewport({
 	const isPanelOpen = useCallback(
 		(key: PanelKey) => panelLayout.some((column) => column.includes(key)),
 		[panelLayout],
+	);
+	const teamParticipants = useMemo(
+		() => buildTeamParticipants(view?.team ?? null),
+		[view?.team],
+	);
+	const observeTeam = teamView === 'office' || isPanelOpen('team');
+	const observedTeamParticipants = useMemo(
+		() => (observeTeam ? teamParticipants : []),
+		[observeTeam, teamParticipants],
+	);
+	const { runtimeBySession, activities } = useTeamActivity(observedTeamParticipants);
+	const latestUserMessageId = useMemo(
+		() => [...msgs].reverse().find((message) => message.role === 'user')?.id ?? null,
+		[msgs],
 	);
 
 	/**
@@ -498,7 +544,14 @@ export function ChatViewport({
 					</span>
 				),
 				icon: <UsersRound className="size-4" />,
-				content: <TeamPanel team={view?.team ?? null} currentSessionId={sessionId} />,
+				content: (
+					<TeamPanel
+						team={view?.team ?? null}
+						currentSessionId={sessionId}
+						runtimeBySession={runtimeBySession}
+						activities={activities}
+					/>
+				),
 			},
 		}),
 		[
@@ -522,6 +575,8 @@ export function ChatViewport({
 			handleKnowledgeConfigChange,
 			sessionId,
 			view,
+			runtimeBySession,
+			activities,
 		],
 	);
 
@@ -756,7 +811,28 @@ export function ChatViewport({
 							<div className="flex flex-row gap-x-2 justify-between">
 								<div className="flex min-w-0 flex-row items-center gap-x-1">
 									<SidebarTrigger className="md:hidden" />
-									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Chat chung của team</Badge>}
+									{isTeamChat ? (
+										<div className="flex shrink-0 items-center rounded-lg bg-muted p-0.5">
+											<Button
+												variant={teamView === 'chat' ? 'secondary' : 'ghost'}
+												size="sm"
+												className="h-7 gap-1.5 px-2.5 text-xs"
+												onClick={() => setTeamView('chat')}
+											>
+												<MessageSquareText className="size-3.5" />
+												{t('meetingRoom.chatTab')}
+											</Button>
+											<Button
+												variant={teamView === 'office' ? 'secondary' : 'ghost'}
+												size="sm"
+												className="h-7 gap-1.5 px-2.5 text-xs"
+												onClick={() => setTeamView('office')}
+											>
+												<Building2 className="size-3.5" />
+												{t('meetingRoom.officeTab')}
+											</Button>
+										</div>
+									) : null}
 									{/* The open session, named opposite its own
 									    settings. The sidebar is the only other
 									    place the name appears, and it collapses
@@ -878,6 +954,17 @@ export function ChatViewport({
 								</div>
 							</div>
 							<div className="flex flex-1 justify-center min-h-0 overflow-hidden relative [--chat-content-w:48rem]">
+								{isTeamChat && teamView === 'office' && view?.team ? (
+									<MeetingRoomView
+										team={view.team}
+										participants={teamParticipants}
+										runtimeBySession={runtimeBySession}
+										activities={activities}
+										latestUserMessageId={latestUserMessageId}
+										phase={phase}
+										visible
+									/>
+								) : (
 								<ChatContent
 									className={'max-w-[var(--chat-content-w)] w-full'}
 									msgs={msgs}
@@ -973,6 +1060,7 @@ export function ChatViewport({
 										};
 									}}
 								/>
+								)}
 							</div>
 						</div>
 					</ResizablePanel>

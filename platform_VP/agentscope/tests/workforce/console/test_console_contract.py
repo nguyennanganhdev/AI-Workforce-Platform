@@ -1,9 +1,12 @@
 """Focused contract tests for the Workforce Builder console."""
 
+import asyncio
 import inspect
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
+
+from fastapi import HTTPException
 
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._router._schema import MCPView
@@ -21,6 +24,7 @@ from agentscope.app._router._workforce_console import (
     ProposalView,
     _agent_tool_settings,
     _builder_contract_digest,
+    _builder_session,
     _claim_exclusive_tool_ids,
     _compile_skill_body,
     _compile_system_prompt,
@@ -33,11 +37,14 @@ from agentscope.app._router._workforce_console import (
     _legacy_duplicate_candidates,
     _normalise_skill,
     _outline,
+    _outline_issues,
     _replace_agent_session_knowledge,
     _replace_agent_workspace_mcps,
+    _resolve_outline_reuse_candidate,
     _resolve_reuse_candidate,
     _resolve_selected_knowledge_bases,
     _resolve_selected_tools,
+    _reused_outline_view,
     _reused_proposal_view,
     _select_model_name,
     _similarity,
@@ -52,6 +59,10 @@ from agentscope.app._workforce_policy import (
 from agentscope.app.storage import AgentData, AgentRecord, ChatModelConfig, MCPRecord
 from agentscope.mcp import HttpMCPConfig, MCPClient
 from agentscope.message import AssistantMsg
+from scripts.backfill_builder_contracts import (
+    _canonical_contract,
+    _synthesised_contract,
+)
 
 
 def _generated_agent(
@@ -194,6 +205,47 @@ def _published_agent_record(agent: GeneratedAgent) -> AgentRecord:
             builder_contract=agent.behavior_contract.model_dump(mode="json"),
             evaluation={"passed": True, "contract_compiled": True},
         ),
+    )
+
+
+def test_backfill_treats_an_incompatible_contract_as_legacy() -> None:
+    record = _published_agent_record(_generated_agent())
+
+    assert _canonical_contract(record) is not None
+    record.data.builder_contract = {"legacy_schema": True}
+    assert _canonical_contract(record) is None
+
+
+def test_backfilled_agent_reuses_natural_request_when_scope_and_tools_match() -> None:
+    agent = _generated_agent(
+        execution_mode="tool_backed",
+        request_modes=("advice", "lookup", "action"),
+        selected_tool_ids=["travel:search_hotels", "travel:book_hotel"],
+    )
+    record = _published_agent_record(agent)
+    record.data.name = "Agent khách sạn"
+    record.data.build_description = "Tìm và đặt khách sạn phù hợp"
+    contract = _synthesised_contract(record)
+    record.data.builder_contract = contract.model_dump(mode="json")
+    record.data.evaluation[_BUILDER_BACKFILL_KEY] = {
+        "contract_sha256": _builder_contract_digest(contract),
+        "system_prompt_sha256": _text_digest(record.data.system_prompt),
+        "generated_skill_sha256": _text_digest(record.data.generated_skill),
+    }
+    planned = PlannedAgent(
+        name="Agent tìm và đặt khách sạn",
+        objective="Tìm và đặt khách sạn phù hợp",
+        required_capabilities=["search hotels", "book hotel"],
+        request_modes=["advice", "lookup", "action"],
+        effect="external_operation",
+        suggested_tool_ids=["travel:search_hotels", "travel:book_hotel"],
+    )
+
+    assert _existing_agent_covers(
+        planned,
+        record,
+        {"travel:search_hotels", "travel:book_hotel"},
+        set(),
     )
 
 
@@ -420,7 +472,7 @@ def test_semantic_validation_enforces_the_approved_outline() -> None:
 
 
 class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
-    async def test_generate_repairs_new_cross_field_error_on_second_pass(self) -> None:
+    async def test_generate_stops_after_exactly_one_repair(self) -> None:
         repaired = _generated_agent()
         repaired_generation = BuilderGeneration(agents=[repaired])
         invalid = repaired_generation.model_dump(mode="json")
@@ -441,7 +493,6 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
                 self.outputs = [
                     invalid,
                     invalid_tracking,
-                    repaired_generation.model_dump(mode="json"),
                 ]
                 self.calls = 0
                 self.messages = []
@@ -458,35 +509,30 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
                 return SimpleNamespace(content=output)
 
         model = _Model()
-        generation, _tokens, _reserve = await _generate(
-            "Tạo agent tư vấn",
-            _approved_outline_for(repaired),
-            [],
-            [],
-            model,  # type: ignore[arg-type]
-            ChatModelConfig(
-                type="openai_credential",
-                credential_id="credential-1",
-                model="gpt-4.1",
-                parameters={},
-            ),
-        )
+        with self.assertRaises(HTTPException):
+            await _generate(
+                "Tạo agent tư vấn",
+                _approved_outline_for(repaired),
+                [],
+                [],
+                model,  # type: ignore[arg-type]
+                ChatModelConfig(
+                    type="openai_credential",
+                    credential_id="credential-1",
+                    model="gpt-4.1",
+                    parameters={},
+                ),
+            )
 
-        self.assertEqual(3, model.calls)
+        self.assertEqual(2, model.calls)
         self.assertIn(
             "Approved outline (authoritative JSON)",
             str(model.messages[0][0].content),
         )
         self.assertIn(repaired.name, str(model.messages[0][0].content))
-        capability = generation.agents[0].behavior_contract.requirement.capabilities[0]
-        self.assertEqual("recommend", capability.capability)
         self.assertIn(
             "capabilities must belong to the business profile",
             str(model.messages[1][-1].content),
-        )
-        self.assertIn(
-            "tracking requires an external-operation capability",
-            str(model.messages[2][-1].content),
         )
 
     async def test_generate_repairs_invalid_contract_once(self) -> None:
@@ -557,8 +603,244 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
             ),
         )
 
+    async def test_generate_runs_three_agents_concurrently(self) -> None:
+        agents = [_generated_agent(name=f"Agent {index}") for index in range(4)]
+
+        class _Model:
+            context_size = 100_000
+
+            def __init__(self):
+                self.active = 0
+                self.peak = 0
+
+            async def count_tokens(self, messages, tools):
+                del messages, tools
+                return 100
+
+            async def generate_structured_output(self, messages, schema):
+                del schema
+                content = str(messages[0].content)
+                agent = next(item for item in agents if item.name in content)
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+                await asyncio.sleep(0.01)
+                self.active -= 1
+                return SimpleNamespace(
+                    content=BuilderGeneration(agents=[agent]).model_dump(mode="json"),
+                )
+
+        model = _Model()
+        generation, _tokens, _reserve = await _generate(
+            "Tạo bốn agent",
+            _approved_outline_for(*agents),
+            [],
+            [],
+            model,  # type: ignore[arg-type]
+            ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4.1-mini",
+                parameters={},
+            ),
+        )
+
+        self.assertEqual(3, model.peak)
+        self.assertEqual(
+            [agent.name for agent in agents],
+            [agent.name for agent in generation.agents],
+        )
+
+    async def test_generate_repairs_only_the_invalid_agent(self) -> None:
+        action = _generated_agent(
+            name="Agent Hành Động",
+            request_modes=("action",),
+            execution_mode="tool_backed",
+            selected_tool_ids=["service:act"],
+        )
+        invalid_action = _generated_agent(
+            name="Agent Hành Động",
+            request_modes=("action",),
+        )
+        advisor = _generated_agent(name="Agent Tư Vấn")
+
+        class _Model:
+            context_size = 100_000
+
+            def __init__(self):
+                self.calls = {action.name: 0, advisor.name: 0}
+
+            async def count_tokens(self, messages, tools):
+                del messages, tools
+                return 100
+
+            async def generate_structured_output(self, messages, schema):
+                del schema
+                content = str(messages[0].content)
+                selected = action if action.name in content else advisor
+                self.calls[selected.name] += 1
+                output = (
+                    invalid_action
+                    if selected is action and self.calls[selected.name] == 1
+                    else selected
+                )
+                return SimpleNamespace(
+                    content=BuilderGeneration(agents=[output]).model_dump(mode="json"),
+                )
+
+        model = _Model()
+        progress_events: list[tuple[str, int, int]] = []
+
+        async def progress(stage, completed, total):
+            progress_events.append((stage, completed, total))
+
+        generation, _tokens, _reserve = await _generate(
+            "Tạo agent tư vấn và hành động",
+            _approved_outline_for(action, advisor),
+            [
+                BuilderTool(
+                    id="service:act",
+                    mcp_id="service",
+                    mcp_name="Service",
+                    tool_name="act",
+                ),
+            ],
+            [],
+            model,  # type: ignore[arg-type]
+            ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4.1-mini",
+                parameters={},
+            ),
+            progress,
+        )
+
+        self.assertEqual({action.name: 2, advisor.name: 1}, model.calls)
+        self.assertEqual(
+            [action.name, advisor.name],
+            [agent.name for agent in generation.agents],
+        )
+        self.assertIn(("repairing", 0, 2), progress_events)
+        self.assertEqual(("validating", 2, 2), progress_events[-1])
+
+
+class TestBuilderModelSelection(IsolatedAsyncioTestCase):
+    async def test_builder_session_uses_builder_model_without_changing_runtime(
+        self,
+    ) -> None:
+        runtime_config = ChatModelConfig(
+            type="openai_credential",
+            credential_id="runtime-credential",
+            model="gpt-4.1",
+            parameters={},
+        )
+        builder_config = ChatModelConfig(
+            type="openai_credential",
+            credential_id="builder-credential",
+            model="gpt-4.1-mini",
+            parameters={},
+        )
+        storage = SimpleNamespace(upsert_session=AsyncMock(return_value=object()))
+
+        await _builder_session(
+            storage,
+            "user-1",
+            PrepareRequest(
+                message="Tạo một agent",
+                chat_model_config=runtime_config,
+                builder_chat_model_config=builder_config,
+            ),
+        )
+
+        saved_config = storage.upsert_session.await_args.kwargs["config"]
+        self.assertEqual(builder_config, saved_config.chat_model_config)
+        self.assertEqual(runtime_config.model, "gpt-4.1")
+
 
 class TestBuilderReuseOutline(IsolatedAsyncioTestCase):
+    def test_outline_schema_requires_capability_mode_and_effect(self) -> None:
+        required = set(PlannedAgent.model_json_schema()["required"])
+
+        self.assertTrue(
+            {"required_capabilities", "request_modes", "effect"}.issubset(required),
+        )
+
+    async def test_outline_repairs_action_without_a_tool_once(self) -> None:
+        invalid = BuilderOutline(
+            agents=[
+                PlannedAgent(
+                    name="Agent hành động",
+                    objective="Tra cứu và thực hiện thao tác bên ngoài.",
+                    required_capabilities=["execute"],
+                    request_modes=["lookup", "action"],
+                    effect="read",
+                ),
+            ],
+        )
+        valid = BuilderOutline(
+            agents=[
+                PlannedAgent(
+                    name="Agent hành động",
+                    objective="Tra cứu và thực hiện thao tác bên ngoài.",
+                    required_capabilities=["execute"],
+                    request_modes=["lookup", "action"],
+                    effect="external_operation",
+                    suggested_tool_ids=["service:execute"],
+                ),
+            ],
+        )
+        tools = [
+            BuilderTool(
+                id="service:execute",
+                mcp_id="service",
+                mcp_name="Service",
+                tool_name="execute",
+            ),
+        ]
+
+        class _Model:
+            context_size = 100_000
+
+            def __init__(self):
+                self.outputs = [invalid, valid]
+                self.messages = []
+
+            async def count_tokens(self, messages, tools):
+                del messages, tools
+                return 100
+
+            async def generate_structured_output(self, messages, schema):
+                assert isinstance(schema, dict)
+                self.messages.append(messages)
+                return SimpleNamespace(
+                    content=self.outputs[len(self.messages) - 1].model_dump(
+                        mode="json",
+                    ),
+                )
+
+        model = _Model()
+        outline, _tokens, _reserve = await _outline(
+            "Tạo agent có thể tra cứu và thực hiện thao tác",
+            tools,
+            [],
+            [],
+            model,  # type: ignore[arg-type]
+            ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4.1-mini",
+                parameters={},
+            ),
+        )
+
+        self.assertEqual(2, len(model.messages))
+        self.assertEqual(["service:execute"], outline.agents[0].suggested_tool_ids)
+        self.assertIn(
+            "action yêu cầu effect=external_operation",
+            str(model.messages[1][-1].content),
+        )
+        self.assertEqual([], _outline_issues(outline, tools, []))
+
     async def test_outline_receives_compact_existing_agent_catalog(self) -> None:
         existing_agent = _generated_agent(name="Agent hiện có")
         record = _published_agent_record(existing_agent)
@@ -695,11 +977,34 @@ def test_reuse_accepts_a_narrower_tool_subset_only_with_contract_coverage() -> N
     assert {tool.id for tool in reused_view.selected_tools} == available
     assert reused_view.evaluation["reused"] is True
 
+    outline_view = _reused_outline_view(record, tools, [])
+    assert outline_view.reuse_agent_id == record.id
+    assert outline_view.objective == (
+        existing_agent.behavior_contract.requirement.business_profile.objective
+    )
+    assert {tool.id for tool in outline_view.suggested_tools} == available
+    assert outline_view.required_capabilities == ["recommend"]
+
     record.data.builder_contract = {}
     assert not _existing_agent_covers(planned, record, available, set())
     assert _legacy_duplicate_candidates(planned, [record], available, set()) == [
         record,
     ]
+
+
+def test_outline_reuse_falls_back_when_model_selects_the_wrong_agent_id() -> None:
+    existing_agent = _generated_agent(name="Agent hiện có")
+    record = _published_agent_record(existing_agent)
+    planned = PlannedAgent(
+        name="Agent cần dùng",
+        objective=existing_agent.behavior_contract.requirement.business_profile.objective,
+        required_capabilities=["recommend"],
+        request_modes=["advice", "lookup"],
+        effect="read",
+        reuse_agent_id="model-selected-the-wrong-id",
+    )
+
+    assert _resolve_outline_reuse_candidate(planned, [record], set(), set()) is record
 
 
 def test_workforce_model_default_does_not_depend_on_card_order() -> None:
@@ -752,10 +1057,19 @@ def test_builder_outline_keeps_team_capabilities_separate() -> None:
     outline = BuilderOutline.model_validate(
         {
             "agents": [
-                {"name": "Plan Agent", "objective": "Lập kế hoạch chuyến đi"},
+                {
+                    "name": "Plan Agent",
+                    "objective": "Lập kế hoạch chuyến đi",
+                    "required_capabilities": ["plan"],
+                    "request_modes": ["advice"],
+                    "effect": "read",
+                },
                 {
                     "name": "Hotel Agent",
                     "objective": "Tìm và đặt khách sạn",
+                    "required_capabilities": ["search", "book"],
+                    "request_modes": ["lookup", "action"],
+                    "effect": "external_operation",
                     "suggested_tool_ids": ["travel:search_hotels"],
                 },
             ],
@@ -1080,6 +1394,12 @@ def test_builder_proposal_round_trips_through_persisted_message() -> None:
             model="gpt-4o-mini",
             parameters={},
         ),
+        builder_chat_model_config=ChatModelConfig(
+            type="openai_credential",
+            credential_id="builder-credential-1",
+            model="gpt-4.1-mini",
+            parameters={},
+        ),
         fixed_config={},
     )
     message = AssistantMsg(
@@ -1095,8 +1415,8 @@ def test_builder_proposal_round_trips_through_persisted_message() -> None:
     assert restored is not None
     assert restored.conversation_id == "builder-conversation-1"
     assert restored.status == "needs_input"
+    assert restored.chat_model_config.model == "gpt-4o-mini"
+    assert restored.builder_chat_model_config is not None
+    assert restored.builder_chat_model_config.model == "gpt-4.1-mini"
     assert restored.planned_agents[0].suggested_tools[0].id == "travel:plan"
-    assert (
-        restored.planned_agents[0].suggested_knowledge_bases[0].id
-        == "travel-policy"
-    )
+    assert restored.planned_agents[0].suggested_knowledge_bases[0].id == "travel-policy"

@@ -21,6 +21,7 @@ import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
 import { AgentSelect } from '@/components/select/AgentSelect';
+import { AgentCharacterAvatar } from '@/components/team/AgentCharacterAvatar';
 import { ChatTourController } from '@/components/tour/ChatTourController';
 import { Button } from '@/components/ui/button';
 import {
@@ -331,7 +332,7 @@ const ChatPageInner = () => {
 																{/* Wider right gutter than the stock
 															    pr-8: the badge holds a mono timestamp. */}
 																<SidebarMenuButton
-																	className="text-muted-foreground hover:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-16"
+																	className="h-14 gap-2.5 rounded-xl px-2 text-muted-foreground hover:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-16"
 																	isActive={
 																		urlSessionId === session.id
 																	}
@@ -342,12 +343,29 @@ const ChatPageInner = () => {
 																		setOpenMobile(false);
 																	}}
 																>
-																	{showSourceIcons && (
-																		<SourceIcon />
-																	)}
-																	<span className="truncate">
-																		{session.config.name ||
-																			session.id}
+																	<span className="relative size-9 shrink-0">
+																		<AgentCharacterAvatar
+																			role={view.team ? 'leader' : 'member'}
+																			active={urlSessionId === session.id}
+																			className="size-9"
+																		/>
+																		{showSourceIcons ? (
+																			<span className="absolute -right-1 -bottom-0.5 grid size-4 place-items-center rounded-full border border-background bg-card shadow-sm">
+																				<SourceIcon className="size-2.5" />
+																			</span>
+																		) : null}
+																	</span>
+																	<span className="min-w-0 flex-1">
+																		<span className="block truncate font-medium text-foreground">
+																			{session.config.name || session.id}
+																		</span>
+																		<span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+																			{view.team
+																				? view.team.members
+																					.map((member) => member.agent.data.name)
+																					.join(', ') || t('common.team')
+																				: selectedAgent?.data.name}
+																		</span>
 																	</span>
 																</SidebarMenuButton>
 																{/* Badge and action are mutually exclusive.
@@ -421,7 +439,7 @@ const ChatPageInner = () => {
 														return (
 															<SidebarMenuItem key={session.id}>
 																<SidebarMenuButton
-																	className="text-muted-foreground hover:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-16"
+																	className="h-14 gap-2.5 rounded-xl px-2 text-muted-foreground hover:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-16"
 																	isActive={
 																		urlSessionId === session.id
 																	}
@@ -432,12 +450,29 @@ const ChatPageInner = () => {
 																		setOpenMobile(false);
 																	}}
 																>
-																	{showSourceIcons && (
-																		<SourceIcon />
-																	)}
-																	<span className="truncate">
-																		{session.config.name ||
-																			session.id}
+																	<span className="relative size-9 shrink-0">
+																		<AgentCharacterAvatar
+																			role={view.team ? 'leader' : 'member'}
+																			active={urlSessionId === session.id}
+																			className="size-9"
+																		/>
+																		{showSourceIcons ? (
+																			<span className="absolute -right-1 -bottom-0.5 grid size-4 place-items-center rounded-full border border-background bg-card shadow-sm">
+																				<SourceIcon className="size-2.5" />
+																			</span>
+																		) : null}
+																	</span>
+																	<span className="min-w-0 flex-1">
+																		<span className="block truncate font-medium text-foreground">
+																			{session.config.name || session.id}
+																		</span>
+																		<span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+																			{view.team
+																				? view.team.members
+																					.map((member) => member.agent.data.name)
+																					.join(', ') || t('common.team')
+																				: selectedAgent?.data.name}
+																		</span>
 																	</span>
 																</SidebarMenuButton>
 																<SidebarMenuBadge className="max-md:hidden group-hover/menu-item:hidden group-has-focus-visible/menu-item:hidden group-has-data-[state=open]/menu-item:hidden text-text-tertiary! font-mono">

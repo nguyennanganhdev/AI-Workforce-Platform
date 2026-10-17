@@ -57,6 +57,7 @@ export interface BuilderProposal {
 	planned_agents: PlannedAgent[];
 	agents: ProposedAgent[];
 	chat_model_config: ChatModelConfig;
+	builder_chat_model_config: ChatModelConfig | null;
 	fixed_config: {
 		ownership: string;
 		context_config: Record<string, unknown>;
@@ -81,6 +82,13 @@ export interface BuilderConversation {
 	title: string;
 	messages: BuilderMessage[];
 	proposal: BuilderProposal | null;
+	progress: BuilderProgress | null;
+}
+
+export interface BuilderProgress {
+	stage: 'generating' | 'validating' | 'repairing';
+	completed: number;
+	total: number;
 }
 
 export interface WorkforceAgent {
@@ -116,12 +124,14 @@ export const workforceApi = {
 	prepare: (
 		message: string,
 		chatModelConfig: ChatModelConfig,
+		builderChatModelConfig: ChatModelConfig | null,
 		conversationId: string | null,
 		confirmOutline = false,
 	) =>
 		client.post<BuilderProposal>('/workforce/console/builder/prepare', {
 			message,
 			chat_model_config: chatModelConfig,
+			builder_chat_model_config: builderChatModelConfig,
 			conversation_id: conversationId,
 			confirm_outline: confirmOutline,
 		}),
@@ -146,9 +156,11 @@ export const workforceApi = {
 		}),
 	listBuilderConversations: () =>
 		client.get<BuilderConversationSummary[]>('/workforce/console/builder/conversations'),
-	getBuilderConversation: (conversationId: string) =>
+	getBuilderConversation: (conversationId: string, silent = false) =>
 		client.get<BuilderConversation>(
 			`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}`,
+			undefined,
+			{ silent },
 		),
 	deleteBuilderConversation: (conversationId: string) =>
 		client.delete(

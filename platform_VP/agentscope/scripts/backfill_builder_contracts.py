@@ -15,6 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 from agentscope.app._router._workforce_console import (
     _BUILDER_BACKFILL_KEY,
@@ -83,12 +84,20 @@ def _capability_key(value: str) -> str:
     return value[:120] + ":" + _text_digest(value)[:32]
 
 
+def _canonical_contract(record: AgentRecord) -> AgentBehaviorContract | None:
+    if not record.data.builder_contract:
+        return None
+    try:
+        return AgentBehaviorContract.model_validate(record.data.builder_contract)
+    except ValidationError:
+        return None
+
+
 def _synthesised_contract(record: AgentRecord) -> AgentBehaviorContract:
     tool_ids = sorted(_tool_ids(record))
-    capabilities = [
-        _capability_key(f"tool:{tool_id}")
-        for tool_id in tool_ids
-    ] or [_capability_key(f"legacy-agent:{record.id}")]
+    capabilities = [_capability_key(f"tool:{tool_id}") for tool_id in tool_ids] or [
+        _capability_key(f"legacy-agent:{record.id}")
+    ]
     objective = record.data.build_description.strip() or record.data.name
     action_terms = ("đặt", "booking", "hủy", "mua", "thanh toán")
     supports_action = bool(tool_ids) and any(
@@ -283,10 +292,7 @@ async def _user_ids(storage: RedisStorage, selected: list[str]) -> list[str]:
     client = storage.get_client()
     keys = client.scan_iter(match=f"{_USER_INDEX_PREFIX}*{_USER_INDEX_SUFFIX}")
     return sorted(
-        {
-            key[len(_USER_INDEX_PREFIX) : -len(_USER_INDEX_SUFFIX)]
-            async for key in keys
-        },
+        {key[len(_USER_INDEX_PREFIX) : -len(_USER_INDEX_SUFFIX)] async for key in keys},
     )
 
 
@@ -348,7 +354,7 @@ async def _run(
             for item in proposals:
                 by_name[item.name].append(item)
             for record in await storage.list_agents(user_id):
-                if record.data.builder_contract:
+                if _canonical_contract(record) is not None:
                     if _BUILDER_BACKFILL_KEY in record.data.evaluation:
                         if not _verify_backfill(record):
                             raise RuntimeError(
@@ -360,9 +366,7 @@ async def _run(
                     continue
                 scanned += 1
                 candidates = [
-                    item
-                    for item in by_name[record.data.name]
-                    if _matches(record, item)
+                    item for item in by_name[record.data.name] if _matches(record, item)
                 ]
                 unique = {_contract_key(item): item for item in candidates}
                 if len(unique) > 1:

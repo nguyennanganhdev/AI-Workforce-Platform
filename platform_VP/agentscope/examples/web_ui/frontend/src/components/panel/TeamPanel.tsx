@@ -18,12 +18,11 @@ import { useNavigate } from 'react-router-dom';
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { Button } from '@/components/ui/button';
-import {
-	useTeamActivity,
-	type TeamActivityItem,
-	type TeamActivityParticipant,
-	type TeamMemberRuntime,
-	type TeamRuntimeStatus,
+import type {
+	TeamActivityItem,
+	TeamActivityParticipant,
+	TeamMemberRuntime,
+	TeamRuntimeStatus,
 } from '@/hooks/useTeamActivity';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
@@ -31,6 +30,8 @@ import { cn } from '@/lib/utils';
 interface TeamPanelProps {
 	team: TeamDetailResponse | null;
 	currentSessionId: string | null;
+	runtimeBySession: Record<string, TeamMemberRuntime>;
+	activities: TeamActivityItem[];
 }
 
 const STATUS_STYLE: Record<TeamRuntimeStatus, string> = {
@@ -95,7 +96,12 @@ const activityIcon = (item: TeamActivityItem): ReactNode => {
  * runtime events such as status, tools and TeamSay traffic. Private model
  * reasoning is reduced to the neutral state "Đang phân tích yêu cầu".
  */
-export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
+export function TeamPanel({
+	team,
+	currentSessionId,
+	runtimeBySession,
+	activities,
+}: TeamPanelProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const participants = useMemo<TeamActivityParticipant[]>(() => {
@@ -119,8 +125,6 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 		}
 		return rows;
 	}, [team]);
-	const { runtimeBySession, activities } = useTeamActivity(participants);
-
 	if (!team) {
 		return (
 			<PanelEmpty

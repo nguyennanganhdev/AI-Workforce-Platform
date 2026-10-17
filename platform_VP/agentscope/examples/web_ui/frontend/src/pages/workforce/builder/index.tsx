@@ -25,6 +25,7 @@ import { workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
 	BuilderMessage,
+	BuilderProgress,
 	BuilderProposal,
 	ChatModelConfig,
 	WorkforceAgent,
@@ -202,11 +203,11 @@ function AgentProposalCard({
 					</pre>
 				</details>
 				{reused && (
-					<div className="xl:col-span-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-						<CircleAlert className="mt-0.5 size-4 text-amber-600" />
+					<div className="xl:col-span-2 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-700 dark:text-red-400">
+						<CircleAlert className="mt-0.5 size-4 shrink-0" />
 						<span>
-							Nghiệp vụ trùng với <strong>{proposal.reuse_agent_name}</strong>. Khi
-							phát hành, platform sẽ tái sử dụng agent cũ thay vì tạo bản sao.
+							Đã tái sử dụng <strong>{proposal.reuse_agent_name}</strong>; Builder
+							không sinh lại cấu hình cho agent này.
 						</span>
 					</div>
 				)}
@@ -228,6 +229,9 @@ export function AgentBuilderPage() {
 	const [agents, setAgents] = useState<WorkforceAgent[]>([]);
 	const [working, setWorking] = useState(false);
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
+	const [selectedBuilderModel, setSelectedBuilderModel] =
+		useState<ChatModelConfig | null>(null);
+	const [buildProgress, setBuildProgress] = useState<BuilderProgress | null>(null);
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
 	const [deleteConversationOpen, setDeleteConversationOpen] = useState(false);
@@ -248,7 +252,11 @@ export function AgentBuilderPage() {
 			setConversationId(nextId);
 			setConversation(stored.messages);
 			setProposal(stored.proposal);
-			if (stored.proposal) setSelectedModel(stored.proposal.chat_model_config);
+			setBuildProgress(stored.progress);
+			if (stored.proposal) {
+				setSelectedModel(stored.proposal.chat_model_config);
+				setSelectedBuilderModel(stored.proposal.builder_chat_model_config);
+			}
 			setSearchParams({ conversation_id: nextId }, { replace: true });
 		},
 		[setSearchParams],
@@ -272,6 +280,7 @@ export function AgentBuilderPage() {
 		setConversationId(null);
 		setConversation([]);
 		setProposal(null);
+		setBuildProgress(null);
 		setMessage('');
 		setSearchParams({}, { replace: true });
 	};
@@ -299,6 +308,7 @@ export function AgentBuilderPage() {
 			const nextProposal = await workforceApi.prepare(
 				userText,
 				selectedModel,
+				selectedBuilderModel,
 				conversationId,
 				confirmOutline,
 			);
@@ -309,21 +319,41 @@ export function AgentBuilderPage() {
 	};
 
 	const confirmOutline = async () => {
-		if (!selectedModel || !proposal?.planned_agents.length) return;
+		if (!selectedModel || !proposal?.planned_agents.length || !conversationId) return;
 		const lastUserMessage =
 			[...conversation].reverse().find((item) => item.role === 'user')?.text ?? '';
+		const generatedAgentCount = proposal.planned_agents.filter(
+			(agent) => !agent.reuse_agent_id,
+		).length;
 		setWorking(true);
+		setBuildProgress(
+			generatedAgentCount > 0
+				? { stage: 'generating', completed: 0, total: generatedAgentCount }
+				: null,
+		);
+		const pollProgress = async () => {
+			try {
+				const stored = await workforceApi.getBuilderConversation(conversationId, true);
+				if (stored.progress) setBuildProgress(stored.progress);
+			} catch {
+				// The main prepare request owns error reporting.
+			}
+		};
+		const progressTimer = window.setInterval(() => void pollProgress(), 750);
 		try {
 			const nextProposal = await workforceApi.prepare(
 				prefersVietnamese(lastUserMessage)
 					? 'Tôi xác nhận hướng trên. Hãy tạo và đánh giá cấu hình agent.'
 					: 'I confirm this direction. Please generate and evaluate the agent configuration.',
 				selectedModel,
+				selectedBuilderModel,
 				conversationId,
 				true,
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
+			window.clearInterval(progressTimer);
+			setBuildProgress(null);
 			setWorking(false);
 		}
 	};
@@ -478,19 +508,37 @@ export function AgentBuilderPage() {
 								</p>
 							</div>
 						</div>
-						<div className="min-w-56">
-							<p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-								Model cho Builder và agent
-							</p>
-							<LlmSelect
-								value={selectedModel}
-								onChange={setSelectedModel}
-								onAddCredential={() => setCredentialOpen(true)}
-								refetchTrigger={credentialRefetchTrigger}
-								placeholder="Chọn model"
-								className="w-full justify-between font-mono"
-								disabled={working}
-							/>
+						<div className="grid min-w-72 gap-3 sm:grid-cols-2">
+							<div>
+								<p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+									Model runtime
+								</p>
+								<LlmSelect
+									value={selectedModel}
+									onChange={setSelectedModel}
+									onAddCredential={() => setCredentialOpen(true)}
+									refetchTrigger={credentialRefetchTrigger}
+									placeholder="Chọn model"
+									className="w-full justify-between font-mono"
+									disabled={working}
+								/>
+							</div>
+							<div>
+								<p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+									Model Builder
+								</p>
+								<LlmSelect
+									value={selectedBuilderModel}
+									onChange={setSelectedBuilderModel}
+									onAddCredential={() => setCredentialOpen(true)}
+									refetchTrigger={credentialRefetchTrigger}
+									placeholder="Giống runtime"
+									allowClear
+									clearLabel="Dùng model runtime"
+									className="w-full justify-between font-mono"
+									disabled={working}
+								/>
+							</div>
 						</div>
 					</header>
 					<div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -564,13 +612,33 @@ export function AgentBuilderPage() {
 												</p>
 											)}
 											<p className="mt-1 text-xs text-muted-foreground">
-												Model:{' '}
+												Runtime:{' '}
 												<span className="font-mono">
 													{proposal.chat_model_config.model}
+												</span>
+												{' · Builder: '}
+												<span className="font-mono">
+													{proposal.builder_chat_model_config?.model ??
+														proposal.chat_model_config.model}
 												</span>
 												{' · '}
 												{proposal.fixed_config.runtime_note}
 											</p>
+											{buildProgress && (
+												<div className="mt-3 max-w-md">
+													<p className="font-mono text-xs text-primary">
+														{buildProgress.stage} {buildProgress.completed}/
+														{buildProgress.total}
+													</p>
+													<Progress
+														value={
+															(buildProgress.completed / buildProgress.total) *
+															100
+														}
+														className="mt-1.5 h-1.5"
+													/>
+												</div>
+											)}
 										</div>
 										{proposal.status === 'ready' && (
 											<Button onClick={publish} disabled={working}>
@@ -583,7 +651,7 @@ export function AgentBuilderPage() {
 													onClick={() => void confirmOutline()}
 													disabled={working}
 												>
-													<CheckCircle2 /> Chốt định hướng và sinh cấu
+													{working ? <Spinner /> : <CheckCircle2 />} Chốt định hướng và sinh cấu
 													hình
 												</Button>
 											)}
@@ -605,16 +673,17 @@ export function AgentBuilderPage() {
 														<Bot className="size-4 text-primary" />
 														<p className="font-medium">{agent.name}</p>
 														{agent.reuse_agent_id && (
-															<Badge variant="secondary">Tái sử dụng</Badge>
+													<Badge variant="destructive">Có thể tái sử dụng</Badge>
 														)}
 													</div>
 													<p className="mt-2 text-sm text-muted-foreground">
 														{agent.objective}
 													</p>
 													{agent.reuse_agent_name && (
-														<p className="mt-2 text-xs text-amber-700">
-															Đã có {agent.reuse_agent_name} bao phủ nghiệp vụ này;
-															Builder sẽ không tạo agent mới.
+												<p className="mt-3 rounded-md border border-red-500/40 bg-red-500/5 p-2 text-xs text-red-700 dark:text-red-400">
+													Có thể tái sử dụng <strong>{agent.reuse_agent_name}</strong>.
+													 Khi chốt phương án, Builder sẽ bỏ qua agent này và chỉ
+													 sinh cấu hình cho các agent mới.
 														</p>
 													)}
 													<div className="mt-3 flex flex-wrap gap-1.5">

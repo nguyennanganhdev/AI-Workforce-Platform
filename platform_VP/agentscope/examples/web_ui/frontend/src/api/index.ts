@@ -19,6 +19,7 @@ export type {
 	AgentToolSettings,
 	BuilderKnowledgeBase,
 	BuilderMessage,
+	BuilderProgress,
 	BuilderProposal,
 	BuilderTool,
 	LeaderSession,

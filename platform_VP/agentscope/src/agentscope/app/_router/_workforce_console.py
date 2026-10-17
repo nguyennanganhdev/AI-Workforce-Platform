@@ -13,7 +13,7 @@ import os
 import re
 import tarfile
 from collections import defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -70,7 +70,8 @@ _BUILDER_SUMMARY_ATTEMPTS = 2
 _BUILDER_OUTLINE_TIMEOUT_SECONDS = 180
 _BUILDER_GENERATION_TIMEOUT_SECONDS = 180
 _BUILDER_REPAIR_TIMEOUT_SECONDS = 180
-_BUILDER_SEMANTIC_REPAIR_ATTEMPTS = 2
+_BUILDER_SEMANTIC_REPAIR_ATTEMPTS = 1
+_BUILDER_GENERATION_CONCURRENCY = 3
 _BUILDER_AUTHORED_PROMPT_MAX_CHARS = 5_000
 _BUILDER_BACKFILL_KEY = "builder_contract_backfill_v1"
 # Builder prompts also carry the MCP catalog plus a large output schema, so
@@ -129,17 +130,29 @@ class BuilderGeneration(BaseModel):
     agents: list[GeneratedAgent] = Field(default_factory=list, max_length=12)
 
 
+class _BuilderAgentGeneration(BuilderGeneration):
+    """One independently generated agent; batch assembly is server-owned."""
+
+    agents: list[GeneratedAgent] = Field(min_length=1, max_length=1)
+
+
 class PlannedAgent(BaseModel):
     """One agent boundary proposed before expensive config generation."""
 
     name: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=1, max_length=4000)
-    required_capabilities: list[str] = Field(default_factory=list, max_length=20)
+    required_capabilities: list[str] = Field(min_length=1, max_length=20)
     request_modes: list[Literal["advice", "lookup", "action"]] = Field(
-        default_factory=list,
+        min_length=1,
         max_length=3,
     )
-    effect: Literal["read", "write", "external_operation"] | None = None
+    effect: Literal["read", "write", "external_operation"] = Field(
+        description=(
+            "Use only read, write or external_operation. Work-type labels such "
+            "as transform, lookup, monitor and external_action are not valid "
+            "values for this field."
+        ),
+    )
     suggested_tool_ids: list[str] = Field(default_factory=list)
     suggested_knowledge_base_ids: list[str] = Field(default_factory=list)
     reuse_agent_id: str | None = None
@@ -183,6 +196,7 @@ class _BuilderPromptBudgetError(HTTPException):
 class PrepareRequest(BaseModel):
     message: str = Field(min_length=1, max_length=16000)
     chat_model_config: ChatModelConfig
+    builder_chat_model_config: ChatModelConfig | None = None
     conversation_id: str | None = None
     confirm_outline: bool = False
 
@@ -226,6 +240,7 @@ class ProposalView(BaseModel):
     planned_agents: list[PlannedAgentView] = Field(default_factory=list)
     agents: list[ProposedAgentView] = Field(default_factory=list)
     chat_model_config: ChatModelConfig
+    builder_chat_model_config: ChatModelConfig | None = None
     fixed_config: dict
 
 
@@ -286,11 +301,18 @@ class BuilderConversationSummary(BaseModel):
     updated_at: str
 
 
+class BuilderProgress(BaseModel):
+    stage: Literal["generating", "validating", "repairing"]
+    completed: int = Field(ge=0)
+    total: int = Field(ge=1)
+
+
 class BuilderConversationView(BaseModel):
     conversation_id: str
     title: str
     messages: list[BuilderMessageView]
     proposal: ProposalView | None = None
+    progress: BuilderProgress | None = None
 
 
 class MCPToolGroupView(BaseModel):
@@ -321,9 +343,9 @@ def _fixed_config() -> dict:
         "context_config": _FIXED_CONTEXT.model_dump(mode="json"),
         "react_config": _FIXED_REACT.model_dump(mode="json"),
         "runtime_note": (
-            "The user selects the model. Context, ReAct, timeout, security "
-            "and publish policy are fixed by the platform; Builder cannot "
-            "change them."
+            "The runtime model is independent from the optional Builder model. "
+            "Context, ReAct, timeout, security and publish policy are fixed by "
+            "the platform; Builder cannot change them."
         ),
     }
 
@@ -431,10 +453,27 @@ def _existing_agent_covers(
     existing_tools = _record_tool_ids(record)
     existing_knowledge = set(record.data.knowledge_base_ids)
     required_capabilities = {
-        item.capability
-        for item in contract.requirement.capabilities
-        if item.required
+        item.capability for item in contract.requirement.capabilities if item.required
     }
+    backfilled_scope_match = bool(
+        _BUILDER_BACKFILL_KEY in record.data.evaluation
+        and _similarity(planned.objective, _stored_contract_objective(record)) >= 0.65
+        and (
+            planned.reuse_agent_id == record.id
+            or (
+                bool(planned.suggested_tool_ids)
+                and set(planned.suggested_tool_ids).issubset(existing_tools)
+            )
+            or not existing_tools
+        )
+    )
+    request_modes_covered = set(planned.request_modes).issubset(
+        contract.request_modes,
+    ) or bool(
+        backfilled_scope_match
+        and not existing_tools
+        and set(planned.request_modes).issubset({"advice", "lookup"}),
+    )
     generated = GeneratedAgent(
         name=record.data.name,
         execution_mode=record.data.execution_mode or "context_only",
@@ -443,8 +482,11 @@ def _existing_agent_covers(
         selected_knowledge_base_ids=record.data.knowledge_base_ids,
     )
     return bool(
-        set(planned.required_capabilities).issubset(required_capabilities)
-        and set(planned.request_modes).issubset(contract.request_modes)
+        (
+            set(planned.required_capabilities).issubset(required_capabilities)
+            or backfilled_scope_match
+        )
+        and request_modes_covered
         and planned.effect == contract.requirement.effect.value
         and set(planned.suggested_tool_ids).issubset(existing_tools)
         and set(planned.suggested_knowledge_base_ids).issubset(existing_knowledge)
@@ -495,6 +537,30 @@ def _resolve_reuse_candidate(
             record.id,
         ),
         default=None,
+    )
+
+
+def _resolve_outline_reuse_candidate(
+    planned: PlannedAgent,
+    existing: list[AgentRecord],
+    available_tool_ids: set[str],
+    available_knowledge_ids: set[str],
+) -> AgentRecord | None:
+    """Treat the model's reuse ID as a hint; backend proof remains authoritative."""
+
+    candidate = _resolve_reuse_candidate(
+        planned,
+        existing,
+        available_tool_ids,
+        available_knowledge_ids,
+    )
+    if candidate is not None or not planned.reuse_agent_id:
+        return candidate
+    return _resolve_reuse_candidate(
+        planned.model_copy(update={"reuse_agent_id": None}),
+        existing,
+        available_tool_ids,
+        available_knowledge_ids,
     )
 
 
@@ -583,6 +649,38 @@ def _planned_agent_from_view(agent: PlannedAgentView) -> PlannedAgent:
             knowledge.id for knowledge in agent.suggested_knowledge_bases
         ],
         reuse_agent_id=agent.reuse_agent_id,
+    )
+
+
+def _reused_outline_view(
+    record: AgentRecord,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> PlannedAgentView:
+    """Show canonical metadata for an existing agent selected for reuse."""
+
+    contract = _stored_behavior_contract(record)
+    if contract is None:
+        raise ValueError("Reusable agent is missing its canonical Builder contract")
+    profile = contract.requirement.business_profile
+    tool_ids = _record_tool_ids(record)
+    knowledge_ids = set(record.data.knowledge_base_ids)
+    return PlannedAgentView(
+        name=record.data.name,
+        objective=profile.objective,
+        required_capabilities=[
+            item.capability
+            for item in contract.requirement.capabilities
+            if item.required
+        ],
+        request_modes=list(contract.request_modes),
+        effect=contract.requirement.effect.value,
+        suggested_tools=[tool for tool in tools if tool.id in tool_ids],
+        suggested_knowledge_bases=[
+            knowledge for knowledge in knowledge_bases if knowledge.id in knowledge_ids
+        ],
+        reuse_agent_id=record.id,
+        reuse_agent_name=record.data.name,
     )
 
 
@@ -1133,6 +1231,53 @@ async def _builder_structured_call(
     return response, prompt_tokens, reserved_output_tokens
 
 
+def _outline_issues(
+    outline: BuilderOutline,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> list[str]:
+    """Reject incomplete or unsafe capability outlines before user approval."""
+
+    issues: list[str] = []
+    available_tools = {tool.id for tool in tools}
+    available_knowledge = {knowledge.id for knowledge in knowledge_bases}
+    claimed_tools: set[str] = set()
+    for agent in outline.agents:
+        invalid_tools = set(agent.suggested_tool_ids) - available_tools
+        duplicate_tools = set(agent.suggested_tool_ids) & claimed_tools
+        invalid_knowledge = (
+            set(agent.suggested_knowledge_base_ids) - available_knowledge
+        )
+        if len(set(agent.required_capabilities)) != len(
+            agent.required_capabilities,
+        ):
+            issues.append(f"{agent.name}: required_capabilities bị trùng.")
+        if len(set(agent.request_modes)) != len(agent.request_modes):
+            issues.append(f"{agent.name}: request_modes bị trùng.")
+        if invalid_tools:
+            issues.append(f"{agent.name}: tool không tồn tại: {sorted(invalid_tools)}.")
+        if duplicate_tools:
+            issues.append(
+                f"{agent.name}: tool đã thuộc agent khác: {sorted(duplicate_tools)}.",
+            )
+        if invalid_knowledge:
+            issues.append(
+                f"{agent.name}: Knowledge Base không tồn tại: "
+                f"{sorted(invalid_knowledge)}.",
+            )
+        if "action" in agent.request_modes:
+            if agent.effect != "external_operation":
+                issues.append(
+                    f"{agent.name}: action yêu cầu effect=external_operation.",
+                )
+            if not agent.suggested_tool_ids and not agent.reuse_agent_id:
+                issues.append(
+                    f"{agent.name}: action cần tool phù hợp hoặc agent reuse hợp lệ.",
+                )
+        claimed_tools.update(agent.suggested_tool_ids)
+    return issues
+
+
 async def _outline(
     transcript: str,
     tools: list[BuilderTool],
@@ -1163,7 +1308,9 @@ Capabilities that share one bounded business object, source and lifecycle may
 stay in one agent. Split capabilities with different business ownership,
 evidence sources or side-effect boundaries. Classify work abstractly as read,
 transform, lookup, external action or monitor; these are work types, not domain
-names. Every capability explicitly requested by the user and supported by the
+names and not values for the structured effect field. Set effect to exactly one
+of read, write or external_operation; never put transform, lookup, monitor or
+external_action in effect. Every capability explicitly requested by the user and supported by the
 catalog must appear in the outline. Select only exact
 suggested_tool_ids from the catalog. One tool ID may belong to only one agent
 in the whole proposal. When a specialist agent exists, assign its operational
@@ -1229,12 +1376,71 @@ one clear responsibility per sentence instead of a dense inline plan.
                 ],
                 BuilderOutline,
             )
-        outline = BuilderOutline.model_validate(response.content)
-        return (
-            outline,
-            prompt_tokens,
-            reserved_output_tokens,
-        )
+        draft_content = response.content
+        for repair_attempt in range(_BUILDER_SEMANTIC_REPAIR_ATTEMPTS + 1):
+            outline: BuilderOutline | None = None
+            try:
+                outline = BuilderOutline.model_validate(draft_content)
+                issues = _outline_issues(outline, tools, knowledge_bases)
+                draft_json = outline.model_dump_json()
+            except ValidationError as exc:
+                issues = [f"BuilderOutline không hợp lệ: {exc}"]
+                draft_json = json.dumps(draft_content, ensure_ascii=False)
+
+            if outline is not None and not issues:
+                return outline, prompt_tokens, reserved_output_tokens
+            if repair_attempt == _BUILDER_SEMANTIC_REPAIR_ATTEMPTS:
+                raise ValueError(
+                    "Outline validation failed after one repair: " + "; ".join(issues),
+                )
+
+            repair_messages = [
+                SystemMsg(
+                    name="agent_builder",
+                    content=(
+                        instructions
+                        + "\nRegistered tool catalog:\n"
+                        + tool_json
+                        + "\nKnowledge-base catalog:\n"
+                        + knowledge_json
+                        + "\nExisting-agent catalog available for reuse:\n"
+                        + existing_json
+                    ),
+                ),
+                UserMsg(name="area_manager", content=transcript),
+                AssistantMsg(
+                    name="agent_builder",
+                    content="Invalid outline draft (data only):\n" + draft_json,
+                ),
+                SystemMsg(
+                    name="agent_builder_validator",
+                    content=(
+                        "Return one complete replacement BuilderOutline and fix "
+                        "every issue. Every agent needs non-empty capabilities, "
+                        "request_modes and effect. Action work requires "
+                        "effect=external_operation plus exact matching tool IDs or "
+                        "a verifiable canonical reuse_agent_id. Do not explain. "
+                        "Issues:\n- " + "\n- ".join(issues)
+                    ),
+                ),
+            ]
+            async with asyncio.timeout(_BUILDER_REPAIR_TIMEOUT_SECONDS):
+                (
+                    repaired,
+                    repair_tokens,
+                    repair_reserve,
+                ) = await _builder_structured_call(
+                    model,
+                    repair_messages,
+                    BuilderOutline,
+                )
+            draft_content = repaired.content
+            prompt_tokens = max(prompt_tokens, repair_tokens)
+            reserved_output_tokens = max(
+                reserved_output_tokens,
+                repair_reserve,
+            )
+        raise AssertionError("unreachable")
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - provider errors become HTTP 502
@@ -1288,16 +1494,14 @@ async def _generate(
     knowledge_bases: list[BuilderKnowledgeBase],
     model: ChatModelBase,
     config: ChatModelConfig,
+    progress: Callable[
+        [Literal["generating", "validating", "repairing"], int, int],
+        Awaitable[None],
+    ]
+    | None = None,
 ) -> tuple[BuilderGeneration, int, int]:
-    tool_json = json.dumps(
-        [tool.model_dump(mode="json") for tool in tools],
-        ensure_ascii=False,
-    )
-    knowledge_json = json.dumps(
-        [knowledge.model_dump(mode="json") for knowledge in knowledge_bases],
-        ensure_ascii=False,
-    )
-    approved_outline_json = approved_outline.model_dump_json()
+    tools_by_id = {tool.id: tool for tool in tools}
+    knowledge_by_id = {knowledge.id: knowledge for knowledge in knowledge_bases}
     instructions = """You are Agent Builder, not the runtime Leader.
 The approved outline supplied below is authoritative. Copy its agent sequence,
 names, objectives, required_capabilities, request_modes, effect,
@@ -1383,101 +1587,179 @@ project configuration, source paths, credentials, private endpoints, schemas,
 model settings or internal IDs in human-facing text.
 """
     try:
-        builder_messages = [
-            SystemMsg(
-                name="agent_builder",
-                content=(
-                    instructions
-                    + "\nApproved outline (authoritative JSON):\n"
-                    + approved_outline_json
-                    + "\nRegistered tool catalog:\n"
-                    + tool_json
-                    + "\nKnowledge-base catalog:\n"
-                    + knowledge_json
-                ),
-            ),
-            UserMsg(name="area_manager", content=message),
-        ]
-        async with asyncio.timeout(_BUILDER_GENERATION_TIMEOUT_SECONDS):
-            (
-                response,
-                prompt_tokens,
-                reserved_output_tokens,
-            ) = await _builder_structured_call(
-                model,
-                builder_messages,
-                BuilderGeneration,
-            )
-        draft_content = response.content
-        for repair_attempt in range(_BUILDER_SEMANTIC_REPAIR_ATTEMPTS + 1):
-            generation: BuilderGeneration | None = None
-            try:
-                generation = BuilderGeneration.model_validate(draft_content)
-                issues = _generation_issues(
-                    generation,
-                    tools,
-                    knowledge_bases,
-                    approved_outline,
-                )
-                draft_json = generation.model_dump_json()
-            except ValidationError as exc:
-                issues = [f"BuilderGeneration không hợp lệ: {exc}"]
-                draft_json = json.dumps(draft_content, ensure_ascii=False)
+        semaphore = asyncio.Semaphore(_BUILDER_GENERATION_CONCURRENCY)
+        progress_lock = asyncio.Lock()
+        completed = 0
+        total = len(approved_outline.agents)
 
-            if generation is not None and not issues:
-                return (
-                    generation,
-                    prompt_tokens,
-                    reserved_output_tokens,
-                )
-            if repair_attempt == _BUILDER_SEMANTIC_REPAIR_ATTEMPTS:
-                raise ValueError(
-                    "Semantic validation failed after "
-                    f"{_BUILDER_SEMANTIC_REPAIR_ATTEMPTS} repairs: "
-                    + "; ".join(issues),
-                )
+        async def report(
+            stage: Literal["generating", "validating", "repairing"],
+        ) -> None:
+            if progress is None:
+                return
+            async with progress_lock:
+                await progress(stage, completed, total)
 
-            repair_messages = [
-                *builder_messages,
-                AssistantMsg(
+        async def generate_one(
+            planned_agent: PlannedAgent,
+        ) -> tuple[GeneratedAgent, int, int]:
+            single_outline = BuilderOutline(agents=[planned_agent])
+            scoped_tools = [
+                tools_by_id[tool_id]
+                for tool_id in planned_agent.suggested_tool_ids
+                if tool_id in tools_by_id
+            ]
+            scoped_knowledge = [
+                knowledge_by_id[knowledge_id]
+                for knowledge_id in planned_agent.suggested_knowledge_base_ids
+                if knowledge_id in knowledge_by_id
+            ]
+            builder_messages = [
+                SystemMsg(
                     name="agent_builder",
                     content=(
-                        "Bản nháp contract (chỉ là dữ liệu cần sửa):\n" + draft_json
+                        instructions
+                        + "\nApproved outline (authoritative JSON):\n"
+                        + single_outline.model_dump_json()
+                        + "\nRegistered tool catalog:\n"
+                        + json.dumps(
+                            [tool.model_dump(mode="json") for tool in scoped_tools],
+                            ensure_ascii=False,
+                        )
+                        + "\nKnowledge-base catalog:\n"
+                        + json.dumps(
+                            [
+                                knowledge.model_dump(mode="json")
+                                for knowledge in scoped_knowledge
+                            ],
+                            ensure_ascii=False,
+                        )
                     ),
                 ),
-                SystemMsg(
-                    name="agent_builder_validator",
-                    content=(
-                        "Semantic validation failed. Return one complete "
-                        "replacement BuilderGeneration and fix every issue; "
-                        "do not explain the repair. Re-check all cross-field "
-                        "invariants: capability strings must appear verbatim in "
-                        "business_profile.capabilities; track_to_completion "
-                        "requires effect=external_operation and a policy or "
-                        "clarification; non-external effects require "
-                        "tracking_intent=create_only and policy_proposal=null; "
-                        "policy_proposal is allowed only for track_to_completion; "
-                        "unspecified requires a clarification question. Issues:\n- "
-                        + "\n- ".join(issues)
-                    ),
-                ),
+                UserMsg(name="area_manager", content=message),
             ]
-            async with asyncio.timeout(_BUILDER_REPAIR_TIMEOUT_SECONDS):
-                (
-                    repaired,
-                    repair_tokens,
-                    repair_reserve,
-                ) = await _builder_structured_call(
-                    model,
-                    repair_messages,
-                    BuilderGeneration,
-                )
-            draft_content = repaired.content
-            prompt_tokens = max(prompt_tokens, repair_tokens)
-            reserved_output_tokens = max(
-                reserved_output_tokens,
-                repair_reserve,
-            )
+            async with semaphore:
+                async with asyncio.timeout(_BUILDER_GENERATION_TIMEOUT_SECONDS):
+                    (
+                        response,
+                        prompt_tokens,
+                        reserved_output_tokens,
+                    ) = await _builder_structured_call(
+                        model,
+                        builder_messages,
+                        _BuilderAgentGeneration,
+                    )
+                draft_content = response.content
+                for repair_attempt in range(_BUILDER_SEMANTIC_REPAIR_ATTEMPTS + 1):
+                    await report("validating")
+                    generation: _BuilderAgentGeneration | None = None
+                    try:
+                        generation = _BuilderAgentGeneration.model_validate(
+                            draft_content,
+                        )
+                        issues = _generation_issues(
+                            generation,
+                            scoped_tools,
+                            scoped_knowledge,
+                            single_outline,
+                        )
+                        draft_json = generation.model_dump_json()
+                    except ValidationError as exc:
+                        issues = [f"BuilderGeneration không hợp lệ: {exc}"]
+                        draft_json = json.dumps(draft_content, ensure_ascii=False)
+
+                    if generation is not None and not issues:
+                        return (
+                            generation.agents[0],
+                            prompt_tokens,
+                            reserved_output_tokens,
+                        )
+                    if repair_attempt == _BUILDER_SEMANTIC_REPAIR_ATTEMPTS:
+                        raise ValueError(
+                            "Semantic validation failed after one repair for "
+                            f"{planned_agent.name!r}: " + "; ".join(issues),
+                        )
+
+                    await report("repairing")
+                    repair_messages = [
+                        *builder_messages,
+                        AssistantMsg(
+                            name="agent_builder",
+                            content=(
+                                "Bản nháp contract (chỉ là dữ liệu cần sửa):\n"
+                                + draft_json
+                            ),
+                        ),
+                        SystemMsg(
+                            name="agent_builder_validator",
+                            content=(
+                                "Semantic validation failed. Return one complete "
+                                "replacement BuilderGeneration for this agent and "
+                                "fix every issue; do not explain the repair. Re-check "
+                                "all cross-field invariants: capability strings must "
+                                "appear verbatim in business_profile.capabilities; "
+                                "track_to_completion requires "
+                                "effect=external_operation and a policy or "
+                                "clarification; non-external effects require "
+                                "tracking_intent=create_only and policy_proposal=null; "
+                                "policy_proposal is allowed only for "
+                                "track_to_completion; unspecified requires a "
+                                "clarification question. Issues:\n- "
+                                + "\n- ".join(issues)
+                            ),
+                        ),
+                    ]
+                    async with asyncio.timeout(_BUILDER_REPAIR_TIMEOUT_SECONDS):
+                        (
+                            repaired,
+                            repair_tokens,
+                            repair_reserve,
+                        ) = await _builder_structured_call(
+                            model,
+                            repair_messages,
+                            _BuilderAgentGeneration,
+                        )
+                    draft_content = repaired.content
+                    prompt_tokens = max(prompt_tokens, repair_tokens)
+                    reserved_output_tokens = max(
+                        reserved_output_tokens,
+                        repair_reserve,
+                    )
+            raise AssertionError("unreachable")
+
+        async def generate_and_count(
+            planned_agent: PlannedAgent,
+        ) -> tuple[GeneratedAgent, int, int]:
+            nonlocal completed
+            result = await generate_one(planned_agent)
+            async with progress_lock:
+                completed += 1
+                if progress is not None:
+                    await progress(
+                        "validating" if completed == total else "generating",
+                        completed,
+                        total,
+                    )
+            return result
+
+        if progress is not None:
+            await progress("generating", 0, total)
+        tasks = [
+            asyncio.create_task(generate_and_count(agent))
+            for agent in approved_outline.agents
+        ]
+        try:
+            results = await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        return (
+            BuilderGeneration(agents=[result[0] for result in results]),
+            max(result[1] for result in results),
+            max(result[2] for result in results),
+        )
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - provider errors become HTTP 502
@@ -1868,6 +2150,34 @@ async def _record_builder_prompt_measurement(
     )
 
 
+async def _set_builder_progress(
+    storage: StorageBase,
+    user_id: str,
+    session: SessionRecord,
+    progress: BuilderProgress | None,
+) -> None:
+    metadata = dict(session.state.middle_context.get(_BUILDER_MEMORY_KEY, {}))
+    if progress is None:
+        metadata.pop("build_progress", None)
+    else:
+        metadata["build_progress"] = progress.model_dump(mode="json")
+    session.state.middle_context[_BUILDER_MEMORY_KEY] = metadata
+    await storage.update_session_state(
+        user_id,
+        _BUILDER_AGENT_ID,
+        session.id,
+        session.state,
+    )
+
+
+def _builder_progress(session: SessionRecord) -> BuilderProgress | None:
+    metadata = session.state.middle_context.get(_BUILDER_MEMORY_KEY, {})
+    try:
+        return BuilderProgress.model_validate(metadata.get("build_progress"))
+    except ValidationError:
+        return None
+
+
 def _stored_proposal(messages: list[Msg]) -> ProposalView | None:
     for message in reversed(messages):
         payload = message.structured_output or {}
@@ -1882,6 +2192,7 @@ async def _builder_session(
     user_id: str,
     body: PrepareRequest,
 ) -> SessionRecord:
+    builder_config = body.builder_chat_model_config or body.chat_model_config
     if body.conversation_id:
         session = await storage.get_session(
             user_id,
@@ -1894,7 +2205,7 @@ async def _builder_session(
                 detail="Không tìm thấy hội thoại Agent Builder.",
             )
         config = session.config.model_copy(
-            update={"chat_model_config": body.chat_model_config},
+            update={"chat_model_config": builder_config},
         )
         return await storage.upsert_session(
             user_id=user_id,
@@ -1912,7 +2223,7 @@ async def _builder_session(
         config=SessionConfig(
             workspace_id=conversation_id,
             name=title or "Hội thoại Builder mới",
-            chat_model_config=body.chat_model_config,
+            chat_model_config=builder_config,
         ),
     )
 
@@ -2003,6 +2314,7 @@ async def get_builder_conversation(
             if message.role in {"user", "assistant"}
         ],
         proposal=_stored_proposal(messages),
+        progress=_builder_progress(session),
     )
 
 
@@ -2040,6 +2352,7 @@ async def prepare_builder(
     access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> ProposalView:
     session = await _builder_session(storage, user_id, body)
+    builder_config = body.builder_chat_model_config or body.chat_model_config
     messages = await _list_all_builder_messages(
         storage,
         user_id,
@@ -2052,7 +2365,7 @@ async def prepare_builder(
         for record in await storage.list_agents(user_id)
         if record.source == "user" and record.data.system_role == "business"
     ]
-    model = await get_model(user_id, body.chat_model_config, access)
+    model = await get_model(user_id, builder_config, access)
     transcript = await _prepare_builder_memory(
         model=model,
         storage=storage,
@@ -2070,7 +2383,7 @@ async def prepare_builder(
                 knowledge_bases,
                 existing,
                 model,
-                body.chat_model_config,
+                builder_config,
             )
         except _BuilderPromptBudgetError as exc:
             await _record_builder_prompt_measurement(
@@ -2115,12 +2428,16 @@ async def prepare_builder(
                         "khác. Hãy tạo lại outline."
                     ),
                 )
-            reuse = _resolve_reuse_candidate(
+            reuse = _resolve_outline_reuse_candidate(
                 agent,
                 existing,
                 available_tool_ids,
                 available_knowledge_ids,
             )
+            if agent.reuse_agent_id and (
+                reuse is None or reuse.id != agent.reuse_agent_id
+            ):
+                agent = agent.model_copy(update={"reuse_agent_id": None})
             legacy_duplicates = _legacy_duplicate_candidates(
                 agent,
                 existing,
@@ -2156,17 +2473,14 @@ async def prepare_builder(
                         ),
                     )
                 reuse = None
-            if agent.reuse_agent_id and reuse is None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "Builder không thể xác minh agent được đề xuất tái sử dụng. "
-                        "Hãy tạo lại outline để tránh sinh agent trùng hoặc reuse sai."
-                    ),
-                )
             if reuse is not None:
-                claimed_outline_tools.update(_record_tool_ids(reuse))
+                tool_ids = sorted(_record_tool_ids(reuse))
+                claimed_outline_tools.update(tool_ids)
                 reused_agent_ids.add(reuse.id)
+                planned_agents.append(
+                    _reused_outline_view(reuse, tools, knowledge_bases),
+                )
+                continue
             planned_agents.append(
                 PlannedAgentView(
                     name=agent.name,
@@ -2182,8 +2496,6 @@ async def prepare_builder(
                         )
                         if kb_id in knowledge_by_id
                     ],
-                    reuse_agent_id=reuse.id if reuse else None,
-                    reuse_agent_name=reuse.data.name if reuse else None,
                 ),
             )
         summary = "Mình đề xuất đội ngũ như sau:\n\n" + "\n\n".join(
@@ -2205,6 +2517,7 @@ async def prepare_builder(
             ),
             planned_agents=planned_agents,
             chat_model_config=body.chat_model_config,
+            builder_chat_model_config=builder_config,
             fixed_config=_fixed_config(),
         )
         await _persist_builder_turn(
@@ -2229,9 +2542,19 @@ async def prepare_builder(
                 "Hãy tạo hoặc chỉnh lại đề xuất trước khi build."
             ),
         )
-    approved_plans = [
-        _planned_agent_from_view(agent) for agent in approved_proposal.planned_agents
-    ]
+    try:
+        approved_plans = [
+            _planned_agent_from_view(agent)
+            for agent in approved_proposal.planned_agents
+        ]
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Outline cũ thiếu capability, request mode hoặc effect bắt buộc. "
+                "Hãy tạo lại outline trước khi build."
+            ),
+        ) from exc
     available_tool_ids = {tool.id for tool in tools}
     available_knowledge_ids = {knowledge.id for knowledge in knowledge_bases}
     reuse_by_index: dict[int, AgentRecord] = {}
@@ -2258,9 +2581,7 @@ async def prepare_builder(
     ]
     approved_outline = BuilderOutline(agents=create_plans) if create_plans else None
     approved_tool_ids = {
-        tool_id
-        for agent in approved_plans
-        for tool_id in agent.suggested_tool_ids
+        tool_id for agent in approved_plans for tool_id in agent.suggested_tool_ids
     }
     approved_knowledge_ids = {
         knowledge_id
@@ -2287,34 +2608,55 @@ async def prepare_builder(
         )
 
     if approved_outline is not None:
-        try:
-            generation, prompt_tokens, reserved_output_tokens = await _generate(
-                transcript,
-                approved_outline,
-                tools,
-                knowledge_bases,
-                model,
-                body.chat_model_config,
+
+        async def update_progress(
+            stage: Literal["generating", "validating", "repairing"],
+            completed: int,
+            total: int,
+        ) -> None:
+            await _set_builder_progress(
+                storage,
+                user_id,
+                session,
+                BuilderProgress(
+                    stage=stage,
+                    completed=completed,
+                    total=total,
+                ),
             )
-        except _BuilderPromptBudgetError as exc:
+
+        try:
+            try:
+                generation, prompt_tokens, reserved_output_tokens = await _generate(
+                    transcript,
+                    approved_outline,
+                    tools,
+                    knowledge_bases,
+                    model,
+                    builder_config,
+                    update_progress,
+                )
+            except _BuilderPromptBudgetError as exc:
+                await _record_builder_prompt_measurement(
+                    storage,
+                    user_id,
+                    session,
+                    exc.prompt_tokens,
+                    exc.reserved_output_tokens,
+                    model.context_size,
+                    budget_exceeded=True,
+                )
+                raise
             await _record_builder_prompt_measurement(
                 storage,
                 user_id,
                 session,
-                exc.prompt_tokens,
-                exc.reserved_output_tokens,
+                prompt_tokens,
+                reserved_output_tokens,
                 model.context_size,
-                budget_exceeded=True,
             )
-            raise
-        await _record_builder_prompt_measurement(
-            storage,
-            user_id,
-            session,
-            prompt_tokens,
-            reserved_output_tokens,
-            model.context_size,
-        )
+        finally:
+            await _set_builder_progress(storage, user_id, session, None)
     else:
         generation = BuilderGeneration(
             assistant_message=(
@@ -2329,6 +2671,7 @@ async def prepare_builder(
             assistant_message=generation.assistant_message,
             clarification_question=generation.clarification_question,
             chat_model_config=body.chat_model_config,
+            builder_chat_model_config=builder_config,
             fixed_config=_fixed_config(),
         )
         await _persist_builder_turn(
@@ -2441,6 +2784,7 @@ async def prepare_builder(
         clarification_question=generation.clarification_question,
         agents=views,
         chat_model_config=body.chat_model_config,
+        builder_chat_model_config=builder_config,
         fixed_config=_fixed_config(),
     )
     await _persist_builder_turn(
