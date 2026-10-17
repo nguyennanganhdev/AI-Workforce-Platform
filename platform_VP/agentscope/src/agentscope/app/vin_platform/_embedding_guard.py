@@ -10,9 +10,13 @@ async def embedding_attempt(model, inputs, kwargs):
     service, user_id = model._vin_authority, model._vin_user_id
     if "_openai" not in type(model).__module__ or not all(isinstance(item, str) for item in inputs):
         raise PlatformError("EMBEDDING_QUOTA_ADAPTER_UNSUPPORTED", 403)
+    if set(kwargs) - {"dimensions", "encoding_format"}:
+        raise PlatformError("UNBOUNDED_PROVIDER_OVERRIDE", 403)
     from ._context import execution_context
     inherited = execution_context.get()
     context = inherited.model_copy(update={"purpose": "embedding"}) if inherited is not None else await service.context(user_id, purpose="embedding")
+    from ._model_guard import entitled_model
+    await entitled_model(service, context, model._vin_credential_id, model.model)
     ident = uuid4().hex
     budget = sum(len(item.encode("utf-8")) for item in inputs) + 32 * len(inputs)
     await service.quota.reserve(context, budget=max(1, budget), purpose="embedding", model=model.model, attempt_id=ident)

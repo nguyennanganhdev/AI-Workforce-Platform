@@ -98,6 +98,7 @@ def build_embedding_model(
     if authority is not None:
         model._vin_authority = authority
         model._vin_user_id = billing_user_id or credential_record.user_id
+        model._vin_credential_id = config.credential_id
     return model
 
 

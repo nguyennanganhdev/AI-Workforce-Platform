@@ -19,6 +19,18 @@ from .._logging import logger
 
 _attribution: ContextVar[dict] = ContextVar("model_call_attribution", default={})
 _recording_failures = 0
+_provider_attempt: ContextVar[tuple | None] = ContextVar("provider_quota_attempt", default=None)
+
+
+async def authorize_provider_payload(model, payload):
+    """Adapter hook immediately before SDK IO; direct unscoped calls deny."""
+    guard = getattr(model, "_quota_guard", None)
+    if guard is not None:
+        current = _provider_attempt.get()
+        if current is None or current[0] is not model:
+            from ..app.vin_platform import PlatformError
+            raise PlatformError("PROVIDER_ATTEMPT_REQUIRED", 403)
+        await guard.outbound(model, payload, current[1])
 
 
 @contextmanager
@@ -160,11 +172,15 @@ async def observed_call(model, call, *args, **kwargs):
         await persist()
 
     await persist()  # A durable started row makes worker crashes visible as backlog.
+    attempt_token = _provider_attempt.set((model, guard_context)) if guard is not None else None
     try:
         result = await call(*args, **kwargs)
     except BaseException as exc:
         await finish("cancelled" if isinstance(exc, asyncio.CancelledError) else "failed", exc)
         raise
+    finally:
+        if attempt_token is not None:
+            _provider_attempt.reset(attempt_token)
     if not hasattr(result, "__aiter__"):
         capture(result)
         await finish("completed")
