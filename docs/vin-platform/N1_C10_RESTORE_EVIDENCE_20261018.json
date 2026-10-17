@@ -1,0 +1,117 @@
+{
+  "rehearsal": {
+    "status": "PASS",
+    "source_revision": "b4aef873646a895a15379fe1d41f74ee28a93f41",
+    "scope": "disposable_four_store_restore",
+    "deploy_scripts_sha256_lf": {
+      "backup.sh": "c9dd5d2b88d8ab9c9603d4157bc6db3ad8b0a50b14ff1657665ce0824792ca95",
+      "verify-restore.sh": "04c95007ba30090a6ca2895bef2ebff9003209e0f14f1ac7f29113fe1686ce8f"
+    },
+    "postgres_tables": [
+      {
+        "name": "auth_users",
+        "n": 2,
+        "hash": "67be199d56cf132e44c697498631d00a"
+      },
+      {
+        "name": "vin_accounts",
+        "n": 2,
+        "hash": "0afb9c9b993baae885c45e00f3451b7d"
+      },
+      {
+        "name": "vin_quota_policies",
+        "n": 1,
+        "hash": "c60c4caa758f3a4600d52242f8a54391"
+      },
+      {
+        "name": "vin_catalog",
+        "n": 1,
+        "hash": "1fb7a8a8d10fbbab008d89530a64f96b"
+      },
+      {
+        "name": "vin_grants",
+        "n": 1,
+        "hash": "ee68b22a6c769f4ee67e637c418e599d"
+      },
+      {
+        "name": "vin_attempts",
+        "n": 1,
+        "hash": "7ee116c2f3c1adf35fa4aeb8fbea40b7"
+      },
+      {
+        "name": "vin_subject_usage",
+        "n": 1,
+        "hash": "641a1ee01061032fb4bf3efda4c05203"
+      },
+      {
+        "name": "vin_usage_buckets",
+        "n": 2,
+        "hash": "2ec5678075b24dd7a49c9069a2b6dd73"
+      },
+      {
+        "name": "vin_secrets",
+        "n": 1,
+        "hash": "b5e07bc350126740947315378e1bbe4a"
+      },
+      {
+        "name": "vin_domain_links",
+        "n": 1,
+        "hash": "755ecd681765577e71302f95a6097b82"
+      },
+      {
+        "name": "vin_cases",
+        "n": 1,
+        "hash": "c78cff3253ea9f5de7f29adcfaee66b7"
+      },
+      {
+        "name": "vin_audit",
+        "n": 4,
+        "hash": "e3a7455d9b4a88f3cb95fc811a855e26"
+      },
+      {
+        "name": "wf_durable_jobs",
+        "n": 1,
+        "hash": "df9f319f88bdbe912fde0a6645f166c1"
+      }
+    ],
+    "postgres_semantics": {
+      "encrypted_fixture_secret_recovered": true,
+      "job_owner_context_match": true,
+      "quota_ledger_match": true
+    },
+    "redis": {
+      "keys": 3,
+      "values_match": true,
+      "ttl_preserved": true
+    },
+    "minio": {
+      "objects": 2,
+      "bytes_match": true
+    },
+    "workspace_qdrant": {
+      "points": 1,
+      "private_manifest_match": true
+    },
+    "restored_app_started": false,
+    "model_calls": 0,
+    "production_cutover_verified": false
+  },
+  "runbook_verifier": {
+    "status": "PASS",
+    "scope": "isolated_four_store_restore",
+    "environment": "disposable_fixture",
+    "source_revision": "b4aef873646a895a15379fe1d41f74ee28a93f41",
+    "started_at": "2026-10-17T20:25:50Z",
+    "finished_at": "2026-10-17T20:25:57.536198+00:00",
+    "source_image_id": "sha256:354c2398d061577da2d6b3d12df5d336a78547be7ae0a99f8a8d194a5e2135fe",
+    "source_manifest_sha256": null,
+    "recovery_images_in_backup": false,
+    "duration_seconds": 7.536198,
+    "migration": "0023_personal_job_constraint",
+    "postgres_counts_match": true,
+    "redis_ready": true,
+    "minio_bucket_ready": true,
+    "workspace_archive_recovered": true,
+    "production_cutover_verified": false
+  }
+}

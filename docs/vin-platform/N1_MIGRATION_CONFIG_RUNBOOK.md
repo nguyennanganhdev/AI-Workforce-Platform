@@ -6,7 +6,7 @@ Ngày 18/10/2026. Source delivery; chưa phát hành production. Không dùng ke
 
 1. Chụp SHA/image/config manifest; sao lưu PostgreSQL, Redis, MinIO và workspace/Qdrant theo runbook release hiện có. Không in secret vào manifest. Rehearsal trên bản sao disposable, không dùng DSN production trong test.
 2. Giữ `VIN_PLATFORM_ENABLED=false`, `VINHOMES_CUSTOMER_PLATFORM_ENABLED=false` và frontend flag Người 2 tắt. Backup trước expand schema.
-3. Platform: dùng cùng SQL authority với AuthService. Chạy Alembic từ base hiện tại qua `0021_vin_platform_authority` rồi `0022_personal_job_owner`. Migration 0021 đóng băng 17 bảng Vin; 0022 thêm personal owner vào queue hiện có. `create_app` không tự tạo bảng; khi bật Vin, lifespan kiểm schema và dừng startup nếu thiếu migration.
+3. Platform: dùng cùng SQL authority với AuthService. Chạy Alembic từ base hiện tại qua `0021_vin_platform_authority`, `0022_personal_job_owner`, **`0023_personal_job_constraint`**. Migration 0021 đóng băng 17 bảng Vin; 0022 thêm personal owner, 0023 sửa CHECK cũ để queue nhận personal job mà vẫn giữ scope/provider. `create_app` không tự tạo bảng; khi bật Vin, lifespan kiểm cả schema/constraint và dừng startup nếu thiếu migration.
 
    Từ `P`, với `AGENTSCOPE_SQL_URL` là DSN đích đã xác minh:
 
@@ -44,4 +44,6 @@ Rollback bằng feature flags/candidate image tương thích, giữ bảng/ledge
 
 - Đã chạy migration từ DB PostgreSQL trống lên head hai lần, kiểm quota race/settle/revoke/session thật; CAS credential + batch agent activation SQL/Redis qua fake Redis.
 - Shared auth fixture dùng DDL production 0007/0008. Integration Domain dùng runtime role hạn chế và RLS; không dùng model key thật.
-- Còn PENDING: restore bốn store trên release candidate; Python 3.11 CI Platform (local hiện Python 3.12.13); merge hai lane + browser/runtime C09; positive linked-customer sandbox business; vision adapter; U01–U30 và live business UAT. Không đánh dấu các gate này đã đạt chỉ vì API/test offline xanh.
+- Python 3.11 Linux đã chạy authority/consumer/runtime bằng fixture; số PASS/SKIP thật ghi ở N1 handoff. N1/N2 đã merge vào dev_Chien local e7b80da6 và N1 rebase lên đó.
+- Helper rehearsal: `python tests/vin_release_rehearsal.py --output .artifacts/<thu-muc-moi>` từ P; cần các image QA/infra và docker:27-cli. Tạo source stack dữ liệu giả, dùng script backup/verify-restore hiện có, rồi restore lần hai để so fingerprint SQL, Redis value/TTL, MinIO bytes, Qdrant point và private manifest. Không khởi động restored app/model. Artifact chứa config/secret **giả** của fixture, không commit archive/env.
+- Còn PENDING: restore/canary trên release candidate thật và off-host; runtime/browser C09 consumer sau nối; positive linked-customer sandbox business; vision adapter; U01–U30/live business UAT. Rehearsal disposable không thay production cutover.

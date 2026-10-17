@@ -9,6 +9,7 @@ Alembic remains the only component allowed to create these tables.
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     Column,
     DateTime,
     Index,
@@ -160,6 +161,15 @@ durable_jobs = Table(
     Column("error", JSON, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "(owner_kind = 'scope' AND domain_id IS NOT NULL AND area_id IS NOT NULL "
+        "AND manager_account_id IS NOT NULL AND provider_integration_id IS NULL AND personal_user_id IS NULL) OR "
+        "(owner_kind = 'provider' AND domain_id IS NULL AND area_id IS NULL AND manager_account_id IS NULL "
+        "AND provider_integration_id IS NOT NULL AND personal_user_id IS NULL) OR "
+        "(owner_kind = 'personal' AND domain_id IS NULL AND area_id IS NULL AND manager_account_id IS NULL "
+        "AND provider_integration_id IS NULL AND personal_user_id IS NOT NULL)",
+        name="ck_wf_job_owner_shape",
+    ),
     UniqueConstraint(
         "owner_namespace",
         "idempotency_key",
