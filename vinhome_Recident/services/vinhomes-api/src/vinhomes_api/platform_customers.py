@@ -403,6 +403,8 @@ async def customer_photo(ident: UUID, file_id: UUID, request: Request, scope=Dep
         if not applied:
             raise HTTPException(409, "Customer projection not applied")
         from .resident_photos import verified_file, file_response
+        from .v3_files import local_only
+        local_only(request)
         return file_response(await verified_file(scope, file_id))
     from .resident_photos import content
     access = parse_qs(urlsplit(photo["url"]).query)["access"][0]
