@@ -5,6 +5,7 @@ application decisions, not the semantic accuracy of the real Jev model.
 """
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -167,6 +168,139 @@ def classifier(storage, answers=None, failure=None):
     value.model = ScriptedClassifier(answers, failure)
     value.url = "https://offline.invalid/v1"
     return value
+
+
+def assert_bounded_calls(value):
+    for state, questions in value.model.calls:
+        assert len(questions) <= 1000
+        assert len(json.dumps(state, ensure_ascii=False)) <= 120_000
+
+
+@pytest.mark.asyncio
+async def test_large_identity_catalog_checks_last_candidate_and_every_question(storage):
+    plans = [
+        console.PlannedAgent(name=f"Vai trò {i}", objective=f"Nghiệp vụ {i}")
+        for i in range(3)
+    ]
+    records = [existing(agent_id=f"agent-{i}") for i in range(200)]
+    value = classifier(storage, {"same_0_199": 0.95, "covers_0_199": 0.95})
+    result = await decisions.decide_identities(plans, records, value)
+    assert [d.action for d in result] == ["reuse", "create", "create"]
+    assert result[0].agent_id == "agent-199"
+    assert value.status.questions == 1203
+    assert value.status.calls > 1
+    keys = [key for _, questions in value.model.calls for key in questions]
+    assert len(keys) == len(set(keys)) == 1203
+    assert_bounded_calls(value)
+
+
+@pytest.mark.asyncio
+async def test_large_identity_state_preserves_published_draft_and_legacy_instructions(
+    storage,
+):
+    records = [existing(agent_id=f"agent-{i}", state="draft") for i in range(3)]
+    for record in records:
+        record.data.spec["prompt_override"] = "P" * 25_000
+        record.data.draft_spec["prompt_override"] = "D" * 25_000
+        record.data.system_prompt = "L" * 20_000 + "Không được đóng phiếu"
+    value = classifier(storage, {"same_0_2": 0.95})
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")],
+        records,
+        value,
+    )
+    assert result[0].action == "resume" and result[0].agent_id == "agent-2"
+    evidence = json.dumps([state for state, _ in value.model.calls], ensure_ascii=False)
+    assert "P" * 25_000 in evidence and "D" * 25_000 in evidence
+    assert "L" * 20_000 + "Không được đóng phiếu" in evidence
+    assert_bounded_calls(value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("evidence_size", [0, 500])
+async def test_large_resource_catalog_selects_last_tool_kb_and_skill(
+    storage, evidence_size
+):
+    plan = console.PlannedAgent(
+        name="Kỹ thuật",
+        objective="Tra cứu phiếu",
+        tool_requirements=["Đọc phiếu"],
+        knowledge_requirements=["Nội quy"],
+    )
+    catalog = {
+        kind: {
+            f"{kind}-{i}": {"description": "Dữ liệu", "markdown": "S" * evidence_size}
+            for i in range(340)
+        }
+        for kind in ("tools", "knowledge", "skills")
+    }
+    answers = {f"{kind}:0:0:{kind}-339": 0.95 for kind in catalog}
+    value = classifier(storage, answers)
+    result = await decisions.select_resources([plan], catalog, value)
+    assert result == [
+        {
+            "tools": ["tools-339"],
+            "knowledge": ["knowledge-339"],
+            "skills": ["skills-339"],
+            "missing_tools": [],
+            "missing_knowledge": [],
+        }
+    ]
+    assert value.status.questions == 1020
+    assert value.status.calls > 1
+    assert_bounded_calls(value)
+    if not evidence_size:
+        assert max(len(questions) for _, questions in value.model.calls) == 1000
+
+
+@pytest.mark.asyncio
+async def test_duplicate_candidates_across_catalog_batches_need_clarification(storage):
+    value = classifier(storage, {"same_0_0": 0.95, "same_0_199": 0.95})
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")],
+        [existing(agent_id=f"agent-{i}") for i in range(200)],
+        value,
+    )
+    assert result[0].action == "clarify"
+    assert result[0].candidate_ids == ["agent-0", "agent-199"]
+    assert value.status.calls > 1
+
+
+@pytest.mark.asyncio
+async def test_later_catalog_batch_failure_invalidates_all_identity_decisions(storage):
+    value = classifier(storage)
+
+    class LaterFailure(ScriptedClassifier):
+        async def __call__(self, **kwargs):
+            if self.calls:
+                self.failure = TimeoutError()
+            return await super().__call__(**kwargs)
+
+    value.model = LaterFailure()
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")] * 3,
+        [existing(agent_id=f"agent-{i}") for i in range(200)],
+        value,
+    )
+    assert all(d.action == "clarify" for d in result)
+    assert value.status.calls == 2
+    assert value.status.state == "unavailable"
+
+
+@pytest.mark.asyncio
+async def test_single_oversized_candidate_remains_unresolved_without_truncation(
+    storage,
+):
+    record = existing()
+    record.data.generated_skill = "S" * 125_000 + "Không được chuyển tiền"
+    value = classifier(storage)
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Kỹ thuật", objective="Tra cứu phiếu")],
+        [existing(agent_id="first"), record],
+        value,
+    )
+    assert result[0].action == "clarify"
+    assert value.status.calls == 0
 
 
 @pytest.fixture

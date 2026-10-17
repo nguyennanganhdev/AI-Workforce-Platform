@@ -470,6 +470,9 @@
 		"description": "This will permanently delete the knowledge base \"{{name}}\" and all of its indexed documents. This action cannot be undone."
 	},
 	"credential": {
+		"classifierModel": "Classifier model",
+		"classifierDescription": "JEV helps Agent Builder check business duplicates and select permitted tools, knowledge bases and skills.",
+		"classifierStatusHint": "Credential saved. Agent Builder shows the server-configured version and connection status for each evaluation.",
 		"noProviders": "No providers available",
 		"selectHint": "No credential selected",
 		"selectHintDescription": "Select a credential from the sidebar to view its details.",

@@ -244,29 +244,81 @@ def candidate_state(record: AgentRecord) -> dict:
     }
 
 
+async def classify_catalog(base, entries, classifier, purpose, initial_questions=None):
+    """Batch complete evidence, never shortlist away a possible duplicate.
+
+    Plan every batch before calling the provider. An indivisible oversized
+    entry must remain unresolved; truncating it could hide business constraints.
+    Callers receive results only after ALL batches succeed.
+    """
+
+    def fits(state, questions):
+        return (
+            len(questions) <= 1000
+            and len(json.dumps(state, ensure_ascii=False)) <= 120_000
+        )
+
+    state, questions = dict(base), dict(initial_questions or {})
+    if not fits(state, questions):
+        raise ClassifierUnavailable(
+            "Yêu cầu hoặc dàn ý quá dài cho JEV; hãy tách nhỏ nghiệp vụ."
+        )
+    batches = []
+    for kind, rid, evidence, entry_questions in entries:
+        items = list(entry_questions.items())
+        for offset in range(0, len(items), 1000):
+            chunk = dict(items[offset : offset + 1000])
+            next_state = {**state, kind: {**state.get(kind, {}), rid: evidence}}
+            next_questions = {**questions, **chunk}
+            if not fits(next_state, next_questions):
+                if questions:
+                    batches.append((state, questions))
+                state, questions = dict(base), {}
+                next_state = {**state, kind: {rid: evidence}}
+                next_questions = chunk
+                if not fits(next_state, next_questions):
+                    raise ClassifierUnavailable(
+                        "Một mục catalog có nội dung quá dài cho JEV; "
+                        "hãy rút gọn cấu hình hoặc tài nguyên đó rồi thử lại."
+                    )
+            state, questions = next_state, next_questions
+    if questions:
+        batches.append((state, questions))
+    matches = {}
+    for state, questions in batches:
+        response = await classifier.call(state, questions, purpose)
+        matches.update({key: probability(response, key) for key in questions})
+    return matches
+
+
 async def decide_identities(
     plans, records, classifier: BuilderClassifier, request: str = ""
 ) -> list[BuilderDecision]:
-    questions = {}
-    for i, plan in enumerate(plans):
-        for j, _ in enumerate(records):
-            questions[f"same_{i}_{j}"] = question(
-                f"Does planned[{i}] have the same bounded business responsibility as existing[{j}]? "
+    questions, entries = {}, []
+    for j, record in enumerate(records):
+        candidate_questions = {}
+        for i, _ in enumerate(plans):
+            candidate_questions[f"same_{i}_{j}"] = question(
+                f"Does planned[{i}] have the same bounded business responsibility as existing[{str(j)!r}]? "
                 "Compare business subject, operations, audience and constraints, not names or wording. "
                 "Only the user's request defines required scope; planned agent text is a proposal. "
                 "An extension needing additional tools is the same identity to upgrade. A different customer/case "
                 "does not need a new agent. Unrelated operations sharing a name are different identities."
             )
-            questions[f"covers_{i}_{j}"] = question(
-                f"Does existing[{j}].published already cover ALL explicit requirements of planned[{i}] "
+            candidate_questions[f"covers_{i}_{j}"] = question(
+                f"Does existing[{str(j)!r}].published already cover ALL explicit requirements of planned[{i}] "
                 "without configuration changes? Required external actions must have actual tools; "
                 "reasoning may use verified supplied data. A KB or skill cannot replace an external operation."
             )
+        entries.append(
+            ("existing", str(j), candidate_state(record), candidate_questions)
+        )
+    for i, _ in enumerate(plans):
         for j in range(i):
             questions[f"pair_{i}_{j}"] = question(
                 f"Do planned[{i}] and planned[{j}] duplicate the same business responsibility?"
             )
-    if not questions:
+    if not questions and not entries:
         return [
             BuilderDecision(
                 action="create", reason="Không có agent cùng scope trong catalog."
@@ -274,29 +326,24 @@ async def decide_identities(
             for _ in plans
         ]
     try:
-        response = await classifier.call(
+        matches = await classify_catalog(
             {
                 "request": request,
                 "planned": [p.model_dump() for p in plans],
-                "existing": [candidate_state(r) for r in records],
             },
-            questions,
+            entries,
+            classifier,
             "builder_reuse",
+            questions,
         )
         decisions = []
         for i, _ in enumerate(plans):
-            same = [
-                j
-                for j in range(len(records))
-                if probability(response, f"same_{i}_{j}") >= 0.85
-            ]
+            same = [j for j in range(len(records)) if matches[f"same_{i}_{j}"] >= 0.85]
             uncertain = [
-                j
-                for j in range(len(records))
-                if 0.15 < probability(response, f"same_{i}_{j}") < 0.85
+                j for j in range(len(records)) if 0.15 < matches[f"same_{i}_{j}"] < 0.85
             ]
             duplicate_plan = any(
-                probability(response, f"pair_{max(i, j)}_{min(i, j)}") > 0.15
+                matches[f"pair_{max(i, j)}_{min(i, j)}"] > 0.15
                 for j in range(len(plans))
                 if j != i
             )
@@ -317,7 +364,7 @@ async def decide_identities(
                 elif record.data.draft_spec or record.data.lifecycle_state == "draft":
                     action = "resume"
                 elif (
-                    probability(response, f"covers_{i}_{same[0]}") >= 0.85
+                    matches[f"covers_{i}_{same[0]}"] >= 0.85
                     and record.data.spec
                     and record.data.invite_config.invitable
                     and record.data.published_version
@@ -332,7 +379,7 @@ async def decide_identities(
                         action=action,
                         agent_id=record.id,
                         expected_revision=record.storage_revision,
-                        probability=probability(response, f"same_{i}_{same[0]}"),
+                        probability=matches[f"same_{i}_{same[0]}"],
                         candidate_ids=[record.id],
                         reason={
                             "reuse": "Agent hiện có đủ năng lực và đã có kiểm thử hợp lệ.",
@@ -350,7 +397,9 @@ async def decide_identities(
                     )
                 )
         return decisions
-    except Exception as exc:  # noqa: BLE001 - no classifier failure may authorize a new identity
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 - no classifier failure may authorize a new identity
         classifier.status.state = "unavailable"
         classifier.status.reason = (
             str(exc)
@@ -362,7 +411,11 @@ async def decide_identities(
 
 async def select_resources(plans, catalog: dict, classifier: BuilderClassifier):
     """Multi-label coverage, with tool ownership resolved in deterministic code."""
-    questions = {}
+    entries = {
+        (kind, rid): (kind, rid, evidence, {})
+        for kind in ("tools", "knowledge", "skills")
+        for rid, evidence in catalog[kind].items()
+    }
     for i, plan in enumerate(plans):
         for kind, needs in (
             ("tools", plan.tool_requirements),
@@ -370,17 +423,17 @@ async def select_resources(plans, catalog: dict, classifier: BuilderClassifier):
         ):
             for j, need in enumerate(needs):
                 for rid in catalog[kind]:
-                    questions[f"{kind}:{i}:{j}:{rid}"] = question(
+                    entries[kind, rid][3][f"{kind}:{i}:{j}:{rid}"] = question(
                         f"Does {kind}[{rid!r}] directly supply requirement {need!r} of planned[{i}]? "
                         "Match actual subject, action and returned information. Search is not booking. "
                         "Inputs can be supplied separately. KBs cannot supply live data or external actions."
                     )
         for rid in catalog["skills"]:
-            questions[f"skills:{i}:0:{rid}"] = question(
+            entries["skills", rid][3][f"skills:{i}:0:{rid}"] = question(
                 f"Does skills[{rid!r}] fully cover the reusable workflow in planned[{i}].objective? "
                 "Do not choose a merely related skill or assume it grants tools or permissions."
             )
-    if not questions:
+    if not any(entry[3] for entry in entries.values()):
         return [
             {
                 "tools": [],
@@ -391,12 +444,12 @@ async def select_resources(plans, catalog: dict, classifier: BuilderClassifier):
             }
             for p in plans
         ]
-    response = await classifier.call(
-        {"planned": [p.model_dump() for p in plans], **catalog},
-        questions,
+    matches = await classify_catalog(
+        {"planned": [p.model_dump() for p in plans]},
+        entries.values(),
+        classifier,
         "builder_resources",
     )
-    matches = {key: probability(response, key) for key in questions}
     selected = [
         {
             "tools": [],
