@@ -1,14 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import Image from "../ui/AssetImage";
-import { ArrowUpRight, Menu, X, Pause, Play } from "lucide-react";
+import { ArrowUpRight, Menu, X } from "lucide-react";
 import {
   AnimatePresence,
   m as motion,
   useMotionValueEvent,
   useScroll,
 } from "framer-motion";
-import MagneticButton from "../ui/MagneticButton";
 import { useMotionSettings } from "../../lib/motion";
 import { pageCopy } from "../../lib/content";
 
@@ -16,7 +15,7 @@ export default function Navbar() {
   const [open, setOpen] = useState(false),
     [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
-  const { enabled, toggle } = useMotionSettings();
+  const { enabled } = useMotionSettings();
   useMotionValueEvent(scrollY, "change", (value) => setScrolled(value > 30));
   useEffect(() => {
     if (!open) return;
@@ -34,14 +33,12 @@ export default function Navbar() {
       <div className="container nav-inner">
         <a href="/" className="brand" aria-label="VAgents - Trang chủ">
           <Image
-            src="/landing-assets/images/logo.svg"
+            src="/landing-assets/images/logo.png"
             alt=""
             width={36}
             height={36}
           />
-          <span>
-            VAgents<span className="brand-dot">.</span>
-          </span>
+          <span>{pageCopy.brand}</span>
         </a>
         <nav className="desktop-nav" aria-label="Điều hướng chính">
           {pageCopy.nav.map((item) => (
@@ -51,18 +48,12 @@ export default function Navbar() {
           ))}
         </nav>
         <div className="nav-actions">
-          <button
-            className="icon-button motion-toggle"
-            onClick={toggle}
-            aria-label={enabled ? "Tạm dừng chuyển động" : "Bật chuyển động"}
-            aria-pressed={!enabled}
-          >
-            {enabled ? <Pause size={17} /> : <Play size={17} />}
-          </button>
-          <MagneticButton href="/register" className="nav-cta">
-            {pageCopy.start}
-            <ArrowUpRight size={17} />
-          </MagneticButton>
+          <a href="/login" className="nav-auth nav-login">
+            {pageCopy.auth.login}
+          </a>
+          <a href="/register" className="nav-auth nav-register">
+            {pageCopy.auth.register}
+          </a>
           <button
             id="menu-toggle"
             className="icon-button mobile-menu-toggle"
@@ -96,10 +87,6 @@ export default function Navbar() {
                 <ArrowUpRight size={17} />
               </a>
             ))}
-            <a href="/register" className="mobile-nav-cta">
-              {pageCopy.start}
-              <ArrowUpRight size={17} />
-            </a>
           </motion.nav>
         )}
       </AnimatePresence>

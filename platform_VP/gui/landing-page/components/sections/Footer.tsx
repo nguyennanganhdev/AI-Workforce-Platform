@@ -1,26 +1,26 @@
 "use client";
 import Image from "../ui/AssetImage";
 import { useState } from "react";
-import { ArrowUpRight, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowUpRight, ArrowRight, Pause, Play } from "lucide-react";
 import { pageCopy } from "../../lib/content";
+import { useMotionSettings } from "../../lib/motion";
 
 export default function Footer() {
   const [email, setEmail] = useState(""),
     [status, setStatus] = useState("");
+  const { enabled, toggle } = useMotionSettings();
   return (
     <footer id="contact" className="site-footer">
       <div className="container footer-grid">
         <div className="footer-brand-block">
           <a className="brand" href="/" aria-label="VAgents - Trang chủ">
             <Image
-              src="/landing-assets/images/logo.svg"
+              src="/landing-assets/images/logo.png"
               width={36}
               height={36}
               alt=""
             />
-            <span>
-              VAgents<span className="brand-dot">.</span>
-            </span>
+            <span>{pageCopy.brand}</span>
           </a>
           <p>{pageCopy.footer.tagline}</p>
           <form
@@ -77,11 +77,19 @@ export default function Footer() {
         ))}
       </div>
       <div className="container footer-wordmark" aria-hidden="true">
-        VAgents
+        {pageCopy.brand}
       </div>
       <div className="container footer-bottom">
         <span>{pageCopy.footer.copyright}</span>
         <div>
+          <button
+            className="motion-toggle"
+            onClick={toggle}
+            aria-pressed={!enabled}
+          >
+            {enabled ? <Pause size={16} /> : <Play size={16} />}
+            {enabled ? pageCopy.motion.pause : pageCopy.motion.play}
+          </button>
           <details className="policy-disclosure">
             <summary>{pageCopy.footer.termsLabel}</summary>
             <p>{pageCopy.footer.terms}</p>

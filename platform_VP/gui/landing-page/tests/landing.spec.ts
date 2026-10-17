@@ -57,6 +57,18 @@ for (const width of [360, 375, 600, 900, 1100, 1440]) {
   test(`white landing layout and assets at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width <= 600 ? 812 : 900 });
     await openStatic(page);
+    const header = page.locator("header");
+    await expect(header.locator(".brand")).toHaveText("VAgents");
+    await expect(header.locator(".brand img")).toHaveAttribute(
+      "src",
+      "/landing-assets/images/logo.png",
+    );
+    for (const [name, href] of [["Đăng nhập", "/login"], ["Đăng ký", "/register"]]) {
+      const link = header.getByRole("link", { name, exact: true });
+      await expect(link).toBeInViewport();
+      await expect(link).toHaveAttribute("href", href);
+    }
+    await expect(header.getByRole("link", { name: "Bắt đầu ngay", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       "Một ý tưởng.Cả đội ngũ AIcùng hành động.",
     );
@@ -257,6 +269,7 @@ test("global motion toggle pauses animations, restores them, and respects reduce
     name: "Tạm dừng chuyển động",
     exact: true,
   });
+  await expect(page.locator("footer").getByRole("button", { name: "Tạm dừng chuyển động", exact: true })).toBeAttached();
   await pause.click();
   await expect(page.locator("html")).toHaveAttribute("data-motion", "paused");
   const play = page.getByRole("button", {

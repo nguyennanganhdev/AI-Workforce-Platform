@@ -94,7 +94,7 @@ export default function Integrations() {
             ))}
             <div className="orbit-center">
               <Image
-                src="/landing-assets/images/logo.svg"
+                src="/landing-assets/images/logo.png"
                 width={64}
                 height={64}
                 alt="VAgents"

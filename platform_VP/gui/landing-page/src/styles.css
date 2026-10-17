@@ -20,7 +20,8 @@
   font-synthesis: none;
 }
 @theme inline {
-  --font-brand: var(--font-sans);
+  /* Match the Platform Cue template's brand typography. */
+  --font-brand: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-code: var(--font-mono);
 }
 * {
@@ -206,19 +207,17 @@ button {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   white-space: nowrap;
 }
 .brand > span {
-  font-size: 25px;
-  font-weight: 900;
-  letter-spacing: -1px;
+  font-family: var(--font-brand);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 .brand img {
-  border-radius: 10px;
-}
-.brand-dot {
-  color: var(--accent-bright);
+  flex-shrink: 0;
 }
 .site-header {
   height: 80px;
@@ -333,10 +332,29 @@ button {
   transform: translateX(-180px) rotate(25deg);
   pointer-events: none;
 }
-.nav-cta {
-  min-height: 43px;
-  font-size: 11px;
-  padding: 12px 17px;
+.nav-auth {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid #d8dce4;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nav-login:hover {
+  background: #f7f8fa;
+  border-color: #a5acb5;
+}
+.nav-register {
+  background: linear-gradient(110deg, #ff7a1a, #ffb347);
+  border-color: transparent;
+  color: #24180e;
+}
+.nav-register:hover {
+  box-shadow: 0 4px 16px #ff7a1a26;
 }
 .button-ghost {
   background: #fff;
@@ -1822,11 +1840,12 @@ button {
   opacity: 1;
 }
 .footer-wordmark {
+  font-family: var(--font-brand);
   font-size: clamp(90px, 16vw, 200px);
   line-height: 1.1;
   text-align: center;
-  font-weight: 900;
-  letter-spacing: -0.075em;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   margin-top: 20px;
   user-select: none;
   color: #d4d9e1;
@@ -1849,6 +1868,17 @@ button {
   display: flex;
   gap: 28px;
   align-items: flex-start;
+  flex-wrap: wrap;
+}
+.motion-toggle {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #5c6470;
+}
+.motion-toggle:hover {
+  color: var(--accent);
 }
 .policy-disclosure {
   max-width: 220px;
@@ -2114,13 +2144,12 @@ html[data-motion="paused"] .typing-caret {
     font-size: 10px;
   }
   .brand > span {
-    font-size: 23px;
+    font-size: 20px;
   }
   .nav-inner {
     gap: 15px;
   }
-  .nav-cta {
-    font-size: 10px;
+  .nav-auth {
     padding-inline: 14px;
   }
   .hero {
@@ -2271,9 +2300,6 @@ html[data-motion="paused"] .typing-caret {
   .desktop-nav {
     display: none;
   }
-  .nav-cta {
-    display: none;
-  }
   .mobile-menu-toggle {
     display: inline-flex;
   }
@@ -2297,11 +2323,6 @@ html[data-motion="paused"] .typing-caret {
     font-size: 13px;
     color: #535f6d;
     border-bottom: 1px solid #f0f2f5;
-  }
-  .mobile-nav > a:last-child {
-    border: 0;
-    color: #b75a17;
-    font-weight: 600;
   }
   .hero {
     padding: 40px 0 65px;
@@ -2620,14 +2641,21 @@ html[data-motion="paused"] .typing-caret {
     padding-inline: 20px;
   }
   .brand img {
-    width: 33px;
-    height: 33px;
+    width: 28px;
+    height: 28px;
   }
   .brand > span {
-    font-size: 24px;
+    font-size: 17px;
   }
   .nav-actions {
-    gap: 1px;
+    gap: 6px;
+  }
+  .nav-inner {
+    gap: 8px;
+  }
+  .nav-auth {
+    padding-inline: 9px;
+    font-size: 11px;
   }
   .hero {
     padding-top: 33px;

@@ -22,8 +22,11 @@ public/images/team-journey-contained.webp (900x900 white contain-resize variant 
 public/images/og-image.webp (1200x630 contain-resized hero; white letterbox background)
 
 Existing logo:
-public/images/logo.png copies the prior landing's vagents-mark.png.
-public/images/logo.svg is the requested white V with orange dot on a dark rounded square fallback.
+public/images/logo.png is the exact Platform BrandMark asset from
+platform_VP/agentscope/examples/web_ui/frontend/src/assets/images/brand/vagents-app-icon.png.
+SHA256: 9500a7b48ac3bfea24bc89c0817b5b80f54a5549fec52d950d53d7f50181107a
+The wordmark follows Platform Brand.tsx: VAgents, semibold, without a trailing dot;
+its font stack matches the Platform Cue template in src/styles/cue.css.
 
 Generation prompts, verbatim:
 DATA MASCOT:

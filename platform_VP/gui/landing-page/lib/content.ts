@@ -211,6 +211,9 @@ export const content = {
 } as const;
 
 export const pageCopy = {
+  brand: "VAgents",
+  auth: { login: "Đăng nhập", register: "Đăng ký" },
+  motion: { pause: "Tạm dừng chuyển động", play: "Bật chuyển động" },
   start: "Bắt đầu ngay",
   nav: [
     { label: "Cách hoạt động", href: "#how" },
