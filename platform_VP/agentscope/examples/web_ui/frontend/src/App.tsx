@@ -124,6 +124,9 @@ function PlatformApp() {
 			<>
 				<AuthPage
 					onAuthenticated={(user) => {
+						queryClient.clear();
+						try { localStorage.setItem(`session-workspace:view:${user.id}`, 'chat'); } catch { /* Optional browser preference. */ }
+						void router.navigate('/chat');
 						setCurrentUser(user);
 						setAuthStatus('authenticated');
 					}}

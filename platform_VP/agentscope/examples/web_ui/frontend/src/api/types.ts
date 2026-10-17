@@ -138,6 +138,13 @@ export type SessionOrigin =
 export type SessionSourceKind = SessionOrigin['type'];
 
 export interface SessionConfig {
+	personal_chat?: {
+		kind: 'direct' | 'group';
+		root_session_id: string | null;
+		members: { agent_id: string; session_id: string; name: string }[];
+		goal: string;
+		context_mode: 'shared' | 'isolated';
+	} | null;
 	name: string;
 	/** Who owns `name` — see the backend's `SessionNaming`. */
 	naming: { auto: boolean };
@@ -177,6 +184,7 @@ export interface SessionRecord extends RecordBase {
 
 export interface CreateSessionRequest {
 	agent_id: string;
+	personal?: boolean;
 	workspace_id?: string;
 	chat_model_config?: ChatModelConfig | null;
 	/** Optional fallback model. Omit (or pass null) for no fallback. */

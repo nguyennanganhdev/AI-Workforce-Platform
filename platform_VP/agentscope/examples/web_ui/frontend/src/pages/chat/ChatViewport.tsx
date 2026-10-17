@@ -1,4 +1,3 @@
-import type { TextBlock } from '@agentscope-ai/agentscope/message';
 import type { PermissionContext } from '@agentscope-ai/agentscope/permission';
 import type { TaskContext } from '@agentscope-ai/agentscope/state';
 import {
@@ -22,6 +21,7 @@ import type {
 import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
+import { PersonalContextPanel } from '@/components/chat/PersonalContextPanel';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
 import { cleanName } from '@/components/chat/teamDialogText';
@@ -63,7 +63,6 @@ import { useSessions } from '@/hooks/useSessions';
 import { useWorkspace } from '@/hooks/useWorkspace.ts';
 import { useWorkspaceStatus } from '@/hooks/useWorkspaceStatus';
 import { useTranslation } from '@/i18n/useI18n';
-import { takeGroupKickoff } from '@/lib/group-chats';
 
 interface ChatViewportProps {
 	/**
@@ -386,6 +385,9 @@ export function ChatViewport({
 	// the temporal dead zone.
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
 	const isTicketView = ticketView || Boolean((view?.session.state.middle_context as Record<string, unknown> | undefined)?.workflow_id);
+	const personalLayout = view?.session.config.personal_chat
+		? panelLayout.map(column => column.filter(panel => panel !== 'team')).filter(column => column.length > 0)
+		: panelLayout;
 	const team = view?.team;
 	const completeTeamMention = useCallback(
 		(input: string): string | null => {
@@ -593,25 +595,6 @@ export function ChatViewport({
 		setSelectedKnowledgeConfig(null);
 	}, [sessionId]);
 
-	// A group chat opens with its leader's instructions to form the team,
-	// sent once the chat is ready to send at all: history loaded and empty,
-	// nothing running, a model chosen.
-	useEffect(() => {
-		if (!sessionId || selectedModel === null || messagesLoading) return;
-		if (phase !== 'idle' || msgs.length > 0) return;
-		const text = takeGroupKickoff(sessionId);
-		if (!text) return;
-		const now = new Date().toISOString();
-		send([
-			{
-				id: crypto.randomUUID(),
-				type: 'text',
-				text,
-				created_at: now,
-				finished_at: now,
-			} as TextBlock,
-		]);
-	}, [sessionId, selectedModel, messagesLoading, phase, msgs.length, send]);
 
 	const selectedModelCard = useMemo(() => {
 		if (!selectedModel) return null;
@@ -814,6 +797,8 @@ export function ChatViewport({
 						id: `${agentId}:${sessionId}`,
 						ownerId: agentId,
 						ownerName: agentName ?? 'Agent',
+						personalMembers: view?.session.config.personal_chat?.members,
+						audienceLabel: view?.session.config.personal_chat ? t('personal.you') : undefined,
 						agents: [
 							...(view?.team?.leader_agent ? [view.team.leader_agent] : []),
 							...(view?.team?.members.map((member) => member.agent) ?? []),
@@ -834,14 +819,15 @@ export function ChatViewport({
 			<SessionWorkspace snapshot={office}>
 				<main className="flex size-full">
 					<ResizablePanelGroup orientation="horizontal">
-						<ResizablePanel className="flex flex-1 bg-background" minSize="24rem">
+						<ResizablePanel className="flex flex-1 bg-background" minSize="18rem">
 							<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden">
 								{/* 48px header, no rule under it: the agent on the left
 							    (opens its settings), the session's own controls and
 							    the side-panel toggles on the right. */}
-								<div className="flex h-12 shrink-0 flex-row items-center justify-between gap-x-2 px-2">
-									<div className="flex min-w-0 flex-row items-center gap-x-1">
+								<div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-2 py-1 sm:flex-nowrap sm:py-0">
+									<div className="flex min-w-0 flex-1 basis-full items-center gap-x-1 sm:basis-auto">
 										<SidebarTrigger className="md:hidden" />
+										{view?.session.config.personal_chat && agentId && sessionId && <PersonalContextPanel key={sessionId} agentId={agentId} sessionId={sessionId} agentName={agentName} busy={phase !== 'idle'} />}
 										{agentId && (
 											<button
 												type="button"
@@ -882,12 +868,12 @@ export function ChatViewport({
 									</div>
 									{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
-									<div className="flex shrink-0 flex-row items-center gap-x-1">
+									<div className="flex min-w-0 flex-1 basis-full flex-row items-center justify-end gap-x-1 sm:flex-none sm:basis-auto">
 										{!isTicketView && <>
 										<LlmSelect
 											id="tour-llm-select"
 											variant="ghost"
-											className="text-[13px] text-muted-foreground hover:text-foreground"
+											className="max-w-40 truncate text-[13px] text-muted-foreground hover:text-foreground"
 											value={selectedModel}
 											onChange={handleLlmChange}
 											onAddCredential={() => setCredentialOpen(true)}
@@ -918,7 +904,7 @@ export function ChatViewport({
 									    team (who is working) and plan (what they are
 									    doing) — then the full list behind the menu. An
 									    open panel's toggle keeps a grey fill. */}
-										<Button
+										{!view?.session.config.personal_chat && <Button
 											variant="ghost"
 											size="icon"
 											aria-label={t('common.team')}
@@ -928,7 +914,7 @@ export function ChatViewport({
 											onClick={() => togglePanel('team')}
 										>
 											<SquareUser className="size-5" />
-										</Button>
+										</Button>}
 										<Button
 											variant="ghost"
 											size="icon"
@@ -999,22 +985,24 @@ export function ChatViewport({
 													<Database />
 													{t('panel.knowledge.title')}
 												</DropdownMenuCheckboxItem>
-												<DropdownMenuCheckboxItem
+												{!view?.session.config.personal_chat && <DropdownMenuCheckboxItem
 													checked={isPanelOpen('team')}
 													onCheckedChange={() => togglePanel('team')}
 													onSelect={(e) => e.preventDefault()}
 												>
 													<UsersRound />
 													{t('common.team')}
-												</DropdownMenuCheckboxItem>
+												</DropdownMenuCheckboxItem>}
 											</DropdownMenuContent>
 										</DropdownMenu>
 									</div>
 								</div>
 								<div className="relative flex min-h-0 flex-1 overflow-hidden">
 									<ChatContent
+										personalChat={Boolean(view?.session.config.personal_chat)}
+										groupChat={view?.session.config.personal_chat?.kind === 'group'}
 										className="w-full"
-										showWorkspace={!isTicketView}
+										showWorkspace={!isTicketView && !view?.session.config.personal_chat}
 										composerPlaceholder={isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
 										agentName={agentName}
 										msgs={msgs}
@@ -1023,7 +1011,7 @@ export function ChatViewport({
 										sessionId={sessionId}
 										cwd={view?.session.config.cwd ?? null}
 										onCwdChange={handleCwdChange}
-										git={isTicketView ? null : workspaceStatus?.git ?? null}
+										git={isTicketView || view?.session.config.personal_chat ? null : workspaceStatus?.git ?? null}
 										mentions={mentions}
 										onRefreshGit={refetchWorkspaceStatus}
 										phase={phase}
@@ -1117,10 +1105,10 @@ export function ChatViewport({
 						</ResizablePanel>
 						{/* The side panels push the chat narrower rather than
 					    covering it; a 1px rule separates them. */}
-						{panelLayout.length > 0 && (
+						{personalLayout.length > 0 && (
 							<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 						)}
-						<PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />
+						<PanelDock layout={personalLayout} panels={panels} onClosePanel={closePanel} />
 					</ResizablePanelGroup>
 				</main>
 			</SessionWorkspace>

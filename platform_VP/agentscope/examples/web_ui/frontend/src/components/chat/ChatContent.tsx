@@ -64,6 +64,8 @@ function markerStamp(at: Date, previous: Date, language: string): string {
 }
 
 interface ChatContentProps {
+	personalChat?: boolean;
+	groupChat?: boolean;
 	composerPlaceholder?: string;
 	showWorkspace?: boolean;
 	msgs: Msg[];
@@ -122,6 +124,8 @@ interface ChatContentProps {
 }
 
 const ChatContentComponent: React.FC<ChatContentProps> = ({
+	personalChat = false,
+	groupChat = false,
 	msgs,
 	composerPlaceholder,
 	showWorkspace = true,
@@ -203,6 +207,16 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 			) : isEmpty && ticketView ? (
 				<div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
 					Session này chưa nhận ticket nào.
+				</div>
+			) : isEmpty && personalChat ? (
+				<div className="flex min-h-0 flex-1 flex-col items-start justify-center gap-5 overflow-y-auto px-6 py-8 sm:px-10">
+					<div className="max-w-xl space-y-2">
+						<h1 className="text-xl font-semibold tracking-tight">{t('personal.greeting', { agent: agentName ?? 'Agent' })}</h1>
+						<p className="text-sm leading-relaxed text-muted-foreground">{t(groupChat ? 'personal.groupIntro' : 'personal.intro')}</p>
+					</div>
+					<div className="flex max-w-xl flex-col items-start gap-2">
+						{['capabilities', 'boundaries', 'plan'].map(key => <Button key={key} variant="outline" className="h-auto min-h-11 max-w-full justify-start whitespace-normal py-2 text-left text-sm" disabled={disabled} onClick={() => sendText(t(`personal.${key}`))}>{t(`personal.${key}`)}</Button>)}
+					</div>
 				</div>
 			) : isEmpty ? (
 				// Cue's onboarding: the agent speaks first — a personal greeting,

@@ -151,6 +151,11 @@ async def chat(
     # User prose is resolved by the server against stored ASKING calls, never
     # by an LLM or a client-supplied tool payload. Each decision grants one call.
     console_session = await storage.get_session(user_id, request.agent_id, request.session_id)
+    if console_session is not None and console_session.config.personal_chat is not None:
+        if console_session.user_id != user_id or console_session.agent_id != request.agent_id:
+            raise HTTPException(404, "Personal conversation not found")
+        if request.target_agent_id is not None or request.task_id or request.new_task or request.in_reply_to:
+            raise HTTPException(400, "Select the agent's own personal conversation instead of routing a team task")
     partner_console = bool(console_session and console_session.state.middle_context.get("workflow_id"))
     if partner_console and isinstance(request.input, (UserConfirmResultEvent, ExternalExecutionResultEvent)):
         raise HTTPException(status_code=403, detail="Xác nhận của cư dân phải đi qua kênh đối tác được xác thực.")

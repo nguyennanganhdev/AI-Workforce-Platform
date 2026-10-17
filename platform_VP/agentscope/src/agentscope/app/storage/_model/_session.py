@@ -225,6 +225,24 @@ class SessionNaming(BaseModel):
     """
 
 
+class PersonalChatMember(BaseModel):
+    """A user's explicit participant, with independent conversation state."""
+
+    agent_id: str
+    session_id: str
+    name: str
+
+
+class PersonalChatConfig(BaseModel):
+    """Personal chats never participate in Leader orchestration."""
+
+    kind: Literal["direct", "group"] = "direct"
+    root_session_id: str | None = None
+    members: list[PersonalChatMember] = Field(default_factory=list)
+    goal: str = Field(default="", max_length=4000)
+    context_mode: Literal["shared", "isolated"] = "shared"
+
+
 class SessionConfig(BaseModel):
     """Session configuration — set at creation, updatable via PATCH."""
 
@@ -238,6 +256,9 @@ class SessionConfig(BaseModel):
     manager's isolation policy. Consumed verbatim by chat,
     ``list_mcps``, and team tools; also the cache key for
     :meth:`WorkspaceManagerBase.get_workspace`."""
+
+    personal_chat: PersonalChatConfig | None = None
+    """Server-created personal space; no team/leader identity is assigned."""
 
     name: str = Field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"),

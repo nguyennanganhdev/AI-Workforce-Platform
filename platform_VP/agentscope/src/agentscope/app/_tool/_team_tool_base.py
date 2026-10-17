@@ -101,6 +101,8 @@ class _TeamToolBase(ToolBase):
             self._agent_id,
             self._session_id,
         )
+        if session is not None and session.config.personal_chat is not None:
+            raise _TeamToolError("personal conversations do not allow delegation")
         if session is None or session.team_id is None:
             raise _TeamToolError(
                 "this session is not in any team — call TeamCreate first.",

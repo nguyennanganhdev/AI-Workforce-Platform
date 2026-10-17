@@ -57,6 +57,8 @@ class CreateSessionRequest(BaseModel):
     """Request body for creating a new session."""
 
     agent_id: str = Field(description="Agent this session belongs to.")
+    personal: bool = False
+    """Create an independent platform-user conversation."""
     workspace_id: str | None = Field(
         default=None,
         description=(

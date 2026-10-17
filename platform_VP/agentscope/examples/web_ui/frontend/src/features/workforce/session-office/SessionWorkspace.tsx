@@ -3,6 +3,8 @@ import { useId, useState, type ReactNode } from 'react';
 import type { SessionOfficeSnapshot } from './model';
 import type { AgentView } from '@/api';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCurrentUser } from '@/context/CurrentUserContext';
+import { useTranslation } from '@/i18n/useI18n';
 import { AgentOffice } from '@/pages/agents/AgentOffice';
 
 const ignore = () => {};
@@ -33,9 +35,11 @@ function Workspace({
 	children: ReactNode;
 }) {
 	const panelId = useId();
+	const user = useCurrentUser();
+	const { t } = useTranslation();
 	// Chat first: the conversation is the work. The office is one click away,
 	// and the viewer's last choice holds for every session.
-	const storageKey = 'session-workspace:view';
+	const storageKey = `session-workspace:view:${user?.id ?? 'anonymous'}`;
 	const [view, setView] = useState<View>(() => {
 		try {
 			return localStorage.getItem(storageKey) === 'office' ? 'office' : 'chat';
@@ -54,7 +58,7 @@ function Workspace({
 	};
 	return (
 		<div className="flex size-full min-h-0 min-w-0 flex-col">
-			<Tabs value={view} onValueChange={select} className="shrink-0 border-b px-4 py-2">
+			<Tabs value={view} onValueChange={select} className="shrink-0 data-horizontal:flex-row items-center justify-between border-b px-4 py-2">
 				<TabsList aria-label="Chế độ xem phiên">
 					<TabsTrigger value="chat" id={`${panelId}-chat`} aria-controls={panelId}>
 						Chat
@@ -63,6 +67,7 @@ function Workspace({
 						Văn phòng
 					</TabsTrigger>
 				</TabsList>
+				<span className="hidden text-xs text-muted-foreground md:inline">{t('personal.viewRemembered')}</span>
 			</Tabs>
 			<div
 				id={panelId}

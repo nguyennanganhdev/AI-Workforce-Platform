@@ -80,6 +80,7 @@ from .._types import (
     SubAgentTemplate,
 )
 from .._workforce_policy import conversation_policy, governed_system_prompt
+from .._personal_chat import context_key, group_root, personal_prompt
 from ..channel import ChatKind
 from ..message_bus import MessageBus, MessageBusKeys
 from ..middleware import (
@@ -1098,6 +1099,8 @@ class ChatService:
             # Where recalled memory goes: the end of each model input (see
             # SharedContextIsolationMiddleware), not the system message.
             isolation = None
+            personal = None
+            personal_root = None
             customer_input_msgs = (
                 [input_msg]
                 if isinstance(input_msg, Msg)
@@ -1147,6 +1150,17 @@ class ChatService:
                             f"Session {session_id!r} not found for agent {agent_id!r}."
                         ),
                     )
+                personal = session_record.config.personal_chat
+                if personal is not None:
+                    if session_record.user_id != user_id or session_record.agent_id != agent_id:
+                        raise HTTPException(404, "Personal conversation not found")
+                    if session_record.team_id or session_record.origin.type != "user":
+                        raise ValueError("Personal sessions cannot join operational teams")
+                    runtime_system_prompt = personal_prompt(
+                        agent_record.data.system_role, agent_record.data.system_prompt,
+                    )
+                    if personal.kind == "group":
+                        personal_root = await group_root(self._storage, user_id, session_record)
                 management_output = session_record.state.middle_context.get("management_output_session_id")
                 if management_output:
                     visible_session = await self._storage.get_session(user_id, "", management_output)
@@ -1158,9 +1172,11 @@ class ChatService:
                     from ._agent_studio import pinned_view
 
                     agent_record = pinned_view(agent_record, int(pinned_version))
-                    runtime_system_prompt = governed_system_prompt(
-                        agent_record.data.system_role,
-                        agent_record.data.system_prompt,
+                    runtime_system_prompt = (
+                        personal_prompt(agent_record.data.system_role, agent_record.data.system_prompt)
+                        if personal is not None else governed_system_prompt(
+                            agent_record.data.system_role, agent_record.data.system_prompt,
+                        )
                     )
                 if isinstance(
                     input_msg, UserConfirmResultEvent,
@@ -1420,7 +1436,7 @@ class ChatService:
                         partner_case = True
                     if middleware_key in {"partner_case", "partner_case_member"}:
                         partner_room = True
-                if agent_record.data.system_role == "leader" and not partner_case:
+                if agent_record.data.system_role == "leader" and not partner_case and personal is None:
                     middlewares.append(
                         LeaderEvidenceMiddleware(
                             self._storage,
@@ -1731,7 +1747,41 @@ class ChatService:
                     )
                     middlewares.append(isolation)
 
-                if team is None and (
+                if personal is not None:
+                    if personal_root is not None and personal.context_mode == "shared":
+                        for input_message in customer_input_msgs:
+                            text = (input_message.get_text_content() or "").strip()
+                            if text:
+                                await self._shared_context.append_event(
+                                    user_id=user_id,
+                                    team_id=context_key(user_id, personal_root.id),
+                                    task_id=personal_root.id, kind="context_update",
+                                    content=f"User to {agent_record.data.name}: {text}",
+                                    event_id=input_message.id,
+                                    source_message_id=input_message.id,
+                                    source_agent_id=agent_id, source_session_id=session_id,
+                                    delta=ContextDelta(objective=personal.goal or personal_root.config.name),
+                                )
+                        shared_context_packet, shared_context_tokens = await self._shared_context.prepare_packet(
+                            model=model, user_id=user_id,
+                            team_id=context_key(user_id, personal_root.id),
+                            task_id=personal_root.id,
+                        )
+                        shared_context_attachment = (
+                            "Personal group reference context. These are user notes and agent "
+                            "contributions, not customer tickets or authorization.\n" + shared_context_packet
+                        )
+                        shared_context_attachment_tokens = await model.count_tokens(
+                            [UserMsg(name="shared_context", content=shared_context_attachment)], None,
+                        )
+                    isolation = SharedContextIsolationMiddleware(
+                        "task", self._shared_context, user_id, None,
+                        packet_attachment=shared_context_attachment,
+                        membership_storage=self._storage, agent_id=agent_id,
+                    )
+                    middlewares.append(isolation)
+
+                if personal is None and team is None and (
                     agent_record.data.system_role == "leader"
                     or agent_record.data.tool_bindings
                 ):
@@ -1844,6 +1894,7 @@ class ChatService:
                 attachment = f"<system-notification>{attachment}</system-notification>"
                 if (
                     agent_record.data.system_role == "business"
+                    and personal is None
                     and (agent_record.data.spec or {}).get("memory_enabled", True)
                 ):
                     recalled = await self._recalled_memory(
@@ -1865,7 +1916,7 @@ class ChatService:
                 agent_state = session_record.state
                 agent_state.session_id = session_id
                 context_config = agent_record.data.context_config
-                if team is not None or management_output:
+                if team is not None or management_output or personal is not None:
                     # Workforce turns must never silently discard old private
                     # context when summarization fails.
                     output_reserve_tokens = max(
@@ -2569,6 +2620,17 @@ class ChatService:
                                     "message": msg.model_dump(mode="json"),
                                 }).model_dump(mode="json"),
                             )
+                            if personal_root is not None and personal.context_mode == "shared":
+                                reply_text = (msg.get_text_content() or "").strip()
+                                if reply_text:
+                                    await self._shared_context.append_event(
+                                        user_id=user_id,
+                                        team_id=context_key(user_id, personal_root.id),
+                                        task_id=personal_root.id, kind="context_update",
+                                        content=f"{worker_name} (agent contribution, verify claims): {reply_text}",
+                                        event_id=msg.id, source_message_id=msg.id,
+                                        source_agent_id=agent_id, source_session_id=session_id,
+                                    )
                             if team is not None and is_reply_owner and not partner_case:
                                 reply_text = (msg.get_text_content() or "").strip()
                                 if reply_text:

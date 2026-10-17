@@ -139,7 +139,10 @@ optional):
     # Builder agents operate through their validated MCP bindings. Coding,
     # shell/task/cron tools add schemas and encourage unrelated planning loops.
     is_leader = agent_record.data.system_role == "leader"
-    business_runtime = is_leader or bool(agent_record.data.tool_bindings)
+    business_runtime = (
+        is_leader or bool(agent_record.data.tool_bindings)
+        or session_record.config.personal_chat is not None
+    )
     tools = [] if business_runtime else await workspace.list_tools()
     if not business_runtime:
         tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
@@ -185,7 +188,10 @@ time or interval"
         "agent_id": agent_record.id,
         "shared_context_service": shared_context_service,
     }
-    if team_role == "worker":
+    if session_record.config.personal_chat is not None:
+        # Participant selection belongs to the user; no autonomous delegation.
+        pass
+    elif team_role == "worker":
         tools.append(TeamSay(**team_tool_kwargs, role="worker"))
     else:
         tools += [

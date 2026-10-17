@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
-import { type GroupChat, listGroupChats, onGroupChatsChange } from '@/lib/group-chats';
+import { personalChatApi } from '@/api/personal-chat';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 
-/** The group chats this browser knows about, kept current as they change. */
-export function useGroupChats(): GroupChat[] {
-	const [groups, setGroups] = useState(listGroupChats);
-	useEffect(() => onGroupChatsChange(() => setGroups(listGroupChats())), []);
-	return groups;
+/** Authenticated, durable groups; no browser-local roster or kickoff. */
+export function useGroupChats() {
+	const user = useCurrentUser();
+	return useQuery({
+		queryKey: ['personal-groups', user?.id],
+		queryFn: personalChatApi.groups,
+		staleTime: 30_000,
+		refetchInterval: 30_000,
+	});
 }

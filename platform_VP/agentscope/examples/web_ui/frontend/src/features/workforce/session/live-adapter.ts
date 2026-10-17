@@ -14,6 +14,8 @@ export function liveSessionPresentation(input: {
 	status?: SessionStatus;
 	awaitingApproval: boolean;
 	loading: boolean;
+	personalMembers?: { agent_id: string; name: string }[];
+	audienceLabel?: string;
 }): SessionPresentation {
 	const participants = new Map(
 		input.agents.map((agent) => [
@@ -25,6 +27,8 @@ export function liveSessionPresentation(input: {
 			},
 		]),
 	);
+	for (const member of input.personalMembers ?? [])
+		participants.set(member.agent_id, { id: member.agent_id, name: member.name, role: '' });
 	if (!participants.has(input.ownerId))
 		participants.set(input.ownerId, { id: input.ownerId, name: input.ownerName, role: '' });
 	const messages = input.loading
@@ -70,6 +74,7 @@ export function liveSessionPresentation(input: {
 					? 'working'
 					: 'idle';
 	return {
+		audienceLabel: input.audienceLabel,
 		id: `session:${input.id}`,
 		source: 'live',
 		messages,

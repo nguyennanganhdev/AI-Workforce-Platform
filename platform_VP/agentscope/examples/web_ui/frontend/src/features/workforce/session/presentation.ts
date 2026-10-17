@@ -9,6 +9,7 @@ import type { SessionOfficeSnapshot } from '../session-office/model';
 
 /** Same read model for replay and API/SSE. No transport, timers, or rendering here. */
 export interface SessionPresentation {
+	audienceLabel?: string;
 	id: string;
 	source: 'mock' | 'live';
 	messages: Msg[];
@@ -181,7 +182,7 @@ export function officeFromSession(session: SessionPresentation): SessionOfficeSn
 		activity: lines
 			.map((line, index) => ({
 				id: String(index),
-				text: `${line.speaker === 'customer' ? 'Cư dân' : (names.get(line.speaker) ?? '')}: ${line.text}`.slice(
+				text: `${line.speaker === 'customer' ? (session.audienceLabel ?? 'Cư dân') : (names.get(line.speaker) ?? '')}: ${line.text}`.slice(
 					0,
 					140,
 				),

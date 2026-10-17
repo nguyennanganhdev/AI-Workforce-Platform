@@ -95,6 +95,11 @@ one team at a time.
                     ],
                     state=ToolResultState.ERROR,
                 )
+            if session.config.personal_chat is not None:
+                return ToolChunk(
+                    content=[TextBlock(text="Personal conversations cannot create operational teams.")],
+                    state=ToolResultState.ERROR,
+                )
             if session.team_id is not None:
                 return ToolChunk(
                     content=[

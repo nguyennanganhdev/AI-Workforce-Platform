@@ -18,10 +18,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
-import { sessionApi, type AgentView, type SessionRecord, type SessionSourceKind } from '@/api';
+import { type AgentView, type SessionRecord, type SessionSourceKind } from '@/api';
 import { ApiError } from '@/api/client';
+import { personalChatApi, type PersonalGroup as GroupChat } from '@/api/personal-chat';
 import { GroupAvatar } from '@/components/chat/GroupAvatar';
 import { NewChatMenu } from '@/components/chat/NewChatMenu';
+import { PreviousConversations } from '@/components/chat/PreviousConversations';
 import { SearchPalette } from '@/components/chat/SearchPalette';
 import { sessionTime, sessionTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
@@ -52,12 +54,12 @@ import {
 	useSidebar,
 } from '@/components/ui/sidebar';
 import { AudioProvider } from '@/context/AudioContext';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAgents } from '@/hooks/useAgents';
 import { useGroupChats } from '@/hooks/useGroupChats';
 import { useSessions } from '@/hooks/useSessions';
 import { useSettled } from '@/hooks/useSettled';
 import { useTranslation } from '@/i18n/useI18n.ts';
-import { type GroupChat, removeGroupChat } from '@/lib/group-chats';
 
 /**
  * The chat page's outer shell, laid out like Cue: every agent is one
@@ -88,13 +90,15 @@ const SOURCE_ICON: Record<SessionSourceKind, LucideIcon> = {
 };
 
 /** localStorage keys holding the last (agent, session) the user viewed. */
-const LAST_AGENT_KEY = 'chat_last_agent';
-const LAST_SESSION_KEY = 'chat_last_session';
+
 
 const newestFirst = (a: string, b: string) => new Date(b).getTime() - new Date(a).getTime();
 
 const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => {
 	const navigate = useNavigate();
+	const user = useCurrentUser();
+	const LAST_AGENT_KEY = `chat_last_agent:${user?.id ?? 'anonymous'}`;
+	const LAST_SESSION_KEY = `chat_last_session:${user?.id ?? 'anonymous'}`;
 	const {
 		agentId: urlAgentId,
 		sessionId: urlSessionId,
@@ -109,7 +113,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	const { agents, loading: agentsLoading, error: agentsError, refetch: refetchAgents } = useAgents();
 	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const {
-		sessions,
+		sessions: allSessions,
 		loading: sessionsLoading,
 		error: sessionsError,
 		refetch: refetchSessions,
@@ -130,9 +134,17 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	const [quickAgentOpen, setQuickAgentOpen] = useState(false);
 	const [groupOpen, setGroupOpen] = useState(false);
 	const [groupToDelete, setGroupToDelete] = useState<GroupChat | null>(null);
-	const groupChats = useGroupChats();
+	const { data: groupChats = [], error: groupsError, isPending: groupsLoading, refetch: refetchGroups } = useGroupChats();
+	const sessions = allSessions.filter(v => v.session.config.personal_chat && (
+		v.session.config.personal_chat.kind === 'direct' || v.session.id === urlSessionId
+	));
 
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
+	const previousSessions = allSessions.filter(({ session }) => {
+		const middle = (session.state.middle_context ?? {}) as Record<string, unknown>;
+		return !session.config.personal_chat && session.origin.type === 'user' &&
+			!middle.workflow_id && !middle.management_output_session_id && !middle.management_case_session_id;
+	});
 	// Show a per-origin icon only when sessions actually mix sources —
 	// a uniform list needs no disambiguation.
 	const showSourceIcons = new Set(sessions.map((v) => v.session.origin.type)).size > 1;
@@ -143,7 +155,10 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	// follows this inner focus. When `urlMemberId` is undefined or
 	// doesn't resolve to a known team member, the inner focus collapses
 	// back to the outer (leader) session.
-	const focusedMember = urlMemberId
+	const activeGroup = groupChats.find((g) => g.sessionId === urlSessionId || g.members.some(member => member.session_id === urlSessionId)) ?? null;
+	const personalMember = activeGroup?.members.find(m => m.agent_id === urlMemberId);
+	const personalAgent = personalMember && agents.find(a => a.id === personalMember.agent_id);
+	const focusedMember = personalMember && personalAgent ? { agent: personalAgent, session_id: personalMember.session_id } : urlMemberId
 		? (currentView?.team?.members.find((m) => m.agent.id === urlMemberId) ?? null)
 		: null;
 	const effectiveAgentId =
@@ -162,7 +177,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		if (!urlAgentId || !urlSessionId) return;
 		localStorage.setItem(LAST_AGENT_KEY, urlAgentId);
 		localStorage.setItem(LAST_SESSION_KEY, urlSessionId);
-	}, [urlAgentId, urlSessionId]);
+	}, [urlAgentId, urlSessionId, LAST_AGENT_KEY, LAST_SESSION_KEY]);
 
 	// A different client may have deleted the agent after our list loaded.
 	useEffect(() => {
@@ -185,7 +200,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		const remembered = localStorage.getItem(LAST_AGENT_KEY);
 		const agent = agents.find((a) => a.id === remembered) ?? agents[0];
 		navigate(`/chat/${agent.id}`, { replace: true });
-	}, [agents, agentsLoading, agentsError, selectedAgent, urlAgentId, navigate]);
+	}, [agents, agentsLoading, agentsError, selectedAgent, urlAgentId, navigate, LAST_AGENT_KEY, LAST_SESSION_KEY]);
 
 	// Redirect: URL has an agent but no session, or its sessionId no
 	// longer exists for this agent → reopen the last session viewed
@@ -204,7 +219,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				newestFirst(a.session.created_at, b.session.created_at),
 			)[0];
 		navigate(`/chat/${urlAgentId}/${view.session.id}`, { replace: true });
-	}, [urlAgentId, urlSessionId, sessions, navigate]);
+	}, [urlAgentId, urlSessionId, sessions, navigate, LAST_AGENT_KEY, LAST_SESSION_KEY]);
 
 	/**
 	 * Create a new session under the currently selected agent and
@@ -219,6 +234,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		const seedConfig = currentView?.session.config ?? sessions[0]?.session.config;
 		const res = await createSession({
 			agent_id: urlAgentId,
+			personal: true,
 			...(seedConfig?.chat_model_config
 				? { chat_model_config: seedConfig.chat_model_config }
 				: {}),
@@ -251,7 +267,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 
 	const handleDeleteSession = async (sessionId: string) => {
 		await removeSession(sessionId);
-		removeGroupChat(sessionId);
 		// If we just removed the session the URL is pointing at, fall
 		// back to the parent /chat/:agentId path; the redirect effect
 		// will then pick the next available session.
@@ -267,7 +282,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 
 	// Show group conversations here; agents remain accessible through search.
 	const agentById = new Map(agents.map((a) => [a.id, a]));
-	const activeGroup = groupChats.find((g) => g.sessionId === urlSessionId) ?? null;
 	const visibleGroups = groupChats
 		.filter((group) => agentById.has(group.agentId))
 		.sort((a, b) => newestFirst(a.createdAt, b.createdAt));
@@ -285,6 +299,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		await Promise.all([
 			refetchAgents(),
 			queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+			refetchGroups(),
 		]);
 		navigate(`/chat/${agentId}/${sessionId}`);
 		setOpenMobile(false);
@@ -428,6 +443,10 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				</SidebarHeader>
 				{/* Group conversations, most recent first. */}
 				<SidebarContent className="no-scrollbar gap-0 px-2 pb-2">
+					<p className="mt-3 mb-1 px-3 text-xs font-medium text-muted-foreground">{t('personal.groups')}</p>
+					{groupsLoading && <p className="px-3 py-2 text-sm text-muted-foreground">{t('common.loading')}</p>}
+					{groupsError && <Button variant="ghost" onClick={() => void refetchGroups()}>{t('personal.retryGroups')}</Button>}
+					{!groupsLoading && !groupsError && visibleGroups.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{t('personal.noGroups')}</p>}
 					{visibleGroups.map((group) => {
 						const active = group.sessionId === urlSessionId;
 						const members = groupMembers(group);
@@ -463,7 +482,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 					})}
 					{/* One row per agent: its chat opens where it was left. */}
 					<p className="mt-4 mb-1 px-3 text-[13px]/[18px] font-medium text-[var(--cue-text-tertiary,var(--muted-foreground))]">
-						{t('chat.agents.label')}
+						{t('personal.direct')}
 					</p>
 					{agents.map((agent) => (
 						<ChatRow
@@ -483,35 +502,21 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				</SidebarContent>
 				{/* The way out of the chat shell: Settings, and the account. */}
 				<SidebarFooter className="gap-0 border-t border-sidebar-border p-2">
+					{selectedAgent && previousSessions.length > 0 && <PreviousConversations key={selectedAgent.id} agentId={selectedAgent.id} sessions={previousSessions.map(v => v.session)} />}
 					<AccountMenu showSettings showTour />
 				</SidebarFooter>
 			</Sidebar>
-			<div className="flex flex-1 min-w-0">
-				<ChatViewport
+			<div className="flex flex-1 min-w-0 flex-col">
+				{activeGroup && <section aria-label={t('personal.selectAgent')} className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-3">
+					<div className="mr-2 min-w-0"><p className="text-sm font-semibold">{activeGroup.name}</p><p className="text-xs text-muted-foreground">{t('personal.selectAgent')}</p></div>
+					{activeGroup.members.map(member => <Button key={member.session_id} size="sm" variant={effectiveAgentId === member.agent_id ? 'secondary' : 'ghost'} aria-pressed={effectiveAgentId === member.agent_id} onClick={() => navigate(`/chat/${activeGroup.agentId}/${activeGroup.sessionId}/${member.agent_id}`)}>{member.name}</Button>)}
+				</section>}
+				<div className="min-h-0 flex-1"><ChatViewport
 					agentId={effectiveAgentId}
 					sessionId={effectiveSessionId}
 					onSessionsChanged={refetchSessions}
-					agentName={
-						focusedMember?.agent.data.name ??
-						(activeGroup ? activeGroup.name : agentName)
-					}
-					headerSlot={
-						focusedMember ? undefined : activeGroup ? (
-							// A group's header names it, then who leads and how many
-							// are in it; its one chat needs no switcher.
-							<span className="flex min-w-0 items-center gap-1.5 px-2 text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
-								<Users className="size-3.5 shrink-0" />
-								<span className="truncate">
-									{t('groupChat.headerNote', {
-										leader: agentName,
-										count: activeGroup.memberIds.length + 1,
-									})}
-								</span>
-							</span>
-						) : (
-							sessionSwitcher
-						)
-					}
+					agentName={focusedMember?.agent?.data.name ?? agentName}
+					headerSlot={activeGroup ? <span className="hidden truncate text-xs text-muted-foreground sm:inline">{t('personal.groupConversation')}</span> : sessionSwitcher}
 					onOpenAgentSettings={
 						!focusedMember && selectedAgent?.editable
 							? () => {
@@ -521,6 +526,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 							: undefined
 					}
 				/>
+				</div>
 			</div>
 			{targetAgent && (
 				<>
@@ -568,8 +574,8 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				onConfirm={async () => {
 					if (!groupToDelete) return;
 					const { sessionId, agentId } = groupToDelete;
-					await sessionApi.delete(sessionId, agentId);
-					removeGroupChat(sessionId);
+					await personalChatApi.deleteGroup(sessionId, agentId);
+					await refetchGroups();
 					if (sessionId === urlSessionId) navigate(`/chat/${agentId}`, { replace: true });
 					await refetchSessions();
 				}}
