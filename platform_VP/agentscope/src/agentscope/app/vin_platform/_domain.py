@@ -161,14 +161,19 @@ class DomainAdapter:
         return {"id": ident, "provider_id": provider_id, "status": "active"}
 
     async def link(self, context, link_id, *, active=True):
+        aliases = {str(link_id)}
         try:
-            link_id = UUID(str(link_id)).hex
+            ident = UUID(str(link_id))
+            aliases.update((ident.hex, str(ident)))
         except ValueError:
             pass  # Older non-UUID opaque IDs still use exact owner-scoped lookup.
         async with self.service.engine.begin() as db:
             await self.service.assert_active(db, context, require_eligible=False)
-            row = (await db.execute(select(t.links).where(t.links.c.id == link_id,
-                t.links.c.tenant_id == context.tenant_id, t.links.c.user_id == context.initiator_user_id))).mappings().first()
+            rows = (await db.execute(select(t.links).where(t.links.c.id.in_(aliases),
+                t.links.c.tenant_id == context.tenant_id, t.links.c.user_id == context.initiator_user_id))).mappings().all()
+        if len(rows) > 1:
+            raise PlatformError("DOMAIN_LINK_ID_CONFLICT", 409)
+        row = rows[0] if rows else None
         if not row or (active and row["status"] != "active"):
             raise PlatformError("DOMAIN_LINK_REQUIRED", 403)
         return dict(row)

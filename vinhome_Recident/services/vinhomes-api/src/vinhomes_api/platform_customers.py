@@ -680,7 +680,7 @@ async def complete_customer_case(scope, ident):
     await db.execute(text(f"""INSERT INTO vh_resident_resolution_responses(tenant_id,case_id,resolution_id,actor_id,decision)
         VALUES({TENANT},:case,:revision,:actor,'confirm')"""), {"case": ident, "revision": revision, "actor": actor})
     await db.execute(text(f"""INSERT INTO vh_resident_resolution_photos(tenant_id,resolution_id,file_id)
-        SELECT DISTINCT e.tenant_id,:revision,e.file_id FROM evidence_items e
+        SELECT DISTINCT e.tenant_id,cast(:revision as uuid),e.file_id FROM evidence_items e
         JOIN work_orders w ON w.id=e.work_order_id AND w.tenant_id=e.tenant_id
         JOIN vh_resident_case_tickets ct ON ct.ticket_id=w.ticket_id AND ct.tenant_id=w.tenant_id
         JOIN files f ON f.id=e.file_id AND f.tenant_id=e.tenant_id
