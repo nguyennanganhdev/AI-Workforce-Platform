@@ -75,6 +75,18 @@ class StorageBase(ABC):
         """
         raise NotImplementedError("Storage does not support durable Builder publication claims")
 
+    async def acquire_builder_catalog(self, user_id: str, token: str) -> bool:
+        """Reserve the owner's Builder catalog across workers, without expiry.
+
+        A crash leaves a reservation for operator review; an expired lease
+        cannot prove that draft/publication side effects stopped.
+        """
+        raise NotImplementedError("Storage does not support Builder catalog reservations")
+
+    async def release_builder_catalog(self, user_id: str, token: str) -> None:
+        """Release only this worker's reservation after its writes finish."""
+        raise NotImplementedError("Storage does not support Builder catalog reservations")
+
     @abstractmethod
     async def upsert_credential(
         self,

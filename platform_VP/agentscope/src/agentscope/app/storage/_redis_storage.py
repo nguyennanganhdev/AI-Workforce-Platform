@@ -278,6 +278,22 @@ class RedisStorage(StorageBase):
         """Get the underlying Redis client instance."""
         return self._client
 
+    async def acquire_builder_catalog(self, user_id: str, token: str) -> bool:
+        key = self._key(self.key_config.builder_publish, user_id=user_id,
+                        session_id="catalog", proposal_id="reservation")
+        return bool(await self._client.set(key, token, nx=True))
+
+    async def release_builder_catalog(self, user_id: str, token: str) -> None:
+        key = self._key(self.key_config.builder_publish, user_id=user_id,
+                        session_id="catalog", proposal_id="reservation")
+        async with self._client.pipeline(transaction=True) as pipe:
+            await pipe.watch(key)
+            current = await pipe.get(key)
+            if current == token or current == token.encode():
+                pipe.multi()
+                pipe.delete(key)
+                await pipe.execute()
+
     async def claim_builder_publish(self, user_id: str, conversation_id: str, proposal_id: str) -> bool:
         key = self._key(self.key_config.builder_publish, user_id=user_id,
                         session_id=conversation_id, proposal_id=proposal_id)

@@ -125,6 +125,9 @@ class AgentData(BaseModel):
     generated_skill: SkipJsonSchema[str] = ""
     """Builder-generated SKILL.md body installed into the agent workspace."""
 
+    builder_scope: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Authenticated owner/tenant/domain/area snapshot; never authored by a model."""
+
     evaluation: SkipJsonSchema[dict] = Field(default_factory=dict)
     """Latest immutable Builder readiness result shown before publish."""
 

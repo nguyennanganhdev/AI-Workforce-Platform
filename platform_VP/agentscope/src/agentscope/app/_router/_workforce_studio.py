@@ -14,11 +14,11 @@ from pydantic import BaseModel, Field
 
 from ..._utils._common import _generate_id
 from ...model import ChatModelBase
+from .._agent_memory import AgentMemoryService
 from .._agent_spec import AgentSpec, diff_specs, render_prompt, spec_hash
 from .._agent_templates import TEMPLATES, template_list
 from .._service import ResourceAccessService, get_model
 from .._service._agent_eval import run_spec_tests
-from .._service._publish_gate import MIN_TESTS_TO_PUBLISH, publish_blocker
 from .._service._agent_studio import (
     CompositionPlan,
     CopilotReply,
@@ -32,22 +32,22 @@ from .._service._agent_studio import (
     plan_composition,
     published_spec,
     record_test_run,
-    skill_catalog,
     runtime_prompt,
     set_draft,
+    skill_catalog,
     tool_catalog,
     tool_runner,
 )
-from .._agent_memory import AgentMemoryService
+from .._service._publish_gate import MIN_TESTS_TO_PUBLISH, publish_blocker
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
     get_session_service,
-    get_skill_hubs,
-    get_workspace_service,
     get_shared_context_storage,
+    get_skill_hubs,
     get_storage,
     get_workspace_manager,
+    get_workspace_service,
 )
 from ..storage import AgentData, AgentRecord, InviteConfig, SessionConfig, StorageBase
 from ..storage._base import AgentRevisionConflict
@@ -717,10 +717,16 @@ def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent
 
     async def install(workspace, skill_id: str) -> None:
         record = await storage.get_skill(user_id, skill_id)
-        if record is None:
+        if record is None or not getattr(record, "enabled", True):
             raise HTTPException(status_code=409, detail=f"Skill {skill_id} không còn trong thư viện.")
         present = {getattr(item, "name", item) for item in await workspace.list_skills(agent_id=agent_id)}
         if record.name in present:
+            return
+        if not record.hub_id and record.markdown:
+            # Locally authored library skills already have their reviewed
+            # SKILL.md snapshot; they do not require a remote hub download.
+            from ._workforce_console import _archive
+            await workspace.add_skill_archive(_archive(record.name, record.markdown), "tar", record.name, agent_id=agent_id)
             return
         hub = (await get_skill_hubs(request)).get(record.hub_id or "")
         if hub is None:

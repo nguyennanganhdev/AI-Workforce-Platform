@@ -1732,6 +1732,33 @@ class AsyncSQLAlchemyStorage(StorageBase):
     # Messages
     # ------------------------------------------------------------------
 
+    async def acquire_builder_catalog(self, user_id: str, token: str) -> bool:
+        import hashlib
+        from sqlalchemy import insert
+        from sqlalchemy.exc import IntegrityError
+
+        key = "builder-catalog:" + hashlib.sha256(user_id.encode()).hexdigest()
+        async with self._session() as sess:
+            try:
+                await sess.execute(insert(MessageRow).values(session_id=key, msg_id="reservation",
+                    created_at=_utcnow(), payload={"owner": user_id, "token": token}))
+                await sess.commit()
+                return True
+            except IntegrityError:
+                await sess.rollback()
+                return False
+
+    async def release_builder_catalog(self, user_id: str, token: str) -> None:
+        import hashlib
+        from sqlalchemy import delete
+
+        key = "builder-catalog:" + hashlib.sha256(user_id.encode()).hexdigest()
+        async with self._session() as sess:
+            await sess.execute(delete(MessageRow).where(MessageRow.session_id == key,
+                MessageRow.msg_id == "reservation", MessageRow.payload["token"].as_string() == token,
+                MessageRow.payload["owner"].as_string() == user_id))
+            await sess.commit()
+
     async def claim_builder_publish(self, user_id: str, conversation_id: str, proposal_id: str) -> bool:
         from sqlalchemy import insert
         from sqlalchemy.exc import IntegrityError

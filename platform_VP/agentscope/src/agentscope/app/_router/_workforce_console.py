@@ -5,8 +5,6 @@ context, ReAct and invitation policy are owned by the server so an LLM cannot
 silently weaken runtime limits while generating an agent.
 """
 
-from ...model._call_observer import usage_purpose
-
 import asyncio
 import io
 import json
@@ -25,17 +23,26 @@ from ..._logging import logger
 from ..._utils._common import _generate_id
 from ...agent import ContextConfig, ReActConfig
 from ...credential import CredentialFactory
-from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
-from .._service import ResourceAccessService, get_model
+from ...model._call_observer import usage_purpose
 from .._agent_spec import AgentSpec, spec_hash
-from .._service._publish_gate import publication_blocker, publish_blocker, trusted_publication
+from .._service import ResourceAccessService, get_model
+from .._service._builder_decisions import (
+    BuilderDecision,
+    BuilderScope,
+    ClassifierStatus,
+)
+from .._service._publish_gate import (
+    publication_blocker,
+    publish_blocker,
+    trusted_publication,
+)
 from .._workforce_policy import (
     WORKFORCE_LEADER_PROMPT,
-    governed_system_prompt,
 )
 from ..deps import (
+    get_current_principal,
     get_current_user_id,
     get_resource_access_service,
     get_shared_context_storage,
@@ -99,6 +106,10 @@ class BuilderTool(BaseModel):
     mcp_name: str
     tool_name: str
     description: str = ""
+    input_schema: dict = Field(default_factory=dict)
+    read_only: bool = False
+    requires_consent: bool = True
+    catalog_revision: int = 0
 
 
 class GeneratedTest(BaseModel):
@@ -116,8 +127,7 @@ class GeneratedAgent(BaseModel):
     objective: str = Field(min_length=1, max_length=4000)
     system_prompt: str = Field(min_length=20, max_length=30000)
     selected_tool_ids: list[str] = Field(default_factory=list)
-    # False only for an agent whose work is coordinating teammates (TeamSay):
-    # it is then complete without a tool of its own.
+    # False for reasoning from supplied context; live lookups/actions need tools.
     needs_tools: bool = True
     # Knowledge bases and library skills of the manager, by id.
     knowledge_ids: list[str] = Field(default_factory=list)
@@ -142,6 +152,9 @@ class PlannedAgent(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=1, max_length=4000)
     suggested_tool_ids: list[str] = Field(default_factory=list)
+    tool_requirements: list[str] = Field(default_factory=list, max_length=30)
+    knowledge_requirements: list[str] = Field(default_factory=list, max_length=20)
+    knowledge_required: bool = False
 
 
 class BuilderOutline(BaseModel):
@@ -204,12 +217,21 @@ class PrepareRequest(BaseModel):
     chat_model_config: ChatModelConfig
     conversation_id: str | None = None
     confirm_outline: bool = False
+    expected_revision: int | None = Field(default=None, ge=1)
+    expected_proposal_id: str | None = None
 
 
 class PlannedAgentView(BaseModel):
     name: str
     objective: str
     suggested_tools: list[BuilderTool] = Field(default_factory=list)
+    knowledge: list[dict] = Field(default_factory=list)
+    library_skills: list[dict] = Field(default_factory=list)
+    missing_tools: list[str] = Field(default_factory=list)
+    missing_knowledge: list[str] = Field(default_factory=list)
+    knowledge_required: bool = False
+    tool_requirements: list[str] = Field(default_factory=list)
+    decision: BuilderDecision = Field(default_factory=BuilderDecision)
 
 
 class ProposedAgentView(BaseModel):
@@ -227,6 +249,10 @@ class ProposedAgentView(BaseModel):
     """Frozen AgentSpec that was actually evaluated; never regenerated at publish."""
     reuse_agent_id: str | None = None
     reuse_agent_name: str | None = None
+    target_agent_id: str | None = None
+    target_revision: int | None = None
+    action: str = "create"
+    diff: list[dict] = Field(default_factory=list)
 
 
 class ProposalView(BaseModel):
@@ -240,6 +266,11 @@ class ProposalView(BaseModel):
     agents: list[ProposedAgentView] = Field(default_factory=list)
     chat_model_config: ChatModelConfig
     fixed_config: dict
+    scope: BuilderScope | None = None
+    agent_catalog_hash: str = ""
+    resource_catalog: dict = Field(default_factory=dict)
+    classifier_status: ClassifierStatus = Field(default_factory=ClassifierStatus)
+    resource_selection: Literal["jev", "llm", "hybrid", "none"] = "none"
 
 
 class PublishRequest(BaseModel):
@@ -308,6 +339,14 @@ async def builder_progress(conversation_id: str, user_id: str = Depends(get_curr
 
 
 _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+
+def _builder_scope(user_id: str, principal) -> BuilderScope:
+    from ..auth import AuthPrincipal
+    if isinstance(principal, AuthPrincipal) and principal.role != "AREA_MANAGER":
+        raise HTTPException(403, "Chỉ tài khoản quản lý khu vực được thiết kế agent.")
+    return BuilderScope(owner_id=user_id, tenant_id=getattr(principal, "tenant_id", "legacy"),
+                        domain_id=getattr(principal, "domain_id", None), area_id=getattr(principal, "area_id", None))
 
 
 def _fixed_config() -> dict:
@@ -438,7 +477,8 @@ async def _platform_credential(storage: StorageBase, user_id: str) -> list:
 
 
 async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
-    credentials = await storage.list_credentials(user_id) or await _platform_credential(storage, user_id)
+    credentials = [c for c in await storage.list_credentials(user_id) if c.data.get("type") != "typesafe_credential"]
+    credentials = credentials or await _platform_credential(storage, user_id)
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -491,6 +531,11 @@ async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
                     mcp_name=record.client.name,
                     tool_name=tool_name,
                     description=str(tool.get("description") or ""),
+                    input_schema=tool.get("input_schema") or {},
+                    read_only=tool.get("read_only") is True,
+                    requires_consent=(tool.get("read_only") is not True or tool.get("requires_consent") is not False
+                                      or tool_name in (record.client.confirm_tools or [])),
+                    catalog_revision=record.catalog_revision,
                 ),
             )
     return catalog
@@ -562,8 +607,11 @@ resource) may stay in one agent; different capabilities backed by different
 tools become separate agents. If the request does not say what the agent
 should do or for whom, ask ONE clarification_question instead of guessing and
 leave agents empty. Keep every preference the user stated (tone, limits,
-things to avoid) in the objective. Select only exact
-suggested_tool_ids from the catalog. One tool ID may belong to only one agent
+things to avoid) in the objective. List tool_requirements as atomic live lookups or
+external operations and knowledge_requirements as reference facts/policies. A KB
+cannot perform an operation. Use empty tool_requirements for reasoning from supplied
+data. Set knowledge_required only when the user explicitly requires this knowledge
+before work can proceed. Do not select IDs; the server selects resources afterwards. One tool ID may belong to only one agent
 in the whole proposal. When a specialist agent exists, assign its operational
 tools to that specialist; a planning/coordinator agent must collaborate through
 TeamSay instead of duplicating another specialist's tools. Never invent a tool or create two agents for the same
@@ -1354,7 +1402,14 @@ async def _library(storage: StorageBase, user_id: str) -> tuple[dict[str, dict],
 
     from .._service._agent_studio import knowledge_catalog, skill_catalog
 
-    return await knowledge_catalog(storage, user_id), await skill_catalog(storage, user_id)
+    knowledge, skills = await knowledge_catalog(storage, user_id), await skill_catalog(storage, user_id)
+    for record in await storage.list_knowledge_bases(user_id):
+        if record.id in knowledge:
+            knowledge[record.id]["revision"] = record.updated_at.isoformat()
+    for record in await storage.list_skills(user_id):
+        if record.id in skills:
+            skills[record.id].update(markdown=record.markdown or "", revision=record.updated_at.isoformat())
+    return knowledge, skills
 
 
 def _library_note(knowledge: dict[str, dict], skills: dict[str, dict]) -> str:
@@ -1415,20 +1470,24 @@ async def _prepare_builder(
     access: ResourceAccessService = Depends(get_resource_access_service),
     session=None,
     progress=None,
+    scope: BuilderScope | None = None,
 ) -> ProposalView:
+    scope = scope or BuilderScope(owner_id=user_id)
     messages = await _list_all_builder_messages(
         storage,
         user_id,
         session.id,
     )
-    previous_transcript = _builder_transcript(messages)
-    reply_language = _response_language(
-        body.message if not body.confirm_outline else "",
-        previous_transcript or body.message,
-    )
     tools = await _catalog(storage, user_id)
     knowledge, skills = await _library(storage, user_id)
     library = _library_note(knowledge, skills)
+    previous = _stored_proposal(messages)
+    if body.confirm_outline:
+        from ._builder_flow import check_plan
+        if previous is None or previous.proposal_id != body.expected_proposal_id:
+            raise HTTPException(409, "Phương án đã được thay thế; hãy tải lại trước khi duyệt.")
+        await check_plan(_stored_proposal(messages), body.expected_revision, tools, knowledge, skills,
+                         storage, user_id, scope)
     model = await get_model(user_id, body.chat_model_config, access)
     model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "builder"}
     transcript = await _prepare_builder_memory(
@@ -1498,200 +1557,34 @@ async def _prepare_builder(
                 proposal,
             )
             return proposal
-        by_id = {tool.id: tool for tool in tools}
-        claimed_outline_tools: set[str] = set()
-        planned_agents: list[PlannedAgentView] = []
-        for agent in outline.agents:
-            tool_ids, _invalid, _duplicates = _claim_exclusive_tool_ids(
-                agent.suggested_tool_ids,
-                set(by_id),
-                claimed_outline_tools,
-            )
-            planned_agents.append(
-                PlannedAgentView(
-                    name=agent.name,
-                    objective=agent.objective,
-                    suggested_tools=[by_id[tool_id] for tool_id in tool_ids],
-                ),
-            )
-        summary = outline.assistant_message or (
-            f"Đã cập nhật dàn ý {len(planned_agents)} agent theo yêu cầu của bạn."
-            if reply_language == "vi"
-            else f"Updated the outline for {len(planned_agents)} agents."
-        )
-        proposal = ProposalView(
-            conversation_id=session.id,
-            status="needs_input",
-            assistant_message=summary,
-            clarification_question=outline.clarification_question,
-            planned_agents=planned_agents,
-            chat_model_config=body.chat_model_config,
-            fixed_config=_fixed_config(),
-        )
-        await _persist_builder_turn(
-            storage,
-            user_id,
-            session.id,
-            body.message,
-            proposal,
-        )
+        from ._builder_flow import plan_proposal
+        proposal = await plan_proposal(outline, transcript, tools, knowledge, skills, model, access,
+                                       storage, user_id, session.id, body.chat_model_config, scope,
+                                       previous.revision + 1 if previous else 1)
+        await _persist_builder_turn(storage, user_id, session.id, body.message, proposal)
         return proposal
 
-    if progress:
-        await progress.stage("generating")
-    try:
-        generation, prompt_tokens, reserved_output_tokens = await _generate(
-            transcript,
-            tools,
-            model,
-            body.chat_model_config,
-            reply_language,
-            library,
-        )
-    except _BuilderPromptBudgetError as exc:
-        await _record_builder_prompt_measurement(
-            storage,
-            user_id,
-            session,
-            exc.prompt_tokens,
-            exc.reserved_output_tokens,
-            model.context_size,
-            budget_exceeded=True,
-        )
-        raise
-    await _record_builder_prompt_measurement(
-        storage,
-        user_id,
-        session,
-        prompt_tokens,
-        reserved_output_tokens,
-        model.context_size,
-    )
-    if generation.clarification_question and not generation.agents:
-        proposal = ProposalView(
-            conversation_id=session.id,
-            status="needs_input",
-            assistant_message=generation.assistant_message,
-            clarification_question=generation.clarification_question,
-            chat_model_config=body.chat_model_config,
-            fixed_config=_fixed_config(),
-        )
-        await _persist_builder_turn(
-            storage,
-            user_id,
-            session.id,
-            body.message,
-            proposal,
-        )
-        return proposal
-
-    by_id = {tool.id: tool for tool in tools}
-    existing = [
-        record
-        for record in await storage.list_agents(user_id)
-        if record.source == "user" and record.data.system_role == "business"
-    ]
-    views: list[ProposedAgentView] = []
-    any_blocked = False
-    claimed_tool_ids: set[str] = set()
-    for agent in generation.agents:
-        exclusive_tool_ids, invalid, duplicate_tool_ids = _claim_exclusive_tool_ids(
-            agent.selected_tool_ids,
-            set(by_id),
-            claimed_tool_ids,
-        )
-        selected = [by_id[item] for item in exclusive_tool_ids]
-        attached = [knowledge[item] for item in dict.fromkeys(agent.knowledge_ids) if item in knowledge]
-        reused_skills = [skills[item] for item in dict.fromkeys(agent.library_skill_ids) if item in skills]
-        unknown = [
-            item
-            for item in [*agent.knowledge_ids, *agent.library_skill_ids]
-            if item not in knowledge and item not in skills
-        ]
-        reuse = max(
-            existing,
-            key=lambda item: _similarity(
-                agent.objective,
-                item.data.build_description or item.data.system_prompt,
-            ),
-            default=None,
-        )
-        reuse_score = (
-            _similarity(
-                agent.objective,
-                reuse.data.build_description or reuse.data.system_prompt,
-            )
-            if reuse is not None
-            else 0.0
-        )
-        checks = _agent_checks(agent, selected, invalid, duplicate_tool_ids, reused_skills, unknown)
-        passed = all(checks.values())
-        views.append(
-            ProposedAgentView(
-                name=agent.name,
-                objective=agent.objective,
-                system_prompt=governed_system_prompt(
-                    "business",
-                    agent.system_prompt,
-                ),
-                selected_tools=selected,
-                skill_name=_slug(agent.skill_name) if agent.skill_markdown.strip() else "",
-                skill_markdown=_normalise_skill(agent) if agent.skill_markdown.strip() else "",
-                knowledge=attached,
-                library_skills=reused_skills,
-                tests=[test.model_dump() for test in agent.tests],
-                evaluation={
-                    "passed": passed,
-                    "score": round(sum(checks.values()) / len(checks), 2),
-                    "checks": checks,
-                    "invalid_tool_ids": invalid,
-                    "duplicate_tool_ids": duplicate_tool_ids,
-                    "reuse_similarity": round(reuse_score, 2),
-                },
-            ),
-        )
-        await _evaluate_proposed_agent(views[-1], storage, user_id, model, progress)
-        any_blocked = any_blocked or not views[-1].evaluation["passed"]
-    if not views:
-        any_blocked = True
-    proposal = ProposalView(
-        conversation_id=session.id,
-        proposal_id=_generate_id(),
-        status="blocked" if any_blocked else "ready",
-        assistant_message=(
-            generation.assistant_message
-            or (
-                "Mình đã tạo và đánh giá cấu hình. Bạn xem lại trước khi phát hành nhé."
-                if reply_language == "vi"
-                else "I’ve generated and evaluated the configuration. Please "
-                "review it before publishing."
-            )
-        ),
-        clarification_question=generation.clarification_question,
-        agents=views,
-        chat_model_config=body.chat_model_config,
-        fixed_config=_fixed_config(),
-    )
-    await _persist_builder_turn(
-        storage,
-        user_id,
-        session.id,
-        body.message,
-        proposal,
-    )
+    from ._builder_flow import generate_proposal
+    previous = _stored_proposal(messages)
+    proposal = await generate_proposal(previous, body, transcript, tools, knowledge, skills,
+                                       model, storage, user_id, scope)
+    await _persist_builder_turn(storage, user_id, session.id, body.message, proposal)
     return proposal
 
 
 @workforce_console_router.post("/builder/prepare", response_model=ProposalView)
 async def prepare_builder(body: PrepareRequest, user_id: str = Depends(get_current_user_id),
-    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service)) -> ProposalView:
+    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service),
+    principal=Depends(get_current_principal)) -> ProposalView:
     from .._service._eval_progress import EvalProgress
+    _builder_scope(user_id, principal)
     session = await _builder_session(storage, user_id, body)
     progress = EvalProgress(storage, user_id, session) if body.confirm_outline else None
     if progress:
         await progress.stage("preparing")
     try:
-        proposal = await _prepare_builder(body, user_id, storage, access, session, progress)
+        scope = _builder_scope(user_id, principal)
+        proposal = await _prepare_builder(body, user_id, storage, access, session, progress, scope)
         if progress:
             await progress.finish()
         return proposal
@@ -1703,7 +1596,8 @@ async def prepare_builder(body: PrepareRequest, user_id: str = Depends(get_curre
 
 @workforce_console_router.post("/builder/evaluate", response_model=ProposalView)
 async def evaluate_builder(body: PublishRequest, user_id: str = Depends(get_current_user_id),
-    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service)):
+    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service),
+    principal=Depends(get_current_principal)):
     """Re-evaluate the exact reviewed draft, without regenerating prompts or tests."""
     from .._service._eval_progress import EvalProgress
     async with _proposal_locks[user_id]:
@@ -1715,14 +1609,18 @@ async def evaluate_builder(body: PublishRequest, user_id: str = Depends(get_curr
             raise HTTPException(status_code=404, detail="Không tìm thấy đề xuất.")
         if proposal.revision != body.expected_revision or proposal.status == "published":
             raise HTTPException(status_code=409, detail="Đề xuất đã thay đổi hoặc đã phát hành; hãy tải lại.")
+        scope = _builder_scope(user_id, principal)
+        if proposal.scope != scope:
+            raise HTTPException(409, "Scope tài khoản đã thay đổi; hãy lập lại phương án.")
+        from ._builder_flow import check_plan, current_resources
+        await check_plan(proposal, proposal.revision, *await current_resources(storage, user_id), storage, user_id, scope)
         progress = EvalProgress(storage, user_id, session)
         await progress.stage("preparing")
         try:
             model = await get_model(user_id, proposal.chat_model_config, access)
             model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "eval"}
-            for item in proposal.agents:
-                await _evaluate_proposed_agent(item, storage, user_id, model, progress)
-            proposal.status = "ready" if proposal.agents and all(item.evaluation["passed"] for item in proposal.agents) else "blocked"
+            from ._builder_flow import evaluate_proposal
+            await evaluate_proposal(proposal, storage, user_id, model, progress)
             proposal.revision += 1
             proposal.assistant_message = "Đã chạy lại eval trên đúng cấu hình và test case hiện có; không sinh lại agent."
             await _persist_builder_turn(storage, user_id, session.id, "Chạy lại eval trên bản nháp hiện tại.", proposal)
@@ -1740,172 +1638,11 @@ async def publish_builder(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    principal=Depends(get_current_principal),
 ) -> PublishResponse:
-    async with _proposal_locks[user_id]:
-        session = await storage.get_session(
-            user_id,
-            _BUILDER_AGENT_ID,
-            body.conversation_id,
-        )
-        proposal = None
-        messages: list[Msg] = []
-        if session is not None:
-            messages, _ = await storage.list_messages(
-                user_id,
-                body.conversation_id,
-                limit=200,
-            )
-            stored = _stored_proposal(messages)
-            if stored and stored.proposal_id == body.proposal_id:
-                proposal = stored
-        if proposal is None:
-            raise HTTPException(status_code=404, detail="Builder proposal not found")
-        if proposal.conversation_id != body.conversation_id:
-            raise HTTPException(status_code=404, detail="Builder proposal not found")
-        if proposal.revision != body.expected_revision:
-            raise HTTPException(
-                status_code=409,
-                detail="Builder proposal revision changed",
-            )
-        if proposal.status != "ready":
-            raise HTTPException(
-                status_code=409,
-                detail="Proposal chưa đạt điều kiện phát hành",
-            )
-        for item in proposal.agents:
-            if not item.spec:
-                raise HTTPException(status_code=409, detail="Proposal cũ chưa được kiểm thử bằng model; hãy tạo lại.")
-            spec = AgentSpec.model_validate(item.spec)
-            blocker = publish_blocker(spec, item.evaluation.get("model_report"))
-            if blocker or not all(item.evaluation.get("checks", {}).values()):
-                raise HTTPException(status_code=409, detail=blocker or "Cấu hình agent chưa đạt.")
-            if item.reuse_agent_id:
-                reused = await storage.get_agent(user_id, item.reuse_agent_id)
-                if (reused is None or reused.data.lifecycle_state != "published"
-                        or not reused.data.invite_config.invitable or not reused.data.spec
-                        or spec_hash(AgentSpec.model_validate(reused.data.spec)) != spec_hash(spec)
-                        or publish_blocker(spec, reused.data.evaluation)):
-                    raise HTTPException(status_code=409, detail="Agent tái sử dụng chưa có kiểm thử hợp lệ cho đúng spec.")
-        assigned_tools: set[str] = set()
-        duplicate_tools: set[str] = set()
-        for item in proposal.agents:
-            for tool in item.selected_tools:
-                if tool.id in assigned_tools:
-                    duplicate_tools.add(tool.id)
-                assigned_tools.add(tool.id)
-        if duplicate_tools:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "Mỗi tool chỉ được gán cho một agent trong cùng proposal. "
-                    "Hãy tạo lại cấu hình cho các tool: "
-                    + ", ".join(sorted(duplicate_tools))
-                ),
-            )
-        try:
-            claimed = await storage.claim_builder_publish(user_id, body.conversation_id, body.proposal_id)
-        except (NotImplementedError, AttributeError) as exc:
-            raise HTTPException(status_code=503, detail="Storage chưa hỗ trợ phát hành an toàn; không có agent nào được tạo.") from exc
-        if not claimed:
-            raise HTTPException(status_code=409, detail="Proposal đã được giữ để phát hành. Kiểm tra kết quả trước khi thử cấu hình mới.")
-
-    model_config = proposal.chat_model_config
-    result: list[PublishedAgent] = []
-    for item in proposal.agents:
-        if item.reuse_agent_id:
-            result.append(
-                PublishedAgent(
-                    agent_id=item.reuse_agent_id,
-                    name=item.reuse_agent_name or item.name,
-                    reused=True,
-                ),
-            )
-            continue
-        from .._service._agent_studio import apply_bindings, materialize
-        from ._workforce_studio import _skill_installer
-
-        spec = AgentSpec.model_validate(item.spec)
-        record = AgentRecord(
-            user_id=user_id,
-            data=AgentData(
-                name=item.name,
-                system_prompt=governed_system_prompt(
-                    "business",
-                    item.system_prompt,
-                ),
-                context_config=_FIXED_CONTEXT.model_copy(deep=True),
-                react_config=_FIXED_REACT.model_copy(deep=True),
-                invite_config=InviteConfig(invitable=False, invite_description=item.objective),
-                system_role="business",
-                lifecycle_state="draft",
-                build_description=item.objective,
-                spec=spec.model_dump(mode="json"),
-                generated_skill=item.skill_markdown,
-            ),
-        )
-        await _save_agent(storage, user_id, record)
-        session = await _primary_session(
-            storage,
-            workspace_manager,
-            user_id,
-            record.id,
-            model_config,
-            "Builder primary session",
-        )
-        workspace = await workspace_manager.get_workspace(
-            user_id,
-            record.id,
-            session.id,
-            session.config.workspace_id,
-        )
-        await apply_bindings(
-            storage, workspace_manager, user_id, record, spec,
-            install_skill=_skill_installer(request, storage, user_id, record.id),
-        )
-        if item.skill_markdown.strip():
-            await workspace.add_skill_archive(
-                _archive(item.skill_name, item.skill_markdown),
-                "tar",
-                item.skill_name,
-                agent_id=record.id,
-            )
-        materialize(record, spec, author="builder", note="Builder model evaluation",
-                    evaluation=item.evaluation["model_report"])
-        await _save_agent(storage, user_id, record)
-        result.append(
-            PublishedAgent(
-                agent_id=record.id,
-                session_id=session.id,
-                name=item.name,
-            ),
-        )
-    proposal.status = "published"
-    await storage.upsert_message(
-        user_id,
-        body.conversation_id,
-        AssistantMsg(
-            name="agent_builder",
-            content=(
-                "Mình đã phát hành agent lên platform."
-                if _response_language(
-                    next(
-                        (
-                            message.get_text_content() or ""
-                            for message in reversed(messages)
-                            if message.role == "user"
-                        ),
-                        "",
-                    ),
-                )
-                == "vi"
-                else "Your agent is now published on the platform."
-            ),
-            structured_output={
-                "workforce_builder_proposal": proposal.model_dump(mode="json"),
-            },
-        ),
-    )
-    return PublishResponse(agents=result)
+    from ._builder_flow import publish_proposal
+    scope = _builder_scope(user_id, principal)
+    return await publish_proposal(body, request, user_id, storage, workspace_manager, scope)
 
 
 @workforce_console_router.get("/agents", response_model=list[WorkforceAgentView])

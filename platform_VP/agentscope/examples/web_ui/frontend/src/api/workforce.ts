@@ -11,6 +11,9 @@ export interface BuilderTool {
 }
 
 export interface ProposedAgent {
+    action?: 'create' | 'reuse' | 'resume' | 'revise' | 'repair' | 'clarify';
+    target_agent_id?: string | null;
+    diff?: { field: string; action: string; before?: unknown; after?: unknown }[];
 	tests?: { scenario: string; expected: string }[];
 	name: string;
 	objective: string;
@@ -39,9 +42,32 @@ export interface PlannedAgent {
 	name: string;
 	objective: string;
 	suggested_tools: BuilderTool[];
+    knowledge?: { kb_id: string; name: string }[];
+    library_skills?: { skill_id: string; name: string }[];
+    missing_tools?: string[];
+    missing_knowledge?: string[];
+    knowledge_required?: boolean;
+    decision?: {
+        action: 'create' | 'reuse' | 'resume' | 'revise' | 'repair' | 'clarify';
+        agent_id?: string | null;
+        reason: string;
+        candidate_ids?: string[];
+    };
 }
 
 export interface BuilderProposal {
+    resource_selection?: 'jev' | 'llm' | 'hybrid' | 'none';
+    classifier_status?: {
+        state: 'active' | 'fallback' | 'unavailable' | 'not_needed';
+        model: string;
+        reason: string;
+        calls: number;
+        questions: number;
+        latency_ms: number;
+        input_tokens: number | null;
+        output_tokens: number | null;
+        cost_usd: string | null;
+    };
 	conversation_id: string;
 	proposal_id: string | null;
 	revision: number;
@@ -128,12 +154,16 @@ export const workforceApi = {
 		chatModelConfig: ChatModelConfig,
 		conversationId: string | null,
 		confirmOutline = false,
+		expectedRevision?: number,
+        expectedProposalId?: string | null,
 	) =>
 		client.post<BuilderProposal>('/workforce/console/builder/prepare', {
 			message,
 			chat_model_config: chatModelConfig,
 			conversation_id: conversationId,
 			confirm_outline: confirmOutline,
+			expected_revision: expectedRevision,
+            expected_proposal_id: expectedProposalId,
 		}),
 	publish: (conversationId: string, proposalId: string, expectedRevision: number) =>
 		client.post<{ agents: Array<{ agent_id: string; session_id: string | null; name: string; reused: boolean }> }>(
