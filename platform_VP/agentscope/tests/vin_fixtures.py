@@ -58,6 +58,21 @@ async def seed_policy_catalog(authority, *, user_id="alice", environment="produc
     return await authority.context(user_id, environment=environment)
 
 
+async def seed_admin_catalog(authority):
+    """N2-08 fixture from the real authority: group policy, override and inactive library."""
+    admin = await authority.context("admin")
+    await seed_policy_catalog(authority)
+    policy = QuotaPolicy(daily_tokens=500, monthly_tokens=5000, models=["test-model"], enabled=True)
+    for subject in ("group:pilot", "user:alice"):
+        await authority.set_policy(admin, subject, policy, expected_revision=0)
+    membership = await authority.add_membership(admin, "alice", "pilot")
+    catalog = await authority.publish_catalog(admin, CatalogEntry(kind="knowledge_base", resource_id="vin-library",
+        owner_id="admin", name="Vin fixture library", active=False))
+    grant = await authority.grant(admin, ResourceGrant(catalog_id=catalog, subject_kind="group", subject_id="pilot",
+        permissions=["view", "bind"]))
+    return {"catalog_id": catalog, "grant_id": grant, "membership_id": membership}
+
+
 @pytest_asyncio.fixture
 async def authority(tmp_path):
     engine = create_async_engine("sqlite+aiosqlite:///" + str(tmp_path / "authority.db"))

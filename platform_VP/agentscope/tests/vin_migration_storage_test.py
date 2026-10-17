@@ -94,10 +94,14 @@ async def test_expand_migration_and_postgres_race(tmp_path):
                   'fixture','{}','fixture','legacy-scope-key','pending',0,1,CURRENT_TIMESTAMP,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
                   ('legacy-provider','provider','legacy-provider','test',NULL,NULL,NULL,'provider',
                   'fixture','{}','fixture','legacy-provider-key','pending',0,1,CURRENT_TIMESTAMP,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"""))
+            await db.execute(text("INSERT INTO vin_memberships (id,tenant_id,user_id,group_id,active) VALUES ('legacy-member','test','alice','pilot',true)"))
+            await db.execute(text("INSERT INTO vin_grants (id,tenant_id,catalog_id,subject_kind,subject_id,permissions,active) VALUES ('legacy-grant','test','catalog','user','alice','[]',true)"))
         await asyncio.to_thread(command.upgrade, cfg, "head")
         await asyncio.to_thread(command.upgrade, cfg, "head")
         async with engine.begin() as db:
-            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0023_personal_job_constraint"
+            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0024_vin_admin_revisions"
+            for table_name in ("vin_memberships", "vin_grants"):
+                assert (await db.execute(text("SELECT revision FROM " + table_name))).scalar_one() == 1
             assert (await db.execute(text("SELECT count(*) FROM wf_durable_jobs WHERE id LIKE 'legacy-%'"))).scalar_one() == 2
             for user, role in [("admin", "PLATFORM_ADMIN"), ("alice", "VIN_USER")]:
                 await db.execute(text("""INSERT INTO auth_users(id,tenant_id,email,username,password_hash,status,role,created_at,updated_at)

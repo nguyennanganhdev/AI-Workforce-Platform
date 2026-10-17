@@ -49,6 +49,11 @@ class VinPlatformService:
         from ._jobs import PersonalJobs
         return PersonalJobs(self)
 
+    @property
+    def administration(self):
+        from ._admin import VinAdministration
+        return VinAdministration(self)
+
     def cipher(self):
         key = self._encryption_key or os.getenv("VIN_PLATFORM_ENCRYPTION_KEY", "")
         if not key:
@@ -156,7 +161,7 @@ class VinPlatformService:
                     "management.read": context.role == "AREA_MANAGER" and context.workspace_id.startswith("operations:"),
                     "quota.manage": context.role == "PLATFORM_ADMIN" and context.workspace_id.startswith("administration:")}}
 
-    async def set_eligibility(self, context, user_id, eligible):
+    async def set_eligibility(self, context, user_id, eligible, *, expected_revision=None):
         self.admin(context)
         async with self.engine.begin() as db:
             await self.assert_active(db, context, require_eligible=False)
@@ -164,12 +169,18 @@ class VinPlatformService:
                 {"id": user_id, "t": context.tenant_id})).scalar_one_or_none()
             if not target:
                 raise PlatformError("ACCOUNT_NOT_FOUND", 404)
-            await insert_once(db, t.accounts, dict(user_id=user_id, tenant_id=context.tenant_id, eligible=False, revision=1))
-            await db.execute(update(t.accounts).where(t.accounts.c.user_id == user_id).values(
+            await insert_once(db, t.accounts, dict(user_id=user_id, tenant_id=context.tenant_id, eligible=False, revision=0))
+            query = update(t.accounts).where(t.accounts.c.user_id == user_id, t.accounts.c.tenant_id == context.tenant_id)
+            if expected_revision is not None:
+                query = query.where(t.accounts.c.revision == expected_revision)
+            changed = await db.execute(query.values(
                 eligible=eligible, revision=t.accounts.c.revision + 1))
+            if changed.rowcount != 1:
+                raise PlatformError("REVISION_CONFLICT", 409)
             await self.audit(db, context, "eligibility.changed", user_id, eligible=eligible)
+            return (await db.execute(select(t.accounts.c.revision).where(t.accounts.c.user_id == user_id))).scalar_one()
 
-    async def set_policy(self, context, subject, policy: QuotaPolicy):
+    async def set_policy(self, context, subject, policy: QuotaPolicy, *, expected_revision=None):
         self.admin(context)
         if not subject.startswith(("user:", "role:", "group:", "pool:")) or len(subject) > 255:
             raise PlatformError("INVALID_QUOTA_SUBJECT", 422)
@@ -177,9 +188,15 @@ class VinPlatformService:
             await self.assert_active(db, context, require_eligible=False)
             await insert_once(db, t.policies, dict(tenant_id=context.tenant_id, subject=subject,
                 data=policy.model_dump(), revision=0))
-            await db.execute(update(t.policies).where(t.policies.c.tenant_id == context.tenant_id,
-                t.policies.c.subject == subject).values(data=policy.model_dump(), revision=t.policies.c.revision + 1))
+            query = update(t.policies).where(t.policies.c.tenant_id == context.tenant_id, t.policies.c.subject == subject)
+            if expected_revision is not None:
+                query = query.where(t.policies.c.revision == expected_revision)
+            changed = await db.execute(query.values(data=policy.model_dump(), active=True, revision=t.policies.c.revision + 1))
+            if changed.rowcount != 1:
+                raise PlatformError("REVISION_CONFLICT", 409)
             await self.audit(db, context, "quota.policy_changed", subject)
+            return (await db.execute(select(t.policies.c.revision).where(t.policies.c.tenant_id == context.tenant_id,
+                t.policies.c.subject == subject))).scalar_one()
 
     async def add_membership(self, context, user_id, group_id, *, domain_id=None, area_id=None, expires_at=None):
         self.admin(context)
@@ -195,12 +212,16 @@ class VinPlatformService:
             await self.audit(db, context, "membership.granted", ident)
             return ident
 
-    async def revoke_membership(self, context, ident):
+    async def revoke_membership(self, context, ident, *, expected_revision=None):
         self.admin(context)
         async with self.engine.begin() as db:
             await self.assert_active(db, context, require_eligible=False)
-            await db.execute(update(t.memberships).where(t.memberships.c.id == ident,
-                t.memberships.c.tenant_id == context.tenant_id).values(active=False))
+            query = update(t.memberships).where(t.memberships.c.id == ident, t.memberships.c.tenant_id == context.tenant_id)
+            if expected_revision is not None:
+                query = query.where(t.memberships.c.revision == expected_revision)
+            changed = await db.execute(query.values(active=False, revision=t.memberships.c.revision + 1))
+            if changed.rowcount != 1:
+                raise PlatformError("REVISION_CONFLICT", 409)
             await self.audit(db, context, "membership.revoked", ident)
 
     async def publish_catalog(self, context, entry: CatalogEntry):
@@ -242,12 +263,16 @@ class VinPlatformService:
             await self.audit(db, context, "resource.granted", ident)
             return ident
 
-    async def revoke_grant(self, context, ident):
+    async def revoke_grant(self, context, ident, *, expected_revision=None):
         self.admin(context)
         async with self.engine.begin() as db:
             await self.assert_active(db, context, require_eligible=False)
-            await db.execute(update(t.grants).where(t.grants.c.id == ident,
-                t.grants.c.tenant_id == context.tenant_id).values(active=False))
+            query = update(t.grants).where(t.grants.c.id == ident, t.grants.c.tenant_id == context.tenant_id)
+            if expected_revision is not None:
+                query = query.where(t.grants.c.revision == expected_revision)
+            changed = await db.execute(query.values(active=False, revision=t.grants.c.revision + 1))
+            if changed.rowcount != 1:
+                raise PlatformError("REVISION_CONFLICT", 409)
             await self.audit(db, context, "resource.revoked", ident)
 
     async def catalog(self, context, kind=None, permission="view"):

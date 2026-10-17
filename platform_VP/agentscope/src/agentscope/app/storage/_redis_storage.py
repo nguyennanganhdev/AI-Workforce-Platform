@@ -2584,6 +2584,27 @@ class RedisStorage(StorageBase):
         """Encode (user_id, kb_id, doc_id) for the global sweeper index."""
         return f"{user_id}:{knowledge_base_id}:{document_id}"
 
+    async def replace_knowledge_document(self, expected, replacement):
+        from redis.exceptions import WatchError
+        if (expected.id, expected.user_id, expected.knowledge_base_id) != (replacement.id, replacement.user_id, replacement.knowledge_base_id):
+            raise ValueError("Document identity is immutable")
+        key = self._document_key(expected.user_id, expected.knowledge_base_id, expected.id)
+        async with self._client.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                raw = await pipe.get(key)
+                if not raw or KnowledgeDocumentRecord.model_validate_json(raw) != expected:
+                    return False
+                current = expected.model_copy(deep=True)
+                current.data = replacement.data
+                current.updated_at = datetime.now()
+                pipe.multi()
+                pipe.set(key, current.model_dump_json(), keepttl=True)
+                await pipe.execute()
+                return True
+            except WatchError:
+                return False
+
     async def upsert_knowledge_document(
         self,
         user_id: str,

@@ -31,7 +31,7 @@ class QuotaAuthority:
         groups = await self.service.groups(db, tenant, user)
         keys = ["user:" + user, *["group:" + g for g in groups], "role:" + context.role]
         rows = (await db.execute(select(t.policies).where(
-            t.policies.c.tenant_id == tenant, t.policies.c.subject.in_(keys),
+            t.policies.c.tenant_id == tenant, t.policies.c.active.is_(True), t.policies.c.subject.in_(keys),
         ).order_by(t.policies.c.subject))).mappings().all()
         by_key = {r["subject"]: r for r in rows}
         selected = by_key.get(keys[0])
@@ -47,6 +47,7 @@ class QuotaAuthority:
             raise PlatformError("QUOTA_DISABLED", 403)
         pools = (await db.execute(select(t.policies).where(
             t.policies.c.tenant_id == tenant,
+            t.policies.c.active.is_(True),
             t.policies.c.subject.in_(["pool:" + g for g in groups]),
         ).order_by(t.policies.c.subject))).mappings().all()
         return policy, selected["revision"], [(r["subject"], QuotaPolicy.model_validate(r["data"])) for r in pools]
