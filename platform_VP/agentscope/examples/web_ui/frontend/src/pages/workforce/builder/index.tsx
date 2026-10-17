@@ -255,8 +255,8 @@ export function AgentBuilderPage() {
 		await loadConversations();
 	};
 
-	const prepare = async (confirmOutline = false, retryMessage?: string) => {
-		const userText = (retryMessage ?? message).trim();
+	const prepare = async (confirmOutline = false) => {
+		const userText = message.trim();
 		if (!userText || !selectedModel || working) return;
 		setConversation((current) => [...current, { role: 'user', text: userText }]);
 		setMessage('');
@@ -276,6 +276,18 @@ export function AgentBuilderPage() {
 			setWorking(false);
 		}
 	};
+
+    const retryVerification = async () => {
+        if (!proposal?.proposal_id || working) return;
+        setWorking(true);
+        const startedAt = Date.now();
+        setTask({ label: 'Đang kiểm tra tiếp dàn ý đã lưu…', startedAt });
+        try {
+            const result = await workforceApi.retryVerification(proposal.conversation_id, proposal.proposal_id, proposal.revision);
+            await refreshConversation(result.conversation_id);
+        } catch { toast.error('Chưa kiểm tra tiếp được. Tải lại hội thoại để xem trạng thái mới nhất.'); }
+        finally { setLastLatency(Date.now() - startedAt); setWorking(false); }
+    };
 
 	const confirmOutline = async () => {
 		if (!selectedModel || !proposal?.planned_agents.length) return;
@@ -478,12 +490,19 @@ export function AgentBuilderPage() {
                                     {' · '}Token: {proposal.classifier_status.input_tokens ?? 'chưa rõ'} vào / {proposal.classifier_status.output_tokens ?? 'chưa rõ'} ra
                                     {' · '}Chi phí: {proposal.classifier_status.cost_usd == null ? 'chưa có giá đối soát' : `$${proposal.classifier_status.cost_usd}`}
                                 </p>}
+                                {proposal.classifier_status?.stages && <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                    {Object.entries(proposal.classifier_status.stages).map(([key, stage]) => <span key={key}>
+                                        {key === 'builder_reuse' ? 'Kiểm tra trùng' : 'Chọn tài nguyên'}: {({ completed: 'Đã hoàn tất', running: 'Đang xử lý', error: 'Chưa hoàn tất' } as Record<string, string>)[stage.state] ?? stage.state}
+                                    </span>)}
+                                    {!!proposal.classifier_status.cache_hits && <span>{proposal.classifier_status.cache_hits} batch dùng lại kết quả đã lưu</span>}
+                                </div>}
+                                {proposal.classifier_status?.run_id && <p className="text-xs text-muted-foreground">Mã lượt kiểm tra: <span className="font-mono">{proposal.classifier_status.run_id}</span></p>}
                                 {canRetryClassification(proposal) && <div className="flex flex-wrap items-center gap-3">
-                                    <Button variant="outline" disabled={working || !selectedModel || !conversation.some((item) => item.role === 'user')}
-                                        onClick={() => void prepare(false, [...conversation].reverse().find((item) => item.role === 'user')?.text)}>
-                                        Lập lại phương án
+                                    <Button variant="outline" disabled={working || !proposal.proposal_id}
+                                        onClick={() => void retryVerification()}>
+                                        Thử lại bước kiểm tra
                                     </Button>
-                                    <p className="text-xs text-muted-foreground">Chạy lại Builder và JEV với yêu cầu gần nhất; có sử dụng model.</p>
+                                    <p className="text-xs text-muted-foreground">Giữ nguyên dàn ý; chỉ gọi JEV cho phần chưa hoàn tất. Có sử dụng model.</p>
                                 </div>}
 
 								<div className="flex flex-wrap items-start justify-between gap-3">

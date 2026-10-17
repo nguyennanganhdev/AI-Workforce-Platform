@@ -67,7 +67,12 @@ export interface BuilderProposal {
         input_tokens: number | null;
         output_tokens: number | null;
         cost_usd: string | null;
+        run_id?: string | null;
+        last_call_id?: string | null;
+        cache_hits?: number;
+        stages?: Record<string, { state: string; reason?: string }>;
     };
+    retry_verification?: boolean;
 	conversation_id: string;
 	proposal_id: string | null;
 	revision: number;
@@ -182,6 +187,10 @@ export const workforceApi = {
 		client.get<BuilderConversation>(
 			`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}`,
 		),
+    retryVerification: (conversationId: string, proposalId: string, expectedRevision: number) =>
+        client.post<BuilderProposal>('/workforce/console/builder/retry-verification', {
+            conversation_id: conversationId, proposal_id: proposalId, expected_revision: expectedRevision,
+        }),
 	builderProgress: (conversationId: string) => client.get<EvalProgress | null>(`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}/progress`),
 	evaluate: (conversationId: string, proposalId: string, expectedRevision: number) => client.post<BuilderProposal>('/workforce/console/builder/evaluate', { conversation_id: conversationId, proposal_id: proposalId, expected_revision: expectedRevision }),
 	listAgents: () => client.get<WorkforceAgent[]>('/workforce/console/agents'),

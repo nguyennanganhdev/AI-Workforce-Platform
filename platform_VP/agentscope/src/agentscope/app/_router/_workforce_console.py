@@ -44,6 +44,7 @@ from .._workforce_policy import (
 from ..deps import (
     get_current_principal,
     get_current_user_id,
+    get_message_bus,
     get_resource_access_service,
     get_shared_context_storage,
     get_storage,
@@ -231,6 +232,7 @@ class PlannedAgentView(BaseModel):
     missing_knowledge: list[str] = Field(default_factory=list)
     knowledge_required: bool = False
     tool_requirements: list[str] = Field(default_factory=list)
+    knowledge_requirements: list[str] = Field(default_factory=list)
     decision: BuilderDecision = Field(default_factory=BuilderDecision)
 
 
@@ -271,6 +273,7 @@ class ProposalView(BaseModel):
     resource_catalog: dict = Field(default_factory=dict)
     classifier_status: ClassifierStatus = Field(default_factory=ClassifierStatus)
     resource_selection: Literal["jev", "llm", "hybrid", "none"] = "none"
+    retry_verification: bool = False
 
 
 class PublishRequest(BaseModel):
@@ -1253,14 +1256,15 @@ async def _persist_builder_turn(
     storage: StorageBase,
     user_id: str,
     conversation_id: str,
-    user_text: str,
+    user_text: str | None,
     proposal: ProposalView,
 ) -> None:
-    await storage.upsert_message(
-        user_id,
-        conversation_id,
-        UserMsg(name="area_manager", content=user_text),
-    )
+    if user_text is not None:
+        await storage.upsert_message(
+            user_id,
+            conversation_id,
+            UserMsg(name="area_manager", content=user_text),
+        )
     # A clarification-only proposal carries the question in both fields.
     reply = "\n".join(
         dict.fromkeys(
@@ -1557,11 +1561,32 @@ async def _prepare_builder(
                 proposal,
             )
             return proposal
+        from .._service._builder_run import BuilderRun
         from ._builder_flow import plan_proposal
-        proposal = await plan_proposal(outline, transcript, tools, knowledge, skills, model, access,
+        # JEV judges the user's requirements, never the assistant's previous proposals.
+        requirements = "\n".join([m.get_text_content() or "" for m in messages if m.role == "user"] + [body.message])
+        run_id = _generate_id()
+        revision = previous.revision + 1 if previous else 1
+        checkpoint = BuilderRun(storage, user_id, session, {
+            "run_id": run_id, "snapshot": "", "outline": outline.model_dump(mode="json"),
+            "request": requirements, "scope": scope.model_dump(), "batches": {},
+        })
+        await checkpoint.save()
+        pending = ProposalView(
+            conversation_id=session.id, proposal_id=run_id, revision=revision,
+            status="needs_input", assistant_message="Đã lưu dàn ý; đang kiểm tra nghiệp vụ và tài nguyên.",
+            planned_agents=[PlannedAgentView(**p.model_dump()) for p in outline.agents],
+            chat_model_config=body.chat_model_config, fixed_config=_fixed_config(), scope=scope,
+            retry_verification=True,
+            classifier_status=ClassifierStatus(state="unavailable", run_id=run_id,
+                reason="Bước kiểm tra chưa hoàn tất; có thể chạy tiếp từ kết quả đã lưu."),
+        )
+        await _persist_builder_turn(storage, user_id, session.id, body.message, pending)
+        proposal = await plan_proposal(outline, requirements, tools, knowledge, skills, model, access,
                                        storage, user_id, session.id, body.chat_model_config, scope,
-                                       previous.revision + 1 if previous else 1)
-        await _persist_builder_turn(storage, user_id, session.id, body.message, proposal)
+                                       revision, checkpoint)
+        proposal.retry_verification = proposal.classifier_status.state == "unavailable"
+        await _persist_builder_turn(storage, user_id, session.id, None, proposal)
         return proposal
 
     from ._builder_flow import generate_proposal
@@ -1575,7 +1600,13 @@ async def _prepare_builder(
 @workforce_console_router.post("/builder/prepare", response_model=ProposalView)
 async def prepare_builder(body: PrepareRequest, user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service),
-    principal=Depends(get_current_principal)) -> ProposalView:
+    principal=Depends(get_current_principal), bus=Depends(get_message_bus)) -> ProposalView:
+    from .._service._builder_run import builder_run_guard
+    async with builder_run_guard(bus, user_id, body.conversation_id or _generate_id()):
+        return await _prepare_builder_request(body, user_id, storage, access, principal)
+
+
+async def _prepare_builder_request(body, user_id, storage, access, principal):
     from .._service._eval_progress import EvalProgress
     _builder_scope(user_id, principal)
     session = await _builder_session(storage, user_id, body)
@@ -1592,6 +1623,54 @@ async def prepare_builder(body: PrepareRequest, user_id: str = Depends(get_curre
         if progress:
             await progress.fail()
         raise
+
+
+@workforce_console_router.post("/builder/retry-verification", response_model=ProposalView)
+async def retry_builder_verification(body: PublishRequest, user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service),
+    principal=Depends(get_current_principal), bus=Depends(get_message_bus)) -> ProposalView:
+    from .._service._builder_run import BuilderRun, builder_run_guard
+    from ._builder_flow import plan_proposal
+    scope = _builder_scope(user_id, principal)
+    async with builder_run_guard(bus, user_id, body.conversation_id):
+        session = await storage.get_session(user_id, _BUILDER_AGENT_ID, body.conversation_id)
+        if session is None:
+            raise HTTPException(404, "Không tìm thấy hội thoại Agent Builder.")
+        messages = await _list_all_builder_messages(storage, user_id, session.id)
+        previous = _stored_proposal(messages)
+        if previous is None or previous.proposal_id != body.proposal_id or previous.revision != body.expected_revision:
+            raise HTTPException(409, "Phương án đã thay đổi; hãy tải lại trước khi thử tiếp.")
+        if previous.scope != scope or previous.status != "needs_input" or previous.agents or previous.classifier_status.state != "unavailable":
+            raise HTTPException(409, "Phương án không còn ở bước kiểm tra lỗi hoặc scope đã thay đổi.")
+        checkpoint = BuilderRun.load(storage, user_id, session)
+        if checkpoint and checkpoint.value["run_id"] != previous.proposal_id:
+            raise HTTPException(409, "Đã có lượt Builder mới; tải lại hội thoại.")
+        if checkpoint is None:
+            # Legacy failed outlines have no batch checkpoint, but can still be
+            # rechecked without asking the LLM to invent a different outline.
+            if not previous.planned_agents:
+                raise HTTPException(409, "Chưa có dàn ý để kiểm tra.")
+            outline = BuilderOutline(agents=[PlannedAgent.model_validate(p.model_dump()) for p in previous.planned_agents],
+                                     assistant_message="Giữ nguyên dàn ý đã lưu để kiểm tra lại.")
+            for plan in outline.agents:
+                if plan.knowledge_required and not plan.knowledge_requirements:
+                    plan.knowledge_requirements = [plan.objective]
+            checkpoint = BuilderRun(storage, user_id, session, {
+                "run_id": previous.proposal_id, "snapshot": "", "batches": {},
+                "outline": outline.model_dump(mode="json"), "scope": scope.model_dump(),
+                "request": "\n".join(m.get_text_content() or "" for m in messages if m.role == "user"),
+            })
+        if checkpoint.value["scope"] != scope.model_dump():
+            raise HTTPException(409, "Scope đã thay đổi; lập lại phương án.")
+        tools = await _catalog(storage, user_id)
+        knowledge, skills = await _library(storage, user_id)
+        result = await plan_proposal(BuilderOutline.model_validate(checkpoint.value["outline"]),
+            checkpoint.value["request"], tools, knowledge, skills, None, access, storage, user_id,
+            session.id, previous.chat_model_config, scope, previous.revision + 1, checkpoint)
+        result.retry_verification = result.classifier_status.state == "unavailable"
+        result.assistant_message = "Đã kiểm tra tiếp dàn ý đã lưu; giữ nguyên vai trò và mục tiêu của các agent."
+        await _persist_builder_turn(storage, user_id, session.id, None, result)
+        return result
 
 
 @workforce_console_router.post("/builder/evaluate", response_model=ProposalView)

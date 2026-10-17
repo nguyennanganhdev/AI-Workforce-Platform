@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
+import os
 import re
 from contextlib import asynccontextmanager
 
 from fastapi import HTTPException
 from jsonschema import Draft202012Validator
-from pydantic import BaseModel, Field
 
 from ..._utils._common import _generate_id
-from ...message import AssistantMsg, SystemMsg, UserMsg
+from ...message import AssistantMsg
 from .._agent_spec import (
     AgentSpec,
     SpecKnowledge,
@@ -33,10 +32,11 @@ from .._service._agent_studio import (
 from .._service._builder_decisions import (
     BuilderClassifier,
     BuilderScope,
-    ClassifierUnavailable,
+    ClassifierStatus,
     catalog_hash,
     decide_identities,
     digest,
+    failure_reason,
     scoped_agents,
     select_resources,
 )
@@ -72,82 +72,6 @@ async def catalog_guard(storage, user_id):
         await storage.release_builder_catalog(user_id, token)
 
 
-class ResourceChoice(BaseModel):
-    name: str
-    tools: list[str] = Field(default_factory=list)
-    knowledge: list[str] = Field(default_factory=list)
-    skills: list[str] = Field(default_factory=list)
-    tool_coverage: dict[str, list[str]] = Field(default_factory=dict)
-    knowledge_coverage: dict[str, list[str]] = Field(default_factory=dict)
-
-
-class ResourceChoices(BaseModel):
-    agents: list[ResourceChoice]
-
-
-async def llm_resources(plans, catalog, model):
-    import json
-
-    from . import _workforce_console as c
-
-    response, _, _ = await c._builder_structured_call(
-        model,
-        [
-            SystemMsg(
-                name="builder_resources",
-                content="Select resources for the supplied agent boundaries. Keep names and use only catalog IDs. "
-                "A tool belongs to one specialist; knowledge and skills can be shared. "
-                "tool_coverage/knowledge_coverage maps each exact requirement string to the IDs that directly fulfill it; "
-                "omit unsupported requirements. Search is not booking; KB/skills cannot perform external actions. "
-                "Select a library skill only when it fully covers the workflow; otherwise leave skills empty. "
-                "Never generate prompts or invent capabilities.",
-            ),
-            UserMsg(
-                name="manager",
-                content=json.dumps(
-                    {"planned": [p.model_dump() for p in plans], **catalog},
-                    ensure_ascii=False,
-                ),
-            ),
-        ],
-        ResourceChoices,
-    )
-    choices = ResourceChoices.model_validate(response.content)
-    if [p.name for p in plans] != [p.name for p in choices.agents]:
-        raise HTTPException(502, "Bước chọn tài nguyên đã đổi phạm vi agent.")
-    result = []
-    claimed = set()
-    for plan, choice in zip(plans, choices.agents):
-        for kind in ("tools", "knowledge", "skills"):
-            ids = getattr(choice, kind)
-            if len(set(ids)) != len(ids) or not set(ids) <= catalog[kind].keys():
-                raise HTTPException(
-                    502, "Model chọn tài nguyên không tồn tại hoặc bị trùng."
-                )
-        if claimed.intersection(choice.tools):
-            raise HTTPException(502, "Model gán cùng tool cho nhiều agent.")
-        claimed.update(choice.tools)
-        selected = {
-            kind: getattr(choice, kind) for kind in ("tools", "knowledge", "skills")
-        }
-        for kind, needs in (
-            ("tools", plan.tool_requirements),
-            ("knowledge", plan.knowledge_requirements),
-        ):
-            coverage = (
-                choice.tool_coverage if kind == "tools" else choice.knowledge_coverage
-            )
-            if any(not set(ids) <= set(selected[kind]) for ids in coverage.values()):
-                raise HTTPException(
-                    502, "Coverage tham chiếu tài nguyên chưa được chọn."
-                )
-            selected["missing_tools" if kind == "tools" else "missing_knowledge"] = [
-                n for n in needs if not coverage.get(n)
-            ]
-        result.append(selected)
-    return result
-
-
 async def plan_proposal(
     outline,
     transcript,
@@ -162,6 +86,7 @@ async def plan_proposal(
     config,
     scope,
     revision,
+    checkpoint=None,
 ):
     from . import _workforce_console as c
 
@@ -169,6 +94,25 @@ async def plan_proposal(
     records = scoped_agents(await storage.list_agents(user_id), scope)
     catalog = resources(tools, knowledge, skills)
     classifier = BuilderClassifier(access, storage, scope, conversation_id)
+    if checkpoint:
+        snapshot = digest(
+            {
+                "agents": catalog_hash(records, scope),
+                "resources": catalog,
+                "scope": scope.model_dump(),
+            }
+        )
+        if checkpoint.value.get("snapshot") != snapshot:
+            checkpoint.value.update(snapshot=snapshot, batches={}, splits=[])
+        classifier.checkpoint = checkpoint
+        classifier.status = ClassifierStatus.model_validate(
+            checkpoint.value.get("classifier_status", {})
+        )
+        classifier.status.model = os.getenv("WORKFORCE_JEV_MODEL", "jev-1.13.0").strip()
+        classifier.status.run_id = checkpoint.value["run_id"]
+        classifier.status.state = "not_needed"
+        classifier.status.reason = ""
+        await checkpoint.save()
     try:
         decisions = await decide_identities(
             outline.agents, records, classifier, transcript
@@ -182,6 +126,7 @@ async def plan_proposal(
                 objective=plan.objective,
                 decision=decision,
                 tool_requirements=plan.tool_requirements,
+                knowledge_requirements=plan.knowledge_requirements,
                 knowledge_required=plan.knowledge_required,
             )
             views.append(view)
@@ -232,23 +177,25 @@ async def plan_proposal(
                     [p for _, p in pending], available, classifier
                 )
                 source = "jev" if classifier.status.calls else "none"
-            except Exception as exc:  # noqa: BLE001 - resource failures use a visible, validated fallback
-                classifier.status.state = "fallback"
-                classifier.status.reason = (
-                    str(exc)
-                    if isinstance(exc, ClassifierUnavailable)
-                    else f"Chọn tài nguyên bằng LLM ({type(exc).__name__}); kiểm tra trùng vẫn độc lập."
+            except Exception as exc:  # noqa: BLE001 - keep the verified identity, pause resource selection
+                classifier.status.state = "unavailable"
+                classifier.status.reason = failure_reason(
+                    exc, classifier.status.http_status
                 )
-                try:
-                    async with asyncio.timeout(c._builder_timeout()):
-                        selection = await llm_resources(
-                            [p for _, p in pending], available, model
-                        )
-                except HTTPException:
-                    raise
-                except Exception as fallback_error:  # noqa: BLE001 - use the existing sanitized provider error mapping
-                    c._raise_builder_model_error(fallback_error, config)
-                source = "hybrid" if classifier.status.calls else "llm"
+                classifier.status.stages.setdefault("builder_resources", {}).update(
+                    state="error", reason=classifier.status.reason
+                )
+                source = "none"
+                selection = [
+                    {
+                        "tools": [],
+                        "knowledge": [],
+                        "skills": [],
+                        "missing_tools": list(p.tool_requirements),
+                        "missing_knowledge": list(p.knowledge_requirements),
+                    }
+                    for _, p in pending
+                ]
             for (i, _), selected in zip(pending, selection):
                 view = views[i]
                 view.suggested_tools = [
@@ -308,7 +255,7 @@ async def plan_proposal(
             for view in views:
                 view.decision.action = "clarify"
                 view.decision.reason = "Các vai trò còn dùng chung tool hoặc trỏ cùng agent; hãy gộp/làm rõ ranh giới nghiệp vụ."
-        blocked = any(
+        blocked = classifier.status.state == "unavailable" or any(
             v.decision.action in ("clarify", "repair")
             or v.missing_tools
             or (v.knowledge_required and v.missing_knowledge)
@@ -316,13 +263,13 @@ async def plan_proposal(
         )
         return c.ProposalView(
             conversation_id=conversation_id,
-            proposal_id=_generate_id(),
+            proposal_id=checkpoint.value["run_id"] if checkpoint else _generate_id(),
             revision=revision,
             status="needs_input",
             assistant_message=outline.assistant_message
             or "Hãy xem phương án dùng lại, cập nhật và tài nguyên trước khi chốt.",
             clarification_question=(
-                "Đây là lỗi kiểm tra hệ thống JEV; hãy giữ nguyên mô tả và lập lại phương án sau khi khắc phục."
+                "Đây là lỗi kiểm tra hệ thống JEV; hãy giữ nguyên mô tả và chọn Thử lại bước kiểm tra sau khi khắc phục."
                 if classifier.status.state == "unavailable"
                 else "Hãy bổ sung hoặc làm rõ các mục đang bị chặn rồi lập lại phương án."
             )
@@ -338,6 +285,8 @@ async def plan_proposal(
             resource_selection=source,
         )
     finally:
+        if checkpoint:
+            await checkpoint.status(classifier.status)
         await classifier.close()
 
 
@@ -350,6 +299,7 @@ async def check_plan(
         or proposal.scope.owner_id != user_id
         or proposal.revision != revision
         or not proposal.planned_agents
+        or proposal.classifier_status.state == "unavailable"
         or not proposal.agent_catalog_hash
     ):
         raise HTTPException(

@@ -32,9 +32,9 @@ def test_discussion_answers_the_latest_message_without_replacing_the_reviewed_pl
                         get_model=AsyncMock(), _prepare_builder_memory=AsyncMock(return_value="Full conversation"),
                         _outline=AsyncMock(return_value=(outline, 100, 100)),
                         _record_builder_prompt_measurement=AsyncMock(), _persist_builder_turn=persist):
-        result = asyncio.run(console.prepare_builder(
+        result = asyncio.run(console._prepare_builder_request(
             console.PrepareRequest(message="Do you understand my goal? Don't repeat the agent list.", chat_model_config=config),
-            "u", object(), object(),
+            "u", object(), object(), None,
         ))
     assert result.assistant_message == reply
     assert result.planned_agents == previous.planned_agents

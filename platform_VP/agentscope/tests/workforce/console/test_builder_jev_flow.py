@@ -944,7 +944,7 @@ async def test_library_skill_is_reused_and_generation_cannot_override_grants(sto
 
 
 @pytest.mark.asyncio
-async def test_resource_fallback_is_visible_and_does_not_decide_identity(storage):
+async def test_resource_failure_pauses_without_changing_the_verified_identity(storage):
     value = classifier(storage, failure=TimeoutError())
     outline = console.BuilderOutline(
         agents=[
@@ -955,18 +955,8 @@ async def test_resource_fallback_is_visible_and_does_not_decide_identity(storage
             )
         ]
     )
-    fallback = [
-        {
-            "tools": [TOOL.id],
-            "knowledge": [],
-            "skills": [],
-            "missing_tools": [],
-            "missing_knowledge": [],
-        }
-    ]
     with (
         patch.object(flow, "BuilderClassifier", return_value=value),
-        patch.object(flow, "llm_resources", AsyncMock(return_value=fallback)),
     ):
         proposal = await flow.plan_proposal(
             outline,
@@ -983,8 +973,8 @@ async def test_resource_fallback_is_visible_and_does_not_decide_identity(storage
             SCOPE,
             1,
         )
-    assert proposal.classifier_status.state == "fallback"
-    assert proposal.resource_selection == "hybrid"
+    assert proposal.classifier_status.state == "unavailable"
+    assert proposal.resource_selection == "none"
     assert (
         proposal.planned_agents[0].decision.action == "create"
     )  # Empty scoped catalog is known.

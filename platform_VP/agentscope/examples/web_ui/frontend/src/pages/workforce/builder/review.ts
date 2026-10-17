@@ -30,6 +30,6 @@ export function classifierLabel(proposal: BuilderProposal): string {
     const labels = { active: 'JEV đang hoạt động', fallback: 'Chọn tài nguyên bằng LLM dự phòng',
         unavailable: 'JEV chưa kết luận; chưa thể tạo agent', not_needed: 'Chưa cần gọi JEV' };
     const recovery = canRetryClassification(proposal)
-        ? ' · Đây là lỗi kiểm tra hệ thống; giữ nguyên mô tả và chọn Lập lại phương án sau khi khắc phục.' : '';
+        ? ' · Đây là lỗi kiểm tra hệ thống; giữ nguyên mô tả và chọn Thử lại bước kiểm tra sau khi khắc phục.' : '';
     return `${labels[status.state]} · ${status.model}${status.reason ? ` · ${status.reason}` : ''}${recovery}`;
 }
