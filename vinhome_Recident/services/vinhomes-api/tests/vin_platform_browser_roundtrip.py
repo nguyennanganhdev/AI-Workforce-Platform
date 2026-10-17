@@ -111,10 +111,21 @@ def main(output):
             page.locator("textarea").last.fill("Vòi nước bếp rò rỉ, tôi yêu cầu gửi nhân viên kỹ thuật kiểm tra. Vị trí dưới bồn rửa bếp.")
             page.locator("textarea").last.press("Enter")
             cases = []
+            projection_conflicts = 0
             for _ in range(60):
                 cases = call(customer, "GET", "/service-cases")["items"]
                 if cases:
-                    detail = call(customer, "GET", f'/service-cases/{cases[0]["id"]}?refresh=true')
+                    response = customer.get(f'/service-cases/{cases[0]["id"]}?refresh=true', timeout=30)
+                    # Materialization may change the canonical projection
+                    # between GET and ACK. Reload it; never weaken the ACK CAS.
+                    if response.status_code == 409 and response.json().get("detail") == {
+                        "code": "DOMAIN_REQUEST_REJECTED", "upstream_status": 409
+                    }:
+                        projection_conflicts += 1
+                        page.wait_for_timeout(1000)
+                        continue
+                    response.raise_for_status()
+                    detail = response.json()
                     if detail["data"]["domain"].get("tickets"):
                         break
                 page.wait_for_timeout(1000)
@@ -122,7 +133,8 @@ def main(output):
                 raise AssertionError("Leader did not create and materialize a case through scripted CustomerService")
             case_id = cases[0]["id"]
             ticket_id = detail["data"]["domain"]["tickets"][0]["id"]
-            step("leader_creates_case", case_id=case_id, ticket_id=ticket_id)
+            step("leader_creates_case", case_id=case_id, ticket_id=ticket_id,
+                projection_reload_conflicts=projection_conflicts)
             page.screenshot(path=str(output / "leader-created.png"), full_page=True)
             def domain_login(actor):
                 client = httpx.Client(base_url=DOMAIN, trust_env=False)
