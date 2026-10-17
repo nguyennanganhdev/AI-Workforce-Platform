@@ -3,8 +3,9 @@
 import base64
 import hashlib
 import hmac
-import json
 import secrets
+import json
+import time
 from datetime import timedelta
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -32,13 +33,36 @@ class DomainAdapter:
     def __init__(self, service):
         self.service = service
 
-    async def exchange(self, method, url, **kwargs):
+    @staticmethod
+    def safe_snapshot(ident, snapshot):
+        """Never persist/publish Domain signed photo URLs in Platform DTOs."""
+        def photos(items):
+            from uuid import UUID
+            return [{"id": str(UUID(p["id"])), "name": p.get("name", ""),
+                "url": "/service-cases/" + ident + "/photos/" + str(UUID(p["id"]))} for p in items]
+        result = {**snapshot}
+        for key in ("photos", "result_photos"):
+            if key in result:
+                result[key] = photos(result[key])
+        if result.get("resolution"):
+            result["resolution"] = {**result["resolution"], "photos": photos(result["resolution"].get("photos", []))}
+        return result
+
+    async def exchange(self, method, url, *, raw=False, **kwargs):
         validate_url(url)
         async def send(client):
             response = await client.request(method, url, follow_redirects=False, **kwargs)
             if not 200 <= response.status_code < 300:
+                if response.status_code == 401:
+                    raise PlatformError("DOMAIN_LINK_EXPIRED", 403)
+                if response.status_code == 403:
+                    raise PlatformError("DOMAIN_PERMISSION_REVOKED", 403)
                 raise PlatformError("DOMAIN_UNAVAILABLE" if response.status_code >= 500 else "DOMAIN_REQUEST_REJECTED",
                     503 if response.status_code >= 500 else 409, upstream_status=response.status_code)
+            if raw:
+                if len(response.content) > 10 * 1024 * 1024:
+                    raise PlatformError("DOMAIN_FILE_TOO_LARGE", 413)
+                return {"content": response.content, "content_type": response.headers.get("content-type", "application/octet-stream")}
             return response.json()
         if self.service.http_client is not None:
             return await send(self.service.http_client)
@@ -145,9 +169,11 @@ class DomainAdapter:
             raise PlatformError("DOMAIN_LINK_REQUIRED", 403)
         return dict(row)
 
-    async def request(self, context, link_id, method, path, *, payload=None, idempotency_key=None):
+    async def request(self, context, link_id, method, path, *, payload=None, idempotency_key=None, raw=False):
         link = await self.link(context, link_id)
         provider = await self.provider(context, link["provider_id"])
+        if provider.environment != context.environment:
+            raise PlatformError("SANDBOX_UNAVAILABLE" if context.environment == "sandbox" else "DOMAIN_ENVIRONMENT_MISMATCH", 403)
         credential = await self.service.secret_get(context.tenant_id, link["secret_ref"], "domain-link")
         client_secret = await self.service.secret_get(context.tenant_id, provider.client_secret_ref, "domain-client")
         grant = await self.exchange("POST", provider.api_base_url.rstrip("/") + "/grants", json={
@@ -157,11 +183,13 @@ class DomainAdapter:
             headers["Idempotency-Key"] = idempotency_key
         if not path.startswith("/") or ".." in path or ":" in path:
             raise PlatformError("INVALID_DOMAIN_PATH", 422)
-        return await self.exchange(method, provider.api_base_url.rstrip("/") + path, headers=headers,
+        return await self.exchange(method, provider.api_base_url.rstrip("/") + path, headers=headers, raw=raw,
             **({"json": payload} if payload is not None else {}))
 
     async def revoke(self, context, link_id):
         link = await self.link(context, link_id, active=False)
+        if link["status"] == "revoked":
+            return
         # Local revoke is authoritative for new work even if Domain is down.
         async with self.service.engine.begin() as db:
             await db.execute(update(t.links).where(t.links.c.id == link_id).values(status="revoke_pending", revision=t.links.c.revision + 1))
@@ -196,6 +224,7 @@ class DomainAdapter:
         result = await self.request(context, command.link_id, "POST", "/requests", payload={
             "platform_case_id": ident, "platform_workflow_id": ident, "request": command.request},
             idempotency_key=command.idempotency_key)
+        result = self.safe_snapshot(ident, result)
         async with self.service.engine.begin() as db:
             await db.execute(update(t.cases).where(t.cases.c.id == ident).values(state="applied",
                 data={"request": command.request, "domain": result}, revision=t.cases.c.revision + 1))
@@ -214,15 +243,20 @@ class DomainAdapter:
         if refresh and row["state"] == "applied":
             domain_id = row["data"]["domain"]["id"]
             from uuid import UUID
-            canonical = await self.request(context, row["link_id"], "GET", "/requests/" + str(UUID(domain_id)))
+            canonical = self.safe_snapshot(ident, await self.request(context, row["link_id"], "GET", "/requests/" + str(UUID(domain_id))))
             result["data"] = {**row["data"], "domain": canonical}
             async with self.service.engine.begin() as db:
                 await db.execute(update(t.cases).where(t.cases.c.id == ident).values(data=result["data"], revision=t.cases.c.revision + 1))
+            if canonical.get("projection_hash"):
+                # Acknowledgement follows durable SQL projection, never HTTP
+                # acceptance or a model's claim that publication succeeded.
+                await self.request(context, row["link_id"], "POST", "/requests/" + str(UUID(domain_id)) + "/projection-acks",
+                    payload={"canonical_version": canonical["canonical_version"], "content_hash": canonical["projection_hash"]})
         return result
 
     async def decide(self, context, intent):
         case = await self.get_case(context, intent.case_id)
-        if intent.action not in {"confirm", "reopen", "plan-decision", "cancel", "reschedule"}:
+        if intent.action not in {"confirm", "reopen", "plan-decision", "work-approval", "cancel", "reschedule"}:
             raise PlatformError("ACTION_NOT_ENTITLED", 403)
         body = {"action": intent.action, "expected_version": intent.expected_version, "payload": intent.payload}
         fingerprint = digest(body)
@@ -240,9 +274,77 @@ class DomainAdapter:
                 return row["data"]["result"]
         from uuid import UUID
         request_id = str(UUID(case["data"]["domain"]["id"]))
+        link = await self.link(context, case["link_id"])
+        provider = await self.provider(context, link["provider_id"])
+        secret = await self.service.secret_get(context.tenant_id, provider.client_secret_ref, "domain-client")
+        proof = {"client_id": provider.client_id, "platform_user_id": context.initiator_user_id,
+            "domain_link_id": link["data"]["domain_link_id"], "request_id": request_id,
+            "platform_case_id": intent.case_id, "source_event_id": row["id"], **body,
+            "expires_at": int(time.time()) + 300}
+        signature = hmac.new(hashlib.sha256(secret.encode()).digest(),
+            json.dumps(proof, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(), hashlib.sha256).hexdigest()
         result = await self.request(context, case["link_id"], "POST", "/requests/" + request_id + "/decisions",
-            payload={**body, "platform_case_id": intent.case_id, "source_event_id": row["id"]},
+            payload={**body, "platform_case_id": intent.case_id, "source_event_id": row["id"],
+                "intent_proof": proof, "intent_signature": signature},
             idempotency_key=intent.idempotency_key)
         async with self.service.engine.begin() as db:
             await db.execute(update(t.commands).where(t.commands.c.id == row["id"]).values(state="applied", data={**body, "result": result}))
         return result
+
+    async def materialize(self, context, ident, category_id, expected_version, idempotency_key):
+        case = await self.get_case(context, ident)
+        from uuid import UUID
+        return await self.request(context, case["link_id"], "POST", "/requests/" + str(UUID(case["data"]["domain"]["id"])) + "/tickets",
+            payload={"category_id": str(UUID(category_id)), "expected_version": expected_version}, idempotency_key=idempotency_key)
+
+    async def ticket_grant(self, context, ident, ticket_id, tools):
+        """Internal runtime hook; never return this payload to a public DTO."""
+        case = await self.get_case(context, ident)
+        from uuid import UUID
+        return await self.request(context, case["link_id"], "POST", "/requests/" + str(UUID(case["data"]["domain"]["id"])) + "/ticket-grants",
+            payload={"ticket_id": str(UUID(ticket_id)), "tools": tools})
+
+    async def photo(self, context, ident, file_id):
+        case = await self.get_case(context, ident)
+        from uuid import UUID
+        return await self.request(context, case["link_id"], "GET", "/requests/" + str(UUID(case["data"]["domain"]["id"]))
+            + "/photos/" + str(UUID(file_id)), raw=True)
+
+    async def eval_fixtures(self, context, link_id, run_id, count=5):
+        if context.environment != "sandbox":
+            raise PlatformError("SANDBOX_UNAVAILABLE", 403)
+        return await self.request(context, link_id, "POST", "/eval-fixtures", payload={"run_id": run_id, "count": count})
+
+    async def cleanup_eval(self, context, link_id, run_id):
+        if context.environment != "sandbox":
+            raise PlatformError("SANDBOX_UNAVAILABLE", 403)
+        return await self.request(context, link_id, "POST", "/eval-fixtures/cleanup", payload={"run_id": run_id})
+
+    async def sync_events(self, context, ident):
+        from sqlalchemy import func
+        from ._contracts import CaseEvent
+        case = await self.get_case(context, ident)
+        async with self.service.engine.begin() as db:
+            cursor = (await db.execute(select(func.max(t.events.c.sequence)).where(t.events.c.tenant_id == context.tenant_id,
+                t.events.c.case_id == ident))).scalar_one_or_none() or 0
+        from uuid import UUID
+        page = await self.request(context, case["link_id"], "GET", "/requests/" + str(UUID(case["data"]["domain"]["id"])) + "/events?after=" + str(cursor))
+        events = [CaseEvent.model_validate(item) for item in page["items"]]
+        if any(e.case_id != ident or e.audience != "customer" or e.sequence != cursor + i + 1 for i, e in enumerate(events)):
+            raise PlatformError("SYNC_PENDING", 409)
+        async with self.service.engine.begin() as db:
+            await self.service.assert_active(db, context, require_eligible=False)
+            await db.execute(select(t.cases.c.id).where(t.cases.c.id == ident).with_for_update())
+            from ._quota import insert_once
+            for event in events:
+                data = event.model_dump(mode="json")
+                await insert_once(db, t.events, {"tenant_id": context.tenant_id, "case_id": ident,
+                    "sequence": event.sequence, "event_id": event.event_id, "audience": "customer", "data": data})
+                existing = (await db.execute(select(t.events.c.data).where(t.events.c.tenant_id == context.tenant_id,
+                    t.events.c.case_id == ident, t.events.c.sequence == event.sequence))).scalar_one()
+                if existing != data:
+                    raise PlatformError("EVENT_REPLAY_CONFLICT", 409)
+        applied = events[-1].sequence if events else cursor
+        return {"last_sequence": page["last_sequence"], "applied_sequence": applied,
+            "sync_status": "sync_pending" if page["has_more"] or page["last_sequence"] > applied else "applied",
+            "synced_at": now().isoformat(), "has_more": page["has_more"], "canonical_version": page["canonical_version"]}

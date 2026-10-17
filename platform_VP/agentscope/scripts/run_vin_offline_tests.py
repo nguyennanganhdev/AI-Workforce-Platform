@@ -1,6 +1,6 @@
 """Run pytest without permitting model/provider calls or loading deployment env.
 
-Only explicitly named loopback database ports may connect. This also blocks a
+Only explicitly named loopback fixture ports may connect. This also blocks a
 test accidentally using an inherited provider credential or a local model proxy.
 Usage: python scripts/run_vin_offline_tests.py [--allow-db-port 15438] -- TESTS...
 """
@@ -15,7 +15,7 @@ import threading
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--allow-db-port", type=int, action="append", default=[])
+    parser.add_argument("--allow-db-port", "--allow-loopback-port", type=int, action="append", default=[])
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     for name in list(os.environ):

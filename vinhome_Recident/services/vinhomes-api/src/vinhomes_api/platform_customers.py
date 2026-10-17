@@ -9,14 +9,18 @@ import hashlib
 import hmac
 import html
 import os
+import json
+import time
 import re
 import secrets
 from contextlib import asynccontextmanager
-from urllib.parse import urlencode
+from contextvars import ContextVar
+from urllib.parse import urlencode, parse_qs, urlsplit
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
@@ -30,6 +34,26 @@ async def enabled():
 
 router = APIRouter(prefix="/platform", tags=["Platform customer identity and cases"], dependencies=[Depends(enabled)])
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
+SOURCE_INTENT = ContextVar("customer_source_intent", default=None)
+
+
+async def bind_customer_ticket(db, ticket_id):
+    """Bind the customer's existing workflow; never enqueue a BQL start."""
+    row = (await db.execute(text(f"""SELECT p.*,t.channel_id,m.code AS management_ref FROM tickets t
+        JOIN vh_resident_cases c ON c.channel_id=t.channel_id AND c.tenant_id=t.tenant_id
+        JOIN platform_customer_cases p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
+        JOIN management_units m ON m.id=t.management_unit_id AND m.tenant_id=t.tenant_id
+        WHERE t.id=:id AND t.tenant_id={TENANT} AND t.requester_user_id=p.user_id"""), {"id": ticket_id})).mappings().first()
+    if row is None:
+        return False
+    await db.execute(text(f"""INSERT INTO platform_links(ticket_id,tenant_id,channel_id,user_id,management_ref,
+        workflow_id,conversation_id,status,origin) VALUES(:id,{TENANT},:channel,:user,:management,:workflow,:case,'open','platform')
+        ON CONFLICT(ticket_id) DO NOTHING"""), {"id": ticket_id, "channel": row["channel_id"],
+        "user": row["user_id"], "management": row["management_ref"], "workflow": row["platform_workflow_id"], "case": row["platform_case_id"]})
+    current = (await db.execute(text("SELECT origin,workflow_id,user_id FROM platform_links WHERE ticket_id=:id"), {"id": ticket_id})).mappings().one()
+    if (current["origin"], current["workflow_id"], current["user_id"]) != ("platform", row["platform_workflow_id"], row["user_id"]):
+        raise HTTPException(409, "Ticket already bound to another origin")
+    return True
 
 
 def digest(value):
@@ -185,7 +209,7 @@ async def exchange_code(body: ExchangeCode, request: Request, response: Response
         if previous:
             link_id = previous["id"]
             await db.execute(text("DELETE FROM platform_customer_grants WHERE link_id=:id"), {"id": link_id})
-            await db.execute(text("UPDATE platform_customer_links SET token_hash=:h,active=true,expires_at=now()+interval '30 days' WHERE id=:id"), {"h": digest(token), "id": link_id})
+            await db.execute(text("UPDATE platform_customer_links SET token_hash=:h,active=true,revision=revision+1,expires_at=now()+interval '30 days' WHERE id=:id"), {"h": digest(token), "id": link_id})
         else:
             await db.execute(text(f"""INSERT INTO platform_customer_links
                 (id,tenant_id,client_id,user_id,platform_user_id,token_hash,scopes,expires_at)
@@ -285,6 +309,7 @@ async def create_request(body: PlatformRequest, request: Request, scope=Depends(
     return result
 
 
+
 async def owned_case(db, actor, ident, link):
     row = await cases.case_row((db, actor), ident)
     binding = (await db.execute(text(f"SELECT * FROM platform_customer_cases WHERE tenant_id={TENANT} AND case_id=:id AND client_id=:c AND user_id=:u"),
@@ -295,9 +320,225 @@ async def owned_case(db, actor, ident, link):
 
 
 @router.get("/customer/requests/{ident}")
-async def get_request(ident: UUID, request: Request, scope=Depends(customer_scope)):
+async def get_request(ident: UUID, request: Request, events_cursor: str | None = Query(None, max_length=1024), scope=Depends(customer_scope)):
     row, _ = await owned_case(*scope, ident, request.state.platform_customer)
-    return await cases.public_detail(scope, row, request)
+    details = await cases.public_detail(scope, row, request, events_cursor)
+    return {**details, **await customer_projection(scope, ident, row)}
+
+
+async def customer_projection(scope, ident, row):
+    tickets = [dict(r) for r in (await scope[0].execute(text(f"""SELECT t.id,t.status,t.version,t.is_emergency
+        FROM tickets t JOIN vh_resident_case_tickets ct ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id
+        WHERE ct.case_id=:case AND t.tenant_id={TENANT} ORDER BY t.id"""), {"case": ident})).mappings()]
+    approvals = [dict(r) for r in (await scope[0].execute(text(f"""SELECT a.id,a.work_order_id,a.kind,a.status,
+        a.request_detail,a.expires_at,t.version AS ticket_version FROM work_approvals a
+        JOIN work_orders w ON w.id=a.work_order_id AND w.tenant_id=a.tenant_id
+        JOIN tickets t ON t.id=w.ticket_id AND t.tenant_id=w.tenant_id
+        JOIN vh_resident_case_tickets ct ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id
+        WHERE ct.case_id=:case AND a.tenant_id={TENANT} AND a.requested_to_user_id=:u
+          AND a.kind IN ('customer_repair','customer_completion') AND a.status='pending'
+        ORDER BY a.id"""), {"case": ident, "u": scope[1]})).mappings()]
+    orders = [dict(r) for r in (await scope[0].execute(text(f"""SELECT w.id,w.status,w.scheduled_at,w.version
+        FROM work_orders w JOIN vh_resident_case_tickets ct ON ct.ticket_id=w.ticket_id AND ct.tenant_id=w.tenant_id
+        WHERE ct.case_id=:case AND w.tenant_id={TENANT} ORDER BY w.created_at,w.id"""), {"case": ident})).mappings()]
+    statuses = {t["status"] for t in tickets}
+    photos = [dict(r) for r in (await scope[0].execute(text(f"""SELECT DISTINCT f.id,f.original_name AS name
+        FROM evidence_items e JOIN work_orders w ON w.id=e.work_order_id AND w.tenant_id=e.tenant_id
+        JOIN vh_resident_case_tickets ct ON ct.ticket_id=w.ticket_id AND ct.tenant_id=w.tenant_id
+        JOIN files f ON f.id=e.file_id AND f.tenant_id=e.tenant_id
+        WHERE ct.case_id=:case AND e.tenant_id={TENANT} AND e.status='active'
+          AND e.purpose IN ('after','verification') AND w.status='completed'
+          AND f.status='ready' AND f.deleted_at IS NULL ORDER BY f.id"""), {"case": ident})).mappings()]
+    if tickets and statuses <= {"closed", "cancelled"}:
+        status, action = ("cancelled" if statuses == {"cancelled"} else "closed"), None
+    elif any(t["is_emergency"] for t in tickets):
+        status, action = "needs_human", "contact_domain_emergency_support"
+    elif approvals or row["public_status"] == "confirmation":
+        status, action = "waiting_for_customer", "review_current_decision"
+    else:
+        status, action = ("in_progress", "follow_progress") if tickets else ("received", "select_service_category")
+    projection = jsonable_encoder({"domain_request_id": str(ident), "canonical_version": row["public_version"],
+        "service_status": status, "next_action": action, "tickets": tickets,
+        "status": row["public_status"], "pending_decisions": approvals, "work_orders": orders, "result_photos": photos,
+        "as_of": row["public_updated_at"]})
+    fingerprint = hashlib.sha256(json.dumps(projection, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    return {**projection, "projection_hash": fingerprint}
+
+
+class ProjectionAck(Strict):
+    canonical_version: int = Field(ge=1)
+    content_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+@router.post("/customer/requests/{ident}/projection-acks")
+async def projection_ack(ident: UUID, body: ProjectionAck, request: Request, scope=Depends(customer_scope)):
+    row, _ = await owned_case(*scope, ident, request.state.platform_customer)
+    row = await cases.lock_case(scope, ident)
+    current = await customer_projection(scope, ident, row)
+    if body.canonical_version != row["public_version"] or body.content_hash != current["projection_hash"]:
+        raise HTTPException(409, "Projection changed; refresh before acknowledgement")
+    await scope[0].execute(text(f"""INSERT INTO platform_customer_projection_acks
+        (tenant_id,case_id,link_id,link_revision,canonical_version,content_hash) VALUES({TENANT},:case,:link,:revision,:version,:hash)
+        ON CONFLICT(tenant_id,case_id,link_id,link_revision,canonical_version)
+        DO UPDATE SET content_hash=excluded.content_hash,applied_at=now()"""), {"case": ident, "link": request.state.platform_customer["id"],
+        "revision": request.state.platform_customer["revision"], "version": body.canonical_version, "hash": body.content_hash})
+    return {"ingestion_status": "applied", "canonical_version": body.canonical_version, "content_hash": body.content_hash}
+
+
+@router.get("/customer/requests/{ident}/photos/{file_id}")
+async def customer_photo(ident: UUID, file_id: UUID, request: Request, scope=Depends(customer_scope)):
+    row, _ = await owned_case(*scope, ident, request.state.platform_customer)
+    detail = await cases.public_detail(scope, row, request)
+    allowed = [*detail["photos"], *((detail.get("resolution") or {}).get("photos") or [])]
+    photo = next((p for p in allowed if p["id"] == str(file_id)), None)
+    if photo is None:
+        projection = await customer_projection(scope, ident, row)
+        if not any(p["id"] == str(file_id) for p in projection["result_photos"]):
+            raise HTTPException(404, "Customer photo not found")
+        link = request.state.platform_customer
+        applied = (await scope[0].execute(text(f"""SELECT 1 FROM platform_customer_projection_acks
+            WHERE tenant_id={TENANT} AND case_id=:case AND link_id=:link AND link_revision=:revision
+              AND canonical_version=:version AND content_hash=:hash"""), {"case": ident, "link": link["id"],
+            "revision": link["revision"], "version": row["public_version"], "hash": projection["projection_hash"]})).first()
+        if not applied:
+            raise HTTPException(409, "Customer projection not applied")
+        from .resident_photos import verified_file, file_response
+        return file_response(await verified_file(scope, file_id))
+    from .resident_photos import content
+    access = parse_qs(urlsplit(photo["url"]).query)["access"][0]
+    return await content(scope, file_id, request, access)
+
+
+@router.get("/customer/me")
+async def self_context(scope=Depends(customer_scope)):
+    from .resident_api import me
+    profile = await me(scope)
+    categories = (await scope[0].execute(text(f"SELECT id,code,name FROM service_categories WHERE tenant_id={TENANT} AND enabled ORDER BY name,id"))).mappings().all()
+    return {**profile, "service_categories": [dict(row) for row in categories]}
+
+
+class CustomerEval(Strict):
+    run_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+    count: int = Field(default=5, ge=1, le=20)
+
+
+@router.post("/customer/eval-fixtures")
+async def eval_fixtures(body: CustomerEval, request: Request, scope=Depends(customer_scope)):
+    from .eval_fixture import enabled, create_eval_tickets, EvalFixtureRefused
+    if not enabled():
+        raise HTTPException(404, "Evaluation fixtures disabled")
+    try:
+        # Reuse PR #99, including its synthetic DB marker and isolated grants.
+        # A real resident ID never substitutes for a synthetic sandbox subject.
+        namespace = hashlib.sha256((request.state.platform_customer["client_id"] + ":" +
+            request.state.platform_customer["platform_user_id"] + ":" + body.run_id).encode()).hexdigest()
+        tickets = await create_eval_tickets(scope[0], namespace, body.count, resident_user_id=scope[1])
+    except EvalFixtureRefused as exc:
+        raise HTTPException(409, str(exc)) from None
+    return {"tickets": tickets, "data_mode": "synthetic_test", "run_namespace": namespace, "subject": scope[1]}
+
+
+@router.post("/customer/eval-fixtures/cleanup")
+async def cleanup_eval(body: CustomerEval, request: Request, scope=Depends(customer_scope)):
+    from .eval_fixture import retire_eval_tickets, EvalFixtureRefused
+    namespace = hashlib.sha256((request.state.platform_customer["client_id"] + ":" +
+        request.state.platform_customer["platform_user_id"] + ":" + body.run_id).encode()).hexdigest()
+    try:
+        return await retire_eval_tickets(scope[0], namespace, scope[1])
+    except EvalFixtureRefused as exc:
+        raise HTTPException(409, str(exc)) from None
+
+
+@router.get("/customer/requests/{ident}/events")
+async def case_events(ident: UUID, request: Request, after: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), scope=Depends(customer_scope)):
+    row, binding = await owned_case(*scope, ident, request.state.platform_customer)
+    rows = list((await scope[0].execute(text(f"""SELECT e.id,e.sequence,e.canonical_version,e.label,e.note,e.occurred_at,o.event_type
+        FROM vh_resident_public_events e LEFT JOIN vh_resident_outbox o ON o.event_id=e.id AND o.tenant_id=e.tenant_id
+        WHERE e.tenant_id={TENANT} AND e.case_id=:id AND e.sequence>:after ORDER BY e.sequence LIMIT :limit"""),
+        {"id": ident, "after": after, "limit": limit + 1})).mappings())
+    items = [{"schema_version": "vin-case-1", "event_id": str(e["id"]), "case_id": binding["platform_case_id"],
+        "sequence": e["sequence"], "canonical_version": e["canonical_version"],
+        "event_type": e["event_type"] or "resident.case.progress", "occurred_at": e["occurred_at"], "audience": "customer",
+        "data": {"label": e["label"], "note": e["note"], "domain_request_id": str(ident), "origin": "platform"}}
+        for e in rows[:limit]]
+    return {"items": items, "next_cursor": items[-1]["sequence"] if items else after,
+        "has_more": len(rows) > limit, "last_sequence": row["event_sequence"],
+        "canonical_version": row["public_version"], "status": row["public_status"]}
+
+
+class CustomerTicket(Strict):
+    category_id: UUID
+    expected_version: int = Field(ge=1)
+
+
+@router.post("/customer/requests/{ident}/tickets", status_code=201)
+async def materialize(ident: UUID, body: CustomerTicket, request: Request, scope=Depends(customer_scope)):
+    row, _ = await owned_case(*scope, ident, request.state.platform_customer)
+    key = request.headers.get("idempotency-key", "")
+    if not 16 <= len(key) <= 128:
+        raise HTTPException(400, "Idempotency-Key required")
+    payload = body.model_dump(mode="json")
+    previous = await cases.receipt(scope, "customer-ticket", str(ident), key, payload)
+    if previous:
+        return previous["response_body"]
+    row = await cases.lock_case(scope, ident)
+    cases.check_version(row, body.expected_version)
+    existing = (await scope[0].execute(text(f"SELECT ticket_id FROM vh_resident_case_tickets WHERE case_id=:id AND tenant_id={TENANT}"), {"id": ident})).first()
+    if existing or row["public_status"] == "completed":
+        raise HTTPException(409, "Case already materialized or completed")
+    person = (await scope[0].execute(text("SELECT name,phone_e164 FROM users WHERE id=:u"), {"u": scope[1]})).mappings().one()
+    if not person["phone_e164"]:
+        raise HTTPException(422, "Domain contact phone required")
+    from .v3_resident import ResidentTicketCreate, create_resident_ticket
+    from .v3_reception_runtime import emergency_kind
+    emergency = emergency_kind(row["description"])
+    assessment = {"priority": "critical", "severity": "critical", "is_emergency": True,
+        "reason": "Domain emergency rule: " + emergency} if emergency else None
+    ticket = await create_resident_ticket(row["channel_id"], ResidentTicketCreate(
+        domain_id=row["domain_id"], building_id=row["building_id"], unit_id=row["unit_id"], category_id=body.category_id,
+        title=row["title"], description=row["description"], location=row["location_description"],
+        contact_name=person["name"], contact_phone=person["phone_e164"], request_kind="incident",
+        idempotency_key="customer-case:" + str(ident)), scope, assessment=assessment, requires_plan=False, link_case=False)
+    await scope[0].execute(text(f"""INSERT INTO vh_resident_case_tickets(tenant_id,case_id,ticket_id,linked_by)
+        VALUES({TENANT},:case,:ticket,:actor)"""), {"case": ident, "ticket": ticket["id"], "actor": scope[1]})
+    await scope[0].execute(text(f"UPDATE vh_resident_cases SET status='processing',version=version+1,updated_at=now() WHERE id=:id AND tenant_id={TENANT}"), {"id": ident})
+    await cases.event(scope[0], ident, "Đã chuyển yêu cầu đến bộ phận xử lý", "resident.case.routed")
+    result = {"ticket_id": str(ticket["id"]), "origin": "platform", "requires_immediate_human_response": bool(emergency),
+        "request": await cases.public_detail(scope, await cases.case_row(scope, ident), request)}
+    await cases.save_receipt(scope, "customer-ticket", str(ident), key, payload, result, 201, ident)
+    return result
+
+
+class TicketGrant(Strict):
+    ticket_id: UUID
+    tools: list[str] = Field(min_length=1, max_length=8)
+
+
+@router.post("/customer/requests/{ident}/ticket-grants")
+async def ticket_grant(ident: UUID, body: TicketGrant, request: Request, response: Response, scope=Depends(customer_scope)):
+    _, binding = await owned_case(*scope, ident, request.state.platform_customer)
+    allowed = {"vh_ticket_get", "vh_knowledge_search", "vh_staff_available", "vh_work_order_dispatch",
+        "vh_operation_get", "vh_ticket_add_note", "vh_service_context", "vh_amenity_availability"}
+    if set(body.tools) - allowed or len(body.tools) != len(set(body.tools)):
+        raise HTTPException(403, "Tool not delegated to customer agent")
+    link = request.state.platform_customer
+    ticket = (await scope[0].execute(text(f"""SELECT t.id,l.management_ref FROM tickets t
+        JOIN vh_resident_case_tickets ct ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id
+        JOIN platform_links l ON l.ticket_id=t.id AND l.tenant_id=t.tenant_id AND l.origin='platform'
+        WHERE ct.case_id=:case AND t.id=:ticket AND t.tenant_id={TENANT} AND t.requester_user_id=:u
+          AND l.workflow_id=:workflow AND t.status NOT IN ('closed','cancelled')"""),
+        {"case": ident, "ticket": body.ticket_id, "u": scope[1], "workflow": binding["platform_workflow_id"]})).mappings().first()
+    if not ticket:
+        raise HTTPException(404, "Customer ticket not found")
+    token, grant_id = "vhm_" + secrets.token_urlsafe(32), uuid4()
+    await scope[0].execute(text(f"""INSERT INTO platform_mcp_grants
+        (id,tenant_id,ticket_id,management_ref,workflow_id,token_hash,tools,expires_at,customer_link_id,customer_link_revision)
+        VALUES(:id,{TENANT},:ticket,:management,:workflow,:hash,:tools,now()+interval '5 minutes',:link,:revision)"""),
+        {"id": grant_id, "ticket": body.ticket_id, "management": ticket["management_ref"],
+         "workflow": binding["platform_workflow_id"], "hash": digest(token), "tools": body.tools, "link": link["id"], "revision": link["revision"]})
+    response.headers["Cache-Control"] = "no-store"
+    return {"grant_id": str(grant_id), "ticket_id": str(body.ticket_id), "workflow_id": binding["platform_workflow_id"],
+        "bearer_token": token, "expires_in": 300, "tools": body.tools}
 
 
 class Decision(Strict):
@@ -306,6 +547,8 @@ class Decision(Strict):
     payload: dict
     platform_case_id: str
     source_event_id: str
+    intent_proof: dict
+    intent_signature: str = Field(min_length=64, max_length=64)
 
 
 @router.post("/customer/requests/{ident}/decisions")
@@ -313,16 +556,33 @@ async def decide(ident: UUID, body: Decision, request: Request, scope=Depends(cu
     row, binding = await owned_case(*scope, ident, request.state.platform_customer)
     if binding["platform_case_id"] != body.platform_case_id or len(body.source_event_id) > 255:
         raise HTTPException(403, "Source intent mismatch")
+    link = request.state.platform_customer
+    registered = await client(scope[0], link["client_id"])
+    expected = {"client_id": link["client_id"], "platform_user_id": link["platform_user_id"],
+        "domain_link_id": str(link["id"]), "request_id": str(ident), "platform_case_id": body.platform_case_id,
+        "source_event_id": body.source_event_id, "action": body.action,
+        "expected_version": body.expected_version, "payload": body.payload,
+        "expires_at": body.intent_proof.get("expires_at")}
+    expiry = expected["expires_at"]
+    signature = hmac.new(bytes.fromhex(registered["secret_hash"]),
+        json.dumps(expected, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(), hashlib.sha256).hexdigest()
+    if body.intent_proof != expected or not isinstance(expiry, int) or not time.time() < expiry <= time.time() + 301 or not hmac.compare_digest(signature, body.intent_signature):
+        raise HTTPException(403, "Source intent invalid or expired")
     key = request.headers.get("idempotency-key", "")
     if not 16 <= len(key) <= 128:
         raise HTTPException(400, "Idempotency-Key required")
-    fingerprint = body.model_dump(mode="json")
+    fingerprint = body.model_dump(mode="json", exclude={"intent_proof", "intent_signature"})
     previous = await cases.receipt(scope, "platform-intent", str(ident), key, fingerprint)
     if previous:
         return previous["response_body"]
     # Serialize source decisions with Domain's canonical case mutations.
     row = await cases.lock_case(scope, ident)
     cases.check_version(row, body.expected_version)
+    projection = await customer_projection(scope, ident, row)
+    if not (await scope[0].execute(text(f"""SELECT 1 FROM platform_customer_projection_acks WHERE tenant_id={TENANT}
+        AND case_id=:case AND link_id=:link AND link_revision=:revision AND canonical_version=:version AND content_hash=:hash"""),
+        {"case": ident, "link": link["id"], "revision": link["revision"], "version": row["public_version"], "hash": projection["projection_hash"]})).first():
+        raise HTTPException(409, "Customer projection not applied")
     if body.action in {"confirm", "reopen"}:
         from .resident_contract import ResolutionCommand, ReworkCommand
         contract = ReworkCommand if body.action == "reopen" else ResolutionCommand
@@ -338,7 +598,84 @@ async def decide(ident: UUID, body: Decision, request: Request, scope=Depends(cu
         # Plan and case have different canonical revisions.
         payload = ResidentPlanDecision.model_validate({k: v for k, v in body.payload.items() if k != "plan_id"})
         result = await decide_plan(ident, plan_id, payload, request, scope)
+    elif body.action == "work-approval":
+        from .v3_resident import decide_resident_approval, ResidentApprovalDecision
+        try:
+            approval_id = UUID(body.payload["approval_id"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise HTTPException(422, "approval_id required") from exc
+        permitted = (await scope[0].execute(text(f"""SELECT a.id FROM work_approvals a JOIN work_orders w
+            ON w.id=a.work_order_id AND w.tenant_id=a.tenant_id JOIN vh_resident_case_tickets ct
+            ON ct.ticket_id=w.ticket_id AND ct.tenant_id=w.tenant_id WHERE ct.case_id=:case AND a.id=:approval
+            AND a.tenant_id={TENANT} AND a.requested_to_user_id=:u"""),
+            {"case": ident, "approval": approval_id, "u": scope[1]})).first()
+        if not permitted:
+            raise HTTPException(404, "Customer approval not found")
+        payload = ResidentApprovalDecision.model_validate({k: v for k, v in body.payload.items() if k != "approval_id"})
+        result = await decide_resident_approval(approval_id, payload, request, scope)
+    elif body.action in {"cancel", "reschedule"}:
+        from . import platform_work as work
+        ticket = (await scope[0].execute(text(f"""SELECT t.id,t.version FROM tickets t JOIN vh_resident_case_tickets ct
+            ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id WHERE ct.case_id=:case AND t.tenant_id={TENANT}
+            AND t.requester_user_id=:u ORDER BY t.id"""), {"case": ident, "u": scope[1]})).mappings().all()
+        if len(ticket) != 1:
+            raise HTTPException(409, "Exactly one ticket required for this decision")
+        token = SOURCE_INTENT.set({"ticket_id": str(ticket[0]["id"]), "user_id": scope[1], "source_event_id": body.source_event_id})
+        try:
+            if body.action == "cancel":
+                if set(body.payload) - {"reason"}:
+                    raise HTTPException(422, "Unexpected cancel arguments")
+                result = await work.cancel(scope[0], ticket[0]["id"], body.payload.get("reason"), body.source_event_id,
+                    ticket[0]["version"], body.source_event_id)
+            else:
+                if set(body.payload) - {"reason", "appointment_at"} or not isinstance(body.payload.get("appointment_at"), str):
+                    raise HTTPException(422, "appointment_at required")
+                result = await work.reschedule(scope[0], ticket[0]["id"], body.payload["appointment_at"], body.payload.get("reason"),
+                    body.source_event_id, ticket[0]["version"], body.source_event_id)
+        finally:
+            SOURCE_INTENT.reset(token)
     else:
         raise HTTPException(409, "Action requires a ticket-bound consent; not supported for this case")
     await cases.save_receipt(scope, "platform-intent", str(ident), key, fingerprint, result, 200, ident)
     return result
+
+def main():
+    """Provision a registered client with the DB operator, outside runtime API."""
+    import argparse
+    import asyncio
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--tenant", required=True, type=UUID)
+    parser.add_argument("--client-id", required=True)
+    parser.add_argument("--issuer", required=True)
+    parser.add_argument("--redirect-uri", required=True)
+    parser.add_argument("--secret-env", default="VIN_CUSTOMER_CLIENT_SECRET")
+    parser.add_argument("--enable", action="store_true")
+    args = parser.parse_args()
+    secret = os.getenv(args.secret_env, "")
+    if len(secret) < 32 or not re.fullmatch(r"[a-zA-Z0-9_-]{1,100}", args.client_id):
+        parser.error("Client ID or client secret configuration invalid")
+    for value in (args.issuer, args.redirect_uri):
+        parsed = urlsplit(value)
+        if parsed.username or parsed.password or parsed.fragment or not parsed.netloc or (
+            parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"})):
+            parser.error("Registered endpoints must use HTTPS or loopback HTTP")
+
+    async def provision():
+        import asyncpg
+        from .database import _url
+        db = await asyncpg.connect(_url(os.environ["DATABASE_URL"]))
+        try:
+            async with db.transaction():
+                await db.execute("SELECT set_config('app.tenant_id',$1,true)", str(args.tenant))
+                await db.execute("""INSERT INTO platform_customer_clients(tenant_id,client_id,secret_hash,issuer,redirect_uri,active)
+                    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(tenant_id,client_id) DO UPDATE
+                    SET secret_hash=excluded.secret_hash,issuer=excluded.issuer,redirect_uri=excluded.redirect_uri,active=excluded.active""",
+                    args.tenant, args.client_id, digest(secret), args.issuer, args.redirect_uri, args.enable)
+        finally:
+            await db.close()
+    asyncio.run(provision())
+    print("Customer client configured; no credential printed")
+
+
+if __name__ == "__main__":
+    main()

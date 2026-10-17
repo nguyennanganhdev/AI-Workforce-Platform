@@ -104,6 +104,8 @@ async def _send(engine: AsyncEngine, client: Platform, tenant: str, ticket: str)
             return
         link = (await db.execute(text(f"select * from platform_links where ticket_id=:ticket and tenant_id={TENANT}"),
                                  {"ticket": ticket})).mappings().one()
+        if link["origin"] != "domain":
+            return
         done = "update platform_commands set status='done',attempts=attempts+1,last_error=null,result=cast(:result as jsonb) where id=:id"
         ended = link["status"] == "closed" or link["state"] == "closed"
         if ended or link["status"] == "failed":
@@ -250,7 +252,7 @@ async def _read(engine: AsyncEngine, client: Platform, tenant: str, ticket: str)
         # Whoever holds the link applies its events; a second worker skips it this pass. Not a full row lock:
         # the resident's next message queues a command for this link and must not wait for the platform's answer.
         link = (await db.execute(text(f"""
-            select * from platform_links where ticket_id=:ticket and tenant_id={TENANT} and status='open'
+            select * from platform_links where ticket_id=:ticket and tenant_id={TENANT} and status='open' and origin='domain'
               and conversation_id is not null for no key update skip locked
         """), {"ticket": ticket})).mappings().first()
         if link is None:
@@ -286,7 +288,7 @@ async def read_events(engine: AsyncEngine, client: Platform) -> int:
     for tenant in await _tenants(engine):
         async with _scoped(engine, tenant) as db:
             tickets = [str(row[0]) for row in await db.execute(text(
-                f"select ticket_id from platform_links where tenant_id={TENANT} and status='open' order by updated_at"))]
+                f"select ticket_id from platform_links where tenant_id={TENANT} and origin='domain' and status='open' order by updated_at"))]
         read += len(tickets)
         for ticket in tickets:
             try:
@@ -357,7 +359,7 @@ async def queue_progress(engine: AsyncEngine) -> None:
         async with _scoped(engine, tenant) as db:
             events = (await db.execute(text(f"""
                 select e.id,e.ticket_id,e.seq,e.event_type,e.payload,e.occurred_at,l.channel_id from ticket_events e
-                join platform_links l on l.ticket_id=e.ticket_id and l.tenant_id=e.tenant_id
+                join platform_links l on l.ticket_id=e.ticket_id and l.tenant_id=e.tenant_id and l.origin='domain'
                 where e.tenant_id={TENANT} and l.status='open' and e.event_type=any(:types)
                   and e.seq>coalesce((select max(o.provider_version) from platform_outbox o
                     where o.ticket_id=e.ticket_id and o.tenant_id=e.tenant_id),0)
@@ -387,7 +389,7 @@ async def close_ended(engine: AsyncEngine) -> None:
                 insert into platform_commands(tenant_id,ticket_id,kind,body)
                 select l.tenant_id,l.ticket_id,'close',cast(:body as jsonb) from platform_links l
                 join tickets t on t.id=l.ticket_id and t.tenant_id=l.tenant_id
-                where l.tenant_id={TENANT} and l.status in {ACTIVE} and t.status in ('closed','cancelled')
+                where l.tenant_id={TENANT} and l.origin='domain' and l.status in {ACTIVE} and t.status in ('closed','cancelled')
                   and not exists (select 1 from platform_commands c where c.ticket_id=l.ticket_id
                     and c.tenant_id=l.tenant_id and c.kind='close')
             """), {"body": json.dumps(STOP_TRACKING)})
@@ -453,7 +455,7 @@ async def send_progress(engine: AsyncEngine, client: Platform) -> None:
             quotes = (await db.execute(text(f"""
                 select e.*,l.channel_id from platform_outbox o
                 join ticket_events e on e.id=o.event_id and e.tenant_id=o.tenant_id
-                join platform_links l on l.ticket_id=o.ticket_id and l.tenant_id=o.tenant_id
+                join platform_links l on l.ticket_id=o.ticket_id and l.tenant_id=o.tenant_id and l.origin='domain'
                 where o.tenant_id={TENANT} and o.event_type='job.quote_ready'
                   and o.receipt->>'ingestion_status'='applied' and l.status='open'
                   and not exists(select 1 from messages m where m.channel_id=l.channel_id

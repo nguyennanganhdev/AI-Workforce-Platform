@@ -3,13 +3,14 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import Field, SecretStr
 from sqlalchemy import select
 
 from ..auth import AuthPrincipal
 from ..deps import get_current_principal
 from . import _tables as t
-from ._contracts import CatalogPage, CapabilityView, WorkspaceState, CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent
+from ._contracts import CapabilityView, CatalogPage, CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent, WorkspaceState
 from ._domain import DomainAdapter
 
 router = APIRouter(tags=["vin-platform"])
@@ -91,6 +92,28 @@ async def catalog(kind: str, environment: str = "production", who=Depends(caller
 
 class Eligibility(Contract):
     eligible: bool
+
+
+class MigrationRequest(Contract):
+    dry_run: bool = True
+
+
+class Reconciliation(Contract):
+    actual_tokens: int = Field(ge=0)
+    receipt_ref: str = Field(min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9:._/-]+$")
+
+
+@router.post("/admin/vin/attempts/{ident}/reconcile")
+async def reconcile(ident: str, body: Reconciliation, who=Depends(caller)):
+    authority, context = who
+    await authority.reconcile_attempt(context, ident, body.actual_tokens, body.receipt_ref)
+    return {"settled": True}
+
+
+@router.post("/admin/vin/credential-migration")
+async def migrate_credentials(body: MigrationRequest, who=Depends(caller)):
+    authority, context = who
+    return await authority.migrate_credentials(context, dry_run=body.dry_run)
 
 
 @router.put("/admin/vin/accounts/{user_id}/eligibility")
@@ -200,6 +223,12 @@ async def unlink(ident: str, who=Depends(caller)):
     await DomainAdapter(authority).revoke(context, ident)
 
 
+@router.get("/me/domain-links/{ident}/context")
+async def linked_context(ident: str, who=Depends(caller)):
+    authority, context = who
+    return await DomainAdapter(authority).request(context, ident, "GET", "/me")
+
+
 @router.post("/service-cases", status_code=201)
 async def create_case(body: ServiceRequest, who=Depends(caller)):
     authority, context = who
@@ -225,31 +254,44 @@ async def get_case(ident: str, refresh: bool = False, who=Depends(caller)):
     return await DomainAdapter(authority).get_case(context, ident, refresh=refresh)
 
 
+class Materialize(Contract):
+    category_id: str
+    expected_version: int = Field(ge=1)
+    idempotency_key: str = Field(min_length=16, max_length=128)
+
+
+@router.get("/service-cases/{ident}/photos/{file_id}")
+async def photo(ident: str, file_id: str, who=Depends(caller)):
+    authority, context = who
+    result = await DomainAdapter(authority).photo(context, ident, file_id)
+    return Response(result["content"], media_type=result["content_type"], headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/service-cases/{ident}/tickets", status_code=201)
+async def materialize(ident: str, body: Materialize, who=Depends(caller)):
+    authority, context = who
+    return await DomainAdapter(authority).materialize(context, ident, **body.model_dump())
+
+
+@router.get("/service-cases/{ident}/events")
+async def case_events(ident: str, after: int = 0, limit: int = 50, sync: bool = True, who=Depends(caller)):
+    authority, context = who
+    if after < 0 or not 1 <= limit <= 100:
+        raise HTTPException(422, detail="INVALID_PAGINATION")
+    adapter = DomainAdapter(authority)
+    await adapter.get_case(context, ident)
+    status = await adapter.sync_events(context, ident) if sync else {}
+    async with authority.engine.begin() as db:
+        rows = (await db.execute(select(t.events.c.data).where(t.events.c.tenant_id == context.tenant_id,
+            t.events.c.case_id == ident, t.events.c.audience == "customer", t.events.c.sequence > after,
+        ).order_by(t.events.c.sequence).limit(limit + 1))).scalars().all()
+    return {**status, "items": rows[:limit], "next_cursor": rows[min(len(rows), limit) - 1]["sequence"] if rows else after,
+        "has_more": len(rows) > limit or status.get("has_more", False)}
+
+
 @router.post("/service-cases/{ident}/decisions")
 async def decide(ident: str, body: SourceIntent, who=Depends(caller)):
     if ident != body.case_id:
         raise HTTPException(422, detail="CASE_ID_MISMATCH")
     authority, context = who
     return await DomainAdapter(authority).decide(context, body)
-
-
-class MigrationRequest(Contract):
-    dry_run: bool = True
-
-
-class Reconciliation(Contract):
-    actual_tokens: int = Field(ge=0)
-    receipt_ref: str = Field(min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9:._/-]+$")
-
-
-@router.post("/admin/vin/attempts/{ident}/reconcile")
-async def reconcile(ident: str, body: Reconciliation, who=Depends(caller)):
-    authority, context = who
-    await authority.reconcile_attempt(context, ident, body.actual_tokens, body.receipt_ref)
-    return {"settled": True}
-
-
-@router.post("/admin/vin/credential-migration")
-async def migrate_credentials(body: MigrationRequest, who=Depends(caller)):
-    authority, context = who
-    return await authority.migrate_credentials(context, dry_run=body.dry_run)

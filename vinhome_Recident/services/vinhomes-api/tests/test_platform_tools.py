@@ -7,6 +7,7 @@ MCP client the platform uses. FakePlatform (test_platform_bridge) stands for the
 
 import asyncio
 import json
+import os
 import re
 import socket
 import threading
@@ -873,7 +874,7 @@ def test_dispatch_is_refused_for_plan_tickets_and_for_guard_emergencies(database
 def serve(database):
     """The API on a real port, as the platform reaches it."""
     probe = socket.socket()
-    probe.bind(("127.0.0.1", 0))
+    probe.bind(("127.0.0.1", int(os.getenv("VINHOMES_MCP_TEST_PORT", "0"))))
     port = probe.getsockname()[1]
     probe.close()
     app = create_app(V3Settings("127.0.0.1", port, database["runtime"], TENANT, None))
