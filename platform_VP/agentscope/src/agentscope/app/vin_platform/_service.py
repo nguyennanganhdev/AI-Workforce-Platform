@@ -65,6 +65,10 @@ class VinPlatformService:
             for table in t.metadata.sorted_tables:
                 await db.execute(select(table).limit(0))
             await db.execute(select(durable_jobs.c.personal_user_id).limit(0))
+            from sqlalchemy import inspect
+            checks = await db.run_sync(lambda connection: inspect(connection).get_check_constraints("wf_durable_jobs"))
+            if not any(c["name"] == "ck_wf_job_owner_shape" and "personal_user_id" in c["sqltext"] for c in checks):
+                raise PlatformError("PERSONAL_JOB_MIGRATION_REQUIRED", 503)
 
     async def reconcile_attempt(self, context, ident, actual, receipt_ref):
         self.admin(context)

@@ -51,18 +51,26 @@ class PersonalJobs:
         if job is None:
             return None
         try:
-            context = await self.authority.context(job.personal_user_id, environment=job.payload["environment"],
-                workspace_id=job.payload.get("workspace_id"))
-            async with self.authority.engine.begin() as db:
-                await self.authority.assert_active(db, context)
-            if context.authorization_revision != job.payload["authorization_revision"]:
-                raise PlatformError("AUTHORIZATION_REVOKED", 403)
+            await self.context_for(job)
             if job.attempt > 1 and job.job_type != "delivery":
                 raise PlatformError("OUTCOME_UNKNOWN", 409)
         except PlatformError as exc:
             await self.repository.fail(job.job_id, worker_id, job.fencing_token, {"code": exc.code}, now(), now())
             return None
         return job
+
+    async def context_for(self, job):
+        """Recheck a saved job immediately before runtime/delivery starts."""
+        if job.owner_kind != JobOwnerKind.PERSONAL or not job.personal_user_id:
+            raise PlatformError("CAPABILITY_DENIED", 403)
+        purpose = {"schedule-run": "schedule", "channel-event": "channel", "delivery": "delivery", "publish-batch": "builder"}[job.job_type]
+        context = await self.authority.context(job.personal_user_id, purpose=purpose,
+            environment=job.payload["environment"], workspace_id=job.payload.get("workspace_id"))
+        async with self.authority.engine.begin() as db:
+            await self.authority.assert_active(db, context)
+        if context.tenant_id != job.tenant_id or context.authorization_revision != job.payload["authorization_revision"]:
+            raise PlatformError("AUTHORIZATION_REVOKED", 403)
+        return context
 
     async def complete(self, job, worker_id, result):
         return await self.repository.complete(job.job_id, worker_id, job.fencing_token, result, now())

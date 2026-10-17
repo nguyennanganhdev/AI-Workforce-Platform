@@ -53,3 +53,20 @@ async def test_crashed_model_run_is_unknown_and_delivery_retries_saved_body(auth
     await jobs.fail(claim, "worker1", "TRANSPORT_UNAVAILABLE", retry_after=0)
     retry = await jobs.claim("worker2")
     assert retry.job_id == sent.job_id and retry.payload == claim.payload and retry.fencing_token > claim.fencing_token
+
+
+@pytest.mark.asyncio
+async def test_job_context_rechecks_tenant_revision_and_execution_purpose(authority):
+    async with authority.engine.begin() as db:
+        await db.run_sync(durable_jobs.create)
+    ctx = await setup_quota(authority)
+    jobs = authority.jobs
+    job = await jobs.enqueue(ctx, kind="schedule-run", key="context-v1", payload={"instruction": "fixture"})
+    execution = await jobs.context_for(job)
+    assert execution.purpose == "schedule" and execution.billing_subject_id == "alice"
+    assert execution.workspace_id == "personal:alice"
+    with pytest.raises(PlatformError, match="AUTHORIZATION_REVOKED"):
+        await jobs.context_for(job.model_copy(update={"tenant_id": "foreign"}))
+    await authority.set_eligibility(await authority.context("admin"), "alice", False)
+    with pytest.raises(PlatformError):
+        await jobs.context_for(job)
