@@ -617,17 +617,34 @@ async def decide_identities(
                     matches[key] = same_score
                 elif distinct_score >= 0.85 and same_score <= 0.15:
                     matches[key] = round(1 - distinct_score, 12)
+        confirmed = [
+            [j for j in range(len(records)) if matches[f"same_{i}_{j}"] >= 0.85]
+            for i in range(len(plans))
+        ]
         decisions = []
         for i, _ in enumerate(plans):
-            same = [j for j in range(len(records)) if matches[f"same_{i}_{j}"] >= 0.85]
+            same = confirmed[i]
             uncertain = [
                 j for j in range(len(records)) if 0.15 < matches[f"same_{i}_{j}"] < 0.85
             ]
+            # A single affirmative identity authorizes updating that existing
+            # agent, never creating a new one. Related but unconfirmed records
+            # are not competing targets. With no affirmative identity, keep
+            # every unresolved candidate as a blocker against creation.
+            if len(same) == 1:
+                uncertain = []
             overlapping = [
                 plans[j].name
                 for j in range(len(plans))
                 if j != i
                 and matches[f"pair_{max(i, j)}_{min(i, j)}"] > 0.15
+                and not (
+                    len(same) == len(confirmed[j]) == 1
+                    and (
+                        same == confirmed[j]
+                        or matches[f"pair_{max(i, j)}_{min(i, j)}"] < 0.85
+                    )
+                )
             ]
             if len(same) > 1 or uncertain or overlapping:
                 reasons = []
@@ -794,9 +811,15 @@ async def select_resources(plans, catalog: dict, classifier: BuilderClassifier):
             )
             for i, p in enumerate(plans)
         ]
-        owner, score = max(owners, key=lambda x: x[1])
-        if score >= 0.8:
-            selected[owner]["tools"].append(rid)
+        metadata = catalog["tools"][rid]
+        if metadata.get("read_only") is True and metadata.get("requires_consent") is False:
+            for owner, score in owners:
+                if score >= 0.8:
+                    selected[owner]["tools"].append(rid)
+        else:
+            owner, score = max(owners, key=lambda x: x[1])
+            if score >= 0.8:
+                selected[owner]["tools"].append(rid)
     for i, plan in enumerate(plans):
         for kind, needs in (
             ("tools", plan.tool_requirements),

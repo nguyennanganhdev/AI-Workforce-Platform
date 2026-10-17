@@ -14,13 +14,14 @@ export function canConfirm(proposal: BuilderProposal): boolean {
 }
 
 export function canRetryClassification(proposal: BuilderProposal): boolean {
-    return proposal.classifier_status?.state === 'unavailable' &&
+    return (proposal.classifier_status?.state === 'unavailable' ||
+        (proposal.classifier_status?.state === 'active' && proposal.planned_agents.some(p => p.decision?.action === 'clarify'))) &&
         proposal.status === 'needs_input' && proposal.agents.length === 0 &&
         proposal.planned_agents.length > 0;
 }
 
 export function planDecisionLabel(proposal: BuilderProposal, action: string): string {
-    return canRetryClassification(proposal) && action === 'clarify'
+    return proposal.classifier_status?.state === 'unavailable' && action === 'clarify'
         ? 'Lỗi kiểm tra JEV' : decisionLabels[action];
 }
 
@@ -29,7 +30,7 @@ export function classifierLabel(proposal: BuilderProposal): string {
     if (!status) return 'Chưa có kết quả kiểm tra trùng; hãy lập lại phương án.';
     const labels = { active: 'JEV đang hoạt động', fallback: 'Chọn tài nguyên bằng LLM dự phòng',
         unavailable: 'JEV chưa kết luận; chưa thể tạo agent', not_needed: 'Chưa cần gọi JEV' };
-    const recovery = canRetryClassification(proposal)
+    const recovery = status.state === 'unavailable' && canRetryClassification(proposal)
         ? ' · Đây là lỗi kiểm tra hệ thống; giữ nguyên mô tả và chọn Thử lại bước kiểm tra sau khi khắc phục.' : '';
     return `${labels[status.state]} · ${status.model}${status.reason ? ` · ${status.reason}` : ''}${recovery}`;
 }

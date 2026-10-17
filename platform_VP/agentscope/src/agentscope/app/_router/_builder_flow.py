@@ -8,11 +8,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import HTTPException
 from jsonschema import Draft202012Validator
+from pydantic import ValidationError
 
 from ..._utils._common import _generate_id
 from ...message import AssistantMsg
 from .._agent_spec import (
     AgentSpec,
+    SpecCollaborator,
     SpecKnowledge,
     SpecSkill,
     SpecTest,
@@ -50,6 +52,74 @@ def resources(tools, knowledge, skills):
         "knowledge": knowledge,
         "skills": skills,
     }
+
+
+def _shared_read(tool) -> bool:
+    """Sharing read context does not duplicate ownership of an operation."""
+    return tool.read_only is True and tool.requires_consent is False
+
+
+def _combine_updates(plans, decisions, records):
+    """One reviewed update per existing ID, preserving every requested need."""
+    grouped = {}
+    combined, choices = [], []
+    for plan, decision in zip(plans, decisions):
+        target = decision.agent_id if decision.action in ("reuse", "resume", "revise") else None
+        if not target or target not in grouped:
+            if target:
+                grouped[target] = len(combined)
+            combined.append(plan.model_copy(deep=True))
+            choices.append(decision.model_copy(deep=True))
+            continue
+        index = grouped[target]
+        base = combined[index]
+        payload = base.model_dump()
+        record = next(r for r in records if r.id == target)
+        payload["name"] = record.data.name
+        payload["objective"] = "\n\n".join(dict.fromkeys([base.objective, plan.objective]))
+        for field in ("suggested_tool_ids", "tool_requirements", "knowledge_requirements"):
+            payload[field] = list(dict.fromkeys([*getattr(base, field), *getattr(plan, field)]))
+        payload["knowledge_required"] = base.knowledge_required or plan.knowledge_required
+        try:
+            combined[index] = type(base).model_validate(payload)
+        except ValidationError:
+            # Never truncate a business constraint to fit the merged plan.
+            choices[index].action = "clarify"
+            choices[index].reason = "Yêu cầu gộp vượt giới hạn mô tả; cần rút gọn nội dung nhưng giữ đủ nghiệp vụ."
+            combined.append(plan.model_copy(deep=True))
+            choices.append(decision.model_copy(deep=True))
+            continue
+        choice = choices[index]
+        if choice.action != "clarify":
+            if choice.action != "reuse" or decision.action != "reuse":
+                choice.action = "resume" if record.data.draft_spec or record.data.lifecycle_state == "draft" else "revise"
+            choice.reason = "Gộp các phần việc đã xác nhận cùng nghiệp vụ vào một agent; giữ đầy đủ yêu cầu, không tạo bản sao."
+    return combined, choices
+
+
+def _delegate_owned_operations(views, records):
+    """Keep existing write ownership; route a new need through its specialist."""
+    from ._workforce_console import BuilderDelegation
+
+    inherited = {}
+    for record in records:
+        spec = record.data.draft_spec or record.data.spec or {}
+        inherited[record.id] = {t["tool_id"] for t in spec.get("tools", [])}
+    for tool_id in {t.id for v in views for t in v.suggested_tools if not _shared_read(t)}:
+        users = [v for v in views if any(t.id == tool_id for t in v.suggested_tools)]
+        owners = [v for v in users if tool_id in inherited.get(v.decision.agent_id, set())]
+        if len(users) < 2 or len(owners) != 1:
+            continue
+        owner = owners[0]
+        for view in users:
+            if view is owner:
+                continue
+            tool = next(t for t in view.suggested_tools if t.id == tool_id)
+            view.suggested_tools = [t for t in view.suggested_tools if t.id != tool_id]
+            view.delegated_tools.append(BuilderDelegation(
+                agent_id=owner.decision.agent_id, agent_name=owner.name,
+                tool_id=tool.id, tool_name=tool.tool_name,
+            ))
 
 
 @asynccontextmanager
@@ -117,10 +187,11 @@ async def plan_proposal(
         decisions = await decide_identities(
             outline.agents, records, classifier, transcript
         )
+        plans, decisions = _combine_updates(outline.agents, decisions, records)
         views = []
         claimed = set()
         pending = []
-        for i, (plan, decision) in enumerate(zip(outline.agents, decisions)):
+        for i, (plan, decision) in enumerate(zip(plans, decisions)):
             view = c.PlannedAgentView(
                 name=plan.name,
                 objective=plan.objective,
@@ -136,7 +207,7 @@ async def plan_proposal(
                 ids = [t.tool_id for t in spec.tools]
                 if (
                     not set(ids) <= catalog["tools"].keys()
-                    or claimed.intersection(ids)
+                    or claimed.intersection(t.tool_id for t in spec.tools if not _shared_read(t))
                     or not {k.kb_id for k in spec.knowledge} <= knowledge.keys()
                     or not {s.skill_id for s in spec.skills} <= skills.keys()
                 ):
@@ -155,7 +226,7 @@ async def plan_proposal(
                         )
                         pending.append((i, plan))
                         continue
-                    claimed.update(ids)
+                    claimed.update(t.tool_id for t in spec.tools if not _shared_read(t))
                     view.suggested_tools = [
                         c.BuilderTool.model_validate(catalog["tools"][rid])
                         for rid in ids
@@ -249,7 +320,8 @@ async def plan_proposal(
                                 for rid in ids
                                 if rid not in present
                             )
-        all_tools = [t.id for view in views for t in view.suggested_tools]
+        _delegate_owned_operations(views, records)
+        all_tools = [t.id for view in views for t in view.suggested_tools if not _shared_read(t)]
         targets = [v.decision.agent_id for v in views if v.decision.agent_id]
         if len(all_tools) != len(set(all_tools)) or len(targets) != len(set(targets)):
             for view in views:
@@ -266,8 +338,12 @@ async def plan_proposal(
             proposal_id=checkpoint.value["run_id"] if checkpoint else _generate_id(),
             revision=revision,
             status="needs_input",
-            assistant_message=outline.assistant_message
-            or "Hãy xem phương án dùng lại, cập nhật và tài nguyên trước khi chốt.",
+            assistant_message=(
+                f"Đã gộp {len(outline.agents)} phần việc thành {len(plans)} agent theo nghiệp vụ đã có; giữ đầy đủ yêu cầu và cùng ID. Hãy xem phương án trước khi duyệt."
+                if len(plans) < len(outline.agents)
+                else outline.assistant_message
+                or "Hãy xem phương án dùng lại, cập nhật và tài nguyên trước khi chốt."
+            ),
             clarification_question=(
                 "Đây là lỗi kiểm tra hệ thống JEV; hãy giữ nguyên mô tả và chọn Thử lại bước kiểm tra sau khi khắc phục."
                 if classifier.status.state == "unavailable"
@@ -329,7 +405,7 @@ async def check_plan(
                 plan.decision.reason + " Phương án còn thiếu năng lực hoặc cần làm rõ.",
             )
         for tool in plan.suggested_tools:
-            if tool.id in claimed or proposal.resource_catalog["tools"].get(
+            if (tool.id in claimed and not _shared_read(tool)) or proposal.resource_catalog["tools"].get(
                 tool.id
             ) != tool.model_dump(mode="json"):
                 raise HTTPException(409, "Tool bị trùng hoặc không còn đúng catalog.")
@@ -337,7 +413,15 @@ async def check_plan(
                 Draft202012Validator.check_schema(tool.input_schema)
             except Exception as exc:
                 raise HTTPException(409, "Tool có schema không hợp lệ.") from exc
-            claimed.add(tool.id)
+            if not _shared_read(tool):
+                claimed.add(tool.id)
+        for delegation in plan.delegated_tools:
+            owner = next((p for p in proposal.planned_agents if p.decision.agent_id == delegation.agent_id), None)
+            if owner is None or owner is plan or not any(
+                t.id == delegation.tool_id and t.tool_name == delegation.tool_name
+                for t in owner.suggested_tools
+            ):
+                raise HTTPException(409, "Agent nhận thao tác phối hợp không còn sở hữu tool; kiểm tra lại phương án.")
 
 
 async def generate_proposal(
@@ -447,6 +531,15 @@ async def generate_proposal(
         spec = base.model_copy(deep=True) if base else AgentSpec(name=plan.name)
         spec.goal, spec.description = plan.objective, plan.objective[:1000]
         spec.prompt_override = generated.system_prompt
+        for delegation in plan.delegated_tools:
+            spec.collaborates.append(SpecCollaborator(
+                capability=f"{delegation.agent_name}: {delegation.tool_name}",
+                ask_when=f"Cần thao tác {delegation.tool_name}; nhờ Leader/chuyên viên qua TeamSay. Giữ nguyên quyền/đồng ý của tool, chỉ báo hoàn tất khi có kết quả xác minh.",
+            ))
+            spec.prompt_override += (
+                f"\nThao tác {delegation.tool_name} do chuyên viên {delegation.agent_name} sở hữu. "
+                "Phối hợp qua TeamSay/Leader khi cần; không tự gọi tool này hoặc khẳng định đã thực hiện nếu chưa có kết quả xác minh."
+            )
         spec.tools = [
             SpecTool(
                 tool_id=t.id,

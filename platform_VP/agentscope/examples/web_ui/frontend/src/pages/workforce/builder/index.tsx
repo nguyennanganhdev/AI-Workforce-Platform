@@ -500,7 +500,7 @@ export function AgentBuilderPage() {
                                 {canRetryClassification(proposal) && <div className="flex flex-wrap items-center gap-3">
                                     <Button variant="outline" disabled={working || !proposal.proposal_id}
                                         onClick={() => void retryVerification()}>
-                                        Thử lại bước kiểm tra
+                                        {proposal.classifier_status?.state === 'unavailable' ? 'Thử lại bước kiểm tra' : 'Kiểm tra lại dàn ý đã lưu'}
                                     </Button>
                                     <p className="text-xs text-muted-foreground">Giữ nguyên dàn ý; chỉ gọi JEV cho phần chưa hoàn tất. Có sử dụng model.</p>
                                 </div>}
@@ -541,6 +541,7 @@ export function AgentBuilderPage() {
                                                     {!!agent.missing_knowledge?.length && <p className="mt-2 text-sm text-muted-foreground">{agent.knowledge_required ? 'Thiếu kiến thức bắt buộc' : 'Kiến thức có thể bổ sung sau'}: {agent.missing_knowledge.join('; ')}</p>}
                                                     {!!agent.knowledge?.length && <p className="mt-1 text-xs">Kho tri thức: {agent.knowledge.map((k) => k.name).join(', ')}</p>}
                                                     {!!agent.library_skills?.length && <p className="mt-1 text-xs">Skill dùng lại: {agent.library_skills.map((k) => k.name).join(', ')}</p>}
+                                                    {!!agent.delegated_tools?.length && <p className="mt-1 text-xs">Phối hợp: {agent.delegated_tools.map(d => `${d.agent_name} (${d.tool_name})`).join('; ')}</p>}
 
 													<p className="mt-1 line-clamp-3 text-[13px]/[18px] text-muted-foreground">{agent.objective}</p>
 													{agent.suggested_tools.length > 0 && (

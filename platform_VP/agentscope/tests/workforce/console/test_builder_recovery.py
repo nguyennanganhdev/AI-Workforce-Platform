@@ -460,7 +460,8 @@ async def test_resume_skips_already_rejected_parent_and_completed_split(storage)
 
 
 @pytest.mark.asyncio
-async def test_http_duplicate_retry_is_rejected_and_other_owner_cannot_read_it(storage):
+@pytest.mark.parametrize('classifier_state', ['unavailable', 'active'])
+async def test_http_duplicate_retry_is_rejected_and_other_owner_cannot_read_it(storage, classifier_state):
     import httpx
     from fastapi import FastAPI
 
@@ -478,7 +479,7 @@ async def test_http_duplicate_retry_is_rejected_and_other_owner_cannot_read_it(s
         planned_agents=[
             console.PlannedAgentView(**p.model_dump()) for p in outline.agents
         ],
-        classifier_status=decisions.ClassifierStatus(state="unavailable"),
+        classifier_status=decisions.ClassifierStatus(state=classifier_state),
     )
     await console._persist_builder_turn(
         storage, "u", session.id, "Tra cứu phiếu", previous

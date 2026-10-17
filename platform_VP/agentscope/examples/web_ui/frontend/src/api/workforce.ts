@@ -39,6 +39,7 @@ export interface ProposedAgent {
 }
 
 export interface PlannedAgent {
+	delegated_tools?: { agent_id: string; agent_name: string; tool_id: string; tool_name: string }[];
 	name: string;
 	objective: string;
 	suggested_tools: BuilderTool[];

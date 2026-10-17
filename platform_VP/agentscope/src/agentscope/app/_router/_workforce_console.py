@@ -223,6 +223,13 @@ class PrepareRequest(BaseModel):
     expected_proposal_id: str | None = None
 
 
+class BuilderDelegation(BaseModel):
+    agent_id: str
+    agent_name: str
+    tool_id: str
+    tool_name: str
+
+
 class PlannedAgentView(BaseModel):
     name: str
     objective: str
@@ -235,6 +242,7 @@ class PlannedAgentView(BaseModel):
     tool_requirements: list[str] = Field(default_factory=list)
     knowledge_requirements: list[str] = Field(default_factory=list)
     decision: BuilderDecision = Field(default_factory=BuilderDecision)
+    delegated_tools: list[BuilderDelegation] = Field(default_factory=list)
 
 
 class ProposedAgentView(BaseModel):
@@ -615,8 +623,10 @@ things to avoid) in the objective. List tool_requirements as atomic live lookups
 external operations and knowledge_requirements as reference facts/policies. A KB
 cannot perform an operation. Use empty tool_requirements for reasoning from supplied
 data. Set knowledge_required only when the user explicitly requires this knowledge
-before work can proceed. Do not select IDs; the server selects resources afterwards. One tool ID may belong to only one agent
-in the whole proposal. When a specialist agent exists, assign its operational
+before work can proceed. Do not select IDs; the server selects resources afterwards.
+Read-only context tools may be shared when each specialist needs the data.
+An external mutation has one specialist owner; other agents coordinate through TeamSay.
+When a specialist agent exists, assign its operational
 tools to that specialist; a planning/coordinator agent must collaborate through
 TeamSay instead of duplicating another specialist's tools. Never invent a tool or create two agents for the same
 capability. Incorporate the user's latest feedback into the revised outline.
@@ -727,8 +737,8 @@ SKILL.md and 3 tests per agent (at least one safety_critical=true consent/privac
 (scenario = what a customer says; expected = the behaviour to check, covering a
 normal request, an out-of-scope request and a case that needs consent or
 escalation). Tests run with the real model before the agent can change later. Select only exact
-tool IDs in the supplied catalog. A tool ID may appear in only one generated
-agent. Give each operational tool to the narrowest specialist that owns that
+tool IDs in the supplied catalog. Read-only context tools may appear in multiple
+agents when needed; each external mutation has one specialist owner. Give each operational tool to the narrowest specialist that owns that
 capability; a planning/coordinator agent must call that specialist through
 TeamSay instead of receiving a duplicate tool; set needs_tools=false for an
 agent that only coordinates teammates and needs no tool of its own (true for
@@ -1659,8 +1669,12 @@ async def retry_builder_verification(body: PublishRequest, user_id: str = Depend
         previous = _stored_proposal(messages)
         if previous is None or previous.proposal_id != body.proposal_id or previous.revision != body.expected_revision:
             raise HTTPException(409, "Phương án đã thay đổi; hãy tải lại trước khi thử tiếp.")
-        if previous.scope != scope or previous.status != "needs_input" or previous.agents or previous.classifier_status.state != "unavailable":
-            raise HTTPException(409, "Phương án không còn ở bước kiểm tra lỗi hoặc scope đã thay đổi.")
+        unresolved = previous.classifier_status.state == "unavailable" or (
+            previous.classifier_status.state == "active"
+            and any(p.decision.action == "clarify" for p in previous.planned_agents)
+        )
+        if previous.scope != scope or previous.status != "needs_input" or previous.agents or not unresolved:
+            raise HTTPException(409, "Phương án không còn ở bước kiểm tra chưa kết luận hoặc scope đã thay đổi.")
         checkpoint = BuilderRun.load(storage, user_id, session)
         if checkpoint and checkpoint.value["run_id"] != previous.proposal_id:
             raise HTTPException(409, "Đã có lượt Builder mới; tải lại hội thoại.")
@@ -1687,7 +1701,8 @@ async def retry_builder_verification(body: PublishRequest, user_id: str = Depend
             checkpoint.value["request"], tools, knowledge, skills, None, access, storage, user_id,
             session.id, previous.chat_model_config, scope, previous.revision + 1, checkpoint)
         result.retry_verification = result.classifier_status.state == "unavailable"
-        result.assistant_message = "Đã kiểm tra tiếp dàn ý đã lưu; giữ nguyên vai trò và mục tiêu của các agent."
+        if len(result.planned_agents) == len(checkpoint.value["outline"]["agents"]):
+            result.assistant_message = "Đã kiểm tra tiếp dàn ý đã lưu; giữ nguyên mục tiêu nghiệp vụ."
         await _persist_builder_turn(storage, user_id, session.id, None, result)
         return result
 

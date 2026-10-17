@@ -35,3 +35,10 @@ test('a failed JEV request is a system failure with an explicit retry, not missi
     assert.equal(canRetryClassification(plan), false);
     assert.equal(planDecisionLabel(plan, 'clarify'), 'Cần làm rõ');
 });
+
+test('a completed but unresolved check can be resumed without rewriting the outline', () => {
+    const unresolved = { ...plan, classifier_status: { state: 'active', model: 'jev-1.13.0', reason: '' }, planned_agents: [{ decision: { action: 'clarify' } }] };
+    assert.equal(canRetryClassification(unresolved), true);
+    assert.equal(planDecisionLabel(unresolved, 'clarify'), 'Cần làm rõ');
+    assert.doesNotMatch(classifierLabel(unresolved), /lỗi kiểm tra hệ thống/i);
+});
