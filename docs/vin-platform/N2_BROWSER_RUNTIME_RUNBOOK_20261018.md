@@ -1,6 +1,6 @@
 # N2 — chạy lại browser/runtime và gate PostgreSQL
 
-Source N2 đã rebase N1 `902bf056`, nhận API admin `e562059b`, consent/C07 `fb70de9e` và canonical close `3df1f1aa`. Đây là harness offline integration, không deploy hay model-quality UAT. Migration ứng dụng cần **0024_vin_admin_revisions** trước khi chạy phiên bản này; runner chỉ migrate DB fixture do nó tạo.
+Source N2 đã rebase N1 `902bf056`, nhận API admin `e562059b`, consent/C07 `fb70de9e`, canonical close `3df1f1aa` và privacy KB `1bdef66e`. Đây là harness offline integration, không deploy hay model-quality UAT. Migration ứng dụng cần **0024_vin_admin_revisions** trước khi chạy phiên bản này; runner chỉ migrate DB fixture do nó tạo.
 
 ## Browser toàn hành trình
 
@@ -37,7 +37,7 @@ Chạy riêng ca để chẩn đoán:
 .venv\Scripts\python.exe scripts/workforce/check_vin_journey.py --scenario automation --admin-url postgresql://postgres:offline-n2-fixture-password@127.0.0.1:55441/postgres
 ```
 
-Evidence: `.artifacts/vin-journey/pytest.xml`, `summary.json`, ảnh/JSON từng luồng. JSON chỉ ghi method/path, không Authorization, cookie, bearer, intent proof/signature hoặc model input thô. Lượt lỗi có log riêng; không sửa thành PASS hoặc bỏ assertion closure/photo/replay. Dùng một runner journey tại một thời điểm để không ghi đè artifact.
+Evidence: `.artifacts/vin-journey/pytest.xml`, `summary.json`, `provenance.json`, ảnh/JSON từng luồng. Runner sao chép riêng bundle trước test; provenance lưu source SHA, các đường dẫn chưa commit và SHA-256 từng asset để không trộn bản build. JSON nghiệp vụ chỉ ghi method/path, không Authorization, cookie, bearer, intent proof/signature hoặc model input thô. Lượt lỗi có log riêng; không sửa thành PASS hoặc bỏ assertion closure/photo/replay. Dùng một runner journey tại một thời điểm để không ghi đè artifact.
 
 ## Concurrency và contracts
 

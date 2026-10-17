@@ -20,7 +20,6 @@ import type {
 } from '@/api';
 import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
-import { useCurrentUser } from '@/context/CurrentUserContext';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { PersonalContextPanel } from '@/components/chat/PersonalContextPanel';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
@@ -53,6 +52,7 @@ import {
 	ResizablePanelGroup,
 } from '@/components/ui/resizable.tsx';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { liveSessionPresentation } from '@/features/workforce/session/live-adapter';
 import { officeFromSession } from '@/features/workforce/session/presentation';
 import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
