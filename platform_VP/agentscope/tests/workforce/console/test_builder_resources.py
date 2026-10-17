@@ -177,6 +177,65 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
             selected.agents[1].missing_resources, ["tool: Search hotel rooms"]
         )
 
+    async def test_shared_dispatch_is_a_peer_dependency_not_a_missing_tool(self):
+        tools = [TOOLS[0].model_copy(update={
+            "id": "building:dispatch", "tool_name": "dispatch_assign_staff",
+            "description": "Dispatch staff to a dry meeting point",
+        })]
+        outline = console.BuilderOutline(agents=[
+            console.PlannedAgent(
+                name=name, objective=objective,
+                tool_requirements=["Dispatch staff"],
+            )
+            for name, objective in (
+                ("Security", "Dispatch staff for the building team"),
+                ("Water", "Repair leaks using verified staff arrival receipts"),
+                ("Electrical", "Test circuits using verified staff arrival receipts"),
+            )
+        ])
+        selected, source = await self._select(
+            outline,
+            _Classifier(probabilities={
+                "tool_0_0_0": 0.95, "tool_1_0_0": 0.9, "tool_2_0_0": 0.9,
+            }),
+            _Model({}), tools,
+        )
+        self.assertEqual(source, "jev")
+        self.assertEqual(selected.agents[0].suggested_tool_ids, [tools[0].id])
+        for agent in selected.agents[1:]:
+            self.assertEqual(agent.suggested_tool_ids, [])
+            self.assertEqual(agent.tool_requirements, [])
+            self.assertEqual(agent.missing_resources, [])
+            self.assertEqual(agent.peer_dependencies, ["Security: Dispatch staff"])
+        self.assertEqual(outline.agents[1].tool_requirements, ["Dispatch staff"])
+
+    async def test_large_catalog_batches_all_judgments_before_assigning_owners(self):
+        tools = [TOOLS[0].model_copy(update={"id": f"building:{index}"}) for index in range(32)]
+        outline = console.BuilderOutline(agents=[console.PlannedAgent(
+            name=f"Specialist {index}", objective="Handle building incidents",
+            tool_requirements=[f"Operation {requirement}" for requirement in range(8)],
+        ) for index in range(4)])
+        classifier = _Classifier(probabilities={
+            "tool_0_0_0": 0.8, "tool_1_0_0": 0.05, "tool_3_7_0": 0.95,
+        })
+
+        async def classify(*, state, questions):
+            if len(questions) > 64:
+                raise ValueError("max_tokens_exceeded")
+            return await classifier(state=state, questions=questions)
+
+        selected = await console._jev_resources(classify, outline, "Building incidents", tools, [])
+        console._validate_resource_selection(selected, tools, [])
+        keys = [key for _, questions in classifier.calls for key in questions]
+        self.assertEqual(len(keys), 1024)
+        self.assertEqual(len(set(keys)), 1024)
+        self.assertEqual(selected.agents[0].suggested_tool_ids, [])
+        self.assertEqual(selected.agents[3].suggested_tool_ids, [tools[0].id])
+        self.assertNotIn("tool: Operation 7", selected.agents[3].missing_resources)
+        self.assertNotIn("tool: Operation 0", selected.agents[0].missing_resources)
+        self.assertEqual(selected.agents[0].peer_dependencies, ["Specialist 3: Operation 0"])
+        self.assertIn("tool: Operation 1", selected.agents[0].missing_resources)
+
     async def test_one_pass_matches_each_requirement_without_reverification(self):
         outline = OUTLINE.model_copy(deep=True)
         outline.agents[1].tool_requirements.append("Inspect room prices")
@@ -391,7 +450,26 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
                 console._validate_resource_selection(selected, TOOLS, KBS)
                 self.assertEqual(selected.agents[owner].suggested_tool_ids, [TOOLS[0].id])
                 self.assertEqual(selected.agents[1 - owner].suggested_tool_ids, [])
-                self.assertIn("tool: Search hotel rooms", selected.agents[1 - owner].missing_resources)
+                dependent = selected.agents[1 - owner]
+                self.assertNotIn("tool: Search hotel rooms", dependent.missing_resources)
+                self.assertEqual(dependent.peer_dependencies, [
+                    f"{selected.agents[owner].name}: Search hotel rooms",
+                ])
+
+    async def test_peer_dependency_survives_fallback_for_a_different_missing_tool(self):
+        outline = OUTLINE.model_copy(deep=True)
+        outline.agents[0].tool_requirements = ["Search hotel rooms", "Weather forecast"]
+        fallback = console.BuilderOutline(agents=[outline.agents[0].model_copy(deep=True)])
+        fallback.agents[0].tool_requirements = ["Weather forecast"]
+        fallback.agents[0].suggested_tool_ids = [TOOLS[1].id]
+        selected, source = await self._select(
+            outline, _Classifier(probabilities={"tool_0_0_0": 0.9}),
+            _Model(fallback.model_dump()),
+        )
+        self.assertEqual(source, "hybrid")
+        self.assertEqual(selected.agents[0].peer_dependencies, ["Hotel: Search hotel rooms"])
+        self.assertEqual(selected.agents[0].suggested_tool_ids, [TOOLS[1].id])
+        self.assertEqual(selected.agents[0].missing_resources, [])
 
     async def test_agent_fallback_cannot_change_accepted_peer_tools(self):
         outline = OUTLINE.model_copy(deep=True)
@@ -532,6 +610,26 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
             TOOLS[0].id,
         )
 
+    async def test_generation_timeout_counts_only_new_agents(self):
+        for reuse, expected_timeout in ((False, 120), (True, 60)):
+            plans = approved().planned_agents
+            payload = generated()
+            if reuse:
+                plans[0].reuse_agent_id = "existing"
+                payload["agents"] = payload["agents"][1:]
+            with self.subTest(reuse=reuse), patch.object(
+                console.asyncio, "timeout", wraps=console.asyncio.timeout
+            ) as timeout:
+                await console._generate("Plan trip", plans, _Model(payload), CONFIG, "vi")
+                timeout.assert_called_once_with(expected_timeout)
+
+    async def test_generation_timeout_reports_the_actual_team_budget(self):
+        model = _Model({})
+        model.generate_structured_output = AsyncMock(side_effect=TimeoutError())
+        with self.assertRaises(HTTPException) as error:
+            await console._generate("Plan trip", approved().planned_agents, model, CONFIG, "vi")
+        self.assertIn("120 giây", error.exception.detail)
+
     async def test_generation_cannot_add_or_rename_agents(self):
         payload = generated()
         payload["agents"][0]["name"] = "Unexpected"
@@ -651,6 +749,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         selected = OUTLINE.model_copy(deep=True)
         selected.agents[1].suggested_tool_ids = [TOOLS[0].id]
         selected.agents[1].missing_resources = ["knowledge: Hotel policy"]
+        selected.agents[1].peer_dependencies = ["Planner: Summarize verified results"]
         result = await self._prepare(
             approved(),
             _Model({}),
@@ -665,6 +764,40 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
             result.planned_agents[1].missing_resources,
             ["knowledge: Hotel policy"],
         )
+        self.assertEqual(result.planned_agents[1].peer_dependencies,
+                         ["Planner: Summarize verified results"])
+
+    async def test_saved_trials_restore_code_checks_without_changing_messages(self):
+        proposal = await self._prepare(approved(), _Model(generated()))
+        for status, configuration_passed, expected in (
+            ("evaluating", True, "ready"),
+            ("blocked", True, "ready"),
+            ("blocked", False, "blocked"),
+            ("published", True, "published"),
+        ):
+            with self.subTest(status=status, configuration_passed=configuration_passed):
+                payload = proposal.model_dump(mode="json")
+                payload["status"] = status
+                payload["evaluation_request"] = "Previous trial request"
+                for agent in payload["agents"]:
+                    agent["evaluation"].update(
+                        passed=False,
+                        configuration_passed=configuration_passed,
+                        behavior={"status": "failed", "passed": False},
+                    )
+                message = AssistantMsg(
+                    "builder", "Generated",
+                    structured_output={"workforce_builder_proposal": payload},
+                )
+                restored = console._stored_proposal([message])
+                self.assertEqual(restored.status, expected)
+                for agent in restored.agents:
+                    self.assertEqual(agent.evaluation["passed"], configuration_passed)
+                    self.assertNotIn("behavior", agent.evaluation)
+                    self.assertNotIn("configuration_passed", agent.evaluation)
+                self.assertNotIn("evaluation_request", restored.model_dump())
+                self.assertEqual(payload["status"], status)
+                self.assertIn("behavior", payload["agents"][0]["evaluation"])
 
     async def test_preview_persists_hybrid_source(self):
         result = await self._prepare(
@@ -675,7 +808,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertEqual(restored.resource_selection, "hybrid")
         self.assertTrue(restored.resources_locked)
 
-    async def test_outline_extracts_needs_without_loading_full_catalogs(self):
+    async def test_outline_grounds_needs_in_available_mcp_capabilities(self):
         model = _Model(OUTLINE.model_dump())
         result, _, _ = await console._outline(
             "Plan trip", TOOLS, model, CONFIG
@@ -683,13 +816,16 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertEqual(
             result.agents[1].tool_requirements, ["Search hotel rooms"]
         )
-        self.assertNotIn(
-            TOOLS[1].id,
-            str([message.get_text_content() for message in model.calls[0][0]]),
-        )
+        payload = json.loads(model.calls[0][0][-1].get_text_content())
+        self.assertEqual(payload["request"], "Plan trip")
+        self.assertEqual(payload["tools"], [tool.model_dump() for tool in TOOLS])
         instructions = model.calls[0][0][0].get_text_content()
         self.assertIn("only team-management role", instructions)
         self.assertIn("Do not propose another Leader", instructions)
+        self.assertIn("Each MCP tool must have one specialist owner", instructions)
+        self.assertIn("Do not repeat that\ntool requirement on each peer", instructions)
+        self.assertIn("do not add hypothetical databases", instructions)
+        self.assertIn("user explicitly requests an unavailable operation", instructions)
 
     async def test_classifier_resolves_visible_credentials_without_exposing_secret(
         self,

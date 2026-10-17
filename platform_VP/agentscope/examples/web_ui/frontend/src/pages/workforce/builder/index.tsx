@@ -106,7 +106,7 @@ function AgentProposalCard({
 								: 'Có MCP'}
 						</Badge>
 						<Badge variant={passed ? 'default' : 'destructive'}>
-							{passed ? 'Eval đạt' : 'Eval chưa đạt'}
+							{passed ? 'Cấu hình đạt' : 'Cấu hình chưa đạt'}
 						</Badge>
 					</div>
 				</div>
@@ -635,6 +635,16 @@ export function AgentBuilderPage() {
 													<p className="mt-2 text-sm text-muted-foreground">
 														{agent.objective}
 													</p>
+													{!!agent.peer_dependencies?.length && (
+														<div className="mt-2 text-sm text-muted-foreground">
+															<p className="font-medium">Nhận kết quả đã xác minh từ agent phụ trách:</p>
+															<ul className="list-disc pl-4">
+																{agent.peer_dependencies.map((dependency) => (
+																	<li key={dependency}>{dependency}</li>
+																))}
+															</ul>
+														</div>
+													)}
 													{!!agent.missing_resources?.length && (
 														<div className="mt-2 text-sm text-destructive">
 															<p className="font-medium">Còn thiếu tài nguyên:</p>

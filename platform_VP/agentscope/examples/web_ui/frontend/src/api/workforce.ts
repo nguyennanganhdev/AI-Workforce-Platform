@@ -41,6 +41,7 @@ export interface PlannedAgent {
 	suggested_tools: BuilderTool[];
 	suggested_knowledge_bases: BuilderKnowledgeBase[];
 	missing_resources?: string[];
+	peer_dependencies?: string[];
 	reuse_agent_id?: string | null;
 	reuse_agent_name?: string | null;
 	reuse_probability?: number | null;

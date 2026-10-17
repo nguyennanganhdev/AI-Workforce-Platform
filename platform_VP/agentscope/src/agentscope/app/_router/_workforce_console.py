@@ -156,6 +156,7 @@ class PlannedAgent(BaseModel):
     suggested_tool_ids: list[str] = Field(default_factory=list)
     suggested_knowledge_base_ids: list[str] = Field(default_factory=list)
     missing_resources: list[str] = Field(default_factory=list)
+    peer_dependencies: SkipJsonSchema[list[str]] = Field(default_factory=list)
     reuse_agent_id: SkipJsonSchema[str | None] = None
     reuse_agent_name: SkipJsonSchema[str | None] = None
     reuse_agent_fingerprint: SkipJsonSchema[str | None] = None
@@ -211,6 +212,7 @@ class PlannedAgentView(BaseModel):
     suggested_tools: list[BuilderTool] = Field(default_factory=list)
     suggested_knowledge_bases: list[BuilderKnowledgeBase] = Field(default_factory=list)
     missing_resources: list[str] = Field(default_factory=list)
+    peer_dependencies: list[str] = Field(default_factory=list)
     reuse_agent_id: str | None = None
     reuse_agent_name: str | None = None
     reuse_agent_fingerprint: str | None = None
@@ -1053,6 +1055,7 @@ async def _jev_resources(
         agent.suggested_tool_ids = []
         agent.suggested_knowledge_base_ids = []
         agent.missing_resources = []
+        agent.peer_dependencies = []
     state = {
         "request": transcript,
         "agents": [
@@ -1107,10 +1110,17 @@ async def _jev_resources(
     matches = {}
     if questions:
         logger.info("Builder Jev selection request: questions=%s", len(questions))
-        response = await classifier(state=state, questions=questions)
+        # Bound the combined question context without dropping any candidates.
+        items = list(questions.items())
+        answers = {}
+        for offset in range(0, len(items), 64):
+            response = await classifier(
+                state=state, questions=dict(items[offset : offset + 64])
+            )
+            answers.update(response.content)
         logger.info("Builder Jev selection response received")
         for key in questions:
-            answer = response.content[key]
+            answer = answers[key]
             if _binary_resource_answer(
                 answer, threshold=0.6 if key.startswith("tool_") else 0.8
             ):
@@ -1138,20 +1148,39 @@ async def _jev_resources(
                     for requirement_index in range(len(agent.knowledge_requirements))
                 ):
                     agent.suggested_knowledge_base_ids.append(knowledge.id)
+    tool_owners = {
+        tool_id: agent
+        for agent in selected.agents for tool_id in agent.suggested_tool_ids
+    }
     for index, agent in enumerate(selected.agents):
         for kind, resources, ids in (
             ("tool", tools, agent.suggested_tool_ids),
             ("knowledge", knowledge_bases, agent.suggested_knowledge_base_ids),
         ):
+            own_requirements = []
             for requirement_index, requirement in enumerate(
                 getattr(agent, f"{kind}_requirements")
             ):
-                if not any(
+                covered = any(
                     resource.id in ids
                     and f"{kind}_{index}_{requirement_index}_{resource_index}" in matches
                     for resource_index, resource in enumerate(resources)
-                ):
+                )
+                if kind == "tool" and not covered:
+                    peer = next((
+                        tool_owners[resource.id]
+                        for resource_index, resource in enumerate(resources)
+                        if resource.id in tool_owners
+                        and f"tool_{index}_{requirement_index}_{resource_index}" in matches
+                    ), None)
+                    if peer is not None:
+                        agent.peer_dependencies.append(f"{peer.name}: {requirement}")
+                        continue
+                own_requirements.append(requirement)
+                if not covered:
                     agent.missing_resources.append(f"{kind}: {requirement}")
+            if kind == "tool":
+                agent.tool_requirements = own_requirements
     return selected
 
 
@@ -1295,6 +1324,8 @@ async def _llm_builder_resources(
             BuilderOutline,
         )
     selected = BuilderOutline.model_validate(response.content)
+    for original, agent in zip(outline.agents, selected.agents):
+        agent.peer_dependencies = list(original.peer_dependencies)
     fields = {
         "suggested_tool_ids",
         "suggested_knowledge_base_ids",
@@ -1391,6 +1422,20 @@ for internal/reference facts or policies needed for the objective, never for
 live availability or external actions. Describe needs even when the system may
 not have a matching resource. Each sub-agent owns its business work and can ask
 peers for required input through TeamSay; Leader manages overall assignments.
+Each MCP tool must have one specialist owner across the team. When several
+domains need the same lookup or action, give that capability to one specialist
+and have peers request its verified results through TeamSay. Do not repeat that
+tool requirement on each peer. This also applies to cross-domain staff dispatch:
+one business specialist may execute dispatch operations while Leader decides
+assignments; other specialists receive the resulting receipts from that owner.
+Use the supplied MCP catalog to ground broad requests in available capabilities.
+For a broad domain request, require the operations needed to deliver it with
+these tools; do not add hypothetical databases, maintenance history, floor plans,
+ticket updates or bookkeeping systems merely because the domain might use them.
+Tool receipts and verified peer results can supply analysis and final checks;
+do not require another lookup or persistence tool for information they provide.
+If the user explicitly requests an unavailable operation, keep it as a requirement
+so resource selection can report the actual gap. Never claim unavailable coverage.
 Do not invent additional mandatory operations beyond the user's request, such as
 changing bookings when the user only asked to search and book. Optional internal
 policies ("if any") are not required KBs. Missing optional reference material can
@@ -1411,7 +1456,16 @@ Incorporate the user's latest feedback and avoid duplicate agent boundaries.
                         name="agent_builder",
                         content=instructions,
                     ),
-                    UserMsg(name="area_manager", content=transcript),
+                    UserMsg(
+                        name="area_manager",
+                        content=json.dumps(
+                            {
+                                "request": transcript,
+                                "tools": [tool.model_dump() for tool in tools],
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ),
                 ],
                 BuilderOutline,
             )
@@ -1431,7 +1485,9 @@ Incorporate the user's latest feedback and avoid duplicate agent boundaries.
         _raise_builder_model_error(exc, config)
 
 
-def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
+def _raise_builder_model_error(
+    exc: Exception, config: ChatModelConfig, timeout_seconds: int = 60
+) -> None:
     logger.exception(
         "Workforce Builder model call failed (provider=%s, model=%s)",
         config.type,
@@ -1440,7 +1496,7 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
     error_name = type(exc).__name__
     if isinstance(exc, TimeoutError):
         detail = (
-            f"Model '{config.model}' không phản hồi trong 60 giây. "
+            f"Model '{config.model}' không phản hồi trong {timeout_seconds} giây. "
             "Hãy thử lại hoặc chọn model khác trên Agent Builder."
         )
     elif error_name in {"AuthenticationError", "PermissionDeniedError"}:
@@ -1491,6 +1547,8 @@ tools/KBs. Use search_knowledge for equipped internal/reference facts, MCP tools
 for live data/actions, and TeamSay for collaborating with other specialists.
 An agent without tools works from customer input, equipped KBs and verified peer
 results. Do not change model parameters, permissions or platform policy.
+peer_dependencies identify verified results to request from the named owner via
+TeamSay; never instruct a dependent agent to execute that owner's tools itself.
 Leader is the only team manager. Author each sub-agent for its bounded business
 work, with direct peer requests for necessary inputs; never add a separate
 coordinator role or delegate overall team management to a sub-agent.
@@ -1501,8 +1559,10 @@ Answer naturally in the user's language; generated prompts and skills must tell
 runtime agents to follow the language of their user's latest message.
 """
     instructions += f"\nRequired authoring language: {reply_language}."
+    # One response must author both a prompt and a skill for every new agent.
+    timeout_seconds = 60 * len(new_agents)
     try:
-        async with asyncio.timeout(60):
+        async with asyncio.timeout(timeout_seconds):
             response, prompt_tokens, reserved_output_tokens = (
                 await _builder_structured_call(
                     model,
@@ -1563,7 +1623,7 @@ runtime agents to follow the language of their user's latest message.
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - provider errors become HTTP 502
-        _raise_builder_model_error(exc, config)
+        _raise_builder_model_error(exc, config, timeout_seconds)
 
 
 def _normalise_skill(agent: GeneratedAgent) -> str:
@@ -1960,7 +2020,26 @@ def _stored_proposal(messages: list[Msg]) -> ProposalView | None:
         payload = message.structured_output or {}
         proposal = payload.get("workforce_builder_proposal")
         if proposal:
-            return ProposalView.model_validate(proposal)
+            # Restore code-only checks for proposals saved by the removed trial runner.
+            legacy = proposal.get("status") == "evaluating"
+            if legacy:
+                proposal = {**proposal, "status": "blocked"}
+            stored = ProposalView.model_validate(proposal)
+            for agent in stored.agents:
+                if "configuration_passed" in agent.evaluation:
+                    legacy = True
+                    agent.evaluation["passed"] = agent.evaluation.pop(
+                        "configuration_passed"
+                    )
+                agent.evaluation.pop("behavior", None)
+            if legacy and stored.status not in ("needs_input", "published"):
+                stored.status = (
+                    "ready"
+                    if stored.agents
+                    and all(agent.evaluation.get("passed") for agent in stored.agents)
+                    else "blocked"
+                )
+            return stored
     return None
 
 
@@ -2243,6 +2322,7 @@ async def prepare_builder(
                     reuse_agent_fingerprint=agent.reuse_agent_fingerprint,
                     reuse_probability=agent.reuse_probability,
                     missing_resources=agent.missing_resources,
+                    peer_dependencies=agent.peer_dependencies,
                     suggested_tools=[by_id[tool_id] for tool_id in tool_ids],
                     suggested_knowledge_bases=[
                         knowledge_by_id[kb_id]

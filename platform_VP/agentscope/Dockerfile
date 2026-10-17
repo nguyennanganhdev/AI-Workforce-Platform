@@ -19,7 +19,7 @@ COPY . .
 
 # Install only the extras used by the Agent Service and Compose services.
 RUN python -m pip install --no-cache-dir \
-    -e ".[service,storage-redis,storage-s3,storage-postgres,auth,channel,vdb-qdrant]"
+    -e ".[service,storage-redis,storage-s3,storage-postgres,auth,channel,vdb-qdrant,classifier-jev,model-ollama]"
 
 WORKDIR /app/examples/agent_service
 
