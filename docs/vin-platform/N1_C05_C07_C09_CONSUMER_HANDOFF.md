@@ -15,6 +15,8 @@ Ngày 18/10/2026. Contract `vin-platform-1`, event `vin-case-1`. Chỉ nối con
 
 Runtime dùng `DomainAdapter(authority)` với context dựng từ verified user/session. `ticket_grant(context,case_id,ticket_id,tools)` là helper nội bộ, không trả bearer/config cho UI hoặc model. Cùng idempotency key + payload trả cùng kết quả; khác payload bị conflict. Khi mất phản hồi giữ correlation rồi retry đúng key, không tạo case/ticket thứ hai.
 
+Nested request Vinhomes có [schema + example xuất từ DTO thật](vinhomes-create-request-v1.schema.json): `apartmentId`, `description`, `location.description`, `photoIds`. Domain hiện cho tối đa **3 ảnh/request**, không suy từ đề xuất 4 ảnh của vision profile. Consumer gửi photo ID đã upload/được cấp, không URL hoặc resident ID tự nhập. Test `test_platform_request_schema.py` chặn drift giữa fixture này và CreateRequest production.
+
 Case phải gắn vào hội thoại/Leader/team của chính khách hàng ở consumer Người 2. Không đưa `VIN_USER` vào manager scope, không route sang partner Leader BQL. Domain vẫn giữ staff queue/work orders/QC; status lấy từ projection canonical, không từ lời model. Người 2 quản lý session binding trong runtime của mình; nếu cần thêm field persistence trong case, gửi schema/CAS cụ thể cho N1.
 
 ## C07 — feed và publication là hai việc khác nhau

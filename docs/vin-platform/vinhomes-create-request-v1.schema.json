@@ -1,0 +1,66 @@
+{
+  "contract_version": "vin-platform-1",
+  "domain": "vinhomes",
+  "schema": {
+    "$defs": {
+      "Location": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description"
+        ],
+        "title": "Location",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "apartmentId": {
+        "format": "uuid",
+        "title": "Apartmentid",
+        "type": "string"
+      },
+      "description": {
+        "maxLength": 5000,
+        "minLength": 8,
+        "title": "Description",
+        "type": "string"
+      },
+      "location": {
+        "$ref": "#/$defs/Location"
+      },
+      "photoIds": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "maxItems": 3,
+        "title": "Photoids",
+        "type": "array"
+      }
+    },
+    "required": [
+      "apartmentId",
+      "description",
+      "location",
+      "photoIds"
+    ],
+    "title": "CreateRequest",
+    "type": "object"
+  },
+  "example": {
+    "apartmentId": "00000000-0000-4000-8000-000000000001",
+    "description": "Vòi nước dưới bồn rửa rò liên tục.",
+    "location": {
+      "description": "Bếp dưới bồn rửa"
+    },
+    "photoIds": []
+  }
+}
