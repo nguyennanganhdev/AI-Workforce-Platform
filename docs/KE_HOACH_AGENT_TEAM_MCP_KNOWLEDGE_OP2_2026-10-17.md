@@ -4,6 +4,8 @@ Ngày kiểm tra: 17/10/2026. Phạm vi tài khoản: `vinhome.op2.bql`, khu `oc
 
 Cập nhật triển khai: xem [bản sửa và bằng chứng release](OP2_CAPABILITIES_RELEASE_20261017.md). Các số liệu và lỗi trong báo cáo dưới đây là mốc audit trước bản sửa, không phải kết luận rằng lỗi vẫn còn sau deploy.
 
+Chốt bản kỹ thuật: Platform chạy `90ad2c90`, Domain chạy `9dd7504f`; CI 1.580 test đạt. Tài khoản OP2 đã có thêm 12 tài liệu kỹ thuật có nguồn, 8 skill chờ duyệt và catalog 23 tool với 6 tool quản trị chỉ đọc đã kiểm tra trên VPS. Ba agent/nhóm audit hiện hành vẫn draft; không chạy model thật. SOP/biểu phí chính thức, các adapter ghi M03 và business UAT vẫn là phần cần dữ liệu/nghiệm thu, không được coi là đã hoàn tất từ health hay test offline. ID tài nguyên mới và bằng chứng cụ thể nằm trong bản release được liên kết ở trên.
+
 ## 1. Kết luận và giới hạn bằng chứng
 
 Hệ thống đã có agent nghiệp vụ, hội thoại cá nhân và nhóm có điều phối, trao đổi ngang hàng, review và tổng hợp. Chưa đủ bằng chứng để kết luận toàn bộ đã hoàn thiện cho vận hành BQL. Điểm thiếu lớn là năng lực quản trị ngoài một ticket, nguồn tri thức được xét duyệt, thư viện skill dùng lại và tính nhất quán khi phát hành tài nguyên.
