@@ -92,6 +92,7 @@ storage-postgres = [
 auth = [
     "argon2-cffi>=25.1",
     "PyJWT>=2.10,<3",
+    "cryptography>=41",
 ]
 # S3-compatible blob store
 storage-s3 = ["aioboto3"]

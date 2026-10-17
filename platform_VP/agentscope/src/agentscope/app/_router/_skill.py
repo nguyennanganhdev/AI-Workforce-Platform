@@ -59,6 +59,11 @@ async def list_skills(
     storage: StorageBase = Depends(get_storage),
 ) -> list[SkillView]:
     """Return every skill the user has installed, ordered by name."""
+    authority = getattr(storage, "vin_platform_service", None)
+    if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
+        from ..vin_platform._resources import catalog_records
+        return [SkillView.from_record(record).model_copy(update={"editable": False, "url": None})
+            for _, record in await catalog_records(authority, user_id, "skill")]
     records = await storage.list_skills(user_id)
     return sorted(
         (SkillView.from_record(r) for r in records),
@@ -73,6 +78,12 @@ async def get_skill(
     storage: StorageBase = Depends(get_storage),
 ) -> SkillRecord:
     """Return one installed skill, including its ``SKILL.md`` body."""
+    authority = getattr(storage, "vin_platform_service", None)
+    if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
+        context = await authority.context(user_id)
+        _, record = await authority.resolve_catalog(context, "skill", skill_id, permission="view")
+        # No archive/auth/source metadata is needed to view an approved skill.
+        return record.model_copy(update={"archive_base64": None, "url": None})
     record = await storage.get_skill(user_id, skill_id)
     if record is None:
         raise HTTPException(

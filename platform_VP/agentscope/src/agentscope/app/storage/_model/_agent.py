@@ -109,6 +109,8 @@ class AgentData(BaseModel):
     )
 
     system_role: SkipJsonSchema[Literal["business", "leader"]] = "business"
+    purpose: SkipJsonSchema[Literal["personal", "domain_service", "system"]] = "personal"
+    visibility: SkipJsonSchema[Literal["private", "entitled_catalog"]] = "private"
     """Server-owned role. The fixed leader is never authored in Builder."""
 
     lifecycle_state: SkipJsonSchema[

@@ -34,7 +34,9 @@ def _json_hash(value: object) -> str:
 
 
 def _namespace(job: DurableJob) -> str:
-    if job.scope is not None:
+    if job.owner_kind == JobOwnerKind.PERSONAL:
+        values = ("personal", job.tenant_id, job.personal_user_id)
+    elif job.scope is not None:
         values = (
             "scope",
             job.scope.tenant_id,
@@ -55,8 +57,9 @@ def _namespace(job: DurableJob) -> str:
 class SqlDurableJobRepository:
     """Atomic job persistence used by :class:`DurableJobService`."""
 
-    def __init__(self, uows: Callable[[], SqlAlchemyUnitOfWork]) -> None:
+    def __init__(self, uows: Callable[[], SqlAlchemyUnitOfWork], *, personal_only=False) -> None:
         self._uows = uows
+        self._personal_only = personal_only
 
     async def enqueue_once(
         self,
@@ -112,6 +115,8 @@ class SqlDurableJobRepository:
             )
             if uow.bind.dialect.name == "postgresql":
                 statement = statement.with_for_update(skip_locked=True)
+            # Keep resident jobs separate from legacy BQL/provider workers.
+            statement = statement.where(durable_jobs.c.owner_kind == JobOwnerKind.PERSONAL) if self._personal_only else statement.where(durable_jobs.c.owner_kind != JobOwnerKind.PERSONAL)
             row = (await uow.execute(statement)).mappings().first()
             if row is None:
                 return None
@@ -317,6 +322,7 @@ class SqlDurableJobRepository:
             "area_id": scope.area_id if scope else None,
             "manager_account_id": scope.manager_account_id if scope else None,
             "provider_integration_id": job.provider_integration_id,
+            "personal_user_id": job.personal_user_id,
             "job_type": job.job_type,
             "payload": job.payload,
             "payload_hash": _json_hash(
@@ -352,6 +358,7 @@ class SqlDurableJobRepository:
             scope=scope,
             tenant_id=row["tenant_id"],
             provider_integration_id=row["provider_integration_id"],
+            personal_user_id=row["personal_user_id"],
             job_type=row["job_type"],
             payload=row["payload"],
             idempotency_key=row["idempotency_key"],

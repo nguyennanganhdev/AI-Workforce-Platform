@@ -33,7 +33,14 @@ GRANT INSERT,UPDATE ON platform_links, platform_commands, platform_inbox, platfo
 GRANT INSERT ON platform_resident_assets TO :role;
 -- Trusted platform control-plane issues grants automatically; only the operator may revoke via DB.
 GRANT SELECT,INSERT ON platform_mcp_grants TO :role;
+GRANT UPDATE(revoked_at) ON platform_mcp_grants TO :role;
 GRANT SELECT ON platform_management_bindings TO :role;
+-- Registered customer clients are provisioned by the database operator only.
+GRANT INSERT,UPDATE ON platform_customer_codes,platform_customer_links,platform_customer_grants TO :role;
+GRANT DELETE ON platform_customer_grants TO :role;
+GRANT INSERT ON platform_customer_cases TO :role;
+GRANT INSERT ON platform_customer_projection_acks TO :role;
+GRANT UPDATE(content_hash,applied_at) ON platform_customer_projection_acks TO :role;
 GRANT INSERT,UPDATE ON travel_mock_intents,travel_mock_bookings TO :role;
 GRANT INSERT,UPDATE ON platform_connection_settings TO :role;
 GRANT DELETE ON users, accounts, tenant_memberships, scoped_user_roles, workspace_members TO :role;

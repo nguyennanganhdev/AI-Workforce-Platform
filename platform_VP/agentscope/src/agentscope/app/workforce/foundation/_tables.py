@@ -144,6 +144,7 @@ durable_jobs = Table(
     Column("area_id", String(64), nullable=True),
     Column("manager_account_id", String(255), nullable=True),
     Column("provider_integration_id", String(255), nullable=True),
+    Column("personal_user_id", String(255), nullable=True),
     Column("job_type", String(200), nullable=False),
     Column("payload", JSON, nullable=False),
     Column("payload_hash", String(64), nullable=False),

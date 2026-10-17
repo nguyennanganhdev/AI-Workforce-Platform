@@ -19,6 +19,21 @@ from .._logging import logger
 
 _attribution: ContextVar[dict] = ContextVar("model_call_attribution", default={})
 _recording_failures = 0
+_provider_attempt: ContextVar[tuple | None] = ContextVar("provider_quota_attempt", default=None)
+
+
+async def authorize_provider_payload(model, payload):
+    """Adapter hook immediately before SDK IO; direct unscoped calls deny."""
+    guard = getattr(model, "_quota_guard", None)
+    if guard is not None:
+        current = _provider_attempt.get()
+        if current is None or current[0] is not model:
+            from ..app.vin_platform import PlatformError
+            raise PlatformError("PROVIDER_ATTEMPT_REQUIRED", 403)
+        await guard.outbound(model, payload, current[1])
+        mark = getattr(guard, "dispatched", None)
+        if mark is not None:
+            await mark(current[1])
 
 
 @contextmanager
@@ -68,7 +83,8 @@ async def observed_call(model, call, *args, **kwargs):
     """Observe exactly one adapter invocation, including each retry/fallback."""
 
     sink = getattr(model, "_usage_sink", None)
-    if sink is None:
+    guard = getattr(model, "_quota_guard", None)
+    if sink is None and guard is None:
         return await call(*args, **kwargs)
     started = time.monotonic()
     attributes = {**getattr(model, "_usage_attributes", {}), **_attribution.get()}
@@ -96,8 +112,15 @@ async def observed_call(model, call, *args, **kwargs):
     }
     record.setdefault("purpose", "unclassified")
 
+    guard_context = None
+    if guard is not None:
+        # Authorization/reservation errors deliberately propagate before IO.
+        guard_context = await guard.before(model, args, kwargs, attributes, record["id"])
+
     async def persist():
         global _recording_failures
+        if sink is None:
+            return
         try:
             await sink(record)
         except Exception:  # noqa: BLE001 - telemetry cannot break a paid call
@@ -142,17 +165,27 @@ async def observed_call(model, call, *args, **kwargs):
             record["usage_reason"] = "interrupted_or_failed_usage_unknown"
         if error is not None:
             record["error_type"] = type(error).__name__[:100]
+            status_code = getattr(error, "status_code", None) or getattr(getattr(error, "response", None), "status_code", None)
+            if isinstance(status_code, int):
+                record["provider_http_status"] = status_code
             request_id = getattr(error, "request_id", None)
             if request_id:
                 record["provider_request_id"] = str(request_id)[:255]
+        if guard is not None:
+            # The guard distinguishes definite rejection from unknown outcome.
+            await asyncio.shield(guard.finish(guard_context, record))
         await persist()
 
     await persist()  # A durable started row makes worker crashes visible as backlog.
+    attempt_token = _provider_attempt.set((model, guard_context)) if guard is not None else None
     try:
         result = await call(*args, **kwargs)
     except BaseException as exc:
         await finish("cancelled" if isinstance(exc, asyncio.CancelledError) else "failed", exc)
         raise
+    finally:
+        if attempt_token is not None:
+            _provider_attempt.reset(attempt_token)
     if not hasattr(result, "__aiter__"):
         capture(result)
         await finish("completed")

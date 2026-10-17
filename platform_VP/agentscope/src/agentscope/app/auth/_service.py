@@ -55,7 +55,8 @@ class AdminPermissionError(AuthError):
 PLATFORM_ADMIN = "PLATFORM_ADMIN"
 DOMAIN_ADMIN = "DOMAIN_ADMIN"
 AREA_MANAGER = "AREA_MANAGER"
-ROLES = (PLATFORM_ADMIN, DOMAIN_ADMIN, AREA_MANAGER)
+VIN_USER = "VIN_USER"
+ROLES = (PLATFORM_ADMIN, DOMAIN_ADMIN, AREA_MANAGER, VIN_USER)
 
 
 class AuthService(AbstractAsyncContextManager):
@@ -385,6 +386,34 @@ class AuthService(AbstractAsyncContextManager):
             raise UserAlreadyExistsError(
                 "email or username already exists",
             ) from exc
+        return user
+
+    async def register_personal(self, *, email: str, username: str, password: str) -> AuthUser:
+        """Register a personal account without any manager membership or scope.
+
+        Model eligibility and quota are separate admin/Domain decisions. Merely
+        signing up never allocates the shared platform key or an unlimited budget.
+        """
+        from sqlalchemy import text
+        from sqlalchemy.exc import IntegrityError
+
+        tenant, email, username = self._validate_registration(
+            self.default_tenant_id, email, username, password,
+        )
+        now = datetime.now(timezone.utc)
+        user = AuthUser(id=str(uuid4()), tenant_id=tenant, email=email, username=username,
+            status="active", role=VIN_USER, domain_id=None, area_id=None, created_at=now, updated_at=now)
+        try:
+            async with self._require_engine().begin() as db:
+                await db.execute(text("""INSERT INTO auth_users
+                    (id,tenant_id,email,username,password_hash,status,role,domain_id,area_id,created_at,updated_at)
+                    VALUES (:id,:tenant,:email,:username,:password,'active','VIN_USER',NULL,NULL,:now,:now)"""),
+                    {"id": user.id, "tenant": tenant, "email": email, "username": username,
+                     "password": self._password_hasher.hash(password), "now": now})
+                await db.execute(text("""INSERT INTO vin_accounts(user_id,tenant_id,eligible,revision)
+                    VALUES (:id,:tenant,false,1)"""), {"id": user.id, "tenant": tenant})
+        except IntegrityError as exc:
+            raise UserAlreadyExistsError("email or username already exists") from exc
         return user
 
     async def login(

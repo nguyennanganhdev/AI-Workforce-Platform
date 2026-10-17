@@ -292,6 +292,8 @@ class OpenAIResponseModel(ChatModelBase):
             api_kwargs["tool_choice"] = fmt_tool_choice
 
         start_datetime = datetime.now()
+        from .._call_observer import authorize_provider_payload
+        await authorize_provider_payload(self, api_kwargs)
         try:
             response = await self.client.responses.create(**api_kwargs)
         except openai.BadRequestError as exc:
@@ -302,6 +304,9 @@ class OpenAIResponseModel(ChatModelBase):
             # without them from now on rather than fail every reply.
             logger.warning("Reasoning summaries refused (%s); continuing without them.", exc)
             OpenAIResponseModel._summary_refused = True
+            if getattr(self, "_quota_guard", None) is not None:
+                # A second SDK request needs its own observable reservation.
+                raise
             rest = {k: v for k, v in api_kwargs["reasoning"].items() if k != "summary"}
             if rest:
                 api_kwargs["reasoning"] = rest

@@ -504,6 +504,9 @@ async def _act(db, tool: str, ticket_id, reference, effect, payload=None, expect
 async def dispatch(db, ticket_id, description: str, staff_id: str | None, appointment_at: str | None, client_reference, expected_version=None) -> dict:
     """Create the work and offer it. Its id is the platform's job id: staff progress is reported under this call."""
     async def effect(ticket):
+        from .platform_access import ACCESS
+        if ticket["is_emergency"] and (ACCESS.get() or {}).get("origin") == "platform":
+            raise Refused("Tình huống khẩn cấp cần người phụ trách Domain xử lý ngay; không chờ agent giao việc thường.", "EMERGENCY_REQUIRES_ESCALATION")
         if ticket['category_code']=='travel':
             raise Refused('Travel dùng công cụ đặt chỗ mô phỏng, không tạo work order.','TRAVEL_USE_BOOKING_TOOLS')
         text_ = (description or "").strip()
@@ -558,6 +561,12 @@ async def dispatch(db, ticket_id, description: str, staff_id: str | None, appoin
 
 
 async def resident_source(db,ticket,source_message_id):
+    from .platform_customers import SOURCE_INTENT
+    proof = SOURCE_INTENT.get()
+    if proof is not None:
+        if proof["ticket_id"] != str(ticket["id"]) or proof["user_id"] != ticket["requester_user_id"] or proof["source_event_id"] != source_message_id:
+            raise Refused('Source intent does not match this customer ticket.', 'RESIDENT_SOURCE_FORBIDDEN')
+        return
     from .platform_access import ACCESS
     if ACCESS.get() is None:
         return  # Direct domain helpers keep their existing authority; this gate belongs to public MCP.

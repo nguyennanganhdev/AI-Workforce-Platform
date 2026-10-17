@@ -29,7 +29,7 @@ def enabled() -> bool:
     return os.getenv(ENABLED_ENV, "").strip().lower() == "enabled"
 
 
-async def create_eval_tickets(db, run_id: str, count: int) -> list[dict]:
+async def create_eval_tickets(db, run_id: str, count: int, *, resident_user_id: str | None = None) -> list[dict]:
     """Return `count` tickets for run `run_id`; repeating a run returns the same tickets."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", run_id) or not 1 <= count <= 20:
         raise ValueError("run_id must be 1-64 lower-case letters, digits, '-' or '_', count 1-20")
@@ -44,13 +44,16 @@ async def create_eval_tickets(db, run_id: str, count: int) -> list[dict]:
         join buildings b on b.id=u.building_id and b.tenant_id=u.tenant_id
         join sites s on s.id=b.site_id and s.tenant_id=b.tenant_id
         where ur.tenant_id={TENANT} and ur.user_id like 'sim-resident-%'
+          and (cast(:resident as text) is null or ur.user_id=:resident)
           and ur.verification_status='verified' and ur.valid_from<=now()
           and (ur.valid_to is null or ur.valid_to>now())
         order by ur.user_id,ur.unit_id limit 1
-    """))).mappings().first()
+    """), {"resident": resident_user_id})).mappings().first()
     if resident is None:
         raise EvalFixtureRefused("Initialize the synthetic resident sandbox first")
-    namespace = uuid5(NAMESPACE_URL, f"workforce-agent-eval/{run_id}")
+    # Linked customers with the same run ID cannot reuse each other's fixtures.
+    namespace_key = run_id if resident_user_id is None else resident_user_id + "/" + run_id
+    namespace = uuid5(NAMESPACE_URL, f"workforce-agent-eval/{namespace_key}")
     tickets = []
     for n in range(1, count + 1):
         channel = str(uuid5(namespace, f"chat/{n}"))
@@ -98,3 +101,22 @@ async def create_eval_tickets(db, run_id: str, count: int) -> list[dict]:
             "summary": "Sự cố kỹ thuật mới: vòi bếp rò nước, chưa giao thợ.",
         })
     return tickets
+
+
+async def retire_eval_tickets(db, run_id: str, resident_user_id: str) -> dict:
+    """End authorization for one synthetic user's run, retaining audit rows."""
+    if not enabled() or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", run_id) or not resident_user_id.startswith("sim-resident-"):
+        raise EvalFixtureRefused("Synthetic owner run required")
+    marker = (await db.execute(text("select shobj_description(oid,'pg_database') from pg_database where datname=current_database()"))).scalar_one_or_none()
+    if marker != MARKER:
+        raise EvalFixtureRefused("Synthetic sandbox database required")
+    namespace = uuid5(NAMESPACE_URL, f"workforce-agent-eval/{resident_user_id}/{run_id}")
+    channels = [str(uuid5(namespace, f"chat/{n}")) for n in range(1, 21)]
+    tickets = (await db.execute(text(f"""SELECT id FROM tickets WHERE tenant_id={TENANT}
+        AND requester_user_id=:u AND channel_id=ANY(cast(:channels as text[])) FOR UPDATE"""),
+        {"u": resident_user_id, "channels": channels})).scalars().all()
+    await db.execute(text(f"""UPDATE platform_links SET status='closed',state='closed',next_action='none'
+        WHERE tenant_id={TENANT} AND ticket_id=ANY(cast(:ids as uuid[]))"""), {"ids": list(tickets)})
+    await db.execute(text(f"""UPDATE platform_mcp_grants SET revoked_at=now()
+        WHERE tenant_id={TENANT} AND ticket_id=ANY(cast(:ids as uuid[])) AND revoked_at IS NULL"""), {"ids": list(tickets)})
+    return {"data_mode": "synthetic_test", "retired": len(tickets), "audit_retained": True}

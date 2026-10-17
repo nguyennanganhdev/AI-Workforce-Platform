@@ -109,6 +109,7 @@ class MCPView(BaseModel):
     catalog_revision: int = Field(default=0, ge=0)
     last_synced_at: str | None = None
     last_sync_error: str | None = None
+    editable: bool = True
 
     @classmethod
     def from_record(cls, record: MCPRecord) -> "MCPView":
