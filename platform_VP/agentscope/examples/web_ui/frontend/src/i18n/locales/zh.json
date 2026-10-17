@@ -468,9 +468,6 @@
 		"description": "此操作将永久删除知识库 \"{{name}}\" 及其所有已索引文档，且无法撤销。"
 	},
 	"credential": {
-		"classifierModel": "分类模型",
-		"classifierDescription": "JEV 帮助 Agent Builder 检查业务重复，并选择获准使用的工具、知识库和技能。",
-		"classifierStatusHint": "凭证已保存。Agent Builder 显示服务器配置的版本以及每次评估的连接状态。",
 		"noProviders": "暂无可用提供商",
 		"selectHint": "未选择凭证",
 		"selectHintDescription": "从左侧选择一个凭证以查看详情。",

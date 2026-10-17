@@ -20,7 +20,7 @@ COPY . .
 
 # Install only the extras used by the Agent Service and Compose services.
 RUN python -m pip install --no-cache-dir \
-    -e ".[service,classifier-jev,storage-redis,storage-s3,storage-postgres,auth,channel,vdb-qdrant]"
+    -e ".[service,storage-redis,storage-s3,storage-postgres,auth,channel,vdb-qdrant]"
 
 # Token counting must work with no network at runtime (including the first request).
 RUN python -c "import tiktoken; [tiktoken.get_encoding(name) for name in ('o200k_base', 'cl100k_base')]" \

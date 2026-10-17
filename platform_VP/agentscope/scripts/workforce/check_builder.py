@@ -1,4 +1,4 @@
-"""Run Builder acceptance checks without credentials or external connections."""
+"""Run Builder checks without credentials or external connections."""
 
 import argparse
 import json
@@ -66,9 +66,9 @@ def main():
 
     import pytest
 
-    folder = root / ".artifacts" / "jev"
+    folder = root / ".artifacts" / "builder-check"
     folder.mkdir(parents=True, exist_ok=True)
-    suite = ["tests/workforce/console", "tests/classifier_jev_test.py"]
+    suite = ["tests/workforce/console", "tests/audit_publish_atomicity_test.py"]
     if options.storage:
         suite.append("tests/storage_sql_test.py")
     started = perf_counter()
@@ -92,7 +92,7 @@ def main():
         test_runtime_seconds=round(perf_counter() - started, 3),
         external_network_attempts=len(network_attempts),
         paid_model_calls=0,
-        classifier_mode="scripted",
+        model_mode="scripted",
         real_model_quality="not_measured",
         real_model_latency_ms=None,
         real_model_cost_usd=None,

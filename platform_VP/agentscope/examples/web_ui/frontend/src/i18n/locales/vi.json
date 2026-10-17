@@ -467,9 +467,6 @@
 		"description": "Kho tri thức \"{{name}}\" và tất cả tài liệu đã lập chỉ mục sẽ bị xóa vĩnh viễn. Không thể hoàn tác."
 	},
 	"credential": {
-		"classifierModel": "Mô hình phân loại",
-		"classifierDescription": "JEV hỗ trợ Agent Builder kiểm tra trùng nghiệp vụ và chọn tool, kho kiến thức, skill được phép.",
-		"classifierStatusHint": "Thông tin xác thực đã được lưu. Agent Builder hiển thị phiên bản được cấu hình trên máy chủ và trạng thái kết nối của từng lượt đánh giá.",
 		"noProviders": "Không có nhà cung cấp",
 		"selectHint": "Chưa chọn thông tin xác thực",
 		"selectHintDescription": "Chọn thông tin xác thực từ thanh bên để xem chi tiết.",

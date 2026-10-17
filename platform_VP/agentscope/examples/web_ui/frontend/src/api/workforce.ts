@@ -11,9 +11,6 @@ export interface BuilderTool {
 }
 
 export interface ProposedAgent {
-    action?: 'create' | 'reuse' | 'resume' | 'revise' | 'repair' | 'clarify';
-    target_agent_id?: string | null;
-    diff?: { field: string; action: string; before?: unknown; after?: unknown }[];
 	tests?: { scenario: string; expected: string }[];
 	name: string;
 	objective: string;
@@ -39,41 +36,12 @@ export interface ProposedAgent {
 }
 
 export interface PlannedAgent {
-	delegated_tools?: { agent_id: string; agent_name: string; tool_id: string; tool_name: string }[];
 	name: string;
 	objective: string;
 	suggested_tools: BuilderTool[];
-    knowledge?: { kb_id: string; name: string }[];
-    library_skills?: { skill_id: string; name: string }[];
-    missing_tools?: string[];
-    missing_knowledge?: string[];
-    knowledge_required?: boolean;
-    decision?: {
-        action: 'create' | 'reuse' | 'resume' | 'revise' | 'repair' | 'clarify';
-        agent_id?: string | null;
-        reason: string;
-        candidate_ids?: string[];
-    };
 }
 
 export interface BuilderProposal {
-    resource_selection?: 'jev' | 'llm' | 'hybrid' | 'none';
-    classifier_status?: {
-        state: 'active' | 'fallback' | 'unavailable' | 'not_needed';
-        model: string;
-        reason: string;
-        calls: number;
-        questions: number;
-        latency_ms: number;
-        input_tokens: number | null;
-        output_tokens: number | null;
-        cost_usd: string | null;
-        run_id?: string | null;
-        last_call_id?: string | null;
-        cache_hits?: number;
-        stages?: Record<string, { state: string; reason?: string }>;
-    };
-    retry_verification?: boolean;
 	conversation_id: string;
 	proposal_id: string | null;
 	revision: number;
@@ -166,16 +134,12 @@ export const workforceApi = {
 		chatModelConfig: ChatModelConfig,
 		conversationId: string | null,
 		confirmOutline = false,
-		expectedRevision?: number,
-        expectedProposalId?: string | null,
 	) =>
 		client.post<BuilderProposal>('/workforce/console/builder/prepare', {
 			message,
 			chat_model_config: chatModelConfig,
 			conversation_id: conversationId,
 			confirm_outline: confirmOutline,
-			expected_revision: expectedRevision,
-            expected_proposal_id: expectedProposalId,
 		}),
 	publish: (conversationId: string, proposalId: string, expectedRevision: number) =>
 		client.post<{ agents: Array<{ agent_id: string; session_id: string | null; name: string; reused: boolean }> }>(
@@ -194,10 +158,6 @@ export const workforceApi = {
 		client.get<BuilderConversation>(
 			`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}`,
 		),
-    retryVerification: (conversationId: string, proposalId: string, expectedRevision: number) =>
-        client.post<BuilderProposal>('/workforce/console/builder/retry-verification', {
-            conversation_id: conversationId, proposal_id: proposalId, expected_revision: expectedRevision,
-        }),
 	builderProgress: (conversationId: string) => client.get<EvalProgress | null>(`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}/progress`),
 	evaluate: (conversationId: string, proposalId: string, expectedRevision: number) => client.post<BuilderProposal>('/workforce/console/builder/evaluate', { conversation_id: conversationId, proposal_id: proposalId, expected_revision: expectedRevision }),
 	listAgents: () => client.get<WorkforceAgent[]>('/workforce/console/agents'),

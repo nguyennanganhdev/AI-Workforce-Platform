@@ -17,7 +17,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { canConfirm, canRetryClassification, classifierLabel, decisionLabels, planDecisionLabel } from './review';
 import { workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
@@ -118,7 +117,7 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 				{proposal.selected_tools.length === 0 && (
 					<span className="text-muted-foreground">
 						{proposal.evaluation.checks?.capability_has_tools
-							? 'Làm việc từ dữ liệu được cung cấp, tri thức và kết quả đã xác minh.'
+							? 'Điều phối đồng đội, không cần tool riêng.'
 							: 'Chưa có tool phù hợp trong MCP đã đăng ký.'}
 					</span>
 				)}
@@ -134,20 +133,6 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 				</p>
 			)}
 
-            {!!proposal.diff?.length && (
-                <details className="mt-4 border-t pt-3 text-sm">
-                    <summary className="cursor-pointer py-2 font-medium">
-                        {decisionLabels[proposal.action ?? 'create']} · {proposal.diff.length} thay đổi cần duyệt
-                    </summary>
-                    {proposal.target_agent_id && <p className="mb-2 text-xs text-muted-foreground">Giữ agent ID: {proposal.target_agent_id}</p>}
-                    <div className="space-y-2">
-                        {proposal.diff.map((change, i) => <div key={i} className="rounded-lg bg-muted/50 p-3">
-                            <p className="font-medium">{change.field} ? {change.action}</p>
-                            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify({ before: change.before, after: change.after }, null, 2)}</pre>
-                        </div>)}
-                    </div>
-                </details>
-            )}
 			<Collapsible className="mt-3">
 				<CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
 					Prompt{proposal.skill_markdown ? ' và skill' : ''} do Builder viết
@@ -168,7 +153,7 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 			{!proposal.evaluation.model_report && proposal.tests && proposal.tests.length > 0 && (
 				<details className="mt-3 text-sm">
 					<summary className="cursor-pointer py-2 font-medium">{proposal.tests.length} ca kiểm thử</summary>
-					<p className="mb-2 text-xs text-muted-foreground">{proposal.evaluation.model_report ? 'Đã chạy model và bộ chấm. Chỉ được phát hành khi kết quả khớp cấu hình này và mọi ca an toàn đạt.' : 'Xem khác biệt rồi chọn Lưu nháp và chạy eval trước khi phát hành.'}</p>
+					<p className="mb-2 text-xs text-muted-foreground">{proposal.evaluation.model_report ? 'Đã chạy model và bộ chấm. Chỉ được phát hành khi kết quả khớp cấu hình này và mọi ca an toàn đạt.' : 'Kịch bản chưa được chạy bằng model; chưa được phát hành. Tạo lại cấu hình để kiểm thử.'}</p>
 					<ol className="space-y-2">
 						{proposal.tests.map((test, index) => (
 							<li key={index} className="rounded-lg bg-muted/50 p-3">
@@ -256,8 +241,8 @@ export function AgentBuilderPage() {
 	};
 
 	const prepare = async (confirmOutline = false) => {
+		if (!message.trim() || !selectedModel) return;
 		const userText = message.trim();
-		if (!userText || !selectedModel || working) return;
 		setConversation((current) => [...current, { role: 'user', text: userText }]);
 		setMessage('');
 		setWorking(true);
@@ -277,18 +262,6 @@ export function AgentBuilderPage() {
 		}
 	};
 
-    const retryVerification = async () => {
-        if (!proposal?.proposal_id || working) return;
-        setWorking(true);
-        const startedAt = Date.now();
-        setTask({ label: 'Đang kiểm tra tiếp dàn ý đã lưu…', startedAt });
-        try {
-            const result = await workforceApi.retryVerification(proposal.conversation_id, proposal.proposal_id, proposal.revision);
-            await refreshConversation(result.conversation_id);
-        } catch { toast.error('Chưa kiểm tra tiếp được. Tải lại hội thoại để xem trạng thái mới nhất.'); }
-        finally { setLastLatency(Date.now() - startedAt); setWorking(false); }
-    };
-
 	const confirmOutline = async () => {
 		if (!selectedModel || !proposal?.planned_agents.length) return;
 		const lastUserMessage = [...conversation]
@@ -296,17 +269,15 @@ export function AgentBuilderPage() {
 			.find((item) => item.role === 'user')?.text ?? '';
 		setWorking(true);
 		const startedAt = Date.now();
-		setTask({ label: 'Đang sinh cấu hình và khác biệt để bạn duyệt…', startedAt });
+		setTask({ label: 'Đang sinh prompt, công cụ và ca kiểm thử…', startedAt });
 		try {
 			const nextProposal = await workforceApi.prepare(
 				prefersVietnamese(lastUserMessage)
-					? 'Tôi duyệt phương án trên. Hãy sinh cấu hình và hiển thị khác biệt trước khi lưu nháp và chạy eval.'
-					: 'I approve this plan. Show the configuration and changes before saving the draft and running evaluation.',
+					? 'Tôi xác nhận hướng trên. Hãy tạo và đánh giá cấu hình agent.'
+					: 'I confirm this direction. Please generate and evaluate the agent configuration.',
 				selectedModel,
 				conversationId,
 				true,
-				proposal.revision,
-				proposal.proposal_id,
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
@@ -484,27 +455,6 @@ export function AgentBuilderPage() {
 						{proposal && (
 							<section className="flex flex-col gap-4 rounded-3xl border border-border/70 bg-[var(--cue-bg-subtle,var(--muted))]/40 p-4 motion-safe:animate-in motion-safe:fade-in">
 								<ProposalSteps status={proposal.status} />
-                                <p role="status" className="text-sm text-muted-foreground">{classifierLabel(proposal)}</p>
-                                {proposal.classifier_status && <p className="text-xs text-muted-foreground">
-                                    {proposal.classifier_status.calls} lượt · {proposal.classifier_status.questions} câu đánh giá · {(proposal.classifier_status.latency_ms / 1000).toFixed(2)} giây
-                                    {' · '}Token: {proposal.classifier_status.input_tokens ?? 'chưa rõ'} vào / {proposal.classifier_status.output_tokens ?? 'chưa rõ'} ra
-                                    {' · '}Chi phí: {proposal.classifier_status.cost_usd == null ? 'chưa có giá đối soát' : `$${proposal.classifier_status.cost_usd}`}
-                                </p>}
-                                {proposal.classifier_status?.stages && <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                                    {Object.entries(proposal.classifier_status.stages).map(([key, stage]) => <span key={key}>
-                                        {key === 'builder_reuse' ? 'Sàng lọc trùng' : key === 'builder_identity_verify' ? 'Đối chiếu trách nhiệm' : 'Chọn tài nguyên'}: {({ completed: 'Đã hoàn tất', running: 'Đang xử lý', error: 'Chưa hoàn tất' } as Record<string, string>)[stage.state] ?? stage.state}
-                                    </span>)}
-                                    {!!proposal.classifier_status.cache_hits && <span>{proposal.classifier_status.cache_hits} batch dùng lại kết quả đã lưu</span>}
-                                </div>}
-                                {proposal.classifier_status?.run_id && <p className="text-xs text-muted-foreground">Mã lượt kiểm tra: <span className="font-mono">{proposal.classifier_status.run_id}</span></p>}
-                                {canRetryClassification(proposal) && <div className="flex flex-wrap items-center gap-3">
-                                    <Button variant="outline" disabled={working || !proposal.proposal_id}
-                                        onClick={() => void retryVerification()}>
-                                        {proposal.classifier_status?.state === 'unavailable' ? 'Thử lại bước kiểm tra' : 'Kiểm tra lại dàn ý đã lưu'}
-                                    </Button>
-                                    <p className="text-xs text-muted-foreground">Giữ nguyên dàn ý; chỉ gọi JEV cho phần chưa hoàn tất. Có sử dụng model.</p>
-                                </div>}
-
 								<div className="flex flex-wrap items-start justify-between gap-3">
 									<div className="min-w-0 flex-1">
 										<h2 className="text-[15px]/6 font-medium">{proposal.agents.length ? 'Cấu hình chờ duyệt' : 'Dàn ý hiện tại'} · {proposal.agents.length || proposal.planned_agents.length} agent</h2>
@@ -517,12 +467,12 @@ export function AgentBuilderPage() {
 											<Rocket /> Phát hành
 										</Button>
 									)}
-									{proposal.status === 'needs_input' && proposal.agents.length === 0 && proposal.planned_agents.length > 0 && (
-										<Button onClick={() => void confirmOutline()} disabled={working || !canConfirm(proposal)}>
-											<CheckCircle2 /> Duyệt phương án và xem cấu hình
+									{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (
+										<Button onClick={() => void confirmOutline()} disabled={working}>
+											<CheckCircle2 /> Chốt và sinh cấu hình
 										</Button>
 									)}
-									{proposal.agents.length > 0 && proposal.status !== 'published' && <Button variant="outline" onClick={() => void evaluate()} disabled={working}>{proposal.agents.some((a) => !a.evaluation.model_report) ? 'Lưu nháp và chạy eval' : 'Chạy lại eval · giữ cấu hình'}</Button>}
+									{proposal.agents.length > 0 && proposal.status !== 'published' && <Button variant="outline" onClick={() => void evaluate()} disabled={working}>Chạy lại eval · giữ cấu hình</Button>}
 								</div>
 								{proposal.planned_agents.length > 0 && proposal.agents.length === 0 && (
 									<div className="grid gap-3 md:grid-cols-2">
@@ -535,14 +485,6 @@ export function AgentBuilderPage() {
 												<ClayAvatar id={agent.name} label={agent.name} size={40} />
 												<div className="min-w-0 flex-1">
 													<p className="text-sm font-semibold">{agent.name}</p>
-                                                    <Badge variant="secondary">{planDecisionLabel(proposal, agent.decision?.action ?? 'clarify')}</Badge>
-                                                    <p className="mt-1 text-xs text-muted-foreground">{agent.decision?.reason ?? 'Cần kiểm tra trùng trước khi tiếp tục.'}</p>
-                                                    {!!agent.missing_tools?.length && <p role="alert" className="mt-2 text-sm text-destructive">Thiếu tool: {agent.missing_tools.join('; ')}</p>}
-                                                    {!!agent.missing_knowledge?.length && <p className="mt-2 text-sm text-muted-foreground">{agent.knowledge_required ? 'Thiếu kiến thức bắt buộc' : 'Kiến thức có thể bổ sung sau'}: {agent.missing_knowledge.join('; ')}</p>}
-                                                    {!!agent.knowledge?.length && <p className="mt-1 text-xs">Kho tri thức: {agent.knowledge.map((k) => k.name).join(', ')}</p>}
-                                                    {!!agent.library_skills?.length && <p className="mt-1 text-xs">Skill dùng lại: {agent.library_skills.map((k) => k.name).join(', ')}</p>}
-                                                    {!!agent.delegated_tools?.length && <p className="mt-1 text-xs">Phối hợp: {agent.delegated_tools.map(d => `${d.agent_name} (${d.tool_name})`).join('; ')}</p>}
-
 													<p className="mt-1 line-clamp-3 text-[13px]/[18px] text-muted-foreground">{agent.objective}</p>
 													{agent.suggested_tools.length > 0 && (
 														<div className="mt-2 flex flex-wrap gap-1">

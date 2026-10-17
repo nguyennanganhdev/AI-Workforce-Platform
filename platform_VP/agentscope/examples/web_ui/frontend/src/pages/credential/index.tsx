@@ -250,7 +250,6 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 	const [tab, setTab] = useState<ModelTab>('llm');
 
 	const type = credential.data.type as string | undefined;
-	const isClassifier = type === 'typesafe_credential';
 	const shown = tab === 'llm' ? models : tab === 'tts' ? ttsModels : embeddingModels;
 	const total = models.length + ttsModels.length + embeddingModels.length;
 
@@ -260,14 +259,6 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 
 	useEffect(() => {
 		if (!type) return;
-		if (isClassifier) {
-			setModels([]);
-			setTtsModels([]);
-			setEmbeddingModels([]);
-			setModelsLoading(false);
-			return;
-		}
-		let cancelled = false;
 		setModelsLoading(true);
 		Promise.all([
 			modelApi
@@ -284,14 +275,12 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 				.catch(() => [] as EmbeddingModelCard[]),
 		])
 			.then(([chatModels, tts, embeddings]) => {
-				if (cancelled) return;
 				setModels(chatModels);
 				setTtsModels(tts);
 				setEmbeddingModels(embeddings);
 			})
-			.finally(() => { if (!cancelled) setModelsLoading(false); });
-		return () => { cancelled = true; };
-	}, [credential.id, type, isClassifier]);
+			.finally(() => setModelsLoading(false));
+	}, [credential.id, type]);
 
 	// Fields to display: use schema properties order, skip id/type/const fields
 	const displayFields = schema
@@ -386,13 +375,7 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 				</div>
 
 				{/* Available Models */}
-				{isClassifier ? (
-					<section className="mx-[18px] mt-[30px] mb-6 rounded-xl border p-4 space-y-2">
-						<h2 className="text-sm font-medium">JEV · {t('credential.classifierModel')}</h2>
-						<p className="text-sm text-text-secondary">{t('credential.classifierDescription')}</p>
-						<p className="text-xs text-text-tertiary">{t('credential.classifierStatusHint')}</p>
-					</section>
-				) : <Tabs
+				<Tabs
 					value={tab}
 					onValueChange={(v) => setTab(v as ModelTab)}
 					className="gap-0 px-[18px] pb-6"
@@ -466,7 +449,7 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 							</TabsContent>
 						</>
 					)}
-				</Tabs>}
+				</Tabs>
 			</div>
 		</div>
 	);
