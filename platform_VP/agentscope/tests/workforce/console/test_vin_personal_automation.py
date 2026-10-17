@@ -1,7 +1,7 @@
 """C09 consumers use real SQL leases with fake chat, Redis and Discord IO."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -50,7 +50,8 @@ async def automation(authority, monkeypatch):
     async def run(user, session, agent_id, input_msg):
         assert personal_job.get() is not None
         calls.append((user, session, input_msg))
-        await storage.upsert_message(user, session, AssistantMsg(name="assistant", content="Fixture đã xử lý", finished_reason=ReplyFinishedReason.COMPLETED))
+        await storage.upsert_message(user, session, AssistantMsg(name="assistant", content="Fixture đã xử lý", finished_reason=ReplyFinishedReason.COMPLETED,
+            metadata={"personal_job_id": personal_job.get().job_id}))
     async def deliver(body):
         deliveries.append(body)
         return {"state": "delivered", "message_id": "fixture-message"}
@@ -180,3 +181,48 @@ async def test_discord_saved_send_verifies_dm_and_nonce_on_transport():
         channel._saved_http_client = client
         result = await channel.send_saved_private({"chat_id": "77", "recipient_id": "100", "body": "fixture body", "nonce": "stable-nonce"})
     assert result == {"state": "delivered", "message_id": "saved-message"} and len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_cancels_on_lost_heartbeat_without_outbox(automation, monkeypatch):
+    from agentscope.app._service import _personal_jobs
+    a = automation
+    monkeypatch.setattr(_personal_jobs, "HEARTBEAT_SECONDS", 0.01)
+    started, cancelled = asyncio.Event(), asyncio.Event()
+    async def blocked(*args):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+    a.chat.run.side_effect = blocked
+    await a.manager._build_trigger(a.record)()
+    # Revoke the active fence at heartbeat using the real SQL repository.
+    from agentscope.app.vin_platform._jobs import PersonalJobs
+    heartbeat = PersonalJobs.heartbeat
+    async def lost(jobs, job, worker_id, **kwargs):
+        async with jobs.authority.engine.begin() as db:
+            await db.execute(update(durable_jobs).where(durable_jobs.c.id == job.job_id).values(fencing_token=job.fencing_token + 1))
+        return await heartbeat(jobs, job, worker_id, **kwargs)
+    monkeypatch.setattr(PersonalJobs, "heartbeat", lost)
+    await a.worker.run_one()
+    assert started.is_set() and cancelled.is_set()
+    assert await a.authority.jobs.list(a.context, "delivery") == []
+
+
+@pytest.mark.asyncio
+async def test_repair_after_saved_checkpoint_enqueues_same_outbox_without_model(automation, monkeypatch):
+    from agentscope.app._service import _personal_jobs
+    a = automation
+    enqueue = _personal_jobs.enqueue_deliveries
+    monkeypatch.setattr(_personal_jobs, "enqueue_deliveries", AsyncMock(side_effect=RuntimeError("crash after checkpoint")))
+    await a.manager._build_trigger(a.record)()
+    await a.worker.run_one()
+    run = (await a.authority.jobs.list(a.context, "schedule-run"))[0]
+    assert run.result["deliveries"] and not await a.authority.jobs.list(a.context, "delivery")
+    monkeypatch.setattr(_personal_jobs, "enqueue_deliveries", enqueue)
+    await _personal_jobs.repair_delivery(a.storage, "alice", "schedule-run", a.record.id, run.job_id)
+    await _personal_jobs.repair_delivery(a.storage, "alice", "schedule-run", a.record.id, run.job_id)
+    assert len(await a.authority.jobs.list(a.context, "delivery")) == 1
+    await a.worker.run_one()
+    assert len(a.calls) == len(a.deliveries) == 1

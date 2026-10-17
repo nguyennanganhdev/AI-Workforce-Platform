@@ -1,6 +1,5 @@
 import * as React from 'react';
 
-import { useDiscordIdentity } from './discord-identity';
 import type { AgentView, ChannelBinding, ChannelTypeSchema, ChatModelConfig, PermissionMode } from '@/api';
 import { ModelParametersPopover } from '@/components/popover/ModelParametersPopover';
 import { LlmSelect } from '@/components/select/LlmSelect';
@@ -18,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
+import { useDiscordIdentity } from '@/hooks/useDiscordIdentity';
 import { useTranslation } from '@/i18n/useI18n';
 import { BindingsEditor } from '@/pages/channel/bindings-editor';
 import { CredentialBindingPanel } from '@/pages/channel/credential-binding-panel';
@@ -67,7 +67,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 		const current = valueRef.current;
 		onChange({ ...current, platformConfig: { ...current.platformConfig, owner_user_id: owner,
 			...(mode === 'create' && current.platformConfig.allowed_user_ids === undefined ? { allowed_user_ids: [owner] } : {}) } });
-	}, [identity.data, mode, onChange, privateDiscord]);
+	}, [identity.data, mode, onChange, privateDiscord, value]);
 
 	const typeSchema = React.useMemo(
 		() => channelTypes.find((ct) => ct.channel_type === value.channelType),

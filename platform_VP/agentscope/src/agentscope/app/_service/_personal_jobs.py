@@ -22,6 +22,7 @@ from ..vin_platform import PlatformError
 from ..workforce.foundation.event_delivery import JobLeaseLostError
 
 personal_job = ContextVar("personal_automation_job", default=None)
+HEARTBEAT_SECONDS = 15
 
 
 async def personal_context(storage, user_id):
@@ -75,18 +76,21 @@ class PersonalJobWorker:
     def __init__(self, storage, chat_service, workspace_manager):
         self.storage, self.chat, self.workspaces = storage, chat_service, workspace_manager
         self.worker_id = "vin-personal:" + str(uuid4())
+        self.schema_checked = False
 
     async def run_one(self):
         authority = catalog_authority(self.storage)
         if authority is None:
             return False
+        if not self.schema_checked:
+            await authority.check_schema()
+            self.schema_checked = True
         job = await authority.jobs.claim(self.worker_id, seconds=60)
         if job is None:
             return False
 
         async def execute():
-            context = await authority.context(job.personal_user_id, workspace_id=job.payload["workspace_id"],
-                environment=job.payload["environment"], purpose="channel" if job.job_type in {"channel-event", "delivery"} else "schedule")
+            context = await authority.jobs.context_for(job)
             token = personal_job.set(job)
             try:
                 if job.job_type == "delivery":
@@ -104,7 +108,7 @@ class PersonalJobWorker:
         task = asyncio.create_task(execute())
         try:
             while not task.done():
-                done, _ = await asyncio.wait({task}, timeout=15)
+                done, _ = await asyncio.wait({task}, timeout=HEARTBEAT_SECONDS)
                 if not done:
                     # Losing this fence cancels execution before any next
                     # model/tool call or outbox write can be authorized.
@@ -165,11 +169,9 @@ class PersonalJobWorker:
             await gateway._ensure_session(record, agent_id, session_id, event, scope)
             input_msg = UserMsg(name=event.channel_user_id, content=content)
             destination = (record.id, event.chat_id, event.channel_user_id)
-        before, _ = await self.storage.list_messages(context.initiator_user_id, session_id, limit=100)
-        previous = {msg.id for msg in before}
         await self.chat.run(context.initiator_user_id, session_id, agent_id, input_msg)
         after, _ = await self.storage.list_messages(context.initiator_user_id, session_id, limit=100)
-        replies = [msg for msg in after if msg.role == "assistant" and msg.id not in previous]
+        replies = [msg for msg in after if msg.role == "assistant" and msg.metadata.get("personal_job_id") == job.job_id]
         if not replies:
             raise PlatformError("RUN_OUTCOME_UNKNOWN", 409)
         result = {"state": "succeeded", "session_id": session_id, "agent_id": agent_id,
@@ -234,6 +236,30 @@ async def ledger(storage, user_id, kind, source_id):
         result.append({"id": job.job_id, "status": job.status, "attempt": job.attempt, "fencing_token": job.fencing_token,
             "created_at": job.created_at, "updated_at": job.updated_at, "session_id": (job.result or {}).get("session_id"),
             "outcome": (job.result or {}).get("state"), "error": (job.error or {}).get("code"),
+            "can_repair_delivery": bool((job.result or {}).get("deliveries")) and not matching
+                and all(time.time() - d["created_at"] <= 120 for d in job.result["deliveries"]),
             "deliveries": [{"id": item.job_id, "status": item.status, "attempt": item.attempt,
                 "error": (item.error or {}).get("code")} for item in matching]})
     return {"items": result}
+
+
+async def repair_delivery(storage, user_id, kind, source_id, job_id):
+    scope = await personal_context(storage, user_id)
+    if scope is None:
+        raise PlatformError("PERSONAL_WORKSPACE_REQUIRED", 403)
+    authority, context = scope
+    key = "schedule_id" if kind == "schedule-run" else "channel_id"
+    job = next((item for item in await authority.jobs.list(context, kind) if item.job_id == job_id
+        and item.payload["body"].get(key) == source_id), None)
+    if job is None or not job.result or not job.result.get("deliveries"):
+        raise PlatformError("SAVED_DELIVERY_NOT_FOUND", 404)
+    context = await authority.jobs.context_for(job)
+    for body in job.result["deliveries"]:
+        if time.time() - body["created_at"] > 120:
+            raise PlatformError("DELIVERY_OUTCOME_UNKNOWN", 409)
+        record = await storage.get_channel(body["channel_id"])
+        owner = await validate_private_channel(authority, context, record)
+        if owner["revision"] != body["identity_revision"]:
+            raise PlatformError("DELIVERY_AUTHORIZATION_REVOKED", 403)
+    await enqueue_deliveries(authority, context, job_id, job.result)
+    return {"queued": True}

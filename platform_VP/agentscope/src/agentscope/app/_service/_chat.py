@@ -517,8 +517,7 @@ class ChatService:
                     purpose = origin if origin in {"schedule", "channel"} else "chat"
                     from ._personal_jobs import personal_job
                     job = personal_job.get()
-                    context = await authority.context(user_id, purpose=purpose,
-                        **({"workspace_id": job.payload["workspace_id"], "environment": job.payload["environment"]} if job is not None else {}))
+                    context = await authority.jobs.context_for(job) if job is not None else await authority.context(user_id, purpose=purpose)
                     stack.enter_context(execution_scope(context))
                     stack.enter_context(usage_scope(purpose=purpose))
                 await self._run_impl(
@@ -2649,6 +2648,9 @@ class ChatService:
                 async def _persist() -> None:
                     try:
                         for msg in reply_msgs:
+                            active_personal_job = personal_job.get()
+                            if active_personal_job is not None:
+                                msg.metadata["personal_job_id"] = active_personal_job.job_id
                             await self._storage.upsert_message(
                                 user_id,
                                 session_id,

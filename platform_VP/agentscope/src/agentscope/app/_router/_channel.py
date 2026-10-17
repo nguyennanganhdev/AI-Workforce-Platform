@@ -166,6 +166,17 @@ async def personal_channel_runs(channel_id: str, user_id: str = Depends(get_curr
         raise HTTPException(exc.status, exc.code) from exc
 
 
+@channel_router.post("/{channel_id}/runs/{job_id}/repair-delivery")
+async def repair_channel_delivery(channel_id: str, job_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._personal_jobs import repair_delivery
+    from ..vin_platform import PlatformError
+    await _owned(channel_id, user_id, storage)
+    try:
+        return await repair_delivery(storage, user_id, "channel-event", channel_id, job_id)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
 @channel_router.get("/types")
 async def list_channel_types(
     registry: ChannelTypeRegistry = Depends(get_channel_type_registry),

@@ -87,9 +87,9 @@ async def complete(authority, context, *, state, code, issuer):
             "client_id": client_id, "client_secret": secret, "redirect_uri": redirect, "code": code, "code_verifier": verifier})
         token.raise_for_status()
         access = token.json()
-        if access.get("token_type", "").lower() != "bearer" or "identify" not in access.get("scope", "").split():
-            raise PlatformError("DISCORD_IDENTITY_INVALID", 403)
         try:
+            if access.get("token_type", "").lower() != "bearer" or "identify" not in access.get("scope", "").split():
+                raise PlatformError("DISCORD_IDENTITY_INVALID", 403)
             response = await client.get("https://discord.com/api/v10/users/@me", headers={"Authorization": "Bearer " + access["access_token"]})
             response.raise_for_status()
             user = response.json()

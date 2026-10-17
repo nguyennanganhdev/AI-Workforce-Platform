@@ -5,9 +5,9 @@ import { useNavigate } from 'react-router-dom';
 import { parseCronExpression, getFrequencyLabel } from './schedule-utils';
 import type { ScheduleRecord, SessionRecord } from '@/api';
 import { scheduleApi } from '@/api';
-import { PersonalRuns } from '@/components/PersonalRuns';
 import { StatusBadge } from '@/components/badge/StatusBadge';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { PersonalRuns } from '@/components/PersonalRuns';
 import { Button } from '@/components/ui/button';
 import {
 	Drawer,

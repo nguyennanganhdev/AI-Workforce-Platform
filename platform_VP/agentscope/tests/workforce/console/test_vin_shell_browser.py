@@ -248,6 +248,7 @@ def test_customer_discord_form_requires_owner_and_explains_empty_allowlist(brows
     expect(owner).to_be_visible()
     expect(owner).to_have_attribute("required", "")
     expect(owner).to_have_attribute("readonly", "")
+    assert any(path == "/channels/discord/identity" for _, path, _ in calls), calls
     expect(owner).to_have_value("100")
     expect(page.locator("#channel-config-allowed_user_ids")).to_have_value("100")
     expect(page.get_by_text("Danh sách rỗng = chặn tất cả người dùng.", exact=False)).to_be_visible()
