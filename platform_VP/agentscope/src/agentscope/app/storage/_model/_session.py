@@ -234,7 +234,7 @@ class PersonalChatMember(BaseModel):
 
 
 class PersonalChatConfig(BaseModel):
-    """Personal chats never participate in Leader orchestration."""
+    """Direct chats are independent; group sessions share a bounded team."""
 
     kind: Literal["direct", "group"] = "direct"
     root_session_id: str | None = None

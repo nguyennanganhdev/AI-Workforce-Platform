@@ -188,7 +188,9 @@ time or interval"
         "agent_id": agent_record.id,
         "shared_context_service": shared_context_service,
     }
-    if session_record.config.personal_chat is not None:
+    if session_record.config.personal_chat is not None and session_record.config.personal_chat.kind == "group" and session_record.team_id:
+        tools.append(TeamSay(**team_tool_kwargs, role=team_role or "worker", management_group=True))
+    elif session_record.config.personal_chat is not None:
         # Participant selection belongs to the user; no autonomous delegation.
         pass
     elif team_role == "worker":

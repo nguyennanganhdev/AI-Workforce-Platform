@@ -101,7 +101,7 @@ class _TeamToolBase(ToolBase):
             self._agent_id,
             self._session_id,
         )
-        if session is not None and session.config.personal_chat is not None:
+        if session is not None and session.config.personal_chat is not None and session.config.personal_chat.kind == "direct":
             raise _TeamToolError("personal conversations do not allow delegation")
         if session is None or session.team_id is None:
             raise _TeamToolError(
@@ -110,6 +110,11 @@ class _TeamToolBase(ToolBase):
         team = await self._storage.get_team(self._user_id, session.team_id)
         if team is None:
             raise _TeamToolError(f"team {session.team_id} no longer exists.")
+        if session.config.personal_chat is not None:
+            from .._personal_chat import context_key, group_root
+            root = await group_root(self._storage, self._user_id, session)
+            if team.data.purpose != "platform_group" or team.id != context_key(self._user_id, root.id):
+                raise _TeamToolError("invalid platform group team")
         return team
 
     async def _require_leader_team(self, leader_only: str) -> "TeamRecord":
@@ -129,6 +134,8 @@ class _TeamToolBase(ToolBase):
                 session is a worker rather than the leader.
         """
         team = await self._require_team()
+        if team.data.purpose == "platform_group":
+            raise _TeamToolError("Only the platform user manages this group's roster and lifecycle")
         if team.session_id != self._session_id:
             raise _TeamToolError(
                 f"only the team leader can {leader_only}; this session "

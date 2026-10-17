@@ -23,6 +23,7 @@ import { ApiError } from '@/api/client';
 import { personalChatApi, type PersonalGroup as GroupChat } from '@/api/personal-chat';
 import { GroupAvatar } from '@/components/chat/GroupAvatar';
 import { NewChatMenu } from '@/components/chat/NewChatMenu';
+import { PersonalContextPanel } from '@/components/chat/PersonalContextPanel';
 import { PreviousConversations } from '@/components/chat/PreviousConversations';
 import { SearchPalette } from '@/components/chat/SearchPalette';
 import { sessionTime, sessionTitle } from '@/components/chat/session-row-utils';
@@ -156,15 +157,13 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	// doesn't resolve to a known team member, the inner focus collapses
 	// back to the outer (leader) session.
 	const activeGroup = groupChats.find((g) => g.sessionId === urlSessionId || g.members.some(member => member.session_id === urlSessionId)) ?? null;
-	const personalMember = activeGroup?.members.find(m => m.agent_id === urlMemberId);
-	const personalAgent = personalMember && agents.find(a => a.id === personalMember.agent_id);
-	const focusedMember = personalMember && personalAgent ? { agent: personalAgent, session_id: personalMember.session_id } : urlMemberId
+	const focusedMember = activeGroup ? null : urlMemberId
 		? (currentView?.team?.members.find((m) => m.agent.id === urlMemberId) ?? null)
 		: null;
 	const effectiveAgentId =
-		focusedMember && focusedMember.session_id ? focusedMember.agent.id : (selectedAgent?.id ?? null);
+		activeGroup ? activeGroup.agentId : focusedMember && focusedMember.session_id ? focusedMember.agent.id : (selectedAgent?.id ?? null);
 	const effectiveSessionId =
-		focusedMember && focusedMember.session_id
+		activeGroup ? activeGroup.sessionId : focusedMember && focusedMember.session_id
 			? focusedMember.session_id
 			: currentView
 				? (urlSessionId ?? null)
@@ -509,7 +508,11 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 			<div className="flex flex-1 min-w-0 flex-col">
 				{activeGroup && <section aria-label={t('personal.selectAgent')} className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-3">
 					<div className="mr-2 min-w-0"><p className="text-sm font-semibold">{activeGroup.name}</p><p className="text-xs text-muted-foreground">{t('personal.selectAgent')}</p></div>
-					{activeGroup.members.map(member => <Button key={member.session_id} size="sm" variant={effectiveAgentId === member.agent_id ? 'secondary' : 'ghost'} aria-pressed={effectiveAgentId === member.agent_id} onClick={() => navigate(`/chat/${activeGroup.agentId}/${activeGroup.sessionId}/${member.agent_id}`)}>{member.name}</Button>)}
+					{activeGroup.members.map(member => <span key={member.session_id} className="flex items-center gap-1 rounded-lg border bg-background px-2 text-xs">
+						<span>{member.name}{member.agent_id === activeGroup.agentId ? ` · ${t('personal.coordinator')}` : ''}</span>
+						<PersonalContextPanel agentId={member.agent_id} sessionId={member.session_id} agentName={member.name} busy={false} />
+					</span>)}
+					{!activeGroup.teamId && <Button size="sm" onClick={async () => { await personalChatApi.activateGroup(activeGroup.sessionId, activeGroup.agentId); await refetchGroups(); await refetchSessions(); }}>{t('personal.activate')}</Button>}
 				</section>}
 				<div className="min-h-0 flex-1"><ChatViewport
 					agentId={effectiveAgentId}

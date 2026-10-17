@@ -56,6 +56,9 @@ class TeamMember(BaseModel):
 class TeamData(BaseModel):
     """The team data model."""
 
+    purpose: Literal["operational", "platform_group"] = "operational"
+    """Server-owned audience. Platform groups work for their BQL owner."""
+
     name: str = Field(
         description="Display name of the team.",
         title="Name",

@@ -7,6 +7,16 @@ const msg = (id, content, extra = {}) => ({ id, name: 'Same name', role: 'assist
 const text = (value) => ({ id: 'text', type: 'text', text: value, created_at: '2026-01-01T00:00:00Z' });
 const live = (extra = {}) => liveSessionPresentation({ id: 'a', ownerId: 'owner', ownerName: 'Same name', agents: [], messages: [], replyPhase: 'idle', awaitingApproval: false, loading: false, ...extra });
 
+test('shared group transcript preserves sender and peer exchange in office view', () => {
+	const model = live({ agents: [{ id: 'peer', data: { name: 'Peer' } }], messages: [msg('group', [text('Access proposal')], {
+		name: 'Peer', metadata: { group_event: true, group_kind: 'answer', group_to_ids: ['owner'], office_agent_id: 'peer' },
+	})] });
+	const office = officeFromSession(model);
+	assert.equal(office.participants.find(p => p.id === 'peer').message, 'Access proposal');
+	assert.equal(office.participants.find(p => p.id === 'owner').message, undefined);
+	assert.ok(office.exchanges.some(e => e.from === 'peer' && e.to === 'owner'));
+});
+
 test('same names never attribute another member work or speech', () => {
 	const model = live({ replyPhase: 'streaming', messages: [msg('r', [text('Hello')])], agents: [
 		{ id: 'other', data: { name: 'Same name' } },

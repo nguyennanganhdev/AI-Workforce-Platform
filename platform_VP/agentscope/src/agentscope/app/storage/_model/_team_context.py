@@ -52,6 +52,7 @@ class SharedContextEvent(BaseModel):
         "context_update",
     ]
     content: str = Field(min_length=1, max_length=100_000)
+    report_type: Literal["verified", "analysis"] = "verified"
     source_message_id: str | None = Field(default=None, max_length=255)
     source_agent_id: str | None = Field(default=None, max_length=255)
     source_session_id: str | None = Field(default=None, max_length=255)
@@ -250,6 +251,7 @@ class TeamSharedContextState(BaseModel):
     """One source of shared truth for a team/ticket."""
 
     revision: int = Field(default=0, ge=0)
+    purpose: Literal["operational", "platform_group"] = "operational"
     active_task_id: str | None = Field(default=None, max_length=255)
     tasks: dict[str, SharedTaskState] = Field(default_factory=dict)
     items: list[SharedContextItem] = Field(default_factory=list)

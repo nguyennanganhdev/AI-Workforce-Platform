@@ -487,6 +487,7 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
+				{message.metadata?.group_event && <p className="mb-1 text-xs text-muted-foreground">{message.name}{message.metadata.group_to ? ` → ${String(message.metadata.group_to)}` : ''} · {t(`personal.kind_${String(message.metadata.group_kind)}`)}{message.metadata.group_analysis ? ` · ${t('personal.analysis')}` : ''}</p>}
 				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
 				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
 				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
@@ -546,6 +547,7 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 					<MessageFooter className="gap-1 font-mono">
 						<Badge
 							variant="secondary"
+							className={message.metadata?.group_event ? 'hidden' : undefined}
 							aria-label={isRunning ? t('messageBubble.running') : undefined}
 						>
 							{isRunning ? (

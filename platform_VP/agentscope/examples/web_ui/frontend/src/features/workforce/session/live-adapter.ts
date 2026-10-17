@@ -35,7 +35,7 @@ export function liveSessionPresentation(input: {
 		? []
 		: uniqueMessages(input.messages).map((message) => ({
 				...message,
-				metadata: { ...message.metadata, office_agent_id: input.ownerId },
+				metadata: { ...message.metadata, office_agent_id: message.metadata?.office_agent_id ?? input.ownerId },
 			}));
 	const completed = new Set(
 		messages.flatMap((message) =>

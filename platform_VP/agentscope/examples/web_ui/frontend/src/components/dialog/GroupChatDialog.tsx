@@ -28,11 +28,12 @@ export function GroupChatDialog({ open, onOpenChange, agents, modelConfig, onCre
 	const [goal, setGoal] = useState('');
 	const [query, setQuery] = useState('');
 	const [picked, setPicked] = useState<string[]>([]);
+	const [coordinator, setCoordinator] = useState('');
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState('');
 	useEffect(() => {
 		if (open) return;
-		setName(''); setGoal(''); setQuery(''); setPicked([]); setError('');
+		setName(''); setGoal(''); setQuery(''); setPicked([]); setCoordinator(''); setError('');
 	}, [open]);
 	const visible = agents.filter(a => a.data.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 	const preview = picked.map(id => ({ id, name: agents.find(a => a.id === id)?.data.name ?? id }));
@@ -44,6 +45,7 @@ export function GroupChatDialog({ open, onOpenChange, agents, modelConfig, onCre
 		try {
 			const group = await personalChatApi.createGroup({
 				name: name.trim(), goal: goal.trim(), agent_ids: picked,
+				coordinator_agent_id: picked.includes(coordinator) ? coordinator : picked[0],
 				...(modelConfig?.chat ? { chat_model_config: modelConfig.chat } : {}),
 				...(modelConfig?.fallback ? { fallback_chat_model_config: modelConfig.fallback } : {}),
 			});
@@ -90,6 +92,12 @@ export function GroupChatDialog({ open, onOpenChange, agents, modelConfig, onCre
 					</ul>
 				</div>
 				{agents.length < 2 && onCreateAgent && <Button type="button" variant="outline" onClick={onCreateAgent}><Plus />{t('quickAgent.title')}</Button>}
+				{picked.length > 0 && <label className="flex flex-col gap-2 text-sm font-medium">
+					{t('personal.coordinator')}
+					<select aria-label={t('personal.coordinator')} className="h-10 rounded-md border bg-background px-3" disabled={submitting} value={picked.includes(coordinator) ? coordinator : picked[0]} onChange={event => setCoordinator(event.target.value)}>
+						{preview.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+					</select>
+				</label>}
 				<label className="flex flex-col gap-2 text-sm font-medium">
 					{t('personal.sharedGoal')}
 					<Textarea value={goal} onChange={e => setGoal(e.target.value)} disabled={submitting} maxLength={4000} placeholder={t('personal.goalPlaceholder')} />

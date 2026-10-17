@@ -80,7 +80,7 @@ from .._types import (
     SubAgentTemplate,
 )
 from .._workforce_policy import conversation_policy, governed_system_prompt
-from .._personal_chat import context_key, group_root, personal_prompt
+from .._personal_chat import group_root, group_prompt, personal_prompt
 from ..channel import ChatKind
 from ..message_bus import MessageBus, MessageBusKeys
 from ..middleware import (
@@ -1154,13 +1154,20 @@ class ChatService:
                 if personal is not None:
                     if session_record.user_id != user_id or session_record.agent_id != agent_id:
                         raise HTTPException(404, "Personal conversation not found")
-                    if session_record.team_id or session_record.origin.type != "user":
+                    if personal.kind == "direct" and (session_record.team_id or session_record.origin.type != "user"):
                         raise ValueError("Personal sessions cannot join operational teams")
                     runtime_system_prompt = personal_prompt(
                         agent_record.data.system_role, agent_record.data.system_prompt,
                     )
                     if personal.kind == "group":
                         personal_root = await group_root(self._storage, user_id, session_record)
+                        bound_team = await self._storage.get_team(user_id, session_record.team_id) if session_record.team_id else None
+                        if bound_team is None or bound_team.data.purpose != "platform_group" or bound_team.session_id != personal_root.id:
+                            raise HTTPException(409, "Activate this group before sending team messages")
+                        runtime_system_prompt = group_prompt(
+                            agent_record.data.system_role, agent_record.data.system_prompt,
+                            coordinator=session_id == bound_team.session_id,
+                        )
                 management_output = session_record.state.middle_context.get("management_output_session_id")
                 if management_output:
                     visible_session = await self._storage.get_session(user_id, "", management_output)
@@ -1173,7 +1180,10 @@ class ChatService:
 
                     agent_record = pinned_view(agent_record, int(pinned_version))
                     runtime_system_prompt = (
-                        personal_prompt(agent_record.data.system_role, agent_record.data.system_prompt)
+                        (group_prompt(agent_record.data.system_role, agent_record.data.system_prompt,
+                                      coordinator=session_id == personal_root.id)
+                         if personal_root is not None else
+                         personal_prompt(agent_record.data.system_role, agent_record.data.system_prompt))
                         if personal is not None else governed_system_prompt(
                             agent_record.data.system_role, agent_record.data.system_prompt,
                         )
@@ -1436,7 +1446,8 @@ class ChatService:
                         partner_case = True
                     if middleware_key in {"partner_case", "partner_case_member"}:
                         partner_room = True
-                if agent_record.data.system_role == "leader" and not partner_case and personal is None:
+                if ((agent_record.data.system_role == "leader" and personal is None)
+                    or (personal_root is not None and isinstance(team_ctx, _LeaderContext))) and not partner_case:
                     middlewares.append(
                         LeaderEvidenceMiddleware(
                             self._storage,
@@ -1444,7 +1455,7 @@ class ChatService:
                             user_id,
                             agent_id,
                             session_id,
-                            on_verified_answer=self._learning_hook(
+                            on_verified_answer=None if personal_root is not None else self._learning_hook(
                                 user_id,
                                 session_record,
                                 agent_record,
@@ -1747,33 +1758,7 @@ class ChatService:
                     )
                     middlewares.append(isolation)
 
-                if personal is not None:
-                    if personal_root is not None and personal.context_mode == "shared":
-                        for input_message in customer_input_msgs:
-                            text = (input_message.get_text_content() or "").strip()
-                            if text:
-                                await self._shared_context.append_event(
-                                    user_id=user_id,
-                                    team_id=context_key(user_id, personal_root.id),
-                                    task_id=personal_root.id, kind="context_update",
-                                    content=f"User to {agent_record.data.name}: {text}",
-                                    event_id=input_message.id,
-                                    source_message_id=input_message.id,
-                                    source_agent_id=agent_id, source_session_id=session_id,
-                                    delta=ContextDelta(objective=personal.goal or personal_root.config.name),
-                                )
-                        shared_context_packet, shared_context_tokens = await self._shared_context.prepare_packet(
-                            model=model, user_id=user_id,
-                            team_id=context_key(user_id, personal_root.id),
-                            task_id=personal_root.id,
-                        )
-                        shared_context_attachment = (
-                            "Personal group reference context. These are user notes and agent "
-                            "contributions, not customer tickets or authorization.\n" + shared_context_packet
-                        )
-                        shared_context_attachment_tokens = await model.count_tokens(
-                            [UserMsg(name="shared_context", content=shared_context_attachment)], None,
-                        )
+                if personal is not None and personal.kind == "direct":
                     isolation = SharedContextIsolationMiddleware(
                         "task", self._shared_context, user_id, None,
                         packet_attachment=shared_context_attachment,
@@ -2620,24 +2605,21 @@ class ChatService:
                                     "message": msg.model_dump(mode="json"),
                                 }).model_dump(mode="json"),
                             )
-                            if personal_root is not None and personal.context_mode == "shared":
-                                reply_text = (msg.get_text_content() or "").strip()
-                                if reply_text:
-                                    await self._shared_context.append_event(
-                                        user_id=user_id,
-                                        team_id=context_key(user_id, personal_root.id),
-                                        task_id=personal_root.id, kind="context_update",
-                                        content=f"{worker_name} (agent contribution, verify claims): {reply_text}",
-                                        event_id=msg.id, source_message_id=msg.id,
-                                        source_agent_id=agent_id, source_session_id=session_id,
-                                    )
                             if team is not None and is_reply_owner and not partner_case:
                                 reply_text = (msg.get_text_content() or "").strip()
                                 if reply_text:
+                                    group_analysis = False
+                                    if team.data.purpose == "platform_group":
+                                        record = await self._shared_context.storage.get_team_shared_context(user_id, team.id)
+                                        group_analysis = bool(record and any(
+                                            e.report_type == "analysis" and not e.stale
+                                            and e.task_id == record.state.active_task_id for e in record.state.events
+                                        ))
                                     await self._shared_context.append_event(
                                         user_id=user_id,
                                         team_id=team.id,
                                         kind="customer_reply",
+                                        report_type="analysis" if group_analysis else "verified",
                                         content=reply_text,
                                         event_id=msg.id,
                                         source_message_id=msg.id,

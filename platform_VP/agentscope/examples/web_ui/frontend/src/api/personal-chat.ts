@@ -8,6 +8,8 @@ export interface PersonalGroup {
 	memberIds: string[];
 	createdAt: string;
 	goal: string;
+	teamId: string | null;
+	coordinatorAgentId: string;
 	members: { agent_id: string; session_id: string; name: string }[];
 }
 
@@ -20,15 +22,20 @@ export interface PersonalContext {
 	events: { id: string; content: string; source_agent_id: string | null; created_at: string }[];
 	summary: { text: string; source_event_ids: string[]; covered_through_revision: number } | null;
 	metrics: Record<string, number | string>;
+	collaborative: boolean;
 }
 
 export const personalChatApi = {
 	groups: () => client.get<PersonalGroup[]>('/sessions/personal/groups'),
 	createGroup: (body: {
 		name: string; goal: string; agent_ids: string[];
+		coordinator_agent_id?: string;
 		chat_model_config?: ChatModelConfig;
 		fallback_chat_model_config?: ChatModelConfig;
 	}) => client.post<PersonalGroup>('/sessions/personal/groups', body),
+	activateGroup: (sessionId: string, agentId: string) => client.post<PersonalGroup>(
+		`/sessions/personal/groups/${sessionId}/activate?agent_id=${encodeURIComponent(agentId)}`, {},
+	),
 	deleteGroup: (sessionId: string, agentId: string) => client.delete(
 		`/sessions/personal/groups/${sessionId}`, { agent_id: agentId },
 	),

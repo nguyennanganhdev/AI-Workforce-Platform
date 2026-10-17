@@ -1,11 +1,11 @@
 """Persist manual personal groups without model calls or invitability changes."""
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
 
 from ..._utils._common import _generate_id
-from .._personal_chat import context_key, group_root
+from .._personal_chat import activate_group, context_key, group_root
 from .._shared_context import SharedContextService
 from ..deps import (
     get_current_user_id, get_message_bus, get_resource_access_service,
@@ -23,6 +23,7 @@ class CreateGroup(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     goal: str = Field(default="", max_length=4000)
     agent_ids: list[str] = Field(min_length=2, max_length=20)
+    coordinator_agent_id: str | None = None
     chat_model_config: ChatModelConfig | None = None
     fallback_chat_model_config: ChatModelConfig | None = None
 
@@ -30,6 +31,8 @@ class CreateGroup(BaseModel):
     def unique_members(self):
         if not self.name.strip() or len(set(self.agent_ids)) != len(self.agent_ids):
             raise ValueError("A group needs a name and distinct agents")
+        if self.coordinator_agent_id and self.coordinator_agent_id not in self.agent_ids:
+            raise ValueError("The coordinator must be a selected member")
         return self
 
 
@@ -45,6 +48,7 @@ def group_view(root):
         "name": root.config.name, "createdAt": root.created_at,
         "memberIds": [m.agent_id for m in config.members if m.session_id != root.id],
         "members": [m.model_dump() for m in config.members], "goal": config.goal,
+        "teamId": root.team_id, "coordinatorAgentId": root.agent_id,
     }
 
 
@@ -74,10 +78,13 @@ async def list_groups(
 async def create_group(
     body: CreateGroup, user_id=Depends(get_current_user_id),
     storage=Depends(get_storage), access=Depends(get_resource_access_service),
+    shared_storage=Depends(get_shared_context_storage), bus=Depends(get_message_bus),
 ):
     # Resolve every grant before writing anything. Group membership does not
     # change the agent definition, publication or AgentInvite permissions.
     agents = [await access.resolve_agent(user_id, id_) for id_ in body.agent_ids]
+    coordinator = body.coordinator_agent_id or agents[0].id
+    agents.sort(key=lambda a: a.id != coordinator)
     for model in (body.chat_model_config, body.fallback_chat_model_config):
         if model:
             await access.get_resource(user_id, ResourceKind.CREDENTIAL, model.credential_id)
@@ -101,11 +108,45 @@ async def create_group(
                 ),
             )
             created.append(member)
+        root = await storage.get_session(user_id, members[0].agent_id, root_id)
+        root = await activate_group(storage, shared_storage, bus, access, user_id, root)
     except BaseException:
+        await storage.delete_team(user_id, context_key(user_id, root_id))
+        await shared_storage.delete_team_shared_context(user_id, context_key(user_id, root_id))
         for member in created:
             await storage.delete_session(user_id, member.agent_id, member.session_id)
         raise
-    return group_view(await storage.get_session(user_id, members[0].agent_id, root_id))
+    return group_view(root)
+
+
+@personal_chat_router.post("/groups/{session_id}/activate")
+async def activate_existing_group(
+    session_id: str, agent_id: str, user_id=Depends(get_current_user_id),
+    storage=Depends(get_storage), access=Depends(get_resource_access_service),
+    shared_storage=Depends(get_shared_context_storage), bus=Depends(get_message_bus),
+):
+    await access.resolve_agent(user_id, agent_id)
+    session = await owned_session(storage, user_id, agent_id, session_id)
+    return group_view(await activate_group(storage, shared_storage, bus, access, user_id, session))
+
+
+@personal_chat_router.get("/groups/{session_id}/messages")
+async def group_messages(
+    session_id: str, agent_id: str, before_revision: int | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    user_id=Depends(get_current_user_id), storage=Depends(get_storage),
+    shared_storage=Depends(get_shared_context_storage), access=Depends(get_resource_access_service),
+):
+    await access.resolve_agent(user_id, agent_id)
+    session = await owned_session(storage, user_id, agent_id, session_id)
+    root = await group_root(storage, user_id, session)
+    record = await shared_storage.get_team_shared_context(user_id, context_key(user_id, root.id))
+    events = [e for e in (record.state.events if record else [])
+              if not e.stale and (before_revision is None or e.revision < before_revision)]
+    selected = events[-limit:]
+    return {"events": [e.model_dump(mode="json") for e in selected],
+            "has_more": len(events) > limit,
+            "before_revision": selected[0].revision if selected else None}
 
 
 @personal_chat_router.get("/{session_id}/context")
@@ -119,10 +160,12 @@ async def get_context(
     if session is None or session.config.personal_chat is None:
         raise HTTPException(404, "Personal conversation not found")
     config = session.config.personal_chat
+    team = await storage.get_team(user_id, session.team_id) if session.team_id else None
     result = {
         "kind": config.kind, "context_mode": config.context_mode,
         "private_summary": session.state.summary, "goal": config.goal,
         "revision": 0, "events": [], "summary": None, "metrics": {},
+        "collaborative": bool(team and team.data.purpose == "platform_group"),
     }
     if config.kind == "group":
         root = await group_root(storage, user_id, session)
@@ -130,8 +173,9 @@ async def get_context(
         if record:
             result.update(
                 revision=record.state.revision,
-                events=[e.model_dump(mode="json") for e in record.state.events[-100:]],
-                summary=(record.state.summaries[root.id].model_dump(mode="json") if root.id in record.state.summaries else None),
+                events=[e.model_dump(mode="json") for e in record.state.events[-200:]],
+                tasks=[t.model_dump(mode="json") for t in record.state.tasks.values()],
+                summary=(record.state.summaries[record.state.active_task_id].model_dump(mode="json") if record.state.active_task_id in record.state.summaries else None),
                 metrics=record.state.metrics.model_dump(),
             )
     return result
@@ -157,11 +201,14 @@ async def change_context(
         config = session.config.personal_chat
         if config.kind == "group":
             await group_root(storage, user_id, session)
+            if session.team_id and body.context_mode == "isolated":
+                raise HTTPException(400, "Team room messages are shared; open a direct chat for private work")
         if body.note and body.note.strip():
             root = await group_root(storage, user_id, session)
+            record = await shared_storage.get_team_shared_context(user_id, context_key(user_id, root.id))
             await SharedContextService(shared_storage, bus).append_event(
                 user_id=user_id, team_id=context_key(user_id, root.id),
-                task_id=root.id, kind="context_update",
+                task_id=(record.state.active_task_id if record else None) or root.id, kind="context_update",
                 content="User-shared note: " + body.note.strip(),
                 source_session_id=session.id,
                 delta=ContextDelta(objective=root.config.personal_chat.goal or root.config.name),

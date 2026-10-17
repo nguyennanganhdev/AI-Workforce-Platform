@@ -111,7 +111,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 						>
 							<ClayAvatar id={team.leader_agent.id} label="Leader" size={32} />
 							<span className="flex min-w-0 flex-1 flex-col">
-								<span className="truncate text-sm font-medium">Leader</span>
+								<span className="truncate text-sm font-medium">{team.team.data.purpose === 'platform_group' ? team.leader_agent.data.name : 'Leader'}</span>
 								<span className="truncate text-xs text-muted-foreground">{t('common.leader')}</span>
 							</span>
 							<Crown className="size-3.5 shrink-0 text-muted-foreground" />

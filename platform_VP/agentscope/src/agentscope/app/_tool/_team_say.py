@@ -270,6 +270,7 @@ class TeamSay(_TeamToolBase):
         self,
         *args: Any,
         role: str = "leader",
+        management_group: bool = False,
         **kwargs: Any,
     ) -> None:
         """Initialise with role-specific description.
@@ -295,6 +296,13 @@ class TeamSay(_TeamToolBase):
         self.input_schema = (
             _LEADER_INPUT_SCHEMA if role == "leader" else _WORKER_INPUT_SCHEMA
         )
+        if management_group:
+            self.input_schema = json.loads(json.dumps(self.input_schema))
+            self.input_schema["properties"]["report_type"] = {
+                "type": "string", "enum": ["verified", "analysis"],
+                "description": "result/answer: analysis for clearly labelled proposals; verified for operational facts backed by tools.",
+            }
+            self.description = self.description.replace("customer", "BQL user").replace("ticket", "group")
 
     async def __call__(
         self,
@@ -325,6 +333,7 @@ class TeamSay(_TeamToolBase):
         resolution: Literal["complete", "stop", "verify"] | None = None,
         decision: Literal["accept", "challenge", "stop"] | None = None,
         done_when: str | None = None,
+        report_type: Literal["verified", "analysis"] = "verified",
     ) -> ToolChunk:
         """Deliver the message directly via storage + message bus.
 
@@ -376,6 +385,14 @@ class TeamSay(_TeamToolBase):
             if context_delta is not None:
                 context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
+            analysis_report = report_type == "analysis" and team.data.purpose == "platform_group" and kind in {"result", "answer"}
+            if report_type == "analysis" and team.data.purpose != "platform_group":
+                raise ValueError("Analysis reports are only supported in BQL groups")
+            if analysis_report:
+                notice = "[PROPOSAL / UNVERIFIED ANALYSIS - NOT OPERATIONAL FACT]\n"
+                if not content.startswith(notice):
+                    content = notice + content
+                context_delta = None
             shared_context = self._shared_context or SharedContextService(
                 self._storage,
                 self._message_bus,
@@ -591,6 +608,7 @@ class TeamSay(_TeamToolBase):
                         "to": to,
                         "kind": kind,
                         "content": content,
+                        "report_type": report_type,
                         "task_id": effective_task_id,
                         "context_mode": context_mode,
                         "result_scope": effective_scope,
@@ -939,6 +957,7 @@ class TeamSay(_TeamToolBase):
                                 "artifact_refs": artifact_refs,
                                 "question_key": question_key,
                                 "resolution": resolution,
+                                "report_type": report_type,
                             },
                         }
                     },
@@ -959,6 +978,7 @@ class TeamSay(_TeamToolBase):
                 resolution=resolution,
                 based_on_revision=based_on_revision,
                 share_report=effective_scope == "shared",
+                analysis_report=analysis_report,
                 # A direct peer answer already wakes its requester and remains
                 # durable in Shared Context. Sending the same answer to the
                 # Leader inbox duplicates model work before the coordinator's
@@ -1013,6 +1033,7 @@ class TeamSay(_TeamToolBase):
                     reference_event_ids=reference_event_ids,
                     delta=context_delta,
                     recipient_session_ids=tuple(sid for sid, _aid in recipients),
+                    report_type="analysis" if analysis_report else "verified",
                 )
                 if shared_event.stale:
                     if kind == "requires_user_input":

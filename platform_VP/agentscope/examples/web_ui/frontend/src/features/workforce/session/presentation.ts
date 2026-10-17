@@ -36,7 +36,7 @@ export function uniqueMessages(messages: Msg[]): Msg[] {
  * One line said in the room: who said it (a participant id, or `customer`) and
  * what. `invite` is the member a host's `AgentInvite` call named, by id.
  */
-type Line = { speaker: string; text: string; invite?: string; kind?: string };
+type Line = { speaker: string; text: string; invite?: string; kind?: string; recipients?: string[] };
 
 function parseArgs(input: string | undefined): Record<string, unknown> {
 	try {
@@ -66,6 +66,14 @@ function roomLines(session: SessionPresentation, messages: Msg[]): Line[] {
 	};
 	const lines: Line[] = [];
 	for (const message of messages) {
+		if (message.metadata?.group_event) {
+			const recipients = Array.isArray(message.metadata.group_to_ids) ? message.metadata.group_to_ids as string[] : [];
+			lines.push({ speaker: message.role === 'user' ? 'customer' : String(message.metadata.office_agent_id ?? host),
+				text: message.content.filter(block => block.type === 'text').map(block => block.text).join('\n'),
+				kind: String(message.metadata.group_kind), recipients,
+				invite: message.metadata.group_kind === 'handoff' ? recipients[0] : undefined });
+			continue;
+		}
 		for (const block of message.content) {
 			if (message.role === 'user') {
 				if (block.type !== 'text') continue;
@@ -177,7 +185,7 @@ export function officeFromSession(session: SessionPresentation): SessionOfficeSn
 		called,
 		// A member's `TeamSay` to another member reaches only that member's session,
 		// not the host's stream read here, so live sessions show no exchanges yet.
-		exchanges: [],
+		exchanges: lines.flatMap((line, index) => (line.recipients ?? []).filter(to => to !== line.speaker).map(to => ({ id: `exchange:${index}:${to}`, from: line.speaker, to, text: line.text }))),
 		hostId: session.hostId,
 		activity: lines
 			.map((line, index) => ({

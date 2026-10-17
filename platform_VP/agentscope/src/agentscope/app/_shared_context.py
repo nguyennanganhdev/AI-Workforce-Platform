@@ -726,6 +726,7 @@ class SharedContextService:
         reference_event_ids: tuple[str, ...] = (),
         delta: ContextDelta | None = None,
         recipient_session_ids: tuple[str, ...] = (),
+        report_type: Literal["verified", "analysis"] = "verified",
     ) -> SharedContextEvent:
         """Idempotently append one shareable event under a team lock."""
 
@@ -863,6 +864,7 @@ class SharedContextService:
                 reference_event_ids=reference_event_ids,
                 payload_hash=payload_hash,
                 recipient_session_ids=recipient_session_ids,
+                report_type=report_type,
             )
             record.state.events.append(event)
 
@@ -1270,6 +1272,8 @@ class SharedContextService:
         while changed:
             changed = False
             for event in current.values():
+                if event.report_type == "analysis":
+                    continue
                 if event.id in trusted or event.kind not in {"answer", "result"}:
                     continue
                 same_worker_tool = any(
@@ -1304,6 +1308,7 @@ class SharedContextService:
             if event.task_id == task.id
             and not event.stale
             and event.kind in {"customer_message", "customer_reply"}
+            and event.report_type != "analysis"
         ]
         trusted = cls._trusted_event_ids(current)
         selected: set[str] = set()
@@ -1349,6 +1354,11 @@ class SharedContextService:
             EvidenceSource(assignment.agent_name, "roster:" + session_id)
             for session_id, assignment in task.assignments.items()
         )
+        if customer_reply and record.state.purpose == "platform_group":
+            # Proposal lineage may support a synthesis, but never becomes a
+            # tool-verified event or durable operational fact.
+            support.extend(EvidenceSource(e.content, e.id) for e in current.values()
+                           if e.report_type == "analysis" and e.kind in {"result", "answer"})
         return support
 
     async def validate_customer_reply_claims(
@@ -1543,6 +1553,7 @@ class SharedContextService:
         based_on_revision: int | None = None,
         share_report: bool = True,
         notify_owner: bool = True,
+        analysis_report: bool = False,
     ) -> dict:
         """Reserve a bounded exchange and its durable delivery routing atomically.
 
@@ -1568,6 +1579,7 @@ class SharedContextService:
                     "Reload shared context before coordinating an outdated assignment"
                 )
             branch = self._branch(task, sender)
+            analysis_report = analysis_report and record.state.purpose == "platform_group"
             if handoff_id in branch.receipts:
                 return branch.receipts[handoff_id]
             effective_references = tuple(
@@ -1590,7 +1602,7 @@ class SharedContextService:
                 and e.revision > task.latest_customer_revision
             }
             claim_feedback = ""
-            if kind in {"result", "answer"} and sender != owner:
+            if kind in {"result", "answer"} and sender != owner and not analysis_report:
                 support = self._claim_support_texts(
                     record, task, current, sender=sender,
                     references=effective_references,
@@ -1665,7 +1677,11 @@ class SharedContextService:
                         raise ValueError(
                             "Completion requires the assigned agent's result"
                         )
-                    if not any(e.kind == "external_event" for e in evidence):
+                    analysis = record.state.purpose == "platform_group" and any(
+                        e.report_type == "analysis" and e.kind in {"result", "answer"}
+                        and e.source_session_id == recipients[0] for e in evidence
+                    )
+                    if not analysis and not any(e.kind == "external_event" for e in evidence):
                         raise ValueError(
                             "Completion requires verified tool/provider evidence, not an agent assertion"
                         )

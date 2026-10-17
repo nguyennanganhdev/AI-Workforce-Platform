@@ -56,6 +56,7 @@ import { liveSessionPresentation } from '@/features/workforce/session/live-adapt
 import { officeFromSession } from '@/features/workforce/session/presentation';
 import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
+import { useGroupConversation } from '@/hooks/useGroupConversation';
 import { useKnowledgeBaseMiddlewareSchema } from '@/hooks/useKnowledgeBaseMiddlewareSchema';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
 import { useMessages } from '@/hooks/useMessages';
@@ -385,10 +386,22 @@ export function ChatViewport({
 	// the temporal dead zone.
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
 	const isTicketView = ticketView || Boolean((view?.session.state.middle_context as Record<string, unknown> | undefined)?.workflow_id);
-	const personalLayout = view?.session.config.personal_chat
+	const personalLayout = view?.session.config.personal_chat?.kind === 'direct'
 		? panelLayout.map(column => column.filter(panel => panel !== 'team')).filter(column => column.length > 0)
 		: panelLayout;
 	const team = view?.team;
+	const group = view?.session.config.personal_chat?.kind === 'group';
+	const groupRoom = useGroupConversation(group ? sessionId : null, group ? agentId : null, view?.session.config.personal_chat?.members ?? []);
+	const transcript = group ? (() => {
+		const stored = new Map(groupRoom.messages.map(m => [m.id, m]));
+		for (const msg of msgs) {
+			if (stored.has(msg.id)) continue;
+			// Inbox copies of TeamSay are already represented by their durable room events.
+			if (msg.content.every(block => block.type === 'hint')) continue;
+			stored.set(msg.id, msg);
+		}
+		return [...stored.values()].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+	})() : msgs;
 	const completeTeamMention = useCallback(
 		(input: string): string | null => {
 			if (!input.startsWith('@') || input.includes('\n')) return null;
@@ -803,7 +816,7 @@ export function ChatViewport({
 							...(view?.team?.leader_agent ? [view.team.leader_agent] : []),
 							...(view?.team?.members.map((member) => member.agent) ?? []),
 						],
-						messages: msgs,
+					messages: transcript,
 						replyPhase: phase,
 						status: view?.status,
 						awaitingApproval: subagentHitl.length > 0,
@@ -828,6 +841,8 @@ export function ChatViewport({
 									<div className="flex min-w-0 flex-1 basis-full items-center gap-x-1 sm:basis-auto">
 										<SidebarTrigger className="md:hidden" />
 										{view?.session.config.personal_chat && agentId && sessionId && <PersonalContextPanel key={sessionId} agentId={agentId} sessionId={sessionId} agentName={agentName} busy={phase !== 'idle'} />}
+										{group && groupRoom.hasMore && <Button variant="ghost" size="sm" onClick={() => void groupRoom.loadOlder()}>{t('personal.older')}</Button>}
+										{group && groupRoom.error && <span role="status" className="text-xs text-destructive">{t('personal.retryContext')}</span>}
 										{agentId && (
 											<button
 												type="button"
@@ -1003,9 +1018,9 @@ export function ChatViewport({
 										groupChat={view?.session.config.personal_chat?.kind === 'group'}
 										className="w-full"
 										showWorkspace={!isTicketView && !view?.session.config.personal_chat}
-										composerPlaceholder={isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
+										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
 										agentName={agentName}
-										msgs={msgs}
+										msgs={transcript}
 										loading={messagesLoading}
 										agentId={agentId}
 										sessionId={sessionId}
