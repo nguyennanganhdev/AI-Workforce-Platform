@@ -106,6 +106,33 @@ async def issue_for_workflow(body: GrantRequest,request: Request,response: Respo
                 'bearer_token':token,'expires_at':grant['expires_at'].isoformat(),'tools':grant['tools']}
 
 
+class EvalFixtureRequest(BaseModel):
+    run_id: str=Field(min_length=1,max_length=64)
+    count: int=Field(default=5,ge=1,le=20)
+
+
+@router.post('/platform/eval-fixtures')
+async def eval_fixtures(body: EvalFixtureRequest,request: Request,response: Response):
+    """Synthetic sandbox only: fresh handed-over tickets for one agent evaluation run."""
+    from .eval_fixture import EvalFixtureRefused, create_eval_tickets, enabled
+    secret=os.getenv('VINHOMES_API_PLATFORM_MCP_TOKEN','').strip()
+    if not secret or not hmac.compare_digest(request.headers.get('authorization','').encode(),('Bearer '+secret).encode()):
+        raise HTTPException(401,'Control-plane credential required',headers={'WWW-Authenticate':'Bearer'})
+    if not enabled():
+        raise HTTPException(404,'Evaluation fixtures are not enabled here')
+    if getattr(request.app.state,'engine',None) is None:
+        raise HTTPException(503,'Fixture database unavailable')
+    response.headers['Cache-Control']='no-store'
+    try:
+        async with request.app.state.engine.begin() as db:
+            await db.execute(text("select set_config('app.tenant_id',:tenant,true)"),{'tenant':str(request.app.state.settings.tenant_id)})
+            return {'tickets':await create_eval_tickets(db,body.run_id,body.count),'data_mode':'synthetic_test'}
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from None
+    except EvalFixtureRefused as exc:
+        raise HTTPException(409,str(exc)) from None
+
+
 async def operator(args):
     import asyncpg
     from .database import _url
