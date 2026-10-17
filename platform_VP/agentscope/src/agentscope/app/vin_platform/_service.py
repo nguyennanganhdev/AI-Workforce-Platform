@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import and_, delete, insert, or_, select, text, update
+from sqlalchemy import and_, insert, or_, select, text, update
 
 from . import _tables as t
 from ._contracts import CatalogEntry, ExecutionContext, PlatformError, QuotaPolicy, ResourceGrant
@@ -44,6 +44,11 @@ class VinPlatformService:
     def engine(self):
         return self.auth._require_engine()
 
+    @property
+    def jobs(self):
+        from ._jobs import PersonalJobs
+        return PersonalJobs(self)
+
     def cipher(self):
         key = self._encryption_key or os.getenv("VIN_PLATFORM_ENCRYPTION_KEY", "")
         if not key:
@@ -52,6 +57,26 @@ class VinPlatformService:
             return Fernet(key.encode() if isinstance(key, str) else key)
         except (ValueError, TypeError) as exc:
             raise PlatformError("SECRET_STORE_NOT_CONFIGURED", 503) from exc
+
+    async def check_schema(self):
+        """Fail at startup rather than silently running an unmigrated authority."""
+        from ..workforce.foundation._tables import durable_jobs
+        async with self.engine.connect() as db:
+            for table in t.metadata.sorted_tables:
+                await db.execute(select(table).limit(0))
+            await db.execute(select(durable_jobs.c.personal_user_id).limit(0))
+
+    async def reconcile_attempt(self, context, ident, actual, receipt_ref):
+        self.admin(context)
+        async with self.engine.begin() as db:
+            await self.assert_active(db, context, require_eligible=False)
+            row = (await db.execute(select(t.attempts.c.state).where(t.attempts.c.tenant_id == context.tenant_id,
+                t.attempts.c.id == ident))).first()
+            if row is None:
+                raise PlatformError("RESERVATION_NOT_FOUND", 404)
+        await self.quota.settle(context.tenant_id, ident, actual, provider_request_id=receipt_ref)
+        async with self.engine.begin() as db:
+            await self.audit(db, context, "quota.reconciled", ident, actual=actual, receipt_ref=receipt_ref)
 
     async def assert_active(self, db, context, *, require_eligible=True):
         from ._workspaces import account as current_account, options
@@ -243,6 +268,21 @@ class VinPlatformService:
                 entry["permissions"] = sorted(set(entry["permissions"]) | set(row["permissions"]))
             return sorted((r for r in visible.values() if permission in r["permissions"]), key=lambda r: r["catalog_id"])
 
+    async def resolve_catalog(self, context, kind, ident, *, permission="bind", version=None):
+        entries = await self.catalog(context, kind, permission)
+        entry = next((r for r in entries if r["resource_id"] == ident), None)
+        if entry is None:
+            raise PlatformError("RESOURCE_NOT_FOUND", 404)
+        if version is not None and version != entry["version"]:
+            raise PlatformError("RESOURCE_REVOKED", 409)
+        getter = getattr(self.storage, {"mcp": "get_mcp", "skill": "get_skill",
+            "knowledge_base": "get_knowledge_base", "credential": "get_credential", "agent": "get_agent"}[kind])
+        record = await getter(entry["owner_id"], ident)
+        if record is None or (kind in {"mcp", "skill"} and not record.enabled) or (
+            kind == "skill" and record.review_status != "approved"):
+            raise PlatformError("RESOURCE_REVOKED", 404)
+        return entry, record
+
     async def secret_put(self, context, value, purpose):
         self.admin(context)
         ident = uuid4().hex
@@ -253,6 +293,38 @@ class VinPlatformService:
                 purpose=purpose, ciphertext=encrypted, active=True))
             await self.audit(db, context, "secret.stored", ident, purpose=purpose)
         return ident
+
+    async def migrate_credentials(self, context, *, dry_run=True):
+        """Remove exact shared-key copies without changing any resource ID.
+
+        No provider requests, no raw key/hash in response/audit. Unrecognized
+        legacy values require explicit operator mapping; never guess by name.
+        """
+        from ._resources import PLATFORM_KEY_REFERENCE
+        self.admin(context)
+        shared = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
+        if not shared:
+            raise PlatformError("PROVIDER_NOT_CONFIGURED", 503)
+        async with self.engine.begin() as db:
+            await self.assert_active(db, context, require_eligible=False)
+            users = (await db.execute(text("SELECT id FROM auth_users WHERE tenant_id=:t"), {"t": context.tenant_id})).scalars().all()
+        counts = {"scanned": 0, "matched": 0, "rewritten": 0, "conflicts": 0, "unmapped": 0, "dry_run": dry_run}
+        for user in users:
+            for record in await self.storage.list_credentials(user):
+                counts["scanned"] += 1
+                if record.data.get("secret_ref") == PLATFORM_KEY_REFERENCE:
+                    continue
+                if record.data.get("api_key") != shared:
+                    counts["unmapped"] += 1
+                    continue
+                counts["matched"] += 1
+                if not dry_run:
+                    replacement = {**record.data, "api_key": "server-managed", "secret_ref": PLATFORM_KEY_REFERENCE}
+                    changed = await self.storage.replace_credential_data(user, record.id, record.data, replacement)
+                    counts["rewritten" if changed else "conflicts"] += 1
+        async with self.engine.begin() as db:
+            await self.audit(db, context, "credentials.reference_migration", "tenant", **counts)
+        return counts
 
     async def secret_get(self, tenant, ident, purpose):
         async with self.engine.connect() as db:
@@ -281,7 +353,9 @@ class VinPlatformService:
                     raise PlatformError("REVISION_CONFLICT", 409) from exc
             else:
                 changed = await db.execute(update(t.automation).where(where,
-                    t.automation.c.revision == expected_revision).values(data=payload, revision=expected_revision + 1))
+                    t.automation.c.revision == expected_revision,
+                    or_(t.automation.c.lease_until.is_(None), t.automation.c.lease_until < now()),
+                ).values(data=payload, claim_token=None, lease_until=None, revision=expected_revision + 1))
                 if changed.rowcount != 1:
                     raise PlatformError("REVISION_CONFLICT", 409)
         return expected_revision + 1
@@ -299,6 +373,10 @@ class VinPlatformService:
         token = random.token_urlsafe(32)
         async with self.engine.begin() as db:
             await self.assert_active(db, context)
+            row = (await db.execute(select(t.automation).where(t.automation.c.id == ident,
+                t.automation.c.tenant_id == context.tenant_id, t.automation.c.user_id == context.initiator_user_id).with_for_update())).mappings().first()
+            if row is None or row["data"].get("state") in {"succeeded", "failed", "cancelled", "delivered"}:
+                raise PlatformError("LEASE_NOT_AVAILABLE", 409)
             result = await db.execute(update(t.automation).where(t.automation.c.id == ident,
                 t.automation.c.tenant_id == context.tenant_id, t.automation.c.user_id == context.initiator_user_id,
                 or_(t.automation.c.lease_until.is_(None), t.automation.c.lease_until < now()),
@@ -362,65 +440,3 @@ class VinPlatformService:
                 data={"bytes": amount, "state": "stored" if stored else "released"}, revision=row["revision"] + 1))
             if changed.rowcount != 1:
                 raise PlatformError("UPLOAD_SETTLEMENT_CONFLICT", 409)
-
-
-    async def resolve_catalog(self, context, kind, ident, *, permission="bind", version=None):
-        entries = await self.catalog(context, kind, permission)
-        entry = next((r for r in entries if r["resource_id"] == ident), None)
-        if entry is None:
-            raise PlatformError("RESOURCE_NOT_FOUND", 404)
-        if version is not None and version != entry["version"]:
-            raise PlatformError("RESOURCE_REVOKED", 409)
-        getter = getattr(self.storage, {"mcp": "get_mcp", "skill": "get_skill",
-            "knowledge_base": "get_knowledge_base", "credential": "get_credential", "agent": "get_agent"}[kind])
-        record = await getter(entry["owner_id"], ident)
-        if record is None or (kind in {"mcp", "skill"} and not record.enabled) or (
-            kind == "skill" and record.review_status != "approved"):
-            raise PlatformError("RESOURCE_REVOKED", 404)
-        return entry, record
-
-
-    async def migrate_credentials(self, context, *, dry_run=True):
-        """Remove exact shared-key copies without changing any resource ID.
-
-        No provider requests, no raw key/hash in response/audit. Unrecognized
-        legacy values require explicit operator mapping; never guess by name.
-        """
-        from ._resources import PLATFORM_KEY_REFERENCE
-        self.admin(context)
-        shared = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
-        if not shared:
-            raise PlatformError("PROVIDER_NOT_CONFIGURED", 503)
-        async with self.engine.begin() as db:
-            await self.assert_active(db, context, require_eligible=False)
-            users = (await db.execute(text("SELECT id FROM auth_users WHERE tenant_id=:t"), {"t": context.tenant_id})).scalars().all()
-        counts = {"scanned": 0, "matched": 0, "rewritten": 0, "conflicts": 0, "unmapped": 0, "dry_run": dry_run}
-        for user in users:
-            for record in await self.storage.list_credentials(user):
-                counts["scanned"] += 1
-                if record.data.get("secret_ref") == PLATFORM_KEY_REFERENCE:
-                    continue
-                if record.data.get("api_key") != shared:
-                    counts["unmapped"] += 1
-                    continue
-                counts["matched"] += 1
-                if not dry_run:
-                    replacement = {**record.data, "api_key": "server-managed", "secret_ref": PLATFORM_KEY_REFERENCE}
-                    changed = await self.storage.replace_credential_data(user, record.id, record.data, replacement)
-                    counts["rewritten" if changed else "conflicts"] += 1
-        async with self.engine.begin() as db:
-            await self.audit(db, context, "credentials.reference_migration", "tenant", **counts)
-        return counts
-
-
-    async def reconcile_attempt(self, context, ident, actual, receipt_ref):
-        self.admin(context)
-        async with self.engine.begin() as db:
-            await self.assert_active(db, context, require_eligible=False)
-            row = (await db.execute(select(t.attempts.c.state).where(t.attempts.c.tenant_id == context.tenant_id,
-                t.attempts.c.id == ident))).first()
-            if row is None:
-                raise PlatformError("RESERVATION_NOT_FOUND", 404)
-        await self.quota.settle(context.tenant_id, ident, actual, provider_request_id=receipt_ref)
-        async with self.engine.begin() as db:
-            await self.audit(db, context, "quota.reconciled", ident, actual=actual, receipt_ref=receipt_ref)
