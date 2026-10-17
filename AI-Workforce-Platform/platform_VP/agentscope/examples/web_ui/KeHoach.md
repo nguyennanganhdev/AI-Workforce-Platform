@@ -358,3 +358,25 @@ Commit batch và kết quả Docker/format chi tiết được cập nhật ở 
 - User đã xác nhận **chưa có tài khoản active/model kiểm thử**; live E2E để trạng
   thái blocked. Service FastAPI đang chạy còn lệch revision so với source đích.
 - Không deploy đè container đang chạy. Không chỉnh backend, DB hoặc volume.
+
+### Deploy web theo yêu cầu — 2026-10-17
+
+- User yêu cầu build và đưa UI mới vào container. Đã build lại source Fuq-export:
+  `docker build -f frontend/Dockerfile -t agentscope-web:latest .` — pass.
+- Compose đang quản lý hệ thống nằm ở
+  `/home/jiuka13a/Coding/Project/AI-Workforce-Platform-UI/platform_VP/agentscope`.
+  Tại thư mục đó chạy:
+  `WEB_IMAGE=agentscope-web:latest docker compose up -d --no-deps --no-build --force-recreate web`.
+- Container `agentscope-web-1` đã dùng image
+  `sha256:3df2810c279720f37475202ae5b129430f40ba990ffea14821ba8fc6ab3c11ec`.
+- Kiểm tra trên port 5173: `/` và `/workforce/agents` HTTP 200;
+  `/api/health` status ok; anonymous POST `/api/auth/refresh` HTTP 401 đúng dự kiến.
+- Backend, PostgreSQL, Redis, MinIO không bị recreate, vẫn healthy.
+- Image cũ được giữ tại `agentscope-web:rollback-before-fuq`. Rollback tại thư mục
+  Compose đang chạy bằng:
+  `WEB_IMAGE=agentscope-web:rollback-before-fuq docker compose up -d --no-deps --no-build --force-recreate web`.
+- Override `WEB_IMAGE` được truyền riêng cho lệnh deploy, không sửa `.env`. Khi
+  recreate web lần sau cần truyền lại `WEB_IMAGE=agentscope-web:latest` để giữ
+  image Fuq-export, vì Compose hiện có mặc định trỏ tới tên image khác.
+- Live E2E có đăng nhập/model vẫn blocked như đã ghi; deploy không đồng nghĩa
+  đã nghiệm thu feature parity với backend đang chạy khác revision.
