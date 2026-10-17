@@ -122,8 +122,14 @@ class QuotaAuthority:
                     raise PlatformError("SETTLEMENT_CONFLICT", 409)
                 return
             if actual is None:
-                await db.execute(update(t.attempts).where(t.attempts.c.id == attempt_id).values(
-                    state="pending_reconciliation", data={**row["data"], "provider_request_id": provider_request_id}))
+                if not row["data"].get("concurrency_released"):
+                    changed = await db.execute(update(t.attempts).where(t.attempts.c.id == attempt_id,
+                        t.attempts.c.state == row["state"],
+                        t.attempts.c.data["concurrency_released"].as_boolean().is_not(True),
+                    ).values(state="pending_reconciliation", data={**row["data"],
+                        "provider_request_id": provider_request_id, "concurrency_released": True}))
+                    if changed.rowcount:
+                        await self._release_slots(db, tenant, row["scopes"])
                 return
             # CAS protects SQLite too. The row lock protects PostgreSQL concurrent settle.
             claimed = await db.execute(update(t.attempts).where(t.attempts.c.id == attempt_id,
@@ -135,9 +141,22 @@ class QuotaAuthority:
                 await db.execute(update(t.buckets).where(t.buckets.c.tenant_id == tenant,
                     t.buckets.c.subject == scope["subject"], t.buckets.c.window == scope["window"],
                 ).values(reserved=t.buckets.c.reserved - row["budget"], used=t.buckets.c.used + actual))
-            for subject in sorted({scope["subject"] for scope in row["scopes"]}):
-                await db.execute(update(t.subjects).where(t.subjects.c.tenant_id == tenant,
-                    t.subjects.c.subject == subject).values(active_calls=t.subjects.c.active_calls - 1))
+            if not row["data"].get("concurrency_released"):
+                await self._release_slots(db, tenant, row["scopes"])
+
+    async def _release_slots(self, db, tenant, scopes):
+        for subject in sorted({scope["subject"] for scope in scopes}):
+            await db.execute(update(t.subjects).where(t.subjects.c.tenant_id == tenant,
+                t.subjects.c.subject == subject, t.subjects.c.active_calls > 0,
+            ).values(active_calls=t.subjects.c.active_calls - 1))
+
+    async def mark_dispatched(self, tenant, attempt_id):
+        async with self.service.engine.begin() as db:
+            data = (await db.execute(select(t.attempts.c.data).where(t.attempts.c.tenant_id == tenant,
+                t.attempts.c.id == attempt_id, t.attempts.c.state == "reserved").with_for_update())).scalar_one()
+            await db.execute(update(t.attempts).where(t.attempts.c.tenant_id == tenant,
+                t.attempts.c.id == attempt_id, t.attempts.c.state == "reserved",
+            ).values(data={**data, "dispatch_started": True}))
 
     async def usage(self, context):
         async with self.service.engine.begin() as db:

@@ -22,9 +22,12 @@ async def embedding_attempt(model, inputs, kwargs):
     await service.quota.reserve(context, budget=max(1, budget), purpose="embedding", model=model.model, attempt_id=ident)
     model.client.max_retries = 0
     try:
+        await asyncio.shield(service.quota.mark_dispatched(context.tenant_id, ident))
         result = await model._call_api(inputs, **kwargs)
-    except BaseException:
-        await asyncio.shield(service.quota.settle(context.tenant_id, ident, None))
+    except BaseException as exc:
+        code = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+        rejected = isinstance(code, int) and 400 <= code < 500
+        await asyncio.shield(service.quota.settle(context.tenant_id, ident, 0 if rejected else None))
         raise
     tokens = getattr(getattr(result, "usage", None), "tokens", None)
     await service.quota.settle(context.tenant_id, ident,

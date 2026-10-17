@@ -31,6 +31,9 @@ async def authorize_provider_payload(model, payload):
             from ..app.vin_platform import PlatformError
             raise PlatformError("PROVIDER_ATTEMPT_REQUIRED", 403)
         await guard.outbound(model, payload, current[1])
+        mark = getattr(guard, "dispatched", None)
+        if mark is not None:
+            await mark(current[1])
 
 
 @contextmanager
@@ -162,12 +165,14 @@ async def observed_call(model, call, *args, **kwargs):
             record["usage_reason"] = "interrupted_or_failed_usage_unknown"
         if error is not None:
             record["error_type"] = type(error).__name__[:100]
+            status_code = getattr(error, "status_code", None) or getattr(getattr(error, "response", None), "status_code", None)
+            if isinstance(status_code, int):
+                record["provider_http_status"] = status_code
             request_id = getattr(error, "request_id", None)
             if request_id:
                 record["provider_request_id"] = str(request_id)[:255]
         if guard is not None:
-            # A cancelled/failed attempt keeps its reserved budget pending
-            # reconciliation. Unlike telemetry, this is not fail-open.
+            # The guard distinguishes definite rejection from unknown outcome.
             await asyncio.shield(guard.finish(guard_context, record))
         await persist()
 

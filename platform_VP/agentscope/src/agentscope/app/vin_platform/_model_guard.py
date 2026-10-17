@@ -1,5 +1,6 @@
 ﻿"""Authorize the final SDK payload, after formatting and parameter merging."""
 
+import asyncio
 import json
 
 from ._contracts import PlatformError
@@ -43,7 +44,7 @@ class ModelQuotaGuard:
         context = inherited.model_copy(update={"purpose": attributes.get("purpose", "chat")}) if inherited is not None else await self.service.context(self.user_id, purpose=attributes.get("purpose", "chat"))
         if "_openai_chat" not in type(model).__module__ and "_openai_response" not in type(model).__module__:
             raise PlatformError("MODEL_QUOTA_ADAPTER_UNSUPPORTED", 403)
-        return {"context": context, "id": attempt_id, "reserved": False}
+        return {"context": context, "id": attempt_id, "reserved": False, "dispatched": False}
 
     async def outbound(self, model, payload, attempt):
         if attempt["reserved"]:
@@ -66,9 +67,20 @@ class ModelQuotaGuard:
         model.client.max_retries = 0
         items = payload.get("messages", payload.get("input", []))
         budget = len(serialized.encode("utf-8")) + 1024 + 64 * (len(items) + len(payload.get("tools") or [])) + cap
-        await self.service.quota.reserve(context, budget=budget, purpose=context.purpose,
-            model=payload["model"], attempt_id=attempt["id"])
+        reservation = asyncio.create_task(self.service.quota.reserve(context, budget=budget, purpose=context.purpose,
+            model=payload["model"], attempt_id=attempt["id"]))
+        try:
+            await asyncio.shield(reservation)
+        except asyncio.CancelledError:
+            await reservation
+            attempt["reserved"] = True
+            raise
         attempt["reserved"] = True
+
+    async def dispatched(self, attempt):
+        # From this boundary onwards a cancellation may have reached the SDK.
+        attempt["dispatched"] = True
+        await asyncio.shield(self.service.quota.mark_dispatched(attempt["context"].tenant_id, attempt["id"]))
 
     async def finish(self, attempt, record):
         if not attempt["reserved"]:
@@ -76,5 +88,7 @@ class ModelQuotaGuard:
         values = [record.get("input_tokens"), record.get("output_tokens")]
         valid = record["status"] == "completed" and all(
             isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in values)
-        await self.service.quota.settle(attempt["context"].tenant_id, record["id"], sum(values) if valid else None,
+        rejected = 400 <= (record.get("provider_http_status") or 0) < 500
+        actual = sum(values) if valid else 0 if rejected or not attempt["dispatched"] else None
+        await self.service.quota.settle(attempt["context"].tenant_id, record["id"], actual,
             provider_request_id=record.get("provider_request_id"))

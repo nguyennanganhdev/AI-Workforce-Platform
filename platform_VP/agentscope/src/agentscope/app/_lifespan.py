@@ -68,6 +68,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await stack.enter_async_context(workspace_manager)
         if auth_service is not None:
             await stack.enter_async_context(auth_service)
+        authority = getattr(app.state, "vin_platform_service", None)
+        if authority is not None:
+            from .vin_platform._reconciliation import reconciliation_worker
+            await stack.enter_async_context(reconciliation_worker(authority))
         if business_service is not None:
             await stack.enter_async_context(business_service)
         # Workforce asset routes/workers may use the same private blob store.

@@ -2,12 +2,11 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import insert, select, text
+from sqlalchemy import select
 
-from agentscope.app.vin_platform import ExecutionContext, PlatformError, QuotaPolicy
+from agentscope.app.vin_platform import PlatformError, QuotaPolicy
 from agentscope.app.vin_platform import _tables as t
 from agentscope.app.vin_platform._contracts import CatalogEntry, ResourceGrant
 from agentscope.app.vin_platform._domain import DomainAdapter
@@ -42,14 +41,16 @@ async def test_quota_reserves_before_io_and_is_idempotently_settled(authority):
 
 
 @pytest.mark.asyncio
-async def test_unknown_usage_holds_budget_and_concurrency(authority):
+async def test_unknown_usage_holds_budget_but_releases_concurrency(authority):
     ctx = await setup_quota(authority, max_concurrency=1)
     ident = await authority.quota.reserve(ctx, budget=300, purpose="chat", model="test-model")
     await authority.quota.settle("vin", ident, None)
+    assert (await authority.quota.usage(ctx))["pending_reconciliation"] == 1
+    second = await authority.quota.reserve(ctx, budget=300, purpose="chat", model="test-model")
     with pytest.raises(PlatformError, match="CONCURRENCY"):
         await authority.quota.reserve(ctx, budget=1, purpose="chat", model="test-model")
-    assert (await authority.quota.usage(ctx))["pending_reconciliation"] == 1
     await authority.quota.settle("vin", ident, 100)
+    await authority.quota.settle("vin", second, 100)
     await authority.quota.reserve(ctx, budget=300, purpose="chat", model="test-model")
 
 
