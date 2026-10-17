@@ -52,3 +52,27 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Chờ Người 1: C01 capability chi tiết và C02 list/resolver đã được sửa trong WIP nhưng chưa có
   commit handoff ổn định; usage chưa có limit/remaining. Catalog browser hiện là fixture đúng DTO,
   chưa chứng minh bind/execute xuyên hai branch hoặc API reject bằng integration.
+
+## S02 — Lịch một lần không lặp khi lỗi (PR #99 extension)
+
+- Lưu disabled + `DISPATCH_OUTCOME_PENDING` trước tạo session/dispatch đối với `once`;
+  lỗi cũng giữ disabled và lưu loại lỗi. Trigger cũ đọc lại trạng thái nên không tự chạy lần nữa.
+- Khi lưu trạng thái thất bại: không tạo session và không dispatch. Không đổi schema/storage lane Người 1.
+- Test mới `tests/workforce/console/test_schedule_once_failure.py` thuộc Người 2 theo scheduler;
+  kiểm dispatch lỗi, thành công, lỗi persistence và gọi lại cùng trigger bằng fakeredis.
+- `scripts/workforce/check_builder.py --automation` thêm regression schedule/router/Discord PR #99
+  vào cùng harness xóa credential và cấm network. Script kiểm thử/đóng gói thuộc Người 2.
+- Kết quả: 181 passed, 13 skipped, 0 lỗi; 0 network attempt, 0 paid model call.
+  Skip gồm browser cần preview riêng (đã chạy ở S01) và producer package chưa tích hợp vào branch.
+- Gate chưa đạt: C09 atomic claim/lease/fence/run-ledger/outbox cho hai process/crash/unknown outcome.
+  Upsert hiện tại chỉ hỗ trợ mô hình một scheduler owner của PR #99; chưa có chứng minh exactly-once
+  nhiều worker hoặc delivery retry. Không bật automation cho cohort production bằng slice này.
+
+## S03 — Consumer catalog MCP/Skill (đang thực hiện)
+
+- Khai báo owner trước khi sửa: helper consumer mới `A/_service/_catalog_resources.py` và test
+  `tests/workforce/console/test_shared_catalog_consumer.py` thuộc Người 2; không định nghĩa authority.
+  Helper gọi C02 `VinPlatformService.resolve_catalog`/`catalog_records` của Người 1, chuyển lỗi sang HTTP,
+  không fallback sang resource tự sở hữu khi Vin enabled nhưng authority thiếu.
+- Call sites dự kiến: Builder/Studio catalog, bind/eval/readiness, workspace from-library và runtime preflight.
+  Quyền tool/version/audience phải được resolver Người 1 kiểm tra; không suy từ prompt hoặc tên tool.

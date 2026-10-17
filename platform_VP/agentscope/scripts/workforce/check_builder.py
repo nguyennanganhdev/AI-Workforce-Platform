@@ -18,6 +18,9 @@ def main():
     parser.add_argument(
         "--runtime", action="store_true", help="Also run private chat/team and Leader regressions"
     )
+    parser.add_argument(
+        "--automation", action="store_true", help="Also run schedule and private Discord regressions"
+    )
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     os.chdir(root)
@@ -74,6 +77,11 @@ def main():
     suite = ["tests/workforce/console", "tests/audit_publish_atomicity_test.py"]
     if options.storage:
         suite.append("tests/storage_sql_test.py")
+    if options.automation:
+        suite.extend([
+            "tests/service_scheduler_test.py", "tests/schedule_router_test.py",
+            "tests/channel_discord_workforce_test.py",
+        ])
     if options.runtime:
         suite.extend([
             "tests/personal_chat_test.py", "tests/personal_chat_challenge_test.py",
