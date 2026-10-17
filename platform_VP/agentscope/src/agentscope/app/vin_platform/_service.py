@@ -54,14 +54,16 @@ class VinPlatformService:
             raise PlatformError("SECRET_STORE_NOT_CONFIGURED", 503) from exc
 
     async def assert_active(self, db, context, *, require_eligible=True):
-        row = (await db.execute(text("SELECT id, tenant_id, role, status FROM auth_users WHERE id=:id"),
-            {"id": context.initiator_user_id})).mappings().first()
+        from ._workspaces import account as current_account, options
+        row = await current_account(db, context.initiator_user_id)
         if row is None or row["status"] != "active" or row["tenant_id"] != context.tenant_id or row["role"] != context.role:
             raise PlatformError("AUTH_REQUIRED", 401)
         if context.billing_subject_id != context.initiator_user_id:
             # Service jobs must obtain a server-resolved customer context;
             # public callers cannot nominate somebody else's quota.
             raise PlatformError("BILLING_SUBJECT_MISMATCH", 403)
+        if context.workspace_id not in {item.id for item in options(row)}:
+            raise PlatformError("AUTHORIZATION_REVOKED", 403)
         account = (await db.execute(select(t.accounts).where(t.accounts.c.user_id == row["id"],
             t.accounts.c.tenant_id == context.tenant_id))).mappings().first()
         if account and account["revision"] != context.authorization_revision:
@@ -70,17 +72,27 @@ class VinPlatformService:
             raise PlatformError("ELIGIBILITY_REQUIRED", 403)
         return row
 
-    async def context(self, user_id, *, purpose="chat", environment="production"):
+    async def context(self, user_id, *, purpose="chat", environment="production", session_id=None, workspace_id=None):
+        from ._workspaces import account, options, selected
         async with self.engine.connect() as db:
-            row = (await db.execute(text("SELECT id, tenant_id, role, status FROM auth_users WHERE id=:id"),
-                {"id": user_id})).mappings().first()
+            row = await account(db, user_id)
             if not row or row["status"] != "active":
                 raise PlatformError("AUTH_REQUIRED", 401)
             revision = (await db.execute(select(t.accounts.c.revision).where(
                 t.accounts.c.user_id == user_id, t.accounts.c.tenant_id == row["tenant_id"]))).scalar_one_or_none() or 1
-            return ExecutionContext(tenant_id=row["tenant_id"], initiator_user_id=user_id,
-                billing_subject_id=user_id, workspace_id="personal:" + user_id, role=row["role"],
+            choices = options(row)
+            context = ExecutionContext(tenant_id=row["tenant_id"], initiator_user_id=user_id,
+                billing_subject_id=user_id, workspace_id=workspace_id or choices[-1].id, role=row["role"],
                 authorization_revision=revision, purpose=purpose, environment=environment)
+            if session_id is not None and workspace_id is None:
+                saved = await selected(db, context, session_id)
+                if saved:
+                    context.workspace_id = saved["data"]["workspace_id"]
+                    if context.workspace_id not in {item.id for item in choices}:
+                        context.workspace_id = choices[0].id
+            if context.workspace_id not in {item.id for item in choices}:
+                raise PlatformError("CAPABILITY_DENIED", 403)
+            return context
 
     async def groups(self, db, tenant, user):
         return list((await db.execute(select(t.memberships.c.group_id).where(
@@ -90,7 +102,7 @@ class VinPlatformService:
 
     @staticmethod
     def admin(context):
-        if context.role != "PLATFORM_ADMIN":
+        if context.role != "PLATFORM_ADMIN" or not context.workspace_id.startswith("administration:"):
             raise PlatformError("CAPABILITY_DENIED", 403)
 
     async def audit(self, db, context, action, resource_id, **details):
@@ -105,8 +117,15 @@ class VinPlatformService:
             eligible = context.role != "VIN_USER" or bool(account and account["eligible"])
             return {"contract_version": "vin-platform-1", **context.model_dump(), "eligible": eligible,
                 "capabilities": {"personal.read": True, "personal.create": eligible,
-                    "knowledge.private.manage": eligible, "catalog.manage": context.role == "PLATFORM_ADMIN",
-                    "management.read": context.role == "AREA_MANAGER", "quota.manage": context.role == "PLATFORM_ADMIN"}}
+                    "personal.execute": eligible, "agents.author": eligible,
+                    "schedules.manage": eligible, "channels.manage": eligible,
+                    "providers.read": True, "mcps.read": True, "skills.read": True,
+                    "domain-links.manage": True, "usage.read": True,
+                    "accounts.manage": context.role in {"PLATFORM_ADMIN", "DOMAIN_ADMIN"} and context.workspace_id.startswith("administration:"),
+                    "providers.manage": context.role == "PLATFORM_ADMIN" and context.workspace_id.startswith("administration:"),
+                    "knowledge.private.manage": eligible, "catalog.manage": context.role == "PLATFORM_ADMIN" and context.workspace_id.startswith("administration:"),
+                    "management.read": context.role == "AREA_MANAGER" and context.workspace_id.startswith("operations:"),
+                    "quota.manage": context.role == "PLATFORM_ADMIN" and context.workspace_id.startswith("administration:")}}
 
     async def set_eligibility(self, context, user_id, eligible):
         self.admin(context)

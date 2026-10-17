@@ -9,7 +9,7 @@ from sqlalchemy import select
 from ..auth import AuthPrincipal
 from ..deps import get_current_principal
 from . import _tables as t
-from ._contracts import CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent
+from ._contracts import CapabilityView, WorkspaceState, CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent
 from ._domain import DomainAdapter
 
 router = APIRouter(tags=["vin-platform"])
@@ -24,7 +24,7 @@ def service(request: Request):
 
 async def caller(request: Request, principal: AuthPrincipal = Depends(get_current_principal)):
     authority = service(request)
-    context = await authority.context(principal.user_id)
+    context = await authority.context(principal.user_id, session_id=principal.session_id)
     return authority, context
 
 
@@ -48,10 +48,29 @@ async def register_personal(body: PersonalRegistration, request: Request):
     return UserResponse.model_validate(user, from_attributes=True)
 
 
-@router.get("/me/capabilities")
+@router.get("/me/capabilities", response_model=CapabilityView)
 async def capabilities(who=Depends(caller)):
     authority, context = who
     return await authority.capabilities(context)
+
+
+@router.get("/me/workspaces", response_model=WorkspaceState)
+async def workspaces(request: Request, principal: AuthPrincipal = Depends(get_current_principal), who=Depends(caller)):
+    from ._workspaces import state
+    authority, context = who
+    return await state(authority, context, principal.session_id)
+
+
+class WorkspaceSelection(Contract):
+    workspace_id: str = Field(min_length=1, max_length=1000)
+    expected_revision: int = Field(ge=0)
+
+
+@router.put("/me/workspace")
+async def select_workspace(body: WorkspaceSelection, principal: AuthPrincipal = Depends(get_current_principal), who=Depends(caller)):
+    from ._workspaces import switch
+    authority, context = who
+    return await switch(authority, context, principal.session_id, body.workspace_id, body.expected_revision)
 
 
 @router.get("/me/usage")

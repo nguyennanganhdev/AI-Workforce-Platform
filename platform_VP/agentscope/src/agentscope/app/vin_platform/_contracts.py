@@ -31,6 +31,28 @@ class ExecutionContext(Contract):
     environment: Literal["production", "sandbox"] = "production"
 
 
+class CapabilityView(ExecutionContext):
+    contract_version: Literal["vin-platform-1"] = CONTRACT_VERSION
+    eligible: bool
+    capabilities: dict[str, bool]
+
+
+class WorkspaceView(Contract):
+    id: str
+    kind: Literal["personal", "operations", "administration"]
+    label: str
+    domain_id: str | None = None
+    area_id: str | None = None
+
+
+class WorkspaceState(Contract):
+    contract_version: Literal["vin-platform-1"] = CONTRACT_VERSION
+    active_workspace_id: str
+    revision: int = Field(ge=0)
+    authorization_revision: int = Field(ge=1)
+    items: list[WorkspaceView]
+
+
 class QuotaPolicy(Contract):
     daily_tokens: int = Field(ge=0)
     monthly_tokens: int = Field(ge=0)
@@ -56,6 +78,15 @@ class CatalogEntry(Contract):
     active: bool = True
 
 
+class CatalogView(CatalogEntry):
+    catalog_id: str
+    permissions: list[Literal["view", "bind", "execute", "manage"]]
+
+
+class CatalogPage(Contract):
+    items: list[CatalogView]
+
+
 class ResourceGrant(Contract):
     catalog_id: str
     subject_kind: Literal["user", "group", "role"]
@@ -75,6 +106,7 @@ class DomainProvider(Contract):
     client_secret_ref: str
     scopes: list[str] = Field(default_factory=lambda: ["self", "requests"])
     active: bool = False
+    environment: Literal["production", "sandbox"] = "production"
 
 
 class ServiceRequest(Contract):

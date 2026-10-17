@@ -387,9 +387,9 @@ def create_app(
             if catalog_mutation or request.headers.get("authorization"):
                 try:
                     principal = await get_current_principal(request, authorization=request.headers.get("authorization"))
-                    context = await authority.context(principal.user_id)
-                    if catalog_mutation:
-                        authority.admin(context)
+                    context = await authority.context(principal.user_id, session_id=principal.session_id)
+                    if catalog_mutation and context.role == "VIN_USER":
+                        raise PlatformError("CAPABILITY_DENIED", 403)
                 except PlatformError as exc:
                     return JSONResponse(status_code=exc.status, content={"detail": {"code": exc.code}})
                 except HTTPException as exc:

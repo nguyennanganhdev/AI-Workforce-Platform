@@ -18,7 +18,8 @@ async def insert_once(connection, table, values):
         from sqlalchemy.dialects.sqlite import insert as upsert
     else:
         raise PlatformError("UNSUPPORTED_AUTHORITY_DATABASE", 503)
-    await connection.execute(upsert(table).values(**values).on_conflict_do_nothing())
+    result = await connection.execute(upsert(table).values(**values).on_conflict_do_nothing())
+    return result.rowcount
 
 
 class QuotaAuthority:

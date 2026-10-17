@@ -1,0 +1,959 @@
+{
+  "contract_version": "vin-platform-1",
+  "schemas": {
+    "ExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "tenant_id": {
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "initiator_user_id": {
+          "title": "Initiator User Id",
+          "type": "string"
+        },
+        "billing_subject_id": {
+          "title": "Billing Subject Id",
+          "type": "string"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "authorization_revision": {
+          "default": 1,
+          "title": "Authorization Revision",
+          "type": "integer"
+        },
+        "acting_link_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Acting Link Id"
+        },
+        "purpose": {
+          "default": "chat",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "environment": {
+          "default": "production",
+          "enum": [
+            "production",
+            "sandbox"
+          ],
+          "title": "Environment",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "initiator_user_id",
+        "billing_subject_id",
+        "workspace_id",
+        "role"
+      ],
+      "title": "ExecutionContext",
+      "type": "object"
+    },
+    "CapabilityView": {
+      "additionalProperties": false,
+      "properties": {
+        "tenant_id": {
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "initiator_user_id": {
+          "title": "Initiator User Id",
+          "type": "string"
+        },
+        "billing_subject_id": {
+          "title": "Billing Subject Id",
+          "type": "string"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "authorization_revision": {
+          "default": 1,
+          "title": "Authorization Revision",
+          "type": "integer"
+        },
+        "acting_link_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Acting Link Id"
+        },
+        "purpose": {
+          "default": "chat",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "environment": {
+          "default": "production",
+          "enum": [
+            "production",
+            "sandbox"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "contract_version": {
+          "const": "vin-platform-1",
+          "default": "vin-platform-1",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "capabilities": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "title": "Capabilities",
+          "type": "object"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "initiator_user_id",
+        "billing_subject_id",
+        "workspace_id",
+        "role",
+        "eligible",
+        "capabilities"
+      ],
+      "title": "CapabilityView",
+      "type": "object"
+    },
+    "WorkspaceView": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "personal",
+            "operations",
+            "administration"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "domain_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Domain Id"
+        },
+        "area_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Area Id"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label"
+      ],
+      "title": "WorkspaceView",
+      "type": "object"
+    },
+    "WorkspaceState": {
+      "$defs": {
+        "WorkspaceView": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "personal",
+                "operations",
+                "administration"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "domain_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Domain Id"
+            },
+            "area_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Area Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label"
+          ],
+          "title": "WorkspaceView",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "vin-platform-1",
+          "default": "vin-platform-1",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "active_workspace_id": {
+          "title": "Active Workspace Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "authorization_revision": {
+          "minimum": 1,
+          "title": "Authorization Revision",
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/WorkspaceView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "active_workspace_id",
+        "revision",
+        "authorization_revision",
+        "items"
+      ],
+      "title": "WorkspaceState",
+      "type": "object"
+    },
+    "QuotaPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "daily_tokens": {
+          "minimum": 0,
+          "title": "Daily Tokens",
+          "type": "integer"
+        },
+        "monthly_tokens": {
+          "minimum": 0,
+          "title": "Monthly Tokens",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "default": 1024,
+          "maximum": 32768,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "max_concurrency": {
+          "default": 2,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Concurrency",
+          "type": "integer"
+        },
+        "storage_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Storage Bytes",
+          "type": "integer"
+        },
+        "max_file_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Max File Bytes",
+          "type": "integer"
+        },
+        "embedding_daily_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Embedding Daily Tokens",
+          "type": "integer"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Models",
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "daily_tokens",
+        "monthly_tokens"
+      ],
+      "title": "QuotaPolicy",
+      "type": "object"
+    },
+    "CatalogEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "credential",
+            "agent",
+            "knowledge_base",
+            "mcp",
+            "skill"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 3000,
+          "title": "Description",
+          "type": "string"
+        },
+        "environment": {
+          "default": "production",
+          "enum": [
+            "production",
+            "sandbox"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "model_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Names",
+          "type": "array"
+        },
+        "tool_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tool Names",
+          "type": "array"
+        },
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "resource_id",
+        "owner_id",
+        "name"
+      ],
+      "title": "CatalogEntry",
+      "type": "object"
+    },
+    "CatalogView": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "credential",
+            "agent",
+            "knowledge_base",
+            "mcp",
+            "skill"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 3000,
+          "title": "Description",
+          "type": "string"
+        },
+        "environment": {
+          "default": "production",
+          "enum": [
+            "production",
+            "sandbox"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "model_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Names",
+          "type": "array"
+        },
+        "tool_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tool Names",
+          "type": "array"
+        },
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        },
+        "catalog_id": {
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "view",
+              "bind",
+              "execute",
+              "manage"
+            ],
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "resource_id",
+        "owner_id",
+        "name",
+        "catalog_id",
+        "permissions"
+      ],
+      "title": "CatalogView",
+      "type": "object"
+    },
+    "CatalogPage": {
+      "$defs": {
+        "CatalogView": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "credential",
+                "agent",
+                "knowledge_base",
+                "mcp",
+                "skill"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "resource_id": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Resource Id",
+              "type": "string"
+            },
+            "owner_id": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Owner Id",
+              "type": "string"
+            },
+            "version": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            },
+            "name": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "default": "",
+              "maxLength": 3000,
+              "title": "Description",
+              "type": "string"
+            },
+            "environment": {
+              "default": "production",
+              "enum": [
+                "production",
+                "sandbox"
+              ],
+              "title": "Environment",
+              "type": "string"
+            },
+            "model_names": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Model Names",
+              "type": "array"
+            },
+            "tool_names": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tool Names",
+              "type": "array"
+            },
+            "active": {
+              "default": true,
+              "title": "Active",
+              "type": "boolean"
+            },
+            "catalog_id": {
+              "title": "Catalog Id",
+              "type": "string"
+            },
+            "permissions": {
+              "items": {
+                "enum": [
+                  "view",
+                  "bind",
+                  "execute",
+                  "manage"
+                ],
+                "type": "string"
+              },
+              "title": "Permissions",
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "resource_id",
+            "owner_id",
+            "name",
+            "catalog_id",
+            "permissions"
+          ],
+          "title": "CatalogView",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CatalogView"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "CatalogPage",
+      "type": "object"
+    },
+    "ResourceGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "subject_kind": {
+          "enum": [
+            "user",
+            "group",
+            "role"
+          ],
+          "title": "Subject Kind",
+          "type": "string"
+        },
+        "subject_id": {
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "view",
+              "bind",
+              "execute",
+              "manage"
+            ],
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        }
+      },
+      "required": [
+        "catalog_id",
+        "subject_kind",
+        "subject_id",
+        "permissions"
+      ],
+      "title": "ResourceGrant",
+      "type": "object"
+    },
+    "DomainProvider": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "issuer": {
+          "title": "Issuer",
+          "type": "string"
+        },
+        "client_id": {
+          "title": "Client Id",
+          "type": "string"
+        },
+        "authorization_url": {
+          "title": "Authorization Url",
+          "type": "string"
+        },
+        "token_url": {
+          "title": "Token Url",
+          "type": "string"
+        },
+        "api_base_url": {
+          "title": "Api Base Url",
+          "type": "string"
+        },
+        "redirect_uri": {
+          "title": "Redirect Uri",
+          "type": "string"
+        },
+        "client_secret_ref": {
+          "title": "Client Secret Ref",
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "active": {
+          "default": false,
+          "title": "Active",
+          "type": "boolean"
+        },
+        "environment": {
+          "default": "production",
+          "enum": [
+            "production",
+            "sandbox"
+          ],
+          "title": "Environment",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "issuer",
+        "client_id",
+        "authorization_url",
+        "token_url",
+        "api_base_url",
+        "redirect_uri",
+        "client_secret_ref"
+      ],
+      "title": "DomainProvider",
+      "type": "object"
+    },
+    "ServiceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "link_id": {
+          "title": "Link Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 16,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "request": {
+          "additionalProperties": true,
+          "title": "Request",
+          "type": "object"
+        }
+      },
+      "required": [
+        "link_id",
+        "idempotency_key",
+        "request"
+      ],
+      "title": "ServiceRequest",
+      "type": "object"
+    },
+    "SourceIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "expected_version": {
+          "minimum": 1,
+          "title": "Expected Version",
+          "type": "integer"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 16,
+          "title": "Idempotency Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "action",
+        "expected_version",
+        "payload",
+        "idempotency_key"
+      ],
+      "title": "SourceIntent",
+      "type": "object"
+    },
+    "CaseEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "vin-case-1",
+          "default": "vin-case-1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "canonical_version": {
+          "minimum": 1,
+          "title": "Canonical Version",
+          "type": "integer"
+        },
+        "event_type": {
+          "title": "Event Type",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "audience": {
+          "enum": [
+            "customer",
+            "operator"
+          ],
+          "title": "Audience",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "required": [
+        "event_id",
+        "case_id",
+        "sequence",
+        "canonical_version",
+        "event_type",
+        "occurred_at",
+        "audience",
+        "data"
+      ],
+      "title": "CaseEvent",
+      "type": "object"
+    },
+    "AutomationSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "schedule",
+            "channel",
+            "delivery",
+            "sandbox",
+            "derived"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "expected_revision": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Expected Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "title": "AutomationSpec",
+      "type": "object"
+    }
+  }
+}

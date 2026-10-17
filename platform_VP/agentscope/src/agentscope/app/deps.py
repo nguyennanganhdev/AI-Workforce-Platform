@@ -91,6 +91,8 @@ async def get_current_principal(
         )
     try:
         principal = service.verify_access_token(token)
+        if principal.role == "VIN_USER" and getattr(request.app.state, "vin_platform_service", None) is None:
+            raise HTTPException(503, detail="VIN_PLATFORM_DISABLED")
         if getattr(request.app.state, "vin_platform_service", None) is not None:
             from sqlalchemy import text
             user = await service.get_user(principal)
