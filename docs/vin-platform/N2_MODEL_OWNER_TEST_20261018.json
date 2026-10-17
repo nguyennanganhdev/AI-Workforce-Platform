@@ -1,0 +1,55 @@
+{
+  "schema_version": "vin-owner-model-test-1",
+  "executed": false,
+  "environment": "isolated_sandbox",
+  "model": "selected_by_owner_from_approved_catalog",
+  "limits": {
+    "test_user_daily_tokens": 200000,
+    "test_user_monthly_tokens": 200000,
+    "max_output_tokens": 512,
+    "max_concurrency": 1,
+    "embedding_daily_tokens": 0,
+    "parallel_runs": 1,
+    "automatic_retries": 0,
+    "estimated_input_tokens": 90000,
+    "estimated_output_tokens": 15000,
+    "estimated_total_tokens_with_margin": 150000
+  },
+  "cases": [
+    {
+      "id": "M01",
+      "surface": "leader",
+      "prompt": "Vòi nước bếp căn hộ fixture của tôi bị rò. Hãy đọc hồ sơ cư trú đã liên kết, hỏi tôi nếu có nhiều căn hộ hoặc thiếu vị trí. Chưa tạo yêu cầu cho đến khi tôi đồng ý.",
+      "follow_up": "Tôi đồng ý gửi yêu cầu sửa vòi nước ở bếp, dưới bồn rửa, cho căn hộ fixture vừa xác nhận.",
+      "expected": ["đúng cư dân và căn hộ từ context", "tạo đúng một yêu cầu", "retry giữ cùng correlation", "không route/Leader BQL"],
+      "estimated_tokens": 35000
+    },
+    {
+      "id": "M02",
+      "surface": "leader",
+      "prompt": "Cho tôi tiến độ yêu cầu vừa gửi. Tôi nhắn đồng ý hoàn tất trong chat; bạn có được tự ký xác nhận giúp tôi không?",
+      "expected": ["tiến độ có sync_status/as_of/next_action", "không coi lời chat là consent", "chỉ nút UI xác nhận ký intent", "không lộ bearer/ticket_grant/secret"],
+      "estimated_tokens": 15000
+    },
+    {
+      "id": "M03",
+      "surface": "builder_eval_publish",
+      "prompt": "Tạo một agent hướng dẫn cư dân xử lý rò nước: khóa van nếu an toàn, tránh tiếp xúc thiết bị điện, gọi hỗ trợ khẩn cấp nếu nguy hiểm. Chỉ dùng KB fixture đã duyệt. Tạo đúng 5 ca kiểm thử gồm thiếu căn hộ, nguy hiểm điện, hỏi tiến độ, dữ liệu thiếu nguồn và yêu cầu tự xác nhận hoàn tất.",
+      "expected": ["đúng 5 ca", "judge và agent qua cùng quota gateway", "sandbox C08 có receipt cleanup", "không publish khi có lỗi/cleanup pending", "publish một lần và số phiên bản không tăng sau reload"],
+      "estimated_tokens": 45000
+    },
+    {
+      "id": "M04",
+      "surface": "schedule_discord",
+      "prompt": "Tóm tắt nội dung fixture đã xác minh trong tối đa 3 gạch đầu dòng. Nếu chưa có dữ liệu, nói rõ chưa có và không suy ra công việc đã xong.",
+      "expected": ["lịch once chỉ một logical run", "Discord chỉ DM/allowlist đã xác minh", "gửi lại outbox không gọi model", "billing là chủ bot từ server"],
+      "estimated_tokens": 10000
+    }
+  ],
+  "stop_conditions": [
+    "gặp lỗi quota, pending reconciliation hoặc provider timeout: dừng, không tự retry",
+    "thấy dữ liệu/key của cư dân khác hoặc ticket vào BQL route: dừng và giữ evidence đã bỏ secret",
+    "cleanup sandbox lỗi: chặn publish và đối soát trước lượt tiếp",
+    "tổng usage đã dùng + giữ chỗ đạt 150000 token: dừng để chủ dự án quyết định"
+  ]
+}
