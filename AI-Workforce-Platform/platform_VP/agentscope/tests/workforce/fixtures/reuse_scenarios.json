@@ -1,0 +1,13 @@
+{
+  "fixture": "TEST ONLY, no production agent identities",
+  "cases": [
+    {"case": "same_business_different_name", "match_type": "same_business", "reuse_status": "ready", "expected": "reuse_existing_identity"},
+    {"case": "search_without_booking", "match_type": "partial_overlap", "reuse_status": "ready", "expected": "revise_existing_identity"},
+    {"case": "draft_pending", "match_type": "same_business", "reuse_status": "draft", "expected": "resume_existing_draft"},
+    {"case": "mcp_disabled", "match_type": "same_business", "reuse_status": "blocked", "expected": "repair_connection"},
+    {"case": "manager_B_same_area", "match_type": "different_scope", "expected": "never_reuse_cross_owner"},
+    {"case": "two_builds_same_business", "expected": "single_identity_or_build_in_progress"},
+    {"case": "cross_batch_selection", "candidate_batches": ["batch-A", null, "batch-B"], "expected": "capability_selection_without_batch_filter"}
+  ]
+}
+

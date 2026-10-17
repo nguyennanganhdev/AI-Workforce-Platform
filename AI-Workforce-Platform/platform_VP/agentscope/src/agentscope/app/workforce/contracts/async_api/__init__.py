@@ -1,0 +1,77 @@
+# -*- coding: utf-8 -*-
+"""Focused exports for partner requests, events, and long-lived workflows."""
+
+from .._conversation import (
+    CloseWorkflowCommand,
+    ConversationSnapshot,
+    InboundReceipt,
+    NextAction,
+    PartnerRequestEnvelope,
+    RequestStatus,
+    TicketConversationBinding,
+    WorkflowProjection,
+    WorkflowRecord,
+    WorkflowState,
+)
+from .._errors import ErrorResponse, PublicError, WorkforceErrorCode
+from .._events import ConversationEvent, EventHistoryPage
+from .._execution import (
+    AsyncProtocolSnapshotRef,
+    EventIngestionStatus,
+    ExternalOperation,
+    NormalizedJobEvent,
+    PartnerApprovalDecision,
+    ProviderEventEnvelope,
+    ProviderEventReceipt,
+)
+from .._identity import VerifiedProviderContext
+from .._ports import (
+    AsyncProtocolPort,
+    ConversationEventPort,
+    ExternalOperationPort,
+    PartnerCommandPort,
+    PartnerIngressPort,
+    ProviderAuthPort,
+    ProviderEventIngressPort,
+    PublicEventSignalPort,
+    RequestCompletionSignalPort,
+    RuntimeContinuationPort,
+    WorkflowPort,
+)
+
+__all__ = [
+    "AsyncProtocolPort",
+    "AsyncProtocolSnapshotRef",
+    "CloseWorkflowCommand",
+    "ConversationEvent",
+    "ConversationEventPort",
+    "ConversationSnapshot",
+    "ErrorResponse",
+    "EventHistoryPage",
+    "EventIngestionStatus",
+    "ExternalOperation",
+    "ExternalOperationPort",
+    "InboundReceipt",
+    "NextAction",
+    "NormalizedJobEvent",
+    "PartnerApprovalDecision",
+    "PartnerCommandPort",
+    "PartnerIngressPort",
+    "PartnerRequestEnvelope",
+    "ProviderAuthPort",
+    "ProviderEventEnvelope",
+    "ProviderEventIngressPort",
+    "ProviderEventReceipt",
+    "PublicError",
+    "PublicEventSignalPort",
+    "RequestCompletionSignalPort",
+    "RequestStatus",
+    "RuntimeContinuationPort",
+    "TicketConversationBinding",
+    "WorkflowPort",
+    "WorkflowProjection",
+    "WorkflowRecord",
+    "WorkflowState",
+    "VerifiedProviderContext",
+    "WorkforceErrorCode",
+]

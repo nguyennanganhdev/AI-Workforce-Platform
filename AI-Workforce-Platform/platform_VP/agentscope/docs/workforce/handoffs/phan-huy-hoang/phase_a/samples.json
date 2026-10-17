@@ -1,0 +1,701 @@
+{
+  "models": {
+    "WorkflowRecord": {
+      "workflow_id": "workflow-A",
+      "scope": {
+        "tenant_id": "tenant-1",
+        "domain_id": "domain-1",
+        "area_id": "area-1",
+        "manager_account_id": "manager-1"
+      },
+      "audience": {
+        "partner_client_id": "partner-1",
+        "external_user_id": "user-1",
+        "external_conversation_id": "chat-A",
+        "external_ticket_id": "ticket-A"
+      },
+      "conversation_id": "conversation-A",
+      "ticket_id": null,
+      "route_id": "route-1",
+      "route_revision": 1,
+      "state": "active",
+      "revision": 1,
+      "group_id": "group-A",
+      "checkpoint_ref": "checkpoint-A-1",
+      "version_pins": [
+        "agent-version-1"
+      ],
+      "pending_waits": [],
+      "last_applied_event_id": null,
+      "created_at": "2026-10-10T09:00:00Z",
+      "updated_at": "2026-10-10T09:00:00Z"
+    },
+    "TicketConversationBinding": {
+      "scope": {
+        "tenant_id": "tenant-1",
+        "domain_id": "domain-1",
+        "area_id": "area-1",
+        "manager_account_id": "manager-1"
+      },
+      "partner_client_id": "partner-1",
+      "external_user_id": "user-1",
+      "external_conversation_id": "chat-A",
+      "external_ticket_id": "ticket-A",
+      "workflow_id": "workflow-A",
+      "conversation_id": "conversation-A",
+      "group_id": "group-A",
+      "route_id": "route-1",
+      "route_revision": 1,
+      "status": "active",
+      "created_at": "2026-10-10T09:00:00Z",
+      "updated_at": "2026-10-10T09:00:00Z"
+    },
+    "ConversationEvent": {
+      "schema_version": "1",
+      "event_id": "event-A-1",
+      "sequence": 1,
+      "event_type": "assistant.message",
+      "occurred_at": "2026-10-10T09:00:00Z",
+      "recorded_at": "2026-10-10T09:00:00Z",
+      "conversation_id": "conversation-A",
+      "external_ticket_id": "ticket-A",
+      "external_conversation_id": "chat-A",
+      "external_user_id": "user-1",
+      "workflow_id": "workflow-A",
+      "ticket_id": null,
+      "causation_id": "request-A",
+      "payload": {
+        "message_id": "message-A",
+        "text": "Đã tiếp nhận yêu cầu."
+      }
+    },
+    "EventHistoryPage": {
+      "items": [
+        {
+          "schema_version": "1",
+          "event_id": "event-A-1",
+          "sequence": 1,
+          "event_type": "assistant.message",
+          "occurred_at": "2026-10-10T09:00:00Z",
+          "recorded_at": "2026-10-10T09:00:00Z",
+          "conversation_id": "conversation-A",
+          "external_ticket_id": "ticket-A",
+          "external_conversation_id": "chat-A",
+          "external_user_id": "user-1",
+          "workflow_id": "workflow-A",
+          "ticket_id": null,
+          "causation_id": "request-A",
+          "payload": {
+            "message_id": "message-A",
+            "text": "Đã tiếp nhận yêu cầu."
+          }
+        }
+      ],
+      "next_cursor": "event-A-1",
+      "has_more": false
+    },
+    "InboundReceipt": {
+      "request_id": "request-A",
+      "request_status": "completed",
+      "external_ticket_id": "ticket-A",
+      "conversation_id": "conversation-A",
+      "workflow_id": "workflow-A",
+      "ticket_id": null,
+      "workflow_state": "awaiting_user",
+      "next_action": "submit_reply",
+      "workflow_revision": 1,
+      "result": {
+        "messages": [
+          {
+            "message_id": "message-A",
+            "workflow_id": "workflow-A",
+            "sender": "assistant",
+            "text": "Đã tiếp nhận yêu cầu.",
+            "created_at": "2026-10-10T09:00:00Z"
+          }
+        ],
+        "data": {}
+      },
+      "error": null,
+      "accepted_at": "2026-10-10T09:00:00Z",
+      "completed_at": "2026-10-10T09:00:00Z",
+      "status_url": "/workforce/v1/partner/requests/request-A",
+      "conversation_url": "/workforce/v1/partner/conversations/conversation-A",
+      "event_stream_url": "/workforce/v1/partner/conversations/conversation-A/events"
+    },
+    "PartnerRequestEnvelope": {
+      "schema_version": "1",
+      "command_type": "start_workflow",
+      "external_request_id": "external-request-A",
+      "external_management_ref": "management-1",
+      "external_user_id": "user-1",
+      "external_ticket_id": "ticket-A",
+      "external_conversation_id": "chat-A",
+      "message": {
+        "type": "text",
+        "text": "Cần hỗ trợ."
+      }
+    },
+    "CloseWorkflowCommand": {
+      "schema_version": "1",
+      "external_request_id": "close-A",
+      "external_user_id": "user-1",
+      "external_ticket_id": "ticket-A",
+      "external_conversation_id": "chat-A",
+      "expected_revision": 1,
+      "reason": "Đã hoàn tất",
+      "stop_tracking_only": false
+    },
+    "RequestResult": {
+      "messages": [
+        {
+          "message_id": "message-A",
+          "workflow_id": "workflow-A",
+          "sender": "assistant",
+          "text": "Đã tiếp nhận yêu cầu.",
+          "created_at": "2026-10-10T09:00:00Z"
+        }
+      ],
+      "data": {}
+    },
+    "AsyncProtocolSnapshotRef": {
+      "protocol_id": "repair",
+      "protocol_version": "1",
+      "schema_hash": "sha256:fixture",
+      "tool_version_id": "tool-version-1",
+      "provider_integration_id": "provider-1",
+      "capabilities": [
+        "create",
+        "receive_status"
+      ]
+    },
+    "WorkflowTrigger": {
+      "trigger_id": "trigger-A-1",
+      "workflow_id": "workflow-A",
+      "cause": {
+        "kind": "request",
+        "request_id": "request-A"
+      },
+      "expected_state_revision": 1
+    },
+    "WorkflowCheckpoint": {
+      "schema_version": "phh-phase-a-1",
+      "workflow_id": "workflow-A",
+      "state_revision": 1,
+      "session_refs": [
+        "session-A"
+      ],
+      "agent_version_pins": [
+        {
+          "agent_id": "agent-1",
+          "version_id": "agent-version-1"
+        }
+      ],
+      "protocol_pins": [
+        {
+          "protocol_id": "repair",
+          "protocol_version": "1",
+          "schema_hash": "sha256:fixture",
+          "tool_version_id": "tool-version-1",
+          "provider_integration_id": "provider-1",
+          "capabilities": [
+            "create",
+            "receive_status"
+          ]
+        }
+      ],
+      "shared_state_ref": "state-A-1",
+      "pending_task_ids": [],
+      "pending_question_ids": [],
+      "pending_approval_ids": [],
+      "operation_refs": [
+        "operation-A"
+      ],
+      "last_processed_causes": [],
+      "used_budget": {
+        "model_turns": 0,
+        "tool_calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0
+      }
+    },
+    "CommandClaimResult": {
+      "request_id": "request-A",
+      "is_new": false,
+      "status": "completed",
+      "result": {
+        "messages": [
+          {
+            "message_id": "message-A",
+            "workflow_id": "workflow-A",
+            "sender": "assistant",
+            "text": "Đã tiếp nhận yêu cầu.",
+            "created_at": "2026-10-10T09:00:00Z"
+          }
+        ],
+        "data": {}
+      }
+    },
+    "PinnedRuntimeContext": {
+      "workflow": {
+        "workflow_id": "workflow-A",
+        "scope": {
+          "tenant_id": "tenant-1",
+          "domain_id": "domain-1",
+          "area_id": "area-1",
+          "manager_account_id": "manager-1"
+        },
+        "audience": {
+          "partner_client_id": "partner-1",
+          "external_user_id": "user-1",
+          "external_conversation_id": "chat-A",
+          "external_ticket_id": "ticket-A"
+        },
+        "conversation_id": "conversation-A",
+        "ticket_id": null,
+        "route_id": "route-1",
+        "route_revision": 1,
+        "state": "active",
+        "revision": 1,
+        "group_id": "group-A",
+        "checkpoint_ref": "checkpoint-A-1",
+        "version_pins": [
+          "agent-version-1"
+        ],
+        "pending_waits": [],
+        "last_applied_event_id": null,
+        "created_at": "2026-10-10T09:00:00Z",
+        "updated_at": "2026-10-10T09:00:00Z"
+      },
+      "checkpoint": {
+        "schema_version": "phh-phase-a-1",
+        "workflow_id": "workflow-A",
+        "state_revision": 1,
+        "session_refs": [
+          "session-A"
+        ],
+        "agent_version_pins": [
+          {
+            "agent_id": "agent-1",
+            "version_id": "agent-version-1"
+          }
+        ],
+        "protocol_pins": [
+          {
+            "protocol_id": "repair",
+            "protocol_version": "1",
+            "schema_hash": "sha256:fixture",
+            "tool_version_id": "tool-version-1",
+            "provider_integration_id": "provider-1",
+            "capabilities": [
+              "create",
+              "receive_status"
+            ]
+          }
+        ],
+        "shared_state_ref": "state-A-1",
+        "pending_task_ids": [],
+        "pending_question_ids": [],
+        "pending_approval_ids": [],
+        "operation_refs": [
+          "operation-A"
+        ],
+        "last_processed_causes": [],
+        "used_budget": {
+          "model_turns": 0,
+          "tool_calls": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
+      }
+    },
+    "RuntimeTurnResult": {
+      "trigger_id": "trigger-A-1",
+      "expected_state_revision": 1,
+      "checkpoint": {
+        "schema_version": "phh-phase-a-1",
+        "workflow_id": "workflow-A",
+        "state_revision": 2,
+        "session_refs": [
+          "session-A"
+        ],
+        "agent_version_pins": [
+          {
+            "agent_id": "agent-1",
+            "version_id": "agent-version-1"
+          }
+        ],
+        "protocol_pins": [
+          {
+            "protocol_id": "repair",
+            "protocol_version": "1",
+            "schema_hash": "sha256:fixture",
+            "tool_version_id": "tool-version-1",
+            "provider_integration_id": "provider-1",
+            "capabilities": [
+              "create",
+              "receive_status"
+            ]
+          }
+        ],
+        "shared_state_ref": "state-A-2",
+        "pending_task_ids": [],
+        "pending_question_ids": [],
+        "pending_approval_ids": [],
+        "operation_refs": [
+          "operation-A"
+        ],
+        "last_processed_causes": [
+          {
+            "kind": "request",
+            "request_id": "request-A"
+          }
+        ],
+        "used_budget": {
+          "model_turns": 0,
+          "tool_calls": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
+      },
+      "result": {
+        "messages": [
+          {
+            "message_id": "message-A",
+            "workflow_id": "workflow-A",
+            "sender": "assistant",
+            "text": "Đã tiếp nhận yêu cầu.",
+            "created_at": "2026-10-10T09:00:00Z"
+          }
+        ],
+        "data": {}
+      }
+    }
+  },
+  "public_payloads": {
+    "request.accepted": {
+      "request_id": "request-A"
+    },
+    "workflow.status_changed": {
+      "state": "waiting_external_event",
+      "revision": 2
+    },
+    "ticket.created": {
+      "ticket_id": "legacy-ticket-A",
+      "status": "open"
+    },
+    "ticket.status_changed": {
+      "status": "in_progress",
+      "public_details": "Đang xử lý"
+    },
+    "assistant.message": {
+      "message_id": "message-A",
+      "text": "Đã tiếp nhận yêu cầu."
+    },
+    "approval.required": {
+      "approval_id": "approval-A",
+      "summary": "Xác nhận chi phí",
+      "expires_at": "2026-10-10T09:00:00Z"
+    },
+    "approval.resolved": {
+      "approval_id": "approval-A",
+      "status": "approved"
+    },
+    "operation.status_changed": {
+      "operation_type": "hotel_booking",
+      "status_schema": "hotel_booking.v1",
+      "status": "confirmed",
+      "external_reference": "BOOKING-A"
+    },
+    "workflow.awaiting_user": {
+      "reason": "Cần thêm thông tin",
+      "revision": 2
+    },
+    "workflow.needs_attention": {
+      "reason_code": "PROVIDER_STATUS_UNKNOWN"
+    },
+    "workflow.closed": {
+      "state": "closed",
+      "revision": 3,
+      "reason": "Đã hoàn tất",
+      "closed_at": "2026-10-10T09:00:00Z"
+    }
+  },
+  "triggers": [
+    {
+      "trigger_id": "trigger-A-1",
+      "workflow_id": "workflow-A",
+      "cause": {
+        "kind": "request",
+        "request_id": "request-A"
+      },
+      "expected_state_revision": 1
+    },
+    {
+      "trigger_id": "trigger-A-2",
+      "workflow_id": "workflow-A",
+      "cause": {
+        "kind": "approval",
+        "request_id": "approval-request-A",
+        "approval_id": "approval-A"
+      },
+      "expected_state_revision": 1
+    },
+    {
+      "trigger_id": "trigger-A-3",
+      "workflow_id": "workflow-A",
+      "cause": {
+        "kind": "external_event",
+        "cause_event_id": "inbox-A",
+        "operation_id": "operation-A"
+      },
+      "expected_state_revision": 1
+    },
+    {
+      "trigger_id": "trigger-A-4",
+      "workflow_id": "workflow-A",
+      "cause": {
+        "kind": "timer",
+        "timer_id": "timer-A"
+      },
+      "expected_state_revision": 1
+    }
+  ],
+  "patterns": {
+    "response_only": {
+      "request_id": "request-A",
+      "request_status": "completed",
+      "external_ticket_id": "ticket-A",
+      "conversation_id": "conversation-A",
+      "workflow_id": "workflow-A",
+      "ticket_id": null,
+      "workflow_state": "closed",
+      "next_action": "none",
+      "workflow_revision": 1,
+      "result": {
+        "messages": [
+          {
+            "message_id": "message-A",
+            "workflow_id": "workflow-A",
+            "sender": "assistant",
+            "text": "Đã tiếp nhận yêu cầu.",
+            "created_at": "2026-10-10T09:00:00Z"
+          }
+        ],
+        "data": {}
+      },
+      "error": null,
+      "accepted_at": "2026-10-10T09:00:00Z",
+      "completed_at": "2026-10-10T09:00:00Z",
+      "status_url": "/workforce/v1/partner/requests/request-A",
+      "conversation_url": "/workforce/v1/partner/conversations/conversation-A",
+      "event_stream_url": "/workforce/v1/partner/conversations/conversation-A/events"
+    },
+    "interactive": {
+      "request_id": "request-A",
+      "request_status": "completed",
+      "external_ticket_id": "ticket-A",
+      "conversation_id": "conversation-A",
+      "workflow_id": "workflow-A",
+      "ticket_id": null,
+      "workflow_state": "awaiting_user",
+      "next_action": "submit_reply",
+      "workflow_revision": 1,
+      "result": {
+        "messages": [
+          {
+            "message_id": "message-A",
+            "workflow_id": "workflow-A",
+            "sender": "assistant",
+            "text": "Đã tiếp nhận yêu cầu.",
+            "created_at": "2026-10-10T09:00:00Z"
+          }
+        ],
+        "data": {}
+      },
+      "error": null,
+      "accepted_at": "2026-10-10T09:00:00Z",
+      "completed_at": "2026-10-10T09:00:00Z",
+      "status_url": "/workforce/v1/partner/requests/request-A",
+      "conversation_url": "/workforce/v1/partner/conversations/conversation-A",
+      "event_stream_url": "/workforce/v1/partner/conversations/conversation-A/events"
+    },
+    "external_tracking": {
+      "request_id": "request-A",
+      "request_status": "completed",
+      "external_ticket_id": "ticket-A",
+      "conversation_id": "conversation-A",
+      "workflow_id": "workflow-A",
+      "ticket_id": null,
+      "workflow_state": "waiting_external_event",
+      "next_action": "watch_events",
+      "workflow_revision": 1,
+      "result": {
+        "messages": [
+          {
+            "message_id": "message-A",
+            "workflow_id": "workflow-A",
+            "sender": "assistant",
+            "text": "Đã tiếp nhận yêu cầu.",
+            "created_at": "2026-10-10T09:00:00Z"
+          }
+        ],
+        "data": {}
+      },
+      "error": null,
+      "accepted_at": "2026-10-10T09:00:00Z",
+      "completed_at": "2026-10-10T09:00:00Z",
+      "status_url": "/workforce/v1/partner/requests/request-A",
+      "conversation_url": "/workforce/v1/partner/conversations/conversation-A",
+      "event_stream_url": "/workforce/v1/partner/conversations/conversation-A/events"
+    }
+  },
+  "ticket_contexts": [
+    {
+      "workflow": {
+        "workflow_id": "workflow-A",
+        "scope": {
+          "tenant_id": "tenant-1",
+          "domain_id": "domain-1",
+          "area_id": "area-1",
+          "manager_account_id": "manager-1"
+        },
+        "audience": {
+          "partner_client_id": "partner-1",
+          "external_user_id": "user-1",
+          "external_conversation_id": "chat-A",
+          "external_ticket_id": "ticket-A"
+        },
+        "conversation_id": "conversation-A",
+        "ticket_id": null,
+        "route_id": "route-1",
+        "route_revision": 1,
+        "state": "active",
+        "revision": 1,
+        "group_id": "group-A",
+        "checkpoint_ref": "checkpoint-A-1",
+        "version_pins": [
+          "agent-version-1"
+        ],
+        "pending_waits": [],
+        "last_applied_event_id": null,
+        "created_at": "2026-10-10T09:00:00Z",
+        "updated_at": "2026-10-10T09:00:00Z"
+      },
+      "checkpoint": {
+        "schema_version": "phh-phase-a-1",
+        "workflow_id": "workflow-A",
+        "state_revision": 1,
+        "session_refs": [
+          "session-A"
+        ],
+        "agent_version_pins": [
+          {
+            "agent_id": "agent-1",
+            "version_id": "agent-version-1"
+          }
+        ],
+        "protocol_pins": [
+          {
+            "protocol_id": "repair",
+            "protocol_version": "1",
+            "schema_hash": "sha256:fixture",
+            "tool_version_id": "tool-version-1",
+            "provider_integration_id": "provider-1",
+            "capabilities": [
+              "create",
+              "receive_status"
+            ]
+          }
+        ],
+        "shared_state_ref": "state-A-1",
+        "pending_task_ids": [],
+        "pending_question_ids": [],
+        "pending_approval_ids": [],
+        "operation_refs": [
+          "operation-A"
+        ],
+        "last_processed_causes": [],
+        "used_budget": {
+          "model_turns": 0,
+          "tool_calls": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
+      }
+    },
+    {
+      "workflow": {
+        "workflow_id": "workflow-B",
+        "scope": {
+          "tenant_id": "tenant-1",
+          "domain_id": "domain-1",
+          "area_id": "area-1",
+          "manager_account_id": "manager-1"
+        },
+        "audience": {
+          "partner_client_id": "partner-1",
+          "external_user_id": "user-1",
+          "external_conversation_id": "chat-B",
+          "external_ticket_id": "ticket-B"
+        },
+        "conversation_id": "conversation-B",
+        "ticket_id": null,
+        "route_id": "route-1",
+        "route_revision": 1,
+        "state": "active",
+        "revision": 1,
+        "group_id": "group-B",
+        "checkpoint_ref": "checkpoint-B-1",
+        "version_pins": [
+          "agent-version-1"
+        ],
+        "pending_waits": [],
+        "last_applied_event_id": null,
+        "created_at": "2026-10-10T09:00:00Z",
+        "updated_at": "2026-10-10T09:00:00Z"
+      },
+      "checkpoint": {
+        "schema_version": "phh-phase-a-1",
+        "workflow_id": "workflow-B",
+        "state_revision": 1,
+        "session_refs": [
+          "session-B"
+        ],
+        "agent_version_pins": [
+          {
+            "agent_id": "agent-1",
+            "version_id": "agent-version-1"
+          }
+        ],
+        "protocol_pins": [
+          {
+            "protocol_id": "repair",
+            "protocol_version": "1",
+            "schema_hash": "sha256:fixture",
+            "tool_version_id": "tool-version-1",
+            "provider_integration_id": "provider-1",
+            "capabilities": [
+              "create",
+              "receive_status"
+            ]
+          }
+        ],
+        "shared_state_ref": "state-B-1",
+        "pending_task_ids": [],
+        "pending_question_ids": [],
+        "pending_approval_ids": [],
+        "operation_refs": [
+          "operation-B"
+        ],
+        "last_processed_causes": [],
+        "used_budget": {
+          "model_turns": 0,
+          "tool_calls": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        }
+      }
+    }
+  ]
+}
