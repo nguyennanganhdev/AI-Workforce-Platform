@@ -30,10 +30,9 @@ from ..message import UserMsg
 from ..model import ChatModelBase
 from ..model._call_observer import usage_purpose
 from ._agent_memory import AgentMemoryService, MemoryCandidate, fold_tokens
-from ._agent_spec import AgentSpec, SpecOperation, apply_operations
+from ._agent_spec import AgentSpec, SpecOperation, apply_operations, spec_hash
 from ._service._agent_eval import MIN_TESTS_TO_PUBLISH, run_spec_tests
 from ._service._agent_studio import (
-    apply_bindings,
     ensure_spec,
     materialize,
     set_draft,
@@ -323,13 +322,16 @@ class AgentLearningService:
         agent = await self._storage.get_agent(user_id, agent_id)
         if agent is None or (agent.data.draft_spec is not None and agent.data.draft_meta.get("author") != "agent"):
             return {"applied": False, "reason": "manager edited meanwhile"}
+        if spec_hash(AgentSpec.model_validate(agent.data.spec)) != spec_hash(spec):
+            return {"applied": False, "reason": "published spec changed while testing"}
         version = materialize(agent, candidate, author="agent", note=note, evaluation=report)
         from .storage._base import AgentRevisionConflict
         try:
             await self._storage.upsert_agent(user_id, agent)
         except AgentRevisionConflict:
             return {"applied": False, "reason": "agent changed while publishing"}
-        await apply_bindings(self._storage, self._workspace_manager, user_id, agent, candidate)
+        # This path only adds a rule. Keep the active version's prepared
+        # resources; rebinding here would mutate them after publication.
         return {"applied": True, "version": version}
 
 

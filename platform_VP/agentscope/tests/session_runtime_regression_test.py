@@ -114,6 +114,7 @@ async def test_manager_console_does_not_answer_or_approve_as_resident(mention, t
     from team_say_shared_context_test import _Storage
     from agentscope.app._router._chat import chat
     from agentscope.app._router._schema import ChatRequest
+    from agentscope.app._service._access import ResourceAccessService
     from agentscope.app._team_turn import start_team_turn, get_team_turn
     from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
     from agentscope.app.storage import SessionRecord
@@ -137,7 +138,8 @@ async def test_manager_console_does_not_answer_or_approve_as_resident(mention, t
     service=SimpleNamespace(run=AsyncMock(side_effect=run))
     request=ChatRequest(agent_id='leader',session_id='leader-session',input=UserMsg(name='user',content=mention+'Xác nhận'))
     with patch('agentscope.app._router._chat.pending_chat_actions',side_effect=AssertionError('BQL must not grant resident consent')):
-        await chat(request,user_id='u',chat_service=service,chat_run_registry=registry,message_bus=bus,storage=storage,shared_context_storage=storage)
+        await chat(request,user_id='u',chat_service=service,chat_run_registry=registry,message_bus=bus,storage=storage,shared_context_storage=storage,
+                   resource_access_service=ResourceAccessService(storage, None))
         await queued[0]
     call=service.run.call_args.kwargs
     manager=storage.sessions[call['session_id']]

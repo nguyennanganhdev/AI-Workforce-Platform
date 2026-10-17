@@ -280,6 +280,7 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
         return factory
 
     async def test_successful_ticket_adds_sourced_memory_and_self_publishes_rule(self) -> None:
+        self.agents.agents["agent-1"].data.resource_workspace_id = "published-original"
         outcome = await self.learning.learn("u", "ticket-1", self._models())
 
         result = outcome["agents"]["agent-1"]
@@ -289,6 +290,8 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
         self.assertTrue(result["rule"]["applied"])
         agent = self.agents.agents["agent-1"]
         self.assertEqual(2, agent.data.published_version)
+        self.assertEqual("published-original", agent.data.resource_workspace_id)
+        self.assertEqual("published-original", agent.data.versions[-1]["resource_workspace_id"])
         self.assertEqual("agent", agent.data.versions[-1]["author"])
         self.assertIn("Hỏi vị trí van tổng", agent.data.system_prompt)
         learned = [r for r in agent.data.spec["rules"] if r["source"] == "agent"]
@@ -296,6 +299,24 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
 
         again = await self.learning.learn("u", "ticket-1", self._models())
         self.assertFalse(again["learned"])
+
+    async def test_concurrent_publication_is_not_replaced_by_a_stale_learned_rule(self) -> None:
+        def publish_while_judging(_messages):
+            current = self.agents.agents["agent-1"]
+            current.data.spec = {**current.data.spec, "goal": "New manager goal"}
+            return {"passed": True, "reason": "scripted judge"}
+
+        factory = self._models()
+        model, _ = await factory()
+        model.outputs["_Judgement"] = publish_while_judging
+
+        async def models():
+            return model, model
+
+        outcome = await self.learning.learn("u", "ticket-1", models)
+        self.assertFalse(outcome["agents"]["agent-1"]["rule"]["applied"])
+        self.assertEqual("New manager goal", self.agents.agents["agent-1"].data.spec["goal"])
+        self.assertEqual(1, self.agents.agents["agent-1"].data.published_version)
 
     async def test_failing_tests_keep_the_published_version(self) -> None:
         outcome = await self.learning.learn("u", "ticket-1", self._models(judge_pass=False))
