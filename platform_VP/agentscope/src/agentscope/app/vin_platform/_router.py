@@ -231,3 +231,25 @@ async def decide(ident: str, body: SourceIntent, who=Depends(caller)):
         raise HTTPException(422, detail="CASE_ID_MISMATCH")
     authority, context = who
     return await DomainAdapter(authority).decide(context, body)
+
+
+class MigrationRequest(Contract):
+    dry_run: bool = True
+
+
+class Reconciliation(Contract):
+    actual_tokens: int = Field(ge=0)
+    receipt_ref: str = Field(min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9:._/-]+$")
+
+
+@router.post("/admin/vin/attempts/{ident}/reconcile")
+async def reconcile(ident: str, body: Reconciliation, who=Depends(caller)):
+    authority, context = who
+    await authority.reconcile_attempt(context, ident, body.actual_tokens, body.receipt_ref)
+    return {"settled": True}
+
+
+@router.post("/admin/vin/credential-migration")
+async def migrate_credentials(body: MigrationRequest, who=Depends(caller)):
+    authority, context = who
+    return await authority.migrate_credentials(context, dry_run=body.dry_run)

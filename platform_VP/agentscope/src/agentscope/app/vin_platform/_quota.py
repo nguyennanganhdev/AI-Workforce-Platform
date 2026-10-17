@@ -32,7 +32,7 @@ class QuotaAuthority:
         keys = ["user:" + user, *["group:" + g for g in groups], "role:" + context.role]
         rows = (await db.execute(select(t.policies).where(
             t.policies.c.tenant_id == tenant, t.policies.c.subject.in_(keys),
-        ).order_by(t.policies.c.subject).with_for_update())).mappings().all()
+        ).order_by(t.policies.c.subject))).mappings().all()
         by_key = {r["subject"]: r for r in rows}
         selected = by_key.get(keys[0])
         if selected is None:
@@ -48,7 +48,7 @@ class QuotaAuthority:
         pools = (await db.execute(select(t.policies).where(
             t.policies.c.tenant_id == tenant,
             t.policies.c.subject.in_(["pool:" + g for g in groups]),
-        ).order_by(t.policies.c.subject).with_for_update())).mappings().all()
+        ).order_by(t.policies.c.subject))).mappings().all()
         return policy, selected["revision"], [(r["subject"], QuotaPolicy.model_validate(r["data"])) for r in pools]
 
     async def policy(self, context):
@@ -63,6 +63,8 @@ class QuotaAuthority:
         now = now or datetime.now(UTC)
         local = now.astimezone(VIN_TIMEZONE)
         windows = ["day:" + local.strftime("%Y-%m-%d"), "month:" + local.strftime("%Y-%m")]
+        if purpose == "embedding":
+            windows.append("embedding-day:" + local.strftime("%Y-%m-%d"))
         attempt_id = attempt_id or uuid4().hex
         async with self.service.engine.begin() as db:
             await self.service.assert_active(db, context)
@@ -90,7 +92,7 @@ class QuotaAuthority:
                 if changed.rowcount != 1:
                     raise PlatformError("QUOTA_CONCURRENCY_EXCEEDED", 429)
                 for window in windows:
-                    limit = (limits.embedding_daily_tokens if purpose == "embedding" else limits.daily_tokens) if window.startswith("day:") else limits.monthly_tokens
+                    limit = limits.embedding_daily_tokens if window.startswith("embedding-day:") else limits.daily_tokens if window.startswith("day:") else limits.monthly_tokens
                     await insert_once(db, t.buckets, dict(tenant_id=context.tenant_id, subject=subject,
                         window=window, used=0, reserved=0))
                     result = await db.execute(update(t.buckets).where(
@@ -144,5 +146,18 @@ class QuotaAuthority:
                 t.buckets.c.subject == "user:" + context.billing_subject_id))).mappings().all()
             pending = (await db.execute(select(t.attempts.c.id).where(t.attempts.c.tenant_id == context.tenant_id,
                 t.attempts.c.user_id == context.billing_subject_id, t.attempts.c.state != "settled"))).scalars().all()
+            policy, revision, pools = await self._policy(db, context)
+            local = datetime.now(UTC).astimezone(VIN_TIMEZONE)
+            windows = {"day": "day:" + local.strftime("%Y-%m-%d"), "month": "month:" + local.strftime("%Y-%m"),
+                "embedding-day": "embedding-day:" + local.strftime("%Y-%m-%d")}
+            limits = []
+            for subject, rules in [("user:" + context.billing_subject_id, policy), *pools]:
+                for period, window in windows.items():
+                    row = (await db.execute(select(t.buckets).where(t.buckets.c.tenant_id == context.tenant_id,
+                        t.buckets.c.subject == subject, t.buckets.c.window == window))).mappings().first()
+                    used, reserved = (row["used"], row["reserved"]) if row else (0, 0)
+                    limit = rules.embedding_daily_tokens if period == "embedding-day" else rules.daily_tokens if period == "day" else rules.monthly_tokens
+                    limits.append({"subject": subject, "window": window, "limit": limit,
+                        "used": used, "reserved": reserved, "remaining": max(0, limit - used - reserved)})
             return {"timezone": "Asia/Ho_Chi_Minh", "buckets": [dict(r) for r in rows],
-                "pending_reconciliation": len(pending)}
+                "pending_reconciliation": len(pending), "effective_limits": limits, "policy_revision": revision}

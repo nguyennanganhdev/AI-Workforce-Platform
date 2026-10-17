@@ -411,3 +411,16 @@ class VinPlatformService:
         async with self.engine.begin() as db:
             await self.audit(db, context, "credentials.reference_migration", "tenant", **counts)
         return counts
+
+
+    async def reconcile_attempt(self, context, ident, actual, receipt_ref):
+        self.admin(context)
+        async with self.engine.begin() as db:
+            await self.assert_active(db, context, require_eligible=False)
+            row = (await db.execute(select(t.attempts.c.state).where(t.attempts.c.tenant_id == context.tenant_id,
+                t.attempts.c.id == ident))).first()
+            if row is None:
+                raise PlatformError("RESERVATION_NOT_FOUND", 404)
+        await self.quota.settle(context.tenant_id, ident, actual, provider_request_id=receipt_ref)
+        async with self.engine.begin() as db:
+            await self.audit(db, context, "quota.reconciled", ident, actual=actual, receipt_ref=receipt_ref)

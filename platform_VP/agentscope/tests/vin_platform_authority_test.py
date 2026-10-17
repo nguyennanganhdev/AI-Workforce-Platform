@@ -185,6 +185,20 @@ async def test_missing_policy_fails_closed(authority):
 
 
 @pytest.mark.asyncio
+async def test_embedding_has_own_cap_and_also_counts_against_total_day(authority):
+    ctx = await setup_quota(authority, embedding_daily_tokens=900)
+    chat = await authority.quota.reserve(ctx, budget=800, purpose="chat", model="test-model")
+    await authority.quota.settle("vin", chat, 800)
+    with pytest.raises(PlatformError, match="QUOTA_EXCEEDED"):
+        await authority.quota.reserve(ctx, budget=300, purpose="embedding", model="test-model")
+    embedding = await authority.quota.reserve(ctx, budget=200, purpose="embedding", model="test-model")
+    await authority.quota.settle("vin", embedding, 100)
+    rows = (await authority.quota.usage(ctx))["buckets"]
+    assert next(r for r in rows if r["window"].startswith("embedding-day:"))["used"] == 100
+    assert next(r for r in rows if r["window"].startswith("day:"))["used"] == 900
+
+
+@pytest.mark.asyncio
 async def test_unapproved_domain_urls_fail_closed(authority):
     from agentscope.app.vin_platform._domain import validate_url
     for url in ["http://external.invalid/", "https://user:pass@example.com/", "file:///etc/passwd"]:
