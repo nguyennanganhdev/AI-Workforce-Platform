@@ -680,7 +680,7 @@ exactly those reusable independent business agents; do not merge their
 capabilities into one agent. A team request is only a batch creation shortcut;
 do not pre-bind a permanent team or a ticket. You may author ONLY: name, objective,
 system_prompt, selected_tool_ids, knowledge_ids, library_skill_ids, one reusable
-SKILL.md and 3 tests per agent (at least one safety_critical=true consent/privacy/safety case)
+SKILL.md and 5 tests per agent (at least one safety_critical=true consent/privacy/safety case)
 (scenario = what a customer says; expected = the behaviour to check, covering a
 normal request, an out-of-scope request and a case that needs consent or
 escalation). Tests run with the real model before the agent can change later. Select only exact
@@ -716,6 +716,7 @@ LANGUAGE AND VOICE:
         if reply_language == "vi"
         else "\nThe required language for this build is English."
     )
+    instructions += _sandbox_test_note()
     try:
         async with asyncio.timeout(_builder_timeout()):
             (
@@ -1387,9 +1388,31 @@ def _library_note(knowledge: dict[str, dict], skills: dict[str, dict]) -> str:
     )
 
 
+def _sandbox_test_note() -> str:
+    """Tell test generation what each case receives on a configured eval sandbox."""
+    from .._service._eval_sandbox import sandbox_configs
+
+    try:
+        configs = sandbox_configs()
+    except ValueError:
+        return ""
+    contexts = [c["case_context"] for c in configs if c.get("case_context")]
+    if not configs:
+        return ""
+    return (
+        "\n\nEVAL SANDBOX: agents using a sandbox MCP are tested on synthetic partner data."
+        " Before the customer's message, each scenario receives the partner hand-over of its own fresh"
+        " ticket (with the exact ticket_id line), and that MCP's tools, including writes, really run on"
+        " the sandbox. Write scenarios about THIS handed-over request (status, adding a note, dispatch,"
+        " cancellation, out-of-scope asks) and expect answers grounded in the tool results."
+        + (" Case ticket: " + " ".join(contexts) if contexts else "")
+    )
+
+
 async def _evaluate_proposed_agent(item: ProposedAgentView, storage: StorageBase, user_id: str, model: ChatModelBase, progress=None) -> None:
     from .._service._agent_eval import run_spec_tests
     from .._service._agent_studio import tool_catalog, tool_runner
+    from .._service._eval_sandbox import eval_sandbox
 
     if item.spec:
         spec = AgentSpec.model_validate(item.spec)
@@ -1414,6 +1437,7 @@ async def _evaluate_proposed_agent(item: ProposedAgentView, storage: StorageBase
             discovered=await tool_catalog(storage, user_id),
             run_tool=tool_runner(storage, user_id, spec),
             on_progress=progress.event if progress else None,
+            sandbox=await eval_sandbox(storage, user_id, spec),
         )
     if progress:
         await progress.report(report)

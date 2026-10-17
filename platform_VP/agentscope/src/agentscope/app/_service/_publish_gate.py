@@ -10,7 +10,7 @@ from typing import Literal
 
 from .._agent_spec import AgentSpec, spec_hash
 
-MIN_TESTS_TO_PUBLISH = 3
+MIN_TESTS_TO_PUBLISH = 5
 PASS_THRESHOLD = 0.8
 EVALUATOR = "agent_spec_model_v1"
 

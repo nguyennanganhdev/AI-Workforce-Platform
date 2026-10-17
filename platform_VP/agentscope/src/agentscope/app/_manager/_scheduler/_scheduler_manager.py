@@ -194,6 +194,12 @@ class SchedulerManager:
                 )
                 return
 
+            origin = ScheduleOrigin(
+                schedule_id=record.id,
+                deliver_channel_id=record.data.deliver_channel_id or None,
+                deliver_chat_id=record.data.deliver_chat_id or None,
+            )
+            session = None
             try:
                 if record.data.stateful:
                     stateful_session_id = f"{record.id}_stateful"
@@ -236,7 +242,7 @@ class SchedulerManager:
                             config=session_config,
                             state=state,
                             session_id=stateful_session_id,
-                            origin=ScheduleOrigin(schedule_id=record.id),
+                            origin=origin,
                         )
                     else:
                         logger.info(
@@ -271,7 +277,7 @@ class SchedulerManager:
                             chat_model_config=record.data.chat_model_config,
                         ),
                         state=state,
-                        origin=ScheduleOrigin(schedule_id=record.id),
+                        origin=origin,
                     )
 
                 logger.info(
@@ -314,13 +320,36 @@ class SchedulerManager:
                     record.data.name,
                     session.id,
                 )
+                await _record_fire(session.id, "")
 
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 # pylint: disable=broad-except - a failed fire must not stop the job
                 logger.exception(
                     "[Schedule:%s(%s)] Trigger failed",
                     record.id,
                     record.data.name,
                 )
+                await _record_fire(session.id if session else "", type(exc).__name__)
+
+        async def _record_fire(session_id: str, error: str) -> None:
+            """Keep the last run visible; a one-time schedule disables itself."""
+            try:
+                current = await storage.get_schedule(record.user_id, record.id)
+                if current is None:
+                    return
+                done = current.data.once and not error
+                data = current.data.model_copy(update={
+                    "last_fired_at": datetime.now().astimezone(),
+                    "last_session_id": session_id,
+                    "last_error": error,
+                    **({"enabled": False} if done else {}),
+                })
+                await storage.upsert_schedule(
+                    record.user_id, current.model_copy(update={"data": data}),
+                )
+                if done:
+                    await self.notify_changed(record.id)
+            except Exception:  # pylint: disable=broad-except
+                logger.exception("[Schedule:%s] Could not record the run", record.id)
 
         return _trigger
 

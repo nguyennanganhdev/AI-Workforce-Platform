@@ -77,6 +77,13 @@ class DiscordChannel(ChannelBase):
             title="Show thinking",
             description="Show the model's reasoning inline in the reply",
         )
+        approver_user_ids: list[str] = Field(
+            default_factory=list,
+            title="Approvers",
+            description="Discord user IDs who may approve or deny a tool "
+            "call on someone else's behalf. The requester can always "
+            "decide their own.",
+        )
 
     capabilities = ChannelCapability(
         text=True,
@@ -378,6 +385,7 @@ class DiscordChannel(ChannelBase):
                     tool.id,
                     event.metadata.get("agent_id", ""),
                     event.metadata.get("session_id", ""),
+                    event.channel_user_id or "",
                 ),
             )
 
@@ -458,6 +466,7 @@ class DiscordChannel(ChannelBase):
         tool_call_id: str,
         agent_id: str = "",
         session_id: str = "",
+        requester_id: str = "",
     ) -> "discord.ui.View":
         """Build a two-button approval view whose callbacks freeze the card
         and emit the decision for ``tool_call_id``.
@@ -468,6 +477,8 @@ class DiscordChannel(ChannelBase):
                 exact run without re-resolving routing.
             session_id (`str`): Target session, echoed alongside
                 ``agent_id``.
+            requester_id (`str`): Discord user whose message led to the
+                tool call; only they or a configured approver may decide.
 
         Returns:
             `discord.ui.View`: The allow/deny view for the card message.
@@ -505,6 +516,7 @@ class DiscordChannel(ChannelBase):
                     True,
                     agent_id,
                     session_id,
+                    requester_id,
                 )
 
             @discord.ui.button(label="❌ Deny", style=discord.ButtonStyle.red)
@@ -525,9 +537,17 @@ class DiscordChannel(ChannelBase):
                     False,
                     agent_id,
                     session_id,
+                    requester_id,
                 )
 
         return _ApprovalView()
+
+    def may_decide(self, clicker_id: str, requester_id: str) -> bool:
+        """Whether ``clicker_id`` may answer a card raised for ``requester_id``."""
+        return bool(clicker_id) and (
+            clicker_id == requester_id
+            or clicker_id in self._config.approver_user_ids
+        )
 
     async def _decide(
         self,
@@ -536,6 +556,7 @@ class DiscordChannel(ChannelBase):
         approved: bool,
         agent_id: str = "",
         session_id: str = "",
+        requester_id: str = "",
     ) -> None:
         """Freeze the card and emit the decision for ``tool_call_id``.
 
@@ -548,7 +569,17 @@ class DiscordChannel(ChannelBase):
                 time; resumes the exact run without re-routing.
             session_id (`str`): Target session pinned alongside
                 ``agent_id``.
+            requester_id (`str`): The user the card was raised for.
         """
+        if not self.may_decide(str(interaction.user.id), requester_id):
+            # Anyone in a server channel can see the card; only the
+            # requester or a configured approver may answer it.
+            await interaction.response.send_message(
+                "Chỉ người đã yêu cầu hoặc người duyệt được chỉ định mới "
+                "được duyệt thao tác này.",
+                ephemeral=True,
+            )
+            return
         await interaction.response.defer()
         try:
             await interaction.message.edit(

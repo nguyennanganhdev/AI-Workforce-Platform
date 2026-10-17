@@ -154,9 +154,9 @@ def test_builder_made_agent_gets_a_spec_with_its_tests() -> None:
     )
     _seed_spec(
         record,
-        [{"scenario": f"case {i}", "expected": "uses search"} for i in range(3)],
+        [{"scenario": f"case {i}", "expected": "uses search"} for i in range(5)],
     )
 
-    assert len(record.data.spec["tests"]) == 3
+    assert len(record.data.spec["tests"]) == 5
     assert record.data.published_version == 1
     assert record.data.versions[0]["spec"]["tests"][0]["scenario"] == "case 0"

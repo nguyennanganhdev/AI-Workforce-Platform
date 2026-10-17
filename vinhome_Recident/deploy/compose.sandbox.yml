@@ -14,6 +14,8 @@ x-api-env: &api-env
   VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: http://localhost:8087,http://127.0.0.1:8087
   VINHOMES_API_MCP_ALLOWED_HOSTS: host.docker.internal:8087,api:8000
   VINHOMES_API_PLATFORM_MCP_TOKEN: ${SANDBOX_MCP_TOKEN:?required}
+  # Synthetic agent-eval tickets; refused anyway unless the database carries the sandbox marker.
+  VINHOMES_API_EVAL_FIXTURES: enabled
   VINHOMES_API_CONFIG_ENCRYPTION_KEY: ${SANDBOX_CONFIG_ENCRYPTION_KEY:?required}
   VINHOMES_PLATFORM_ALLOWED_HOSTS: host.docker.internal,awp-develop2-app
   VINHOMES_TRAVEL_MOCK_ENABLED: '1'

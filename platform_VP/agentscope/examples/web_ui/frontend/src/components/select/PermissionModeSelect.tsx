@@ -27,9 +27,11 @@ interface Props extends Omit<React.ComponentPropsWithoutRef<typeof Button>, 'onC
 	value?: PermissionMode;
 	disabled?: boolean;
 	onChange?: (value: PermissionMode) => void;
+	/** Modes this context does not allow, e.g. bypass for unattended runs. */
+	exclude?: PermissionMode[];
 }
 
-export function PermissionModeSelect({ className, value, disabled, onChange, ...props }: Props) {
+export function PermissionModeSelect({ className, value, disabled, onChange, exclude, ...props }: Props) {
 	const { t } = useTranslation();
 
 	const displayLabel = value
@@ -57,7 +59,7 @@ export function PermissionModeSelect({ className, value, disabled, onChange, ...
 			<DropdownMenuContent align="start" className="min-w-48">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>{t('permission-mode.label')}</DropdownMenuLabel>
-					{PERMISSION_MODES.map((mode) => (
+					{PERMISSION_MODES.filter((mode) => !exclude?.includes(mode.value)).map((mode) => (
 						<Tooltip key={mode.value}>
 							<TooltipTrigger asChild>
 								<DropdownMenuItem onSelect={() => onChange?.(mode.value)}>

@@ -289,6 +289,18 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 									})
 								}
 							/>
+						) : field.type === 'array' ? (
+							<Input
+								className="h-8 w-48 text-sm"
+								placeholder="ID, cách nhau bằng dấu phẩy"
+								value={((value.platformConfig[field.key] ?? field.default ?? []) as string[]).join(', ')}
+								onChange={(e) =>
+									set('platformConfig', {
+										...value.platformConfig,
+										[field.key]: e.target.value.split(/[\s,]+/).filter(Boolean),
+									})
+								}
+							/>
 						) : (
 							<Input
 								className="h-8 w-48 text-sm"

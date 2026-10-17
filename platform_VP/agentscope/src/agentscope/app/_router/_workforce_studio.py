@@ -38,6 +38,7 @@ from .._service._agent_studio import (
     tool_catalog,
     tool_runner,
 )
+from .._service._eval_sandbox import eval_sandbox
 from .._service._publish_gate import MIN_TESTS_TO_PUBLISH, publish_blocker
 from ..deps import (
     get_current_user_id,
@@ -613,7 +614,8 @@ async def _run_and_record(storage, user_id, access, agent_id: str, spec: AgentSp
     await progress.stage("preparing")
     try:
         report = await run_spec_tests(spec=spec, model=model, judge_model=judge_model,
-            discovered=await tool_catalog(storage, user_id), run_tool=tool_runner(storage, user_id, spec), on_progress=progress.event)
+            discovered=await tool_catalog(storage, user_id), run_tool=tool_runner(storage, user_id, spec), on_progress=progress.event,
+            sandbox=await eval_sandbox(storage, user_id, spec))
         await progress.report(report)
     except BaseException:
         await progress.fail()

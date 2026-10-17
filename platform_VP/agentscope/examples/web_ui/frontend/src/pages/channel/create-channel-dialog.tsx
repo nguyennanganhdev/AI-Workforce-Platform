@@ -32,7 +32,7 @@ interface Props {
 
 export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType }: Props) {
 	const { t } = useTranslation();
-	const { agents } = useAgents();
+	const { runnable: agents } = useAgents();
 	const [form, setForm] = React.useState(defaultChannelForm);
 	const [channelTypes, setChannelTypes] = React.useState<ChannelTypeSchema[]>([]);
 	const [loading, setLoading] = React.useState(false);
