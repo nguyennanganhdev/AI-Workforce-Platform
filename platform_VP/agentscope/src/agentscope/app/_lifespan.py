@@ -70,6 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await stack.enter_async_context(auth_service)
         authority = getattr(app.state, "vin_platform_service", None)
         if authority is not None:
+            await authority.check_schema()
             from .vin_platform._reconciliation import reconciliation_worker
             await stack.enter_async_context(reconciliation_worker(authority))
         if business_service is not None:
