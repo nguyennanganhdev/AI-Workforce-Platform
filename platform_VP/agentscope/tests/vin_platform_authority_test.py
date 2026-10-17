@@ -1,6 +1,7 @@
 """Authority invariants using real SQL transactions, not mocked reservations."""
 
 import asyncio
+from uuid import uuid4
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -13,6 +14,25 @@ from agentscope.app.vin_platform._domain import DomainAdapter
 
 
 from vin_fixtures import authority as authority  # noqa: F401
+
+
+@pytest.mark.asyncio
+async def test_link_uuid_format_roundtrip_keeps_owner_and_revocation_boundary(authority):
+    from sqlalchemy import insert, update
+    ident = uuid4()
+    async with authority.engine.begin() as db:
+        await db.execute(insert(t.links).values(id=ident.hex, tenant_id="vin", user_id="alice", provider_id="vinhomes",
+            issuer="https://fixture.invalid", subject="resident", status="active", secret_ref="fake-ref", scopes=["self"], revision=1, data={}))
+    adapter = DomainAdapter(authority)
+    alice = await authority.context("alice")
+    assert (await adapter.link(alice, str(ident)))["id"] == ident.hex
+    assert (await adapter.link(alice, ident.hex))["id"] == ident.hex
+    with pytest.raises(PlatformError, match="DOMAIN_LINK_REQUIRED"):
+        await adapter.link(await authority.context("bob"), str(ident))
+    async with authority.engine.begin() as db:
+        await db.execute(update(t.links).where(t.links.c.id == ident.hex).values(status="revoked"))
+    with pytest.raises(PlatformError, match="DOMAIN_LINK_REQUIRED"):
+        await adapter.link(alice, str(ident))
 
 
 def limits(**kwargs):

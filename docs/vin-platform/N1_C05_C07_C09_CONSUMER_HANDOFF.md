@@ -21,6 +21,8 @@ Case phải gắn vào hội thoại/Leader/team của chính khách hàng ở c
 
 ## C07 — feed và publication là hai việc khác nhau
 
+R04 contract clarification: `pending_decisions[].version` is the **ticket version** consumed by the existing Domain `ResidentApprovalDecision.version`, also exposed as `ticket_version`. The production work_approvals table has no integer revision column. Do not invent an approval-row revision or substitute the case canonical_version; the signed outer expected_version remains the case version. The refreshed projection/hash includes request_detail and this version. N2's existing decision_actions can consume this explicit `version` field. Current Domain decision API locks the ticket and rejects a stale ticket version; no new approval authority/bridge is introduced.
+
 `GET /service-cases/{id}/events?after=0&limit=50&sync=true` trả `items`, `next_cursor`, `has_more`, `last_sequence`, `applied_sequence`, `sync_status`, `synced_at`, `canonical_version`.
 
 - Mỗi item validate bằng `CaseEvent`: schema_version, event_id, case_id, sequence, canonical_version, event_type, occurred_at, audience, data. Owner/case/audience/sequence được backend kiểm.

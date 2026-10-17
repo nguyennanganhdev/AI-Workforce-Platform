@@ -6,7 +6,7 @@ Ngày 18/10/2026. Source delivery; chưa phát hành production. Không dùng ke
 
 1. Chụp SHA/image/config manifest; sao lưu PostgreSQL, Redis, MinIO và workspace/Qdrant theo runbook release hiện có. Không in secret vào manifest. Rehearsal trên bản sao disposable, không dùng DSN production trong test.
 2. Giữ `VIN_PLATFORM_ENABLED=false`, `VINHOMES_CUSTOMER_PLATFORM_ENABLED=false` và frontend flag Người 2 tắt. Backup trước expand schema.
-3. Platform: dùng cùng SQL authority với AuthService. Chạy Alembic từ base hiện tại qua `0021_vin_platform_authority`, `0022_personal_job_owner`, **`0023_personal_job_constraint`**. Migration 0021 đóng băng 17 bảng Vin; 0022 thêm personal owner, 0023 sửa CHECK cũ để queue nhận personal job mà vẫn giữ scope/provider. `create_app` không tự tạo bảng; khi bật Vin, lifespan kiểm cả schema/constraint và dừng startup nếu thiếu migration.
+3. Platform: dùng cùng SQL authority với AuthService. Chạy Alembic từ base hiện tại qua `0021_vin_platform_authority`, `0022_personal_job_owner`, `0023_personal_job_constraint`, **`0024_vin_admin_revisions`**. Migration 0021 đóng băng 17 bảng Vin; 0022 thêm personal owner, 0023 sửa CHECK queue; 0024 backfill revision grant/membership và cờ active cho quota override. `create_app` không tự tạo bảng; khi bật Vin, lifespan kiểm schema/constraint và dừng startup nếu thiếu migration.
 
    Từ `P`, với `AGENTSCOPE_SQL_URL` là DSN đích đã xác minh:
 
