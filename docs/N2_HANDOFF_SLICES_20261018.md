@@ -107,3 +107,16 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   tương thích legacy khi flag tắt, ID không hợp lệ, chặn delivery ra guild/người ngoài.
 - Harness kết hợp C02 producer + runtime/automation: **404 passed, 13 skipped**, 0 network attempts,
   0 paid model calls; Ruff kiểm undefined/unused ở file sửa đạt. Không đăng nhập/gọi Discord thật.
+
+## S05 — Hiển thị bằng chứng eval PR #99
+
+- Helper frontend mới `src/features/workforce/evaluation/presentation.ts` và test
+  `frontend/tests/evaluation-presentation.test.mjs` thuộc Người 2. Chỉ phân loại báo cáo hiện có,
+  không viết eval engine/sandbox thứ hai hoặc tự cấp quyền production.
+- `sandbox` và `consent_assumed` giữ đúng DTO backend: tool chạy sandbox có nhãn riêng,
+  consent giả định được hiển thị rõ. Lỗi môi trường/model/judge là chưa kết luận;
+  kể cả báo cáo cũ mâu thuẫn `passed=true` cũng không hiện ca đạt/đủ điều kiện phát hành.
+- Node test 3/3 gồm render React report thật với fixture sandbox/consent và báo cáo lỗi mâu thuẫn.
+  ESLint và Vin-enabled build/TypeScript đạt. Chưa chạy model hoặc business sandbox thật.
+- Chờ C08 customer fixture/reset receipts, N1-07 sandbox và C03 integration hoàn thiện để
+  nghiệm thu eval theo cư dân; giữ engine PR #99 và endpoint allowlist admin hiện có.
