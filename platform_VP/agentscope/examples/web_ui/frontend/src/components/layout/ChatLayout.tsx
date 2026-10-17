@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 
+import { usePlatformAccess } from '@/context/platform-access';
 import { useCueTheme } from '@/hooks/useCueTheme';
 
 /**
@@ -11,9 +12,10 @@ import { useCueTheme } from '@/hooks/useCueTheme';
  */
 export function ChatLayout() {
 	useCueTheme();
+	const access = usePlatformAccess();
 
 	return (
-		<div className="h-screen bg-canvas">
+		<div className={access ? 'h-full min-h-0 bg-canvas' : 'h-screen bg-canvas'}>
 			<Outlet />
 		</div>
 	);

@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 
 import { SettingsSidebar } from '@/components/layout/SettingsSidebar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { usePlatformAccess } from '@/context/platform-access';
 import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 
@@ -18,12 +19,13 @@ import { useTranslation } from '@/i18n/useI18n';
 export function SettingsLayout() {
 	useCueTheme();
 	const { t } = useTranslation();
+	const access = usePlatformAccess();
 	return (
 		<SidebarProvider
-			className="h-screen min-h-0 bg-canvas"
+			className={access ? 'h-full min-h-0 bg-canvas' : 'h-screen min-h-0 bg-canvas'}
 			// Always the icon rail on desktop: the pages need the width, the
 			// labels live in the tooltips. Mobile keeps its drawer.
-			open={false}
+			open={access ? true : false}
 			style={
 				{
 					// Narrower than the chat's 320px: this is a list of seven short labels.
@@ -38,7 +40,7 @@ export function SettingsLayout() {
 				{/* Mobile only: the one way to reach the drawer. */}
 				<div className="flex h-12 shrink-0 items-center gap-2 px-2 md:hidden">
 					<SidebarTrigger />
-					<span className="text-[17px]/6 font-medium">{t('common.settings')}</span>
+					<span className="text-[17px]/6 font-medium">{access?.workspace?.label ?? t('common.settings')}</span>
 				</div>
 				<div className="min-h-0 flex-1">
 					<Outlet />

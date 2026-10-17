@@ -3,6 +3,7 @@ import { useOnborda } from 'onborda';
 import { useNavigate } from 'react-router-dom';
 
 import { authApi } from '@/api';
+import { WorkspaceMenuItems } from '@/components/layout/WorkspaceMenuItems';
 import { CHAT_TOUR_NAME } from '@/components/tour/chatTourSteps';
 import { Button } from '@/components/ui/button';
 import {
@@ -68,7 +69,7 @@ export function AccountMenu({
 			)}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
-					<Button variant="ghost" className={ROW}>
+					<Button variant="ghost" className={ROW} aria-label={`Tài khoản ${displayName}`}>
 						<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cue-avatar-user,#e5484d)] text-[15px] font-medium text-white">
 							{displayName.charAt(0).toUpperCase()}
 						</span>
@@ -79,6 +80,7 @@ export function AccountMenu({
 				{/* w-auto: the default pins the menu to the trigger's width,
 				    which clips the longer labels. */}
 				<DropdownMenuContent side="top" align="start" className="w-auto min-w-52">
+					<WorkspaceMenuItems />
 					<DropdownMenuItem
 						onClick={() => i18n.changeLanguage(inVietnamese ? 'en' : 'vi')}
 					>

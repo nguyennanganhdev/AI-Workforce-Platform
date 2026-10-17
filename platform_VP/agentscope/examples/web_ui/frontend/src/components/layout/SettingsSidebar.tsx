@@ -1,6 +1,7 @@
 import {
 	ArrowLeft,
 	BookText,
+	BotMessageSquare,
 	Cable,
 	Calendars,
 	Crown,
@@ -8,6 +9,7 @@ import {
 	KeyRound,
 	LibraryBig,
 	Users,
+	UserRound,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -27,6 +29,8 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from '@/components/ui/sidebar';
+import { usePlatformAccess } from '@/context/platform-access';
+import { homeFor, mayVisit } from '@/features/workforce/shell/access';
 import { useTranslation } from '@/i18n/useI18n';
 
 interface SettingsItem {
@@ -36,6 +40,7 @@ interface SettingsItem {
 	path: string;
 	/** Stays lit on the pages beneath it (`/mcp/:hubId`). */
 	prefix?: boolean;
+	vinOnly?: boolean;
 }
 
 /**
@@ -47,6 +52,7 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 		label: 'shell.groupWorkforce',
 		items: [
 			{ label: 'shell.leader', icon: Crown, path: '/workforce/leader' },
+			{ label: 'Chat riêng và nhóm', icon: BotMessageSquare, path: '/chat', vinOnly: true },
 			{ label: 'shell.builder', icon: Hammer, path: '/workforce/builder' },
 			{ label: 'shell.agentStudio', icon: Users, path: '/workforce/agents', prefix: true },
 		],
@@ -67,6 +73,13 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 			{ label: 'common.knowledge', icon: LibraryBig, path: '/knowledge', prefix: true },
 		],
 	},
+	{
+		label: 'shell.account',
+		items: [
+			{ label: 'Tài khoản và hạn mức', icon: UserRound, path: '/account', vinOnly: true },
+			{ label: 'Kết nối', icon: Cable, path: '/connections', vinOnly: true },
+		],
+	},
 ];
 
 /**
@@ -85,6 +98,11 @@ export function SettingsSidebar() {
 	const location = useLocation();
 	const { t } = useTranslation();
 	const { isMobile, setOpenMobile } = useSidebar();
+	const access = usePlatformAccess();
+	const backPath = access?.workspace ? homeFor(access.workspace) ?? '/account' : '/chat';
+	const backLabel = access ? `Về trang bắt đầu · ${access.workspace?.label ?? ''}` : t('shell.backToChat');
+	const groups = GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => (!item.vinOnly || access) && (!access || (access.workspace && mayVisit(access.workspace, item.path)))) }))
+		.filter((group) => group.items.length > 0);
 
 	const go = (path: string) => {
 		navigate(path);
@@ -103,17 +121,17 @@ export function SettingsSidebar() {
 					<SidebarMenuItem>
 						<SidebarMenuButton
 							className={ITEM}
-							tooltip={t('shell.backToChat')}
-							onClick={() => go('/chat')}
+							tooltip={backLabel}
+							onClick={() => go(backPath)}
 						>
 							<ArrowLeft />
-							<span>{t('shell.backToChat')}</span>
+							<span>{backLabel}</span>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
 				</SidebarMenu>
 			</SidebarHeader>
 			<SidebarContent>
-				{GROUPS.map((group) => (
+				{groups.map((group) => (
 					<SidebarGroup key={group.label ?? group.items[0].path} className="px-2 py-1">
 						{group.label && (
 							<SidebarGroupLabel
@@ -139,7 +157,7 @@ export function SettingsSidebar() {
 											onClick={() => go(item.path)}
 										>
 											<item.icon />
-											<span>{t(item.label)}</span>
+											<span>{access?.workspace?.kind === 'personal' && item.path === '/workforce/agents' ? 'Agent của tôi' : t(item.label)}</span>
 										</SidebarMenuButton>
 									</SidebarMenuItem>
 								))}

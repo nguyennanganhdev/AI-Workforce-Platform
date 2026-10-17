@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { adminApi } from '@/api/admin';
 import type { AdminAccount, DirectoryArea, DirectoryDomain } from '@/api/admin';
 import type { AuthUser } from '@/api/auth';
+import { WorkspaceMenuItems } from '@/components/layout/WorkspaceMenuItems';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,6 +47,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { usePlatformAccess } from '@/context/platform-access';
 import { useCueTheme } from '@/hooks/useCueTheme';
 
 function errorText(error: unknown): string {
@@ -304,6 +306,7 @@ function AdminSidebar({
 						</button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent side="right" align="end" className="w-auto min-w-48">
+						<WorkspaceMenuItems />
 						<DropdownMenuLabel className="font-normal text-muted-foreground">{user.username}</DropdownMenuLabel>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem variant="destructive" onClick={onLogout}>
@@ -318,6 +321,7 @@ function AdminSidebar({
 
 export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
 	useCueTheme();
+	const access = usePlatformAccess();
 	const platform = user.role === 'PLATFORM_ADMIN';
 	const [accounts, setAccounts] = useState<AdminAccount[]>([]);
 	const [directory, setDirectory] = useState<DirectoryDomain[]>([]);
@@ -625,7 +629,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
 	return (
 		<SidebarProvider
-			className="h-screen min-h-0 bg-canvas"
+			className={access ? 'h-full min-h-0 bg-canvas' : 'h-screen min-h-0 bg-canvas'}
 			open={false}
 			style={{ '--sidebar-width': '16rem', '--sidebar-width-icon': '3.5rem' } as CSSProperties}
 		>
