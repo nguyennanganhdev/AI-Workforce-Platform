@@ -25,7 +25,7 @@ export function SettingsLayout() {
 			className={access ? 'h-full min-h-0 bg-canvas' : 'h-screen min-h-0 bg-canvas'}
 			// Always the icon rail on desktop: the pages need the width, the
 			// labels live in the tooltips. Mobile keeps its drawer.
-			open={access ? true : false}
+			open={false}
 			style={
 				{
 					// Narrower than the chat's 320px: this is a list of seven short labels.

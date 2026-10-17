@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { useCatalogManagement } from './useCatalogManagement';
 import { skillApi } from '@/api';
 import type { SkillView } from '@/api';
 
@@ -11,6 +12,7 @@ import type { SkillView } from '@/api';
  * missing.
  */
 export function useSkills() {
+	const canManage = useCatalogManagement();
 	const [skills, setSkills] = useState<SkillView[]>([]);
 	// Starts true: the first paint happens before the effect fires, and
 	// a false start would flash the empty state before the spinner.
@@ -35,10 +37,11 @@ export function useSkills() {
 
 	const remove = useCallback(
 		async (skillId: string) => {
+			if (!canManage) throw new Error('CATALOG_READ_ONLY');
 			await skillApi.remove(skillId);
 			await refetch();
 		},
-		[refetch],
+		[refetch, canManage],
 	);
 
 	return { skills, loading, error, refetch, remove };

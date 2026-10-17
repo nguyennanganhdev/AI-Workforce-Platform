@@ -45,16 +45,10 @@ export function parseCapabilities(value: unknown, user: { id: string; tenant_id:
 	};
 }
 
-/** Presentation spaces only. No client choice changes the authenticated subject. */
+/** One view of the canonical server workspace; no client-side scope switching. */
 export function workspacesFor(view: CapabilitiesView): CapabilityWorkspace[] {
 	const capabilities = Object.keys(view.capabilities).filter((key) => view.capabilities[key]);
-	const spaces: CapabilityWorkspace[] = [];
-	if (capabilities.includes('personal.read')) spaces.push({ id: 'personal', label: 'Cá nhân', kind: 'personal', capabilities });
-	if (capabilities.includes('management.read')) spaces.push({ id: 'operations', label: 'Vận hành', kind: 'operations', capabilities });
-	if (capabilities.some((key) => ['accounts.manage', 'catalog.manage', 'quota.manage'].includes(key))) {
-		spaces.push({ id: 'admin', label: 'Quản trị', kind: 'admin', capabilities });
-	}
-	return spaces;
+	return capabilities.length ? [{ id: view.workspace_id, label: 'Platform', kind: 'personal', capabilities }] : [];
 }
 
 export interface ShellDestination {
@@ -72,14 +66,14 @@ export const SHELL_DESTINATIONS: ShellDestination[] = [
 	{ path: '/workforce/agents', label: 'Agent của tôi', capability: 'personal.read', kinds: ['personal'] },
 	{ path: '/workforce/builder', label: 'Tạo agent', capability: 'personal.create', kinds: ['personal'] },
 	{ path: '/knowledge', label: 'Knowledge', capability: 'knowledge.private.manage', kinds: ['personal'] },
-	{ path: '/schedule', label: 'Lịch trình', capability: 'schedules.manage', kinds: ['personal'] },
+	{ path: '/schedule', label: 'Lịch trình', capability: 'personal.read', kinds: ['personal', 'operations'] },
 	{ path: '/connections', label: 'Kết nối', capability: 'personal.read', kinds: ['personal'] },
 	{ path: '/account', label: 'Tài khoản và hạn mức', capability: 'personal.read', kinds: ['personal', 'operations', 'admin'] },
-	{ path: '/admin', label: 'Tài khoản', capability: 'accounts.manage', kinds: ['admin'] },
-	{ path: '/credential', label: 'Provider', capability: 'providers.manage', kinds: ['admin'] },
-	{ path: '/mcp', label: 'MCP', capability: 'catalog.manage', kinds: ['admin'] },
-	{ path: '/skill', label: 'Skill', capability: 'catalog.manage', kinds: ['admin'] },
-	{ path: '/channel', label: 'Quản trị kênh', capability: 'channels.manage', kinds: ['admin'] },
+	{ path: '/admin', label: 'Tài khoản', capability: 'accounts.manage', kinds: ['personal', 'operations', 'admin'] },
+	{ path: '/credential', label: 'Provider', capability: 'personal.read', kinds: ['personal', 'operations', 'admin'] },
+	{ path: '/mcp', label: 'MCP', capability: 'personal.read', kinds: ['personal', 'operations', 'admin'] },
+	{ path: '/skill', label: 'Skill', capability: 'personal.read', kinds: ['personal', 'operations', 'admin'] },
+	{ path: '/channel', label: 'Kênh', capability: 'personal.read', kinds: ['personal', 'operations'] },
 ];
 
 export function destinationsFor(workspace: CapabilityWorkspace): ShellDestination[] {

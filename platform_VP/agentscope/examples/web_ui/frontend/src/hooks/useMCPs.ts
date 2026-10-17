@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { useCatalogManagement } from './useCatalogManagement';
 import { mcpApi } from '@/api';
 import type { MCPView, UpdateMCPRequest } from '@/api';
 
@@ -11,6 +12,7 @@ import type { MCPView, UpdateMCPRequest } from '@/api';
  * missing.
  */
 export function useMCPs() {
+	const canManage = useCatalogManagement();
 	const [mcps, setMcps] = useState<MCPView[]>([]);
 	// Starts true: the first paint happens before the effect fires, and
 	// a false start would flash the empty state before the spinner.
@@ -35,18 +37,20 @@ export function useMCPs() {
 
 	const update = useCallback(
 		async (mcpId: string, body: UpdateMCPRequest) => {
+			if (!canManage) throw new Error('CATALOG_READ_ONLY');
 			await mcpApi.update(mcpId, body);
 			await refetch();
 		},
-		[refetch],
+		[refetch, canManage],
 	);
 
 	const remove = useCallback(
 		async (mcpId: string) => {
+			if (!canManage) throw new Error('CATALOG_READ_ONLY');
 			await mcpApi.remove(mcpId);
 			await refetch();
 		},
-		[refetch],
+		[refetch, canManage],
 	);
 
 	return { mcps, loading, error, refetch, update, remove };

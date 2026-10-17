@@ -148,7 +148,7 @@ function PlatformApp() {
 		);
 	}
 
-	if (!VIN_EXPERIENCE_ENABLED && currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
+	if (currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
 		// Administrators manage accounts, domains and areas; agents and tickets belong to BQL accounts.
 		return (
 			<>

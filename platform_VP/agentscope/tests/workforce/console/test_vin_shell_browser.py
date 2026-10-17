@@ -68,6 +68,24 @@ def browser_app():
                     status, result = 204, None
                 elif path == "/auth/register-personal":
                     status, result = 201, {**user, "status": "pending"}
+                elif path == "/credential/":
+                    result = {"credentials": [{"id": "shared-provider", "user_id": "service", "editable": False,
+                        "created_at": "2026-10-18T00:00:00Z", "updated_at": "2026-10-18T00:00:00Z",
+                        "data": {"type": "openai", "name": "Vin fixture provider"}}]}
+                elif path == "/credential/schemas":
+                    result = {"schemas": [{"title": "OpenAI", "properties": {"type": {"const": "openai"}}}]}
+                elif path.startswith(("/model/", "/embedding_model/", "/tts_model/")):
+                    result = {"models": []}
+                elif path == "/mcp":
+                    result = [dict(id="shared-mcp", name="vin-fixture-mcp", display_name="Vin fixture MCP",
+                        description="Safe tools", is_stateful=False, enabled=True, tags=[], tools=[],
+                        catalog_revision=1, hub_id=None, card_id=None, version="1", url=None, editable=False)]
+                elif path == "/skill":
+                    result = [dict(id="shared-skill", name="vin-fixture-skill", display_name="Vin fixture Skill",
+                        description="Safe skill", enabled=True, tags=[], hub_id=None, card_id=None,
+                        version="1", url=None, editable=False, review_status="approved")]
+                elif path in ("/hub/mcp", "/hub/skill"):
+                    result = []
                 elif path == "/workforce/console/leader/bootstrap":
                     status, result = 503, {"detail": "offline fixture: no model configured"}
                 else:
@@ -94,8 +112,7 @@ def test_account_real_app_responsive_keyboard_and_usage(browser_app, width):
     page.goto(URL + "/account")
     expect(page.get_by_role("heading", name="Tài khoản và hạn mức", exact=True)).to_be_visible()
     if width >= 768:
-        expect(page.get_by_role("button", name="Chat riêng và nhóm", exact=True)).to_be_visible()
-        expect(page.get_by_role("button", name="Agent của tôi", exact=True)).to_be_visible()
+        expect(page.locator('[data-slot="sidebar"]').first).to_have_attribute("data-state", "collapsed")
     expect(page.get_by_text("1 lượt đang chờ đối soát.", exact=False)).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
     update = page.get_by_role("button", name="Cập nhật", exact=True)
@@ -110,12 +127,12 @@ def test_account_real_app_responsive_keyboard_and_usage(browser_app, width):
     assert not external
 
 
-@pytest.mark.parametrize("role", ["VIN_USER", "AREA_MANAGER", "DOMAIN_ADMIN", "PLATFORM_ADMIN"])
+@pytest.mark.parametrize("role", ["VIN_USER", "AREA_MANAGER"])
 def test_direct_privileged_url_cannot_be_granted_by_role(browser_app, role):
     from playwright.sync_api import expect
 
     page, calls, external, _ = browser_app(role=role)
-    page.goto(URL + "/mcp/guessed-hub")
+    page.goto(URL + "/admin")
     expect(page.get_by_role("heading", name="Bạn chưa được cấp quyền cho trang này")).to_be_visible()
     assert not [call for call in calls if call[1].startswith(("/mcp", "/credential", "/admin"))]
     assert not external
@@ -131,22 +148,16 @@ def test_unavailable_authority_mounts_no_private_page(browser_app):
     assert not external
 
 
-def test_switch_rechecks_capability_then_displays_correct_space(browser_app):
+def test_account_menu_adds_link_and_usage_without_scope_switcher(browser_app):
     from playwright.sync_api import expect
 
     page, calls, external, _ = browser_app(capabilities={"management.read": True})
     page.goto(URL + "/account")
-    account = page.get_by_role("button", name="Tài khoản cu-dan-a", exact=True)
-    expect(account).to_be_visible()
-    account.click()
-    page.get_by_role("menuitem", name="Vận hành", exact=True).click()
-    expect(page.get_by_role("button", name="Về trang bắt đầu · Vận hành", exact=True)).to_be_visible()
-    expect(page).to_have_url(URL + "/workforce/leader")
-    assert len([call for call in calls if call[1] == "/me/capabilities"]) >= 2
     page.get_by_role("button", name="Tài khoản cu-dan-a", exact=True).click()
-    page.get_by_role("menuitem", name="Cá nhân", exact=True).click()
-    expect(page.get_by_role("button", name="Về trang bắt đầu · Cá nhân", exact=True)).to_be_visible()
-    assert page.get_by_role("combobox").count() == 0
+    expect(page.get_by_role("menuitem", name="Tài khoản và hạn mức", exact=True)).to_be_visible()
+    assert page.get_by_role("menuitem", name="Vận hành", exact=True).count() == 0
+    page.get_by_role("menuitem", name="Kết nối Vinhomes", exact=True).click()
+    expect(page).to_have_url(URL + "/connections")
     assert not external
 
 
@@ -156,8 +167,7 @@ def test_customer_enters_the_shared_leader_shell_as_default(browser_app):
     page, calls, external, _ = browser_app()
     page.goto(URL + "/")
     expect(page).to_have_url(URL + "/workforce/leader")
-    expect(page.get_by_role("button", name="Chat riêng và nhóm", exact=True)).to_be_visible()
-    expect(page.get_by_role("button", name="Agent của tôi", exact=True)).to_be_visible()
+    expect(page.locator('[data-slot="sidebar"]').first).to_have_attribute("data-state", "collapsed")
     assert page.get_by_role("combobox").count() == 0
     assert not [call for call in calls if call[1] == "/me/usage"]
     assert not external
@@ -201,4 +211,19 @@ def test_registration_never_submits_a_role_or_management_scope(browser_app):
     assert len(registrations) == 1
     assert set(registrations[0][2]) == {"email", "username", "password"}
     assert not [call for call in calls if call[1].startswith("/directory/") or call[1] == "/auth/register"]
+    assert not external
+
+
+@pytest.mark.parametrize("path,resource", [("/credential", "Vin fixture provider"), ("/mcp", "Vin fixture MCP"), ("/skill", "Vin fixture Skill")])
+def test_shared_catalog_is_visible_without_configuration_mutations(browser_app, path, resource):
+    from playwright.sync_api import expect
+
+    page, calls, external, _ = browser_app()
+    page.goto(URL + path)
+    expect(page.get_by_text(resource, exact=True).first).to_be_visible()
+    for button in page.get_by_role("button").all():
+        text = button.inner_text().strip().lower()
+        if text in ("xóa", "sửa", "cài đặt", "thêm", "đồng bộ", "thu hồi", "duyệt", "delete", "edit", "install", "add", "sync"):
+            assert not button.is_enabled(), text
+    assert not [call for call in calls if call[0] not in ("GET",) and call[1].startswith(("/credential", "/mcp", "/skill", "/hub"))]
     assert not external

@@ -54,6 +54,7 @@ import {
 	SidebarMenuItem,
 } from '@/components/ui/sidebar.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
+import { useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useMCPHubCards } from '@/hooks/useMCPHubCards.ts';
 import { useMCPHubs } from '@/hooks/useMCPHubs.ts';
 import { useMCPs } from '@/hooks/useMCPs.ts';
@@ -100,6 +101,7 @@ interface CardItemProps {
 
 function CardItem({ card, installed, now, onInstall, onOpen }: CardItemProps) {
 	const { t } = useTranslation();
+	const canManage = useCatalogManagement();
 
 	return (
 		<Item
@@ -184,6 +186,7 @@ function CardItem({ card, installed, now, onInstall, onOpen }: CardItemProps) {
 					) : (
 						<Button
 							className="h-7 rounded-full px-3.5 text-xs font-normal hover:opacity-86"
+							disabled={!canManage}
 							// Installing straight from the row must not also
 							// open the drawer behind it.
 							onClick={(e) => {
@@ -208,6 +211,7 @@ interface HubPanelProps {
 }
 
 function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
 	const [installing, setInstalling] = useState<MCPCard | null>(null);
@@ -306,7 +310,7 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 				body={<MCPDetailBody card={drawer.opened as MCPCard | null} />}
 				action={
 					<Button
-						disabled={drawer.opened !== null && installedNames.has(drawer.opened.name)}
+						disabled={!canManage || (drawer.opened !== null && installedNames.has(drawer.opened.name))}
 						onClick={() => {
 							// One overlay at a time: the install form replaces
 							// the drawer rather than stacking on top of it.
@@ -328,13 +332,13 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 				}
 			/>
 
-			<InstallMCPDialog
+			{canManage && <InstallMCPDialog
 				card={installing}
 				onOpenChange={(open) => {
 					if (!open) setInstalling(null);
 				}}
 				onInstalled={onInstalled}
-			/>
+			/>}
 		</ResourcePanel>
 	);
 }
@@ -350,6 +354,7 @@ interface MinePanelProps {
 
 function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: MinePanelProps) {
 	const { t } = useTranslation();
+	const canManage = useCatalogManagement();
 	const [query, setQuery] = useState('');
 	const [expandedMcpId, setExpandedMcpId] = useState<string | null>(null);
 
@@ -387,9 +392,9 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 						Cài MCP đối tác để Builder có thể chọn tool đã đăng ký.
 					</p>
 				</div>
-				<Button size="sm" onClick={onAddDirect}>
+				{canManage && <Button size="sm" onClick={onAddDirect}>
 					<PlugZap /> Kết nối MCP đối tác
-				</Button>
+				</Button>}
 			</div>
 			{loading ? (
 				<div className="flex justify-center py-10">
@@ -500,7 +505,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 										{mcp.version}
 									</span>
 								)}
-								{mcp.hub_id && mcp.card_id && (
+								{canManage && mcp.hub_id && mcp.card_id && (
 									<Button
 										size="icon-sm"
 										variant="ghost"
@@ -527,6 +532,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onSync(mcp.id)}
+									disabled={!canManage}
 									title="Đồng bộ lại tool"
 								>
 									<RefreshCw />
@@ -536,6 +542,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onRemove(mcp.id)}
+									disabled={!canManage}
 									title={t('common.delete')}
 								>
 									<Trash2 />
@@ -550,6 +557,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 }
 
 export function MCPHubPage() {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	// No `hubId` in the URL means the "mine" tab, which is the default.
@@ -565,6 +573,7 @@ export function MCPHubPage() {
 	const [editingCard, setEditingCard] = useState<MCPCard | null>(null);
 	const [directOpen, setDirectOpen] = useState(false);
 	const syncMcp = async (mcpId: string) => {
+		if (!canManage) return;
 		await mcpApi.sync(mcpId);
 		await refetchMcps();
 	};
@@ -721,7 +730,7 @@ export function MCPHubPage() {
 				)}
 			</main>
 
-			<InstallMCPDialog
+			{canManage && <><InstallMCPDialog
 				card={editing ? editingCard : null}
 				editing={editing}
 				onOpenChange={(open) => {
@@ -736,7 +745,7 @@ export function MCPHubPage() {
 				open={directOpen}
 				onOpenChange={setDirectOpen}
 				onInstalled={refetchMcps}
-			/>
+			/></>}
 		</div>
 	);
 }

@@ -32,3 +32,23 @@ Không chạy test bằng model key thật; không bật production/cutover bằ
 
 N2_CONTRACT_HANDOFF và N2_KET_QUA cũ là ảnh chụp trước rebase. Handoff này và các slice tiếp theo cập nhật
 phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ không còn thuộc phạm vi.
+
+## S01 — Giữ UI hiện có, catalog chỉ đọc
+
+- Khôi phục sidebar icon rail và nút quay về chat của baseline; bỏ bộ chọn scope trình bày
+  chưa có API đổi workspace. Workspace/revision lấy từ C01; đổi revision xóa cache và remount consumer.
+- Khách hàng vẫn vào Provider/MCP/Skill, Lịch và Kênh. Catalog không có quyền manage không có
+  create/edit/install/import/review/sync/delete khả dụng; mutation callback của các hook cũng chặn.
+  Chọn tài nguyên trong các picker hiện có được giữ. API/resolver Người 1 vẫn là authority.
+- Hạn mức và liên kết Vinhomes nằm trong menu tài khoản hiện có. Admin giữ AdminPage cũ;
+  không thay điều hướng của BQL, không thêm dashboard hoặc menu theo role.
+- File mới `frontend/src/hooks/useCatalogManagement.ts` thuộc lane frontend Người 2.
+- Kiểm tra sau rebase: TypeScript/build đạt; ESLint đạt; test consumer C01 8/8;
+  browser Chromium với HTTP fixture 12/12 (375px/1280px, đăng ký, callback/revoke,
+  fail-closed C01, shared catalog thấy được và không phát mutation). Không kết nối Domain/model.
+- Browser dùng build với `VITE_VIN_EXPERIENCE_ENABLED=true`, `VITE_API_BASE_URL=/api`,
+  preview `127.0.0.1:4182`; asset không lỗi, request ngoài origin bị abort.
+  Ảnh local trong `P/.artifacts/vin-shell-browser/`, đã xem ảnh desktop.
+- Chờ Người 1: C01 capability chi tiết và C02 list/resolver đã được sửa trong WIP nhưng chưa có
+  commit handoff ổn định; usage chưa có limit/remaining. Catalog browser hiện là fixture đúng DTO,
+  chưa chứng minh bind/execute xuyên hai branch hoặc API reject bằng integration.

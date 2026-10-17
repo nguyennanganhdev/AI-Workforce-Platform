@@ -29,35 +29,30 @@ test('role claims alone never create management or administration navigation', (
   for (const role of ['VIN_USER', 'AREA_MANAGER', 'DOMAIN_ADMIN', 'PLATFORM_ADMIN']) {
     const spaces = workspacesFor(parseCapabilities(c01({}, { role }), user));
     assert.deepEqual(spaces.map(s => s.kind), ['personal']);
-    for (const path of ['/admin', '/mcp', '/mcp/hub', '/skill', '/credential', '/channel']) {
+    for (const path of ['/admin']) {
       assert.equal(mayVisit(spaces[0], path), false, `${role}: ${path}`);
     }
   }
 });
 
-test('capabilities are intersected with the selected space for direct URLs', () => {
-  const view = parseCapabilities(c01({ 'management.read': true, 'catalog.manage': true,
-    'accounts.manage': true, 'providers.manage': true }), user);
-  const [personal, operations, admin] = workspacesFor(view);
-  assert.equal(mayVisit(personal, '/mcp'), false);
-  assert.equal(mayVisit(operations, '/workforce/builder'), false);
-  assert.equal(mayVisit(admin, '/workforce/leader'), false);
+test('customers use the existing pages in one server workspace', () => {
+  const [workspace] = workspacesFor(parseCapabilities(c01({ 'knowledge.private.manage': true }), user));
+  assert.equal(workspace.id, 'personal:resident-a');
+  for (const path of ['/mcp', '/mcp/hub', '/skill', '/credential', '/channel', '/schedule', '/knowledge', '/workforce/builder', '/chat/agent/session']) {
+    assert.equal(mayVisit(workspace, path), true, path);
+  }
+  for (const path of ['/admin', '/chat-unauthorized', '/unknown']) assert.equal(mayVisit(workspace, path), false, path);
+  const [admin] = workspacesFor(parseCapabilities(c01({ 'accounts.manage': true }), user));
   assert.equal(mayVisit(admin, '/admin'), true);
-  assert.equal(mayVisit(admin, '/mcp/hub'), true);
-  assert.equal(mayVisit(personal, '/chat/agent/session'), true);
-  assert.equal(mayVisit(personal, '/chat-unauthorized'), false);
-  assert.equal(mayVisit(personal, '/unknown'), false);
 });
 
 test('revocation removes affected destinations and preserves valid partial grants', () => {
-  const before = workspacesFor(parseCapabilities(c01({ 'management.read': true }), user));
-  const after = workspacesFor(parseCapabilities(c01({ 'management.read': false, 'personal.create': false },
+  const after = workspacesFor(parseCapabilities(c01({ 'personal.create': false },
     { authorization_revision: 2, eligible: false }), user));
-  assert.equal(before.length, 2);
   assert.equal(after.length, 1);
   assert.equal(mayVisit(after[0], '/workforce/builder'), false);
   assert.equal(mayVisit(after[0], '/account'), true);
-  assert.equal(destinationsFor(after[0]).some(d => d.path === '/schedule'), false);
+  assert.equal(destinationsFor(after[0]).some(d => d.path === '/schedule'), true);
 });
 
 test('C01 public projection excludes incidental sensitive server fields', () => {

@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { adminApi } from '@/api/admin';
 import type { AdminAccount, DirectoryArea, DirectoryDomain } from '@/api/admin';
 import type { AuthUser } from '@/api/auth';
-import { WorkspaceMenuItems } from '@/components/layout/WorkspaceMenuItems';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -306,7 +305,6 @@ function AdminSidebar({
 						</button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent side="right" align="end" className="w-auto min-w-48">
-						<WorkspaceMenuItems />
 						<DropdownMenuLabel className="font-normal text-muted-foreground">{user.username}</DropdownMenuLabel>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem variant="destructive" onClick={onLogout}>

@@ -1,5 +1,5 @@
 import { Eye, EyeOff, Plus, Trash2, Pen } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 import { credentialApi, embeddingModelApi, modelApi, ttsModelApi } from '@/api';
 import type {
@@ -37,6 +37,7 @@ import {
 	TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useCredentials } from '@/hooks/useCredentials';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
@@ -459,6 +460,7 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 
 export const CredentialPage = () => {
 	const { t } = useTranslation();
+	const canManage = useCatalogManagement();
 	const { credentials, loading, remove, refetch } = useCredentials();
 	const [schemas, setSchemas] = useState<CredentialSchema[]>([]);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -478,7 +480,8 @@ export const CredentialPage = () => {
 		}
 	}, [credentials, selectedId]);
 
-	const selectedCredential = credentials.find((c) => c.id === selectedId) ?? null;
+	const selectedRecord = credentials.find((c) => c.id === selectedId);
+	const selectedCredential = useMemo(() => selectedRecord ? { ...selectedRecord, editable: canManage && selectedRecord.editable } : null, [selectedRecord, canManage]);
 	const selectedSchema = selectedCredential
 		? (schemas.find(
 				(s) =>
@@ -504,15 +507,16 @@ export const CredentialPage = () => {
 	const totalConfigured = configuredGroups.reduce((n, g) => n + g.records.length, 0);
 
 	const handleOpenCreate = useCallback((type?: string) => {
+		if (!canManage) return;
 		setCreateDefaultType(type);
 		setCreateOpen(true);
-	}, []);
+	}, [canManage]);
 
 	const handleDelete = useCallback(async () => {
-		if (!selectedCredential) return;
+		if (!selectedCredential?.editable || !canManage) return;
 		await remove(selectedCredential.id);
 		setSelectedId(null);
-	}, [selectedCredential, remove]);
+	}, [selectedCredential, remove, canManage]);
 
 	return (
 		<div className="flex h-full w-full">
@@ -600,7 +604,7 @@ export const CredentialPage = () => {
 
 							{/* Add credential — every provider is an entry point (including
 							    configured ones, to add more under the same provider). */}
-							<SidebarGroup className="mt-5 px-2 py-0">
+							{canManage && <SidebarGroup className="mt-5 px-2 py-0">
 								<SidebarGroupLabel>{t('credential.addProvider')}</SidebarGroupLabel>
 								<SidebarGroupContent>
 									<SidebarMenu>
@@ -618,7 +622,7 @@ export const CredentialPage = () => {
 										))}
 									</SidebarMenu>
 								</SidebarGroupContent>
-							</SidebarGroup>
+							</SidebarGroup>}
 						</>
 					)}
 				</SidebarContent>
@@ -648,13 +652,13 @@ export const CredentialPage = () => {
 			</main>
 
 			{/* Dialogs */}
-			<CreateCredentialDialog
+			{canManage && <CreateCredentialDialog
 				open={createOpen}
 				onOpenChange={setCreateOpen}
 				defaultType={createDefaultType}
 				onCreated={() => refetch()}
-			/>
-			{selectedCredential && (
+			/>}
+			{canManage && selectedCredential?.editable && (
 				<>
 					<EditCredentialDialog
 						open={editOpen}

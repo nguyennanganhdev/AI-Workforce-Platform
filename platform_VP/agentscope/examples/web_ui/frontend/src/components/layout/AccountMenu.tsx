@@ -3,7 +3,6 @@ import { useOnborda } from 'onborda';
 import { useNavigate } from 'react-router-dom';
 
 import { authApi } from '@/api';
-import { WorkspaceMenuItems } from '@/components/layout/WorkspaceMenuItems';
 import { CHAT_TOUR_NAME } from '@/components/tour/chatTourSteps';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +13,7 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCurrentUser } from '@/context/CurrentUserContext';
+import { usePlatformAccess } from '@/context/platform-access';
 import i18n from '@/i18n';
 import { useTranslation } from '@/i18n/useI18n';
 
@@ -42,6 +42,7 @@ export function AccountMenu({
 	const { t } = useTranslation();
 	const { startOnborda } = useOnborda();
 	const user = useCurrentUser();
+	const access = usePlatformAccess();
 
 	const inVietnamese = i18n.language.startsWith('vi');
 	const displayName = user?.username || user?.email || t('shell.account');
@@ -80,7 +81,11 @@ export function AccountMenu({
 				{/* w-auto: the default pins the menu to the trigger's width,
 				    which clips the longer labels. */}
 				<DropdownMenuContent side="top" align="start" className="w-auto min-w-52">
-					<WorkspaceMenuItems />
+					{access?.view?.capabilities['personal.read'] && <>
+						<DropdownMenuItem onClick={() => navigate('/account')}>Tài khoản và hạn mức</DropdownMenuItem>
+						<DropdownMenuItem onClick={() => navigate('/connections')}>Kết nối Vinhomes</DropdownMenuItem>
+						<DropdownMenuSeparator />
+					</>}
 					<DropdownMenuItem
 						onClick={() => i18n.changeLanguage(inVietnamese ? 'en' : 'vi')}
 					>
