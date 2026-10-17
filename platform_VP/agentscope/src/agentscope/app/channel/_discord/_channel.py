@@ -14,9 +14,10 @@ needs shard coordination, which is out of scope here.
 import asyncio
 import base64
 import io
+import os
 from typing import AsyncIterator, Awaitable, Callable, TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ...._logging import logger
 from ....event import ReplyEndEvent, RequireUserConfirmEvent
@@ -61,6 +62,13 @@ class DiscordChannel(ChannelBase):
     class Config(BaseModel):
         """Discord platform options."""
 
+        allowed_user_ids: list[str] | None = Field(
+            default=None,
+            title="Allowed Discord user IDs",
+            description="Only these users may message this private bot via DM. An empty list denies everyone.",
+            json_schema_extra={"type": "array", "items": {"type": "string"}},
+        )
+
         only_at_reply: bool = Field(
             default=True,
             title="Reply only when mentioned",
@@ -84,6 +92,16 @@ class DiscordChannel(ChannelBase):
             "call on someone else's behalf. The requester can always "
             "decide their own.",
         )
+
+        @field_validator("allowed_user_ids", "approver_user_ids")
+        @classmethod
+        def validate_user_ids(cls, values):
+            if values is None:
+                return None
+            if len(values) > 100 or any(not value.isascii() or not value.isdigit()
+                or not 1 <= len(value) <= 20 or int(value) == 0 for value in values):
+                raise ValueError("Discord user IDs must be positive numeric strings (maximum 100).")
+            return list(dict.fromkeys(values))
 
     capabilities = ChannelCapability(
         text=True,
@@ -255,6 +273,10 @@ class DiscordChannel(ChannelBase):
         """
         if message.author.id == self._client.user.id:
             return  # ignore our own messages
+        if not self.may_chat(str(message.author.id)):
+            return
+        if self.private_access_required and message.guild is not None:
+            return
         try:
             is_dm = message.guild is None
             me = self._client.user
@@ -322,6 +344,10 @@ class DiscordChannel(ChannelBase):
             event (`ChannelEvent`): The send target (chat id).
             events (`AsyncIterator[dict]`): The run's session events.
         """
+        if self.private_access_required and (
+            not self.may_chat(event.channel_user_id) or event.metadata.get("chat_type") != "dm"
+        ):
+            return
         import discord
 
         channel = await self._channel(event.chat_id)
@@ -544,10 +570,19 @@ class DiscordChannel(ChannelBase):
 
     def may_decide(self, clicker_id: str, requester_id: str) -> bool:
         """Whether ``clicker_id`` may answer a card raised for ``requester_id``."""
-        return bool(clicker_id) and (
+        return bool(clicker_id) and self.may_chat(clicker_id) and (
             clicker_id == requester_id
             or clicker_id in self._config.approver_user_ids
         )
+
+    @property
+    def private_access_required(self) -> bool:
+        """Vin is private by default; explicit allowlists opt legacy bots in."""
+        return self._config.allowed_user_ids is not None or os.getenv("VIN_PLATFORM_ENABLED", "").lower() in {"true", "1", "yes"}
+
+    def may_chat(self, user_id: str) -> bool:
+        """Checked before attachment IO or emitting a model-triggering event."""
+        return bool(user_id) and (not self.private_access_required or user_id in (self._config.allowed_user_ids or []))
 
     async def _decide(
         self,

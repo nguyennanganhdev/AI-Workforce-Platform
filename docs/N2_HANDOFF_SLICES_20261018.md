@@ -92,3 +92,18 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Chờ Người 1 commit C02 ổn định và kiểm version/audience/tool allowlist nhất quán trong `resolve_catalog`.
   Catalog version/artifact manifest chưa được pin xuyên cả publish → runtime; C08 fixture theo customer
   và C05/C07 flow Domain chưa được producer giao. Chưa release hoặc công bố N2-02/N2-05 hoàn tất.
+
+## S04 — Discord riêng: gate inbound/delivery
+
+- Test mới `tests/workforce/console/test_private_discord_access.py` thuộc Người 2 theo Discord runtime.
+  Mở rộng Config của adapter PR #99 để giới hạn Discord ID trước download attachment/emit/quota.
+- Legacy khi flag Vin tắt và chưa cấu hình allowlist giữ hành vi cũ. Danh sách đã cấu hình trống luôn deny;
+  Vin bật nhưng thiếu danh sách cũng deny. Kênh cá nhân chỉ nhận DM để không đưa dữ liệu riêng vào guild.
+- Chờ C09 verified owner identity/secret ref/lease/outbox: chưa tự suy owner từ sender hoặc nhập ID.
+  Default owner và mapping theo từng người phải được server cung cấp; slice này chưa hoàn tất N2-07.
+- Đã kiểm tra cả approval clicker với allowlist hiện hành; requester/approver đã bị bỏ khỏi danh sách
+  không còn được bấm. Delivery thiếu recipient được cấp hoặc metadata DM bị chặn trước Discord IO.
+- 14 test mới: deny None/empty/ngoài list, trước attachment/emit, DM/guild, revoke quyền duyệt,
+  tương thích legacy khi flag tắt, ID không hợp lệ, chặn delivery ra guild/người ngoài.
+- Harness kết hợp C02 producer + runtime/automation: **404 passed, 13 skipped**, 0 network attempts,
+  0 paid model calls; Ruff kiểm undefined/unused ở file sửa đạt. Không đăng nhập/gọi Discord thật.
