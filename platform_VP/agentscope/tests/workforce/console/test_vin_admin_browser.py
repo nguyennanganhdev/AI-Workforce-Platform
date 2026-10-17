@@ -27,6 +27,8 @@ def admin_app(browser_app, *, privileged=True):
             result = []
         elif path.startswith("/catalog/"):
             result = {"items": []}
+        elif path.startswith('/admin/vin/'):
+            result = {"contract_version": "vin-platform-1", "items": [], "total": 0, "offset": 0, "limit": 10, "next_offset": None}
         elif path == "/knowledge_bases/":
             result = {"total": 1, "knowledge_bases": [{"id": "fixture-kb", "name": "KB Vin fixture", "description": "Approved KB fixture", "editable": True,
                 "document_count": 2, "chunk_count": 8, "status_counts": {"ready": 2, "error": 0, "pending": 0, "parsing": 0, "chunking": 0, "indexing": 0}}]}
@@ -43,6 +45,7 @@ def test_admin_quota_requires_full_values_and_posts_exact_policy(browser_app):
     from playwright.sync_api import expect
     page, writes, external = admin_app(browser_app)
     page.get_by_role("button", name="Quota & thư viện Vin", exact=True).click()
+    page.get_by_role("button", name="Đọc chính sách", exact=True).click()
     page.get_by_role("button", name="Áp dụng chính sách thay thế", exact=True).click()
     assert writes == []  # Native required constraints must not send zero defaults.
     values = {"Token mỗi ngày": "10000", "Token mỗi tháng": "100000", "Token đầu ra tối đa mỗi lượt": "1024",
@@ -77,7 +80,7 @@ def test_admin_kb_to_catalog_and_grant_uses_safe_ids_and_customer_permissions(br
     page.get_by_label("Chọn/gắn", exact=True).check()
     page.get_by_label("Sử dụng", exact=True).check()
     page.get_by_role("button", name="Cấp quyền", exact=True).click()
-    expect(page.get_by_label("Grant ID vừa tạo hoặc cần thu hồi", exact=True)).to_have_value("fixture-grant")
+    expect(page.get_by_text("Grant vừa tạo: fixture-grant", exact=True)).to_be_visible()
     assert writes[1][2] == {"catalog_id": "fixture-entry", "subject_kind": "user", "subject_id": "resident-b",
         "permissions": ["view", "bind", "execute"], "expires_at": None}
     assert not external

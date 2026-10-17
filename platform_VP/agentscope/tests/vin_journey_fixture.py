@@ -11,6 +11,8 @@ from pathlib import Path
 import socket
 from types import SimpleNamespace
 from urllib.parse import urlsplit
+from urllib.parse import urlunsplit
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -32,13 +34,12 @@ from agentscope.app.storage import AsyncSQLAlchemyStorage
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 from agentscope.app.vin_platform._contracts import DomainProvider
 from agentscope.app.vin_platform._domain import DomainAdapter
-from agentscope.app.workforce.foundation._tables import durable_jobs
 
 PASSWORD = "Offline-journey-password-20261018"
 
 
 @pytest.fixture
-def journey(database, tmp_path, monkeypatch):
+def journey(database, tmp_path, monkeypatch, request):
     from test_account_administration import door
     from test_platform_customers import register, CLIENT, SECRET, REDIRECT
 
@@ -53,23 +54,55 @@ def journey(database, tmp_path, monkeypatch):
     # Only the fixture's Domain identity provider is replaced. Platform uses
     # its real password/JWT/session/capability boundary throughout the browser.
     monkeypatch.setattr("vinhomes_api.password_auth.authenticated_user", resident)
-    url = "sqlite+aiosqlite:///" + str(tmp_path / "platform.db")
+    admin_url = os.environ["RESIDENT_TEST_ADMIN_URL"]
+    name = "vin_n2_platform_" + uuid4().hex
+    owner_url = urlunsplit(urlsplit(admin_url)._replace(scheme="postgresql+asyncpg", path="/" + name))
+    url = urlunsplit(urlsplit(os.environ["RESIDENT_TEST_RUNTIME_URL"])._replace(scheme="postgresql+asyncpg", path="/" + name))
     auth = AuthService(database_url=url, jwt_secret="offline-jwt-signing-material-" * 2,
         refresh_pepper="offline-refresh-material-" * 2, default_tenant_id="vin", cookie_secure=False,
         engine_kwargs={"poolclass": NullPool})
 
     async def initialize():
-        engine = create_async_engine(url)
+        import asyncpg
+        from alembic import command
+        from alembic.config import Config
+        control = await asyncpg.connect(admin_url)
         try:
-            await seed_authority(engine)
+            await control.execute('CREATE DATABASE "' + name + '"')
+        finally:
+            await control.close()
+        request.addfinalizer(lambda: asyncio.run(cleanup()))
+        config = Config(str(Path(__file__).parents[1] / "src/agentscope/app/storage/_sql/_alembic/alembic.ini"))
+        config.set_main_option("sqlalchemy.url", owner_url)
+        await asyncio.to_thread(command.upgrade, config, "head")
+        engine = create_async_engine(owner_url)
+        try:
+            # Production Alembic has already created the schema. Keep the
+            # shared fixture's user/account rows without repeating its DDL.
+            with monkeypatch.context() as schema:
+                schema.setattr("vin_fixtures.create_authority_schema", lambda connection: None)
+                await seed_authority(engine)
             async with engine.begin() as db:
-                await db.run_sync(durable_jobs.create)
                 await db.execute(text("UPDATE auth_users SET password_hash=:password"),
                     {"password": auth._password_hasher.hash(PASSWORD)})
+                role = urlsplit(url).username
+                assert role.startswith("vin_n2_journey_") and len(role) == 47
+                await db.execute(text(f'GRANT USAGE ON SCHEMA public TO "{role}"'))
+                await db.execute(text(f'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "{role}"'))
+                await db.execute(text(f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "{role}"'))
         finally:
             await engine.dispose()
+
+    async def cleanup():
+        import asyncpg
+        assert name.startswith("vin_n2_platform_") and len(name) == 48
+        db = await asyncpg.connect(admin_url)
+        try:
+            await db.execute('DROP DATABASE "' + name + '" WITH (FORCE)')
+        finally:
+            await db.close()
     asyncio.run(initialize())
-    storage = AsyncSQLAlchemyStorage(url, create_tables=True)
+    storage = AsyncSQLAlchemyStorage(url)
     manager = LocalWorkspaceManager(str(tmp_path / "workspace"))
     app = create_app(storage=storage, message_bus=InMemoryMessageBus(), workspace_manager=manager,
         auth_service=auth, vin_platform_enabled=True, channels=[DiscordChannel],
@@ -95,7 +128,8 @@ def journey(database, tmp_path, monkeypatch):
             authority.http_client = http
 
             async def configure():
-                await seed_policy_catalog(authority)
+                if 'admin_policy' not in request.node.name:
+                    await seed_policy_catalog(authority)
                 admin = await authority.context("admin")
                 secret = await authority.secret_put(admin, SECRET, "domain-client")
                 await DomainAdapter(authority).configure(admin, DomainProvider(id="vinhomes", issuer="https://domain.invalid",
@@ -119,7 +153,12 @@ def journey(database, tmp_path, monkeypatch):
                     # Same prefix stripping as the deployed reverse proxy;
                     # authorization middleware sees its real backend routes.
                     inner = {**scope, "path": scope["path"][4:], "raw_path": scope["raw_path"][4:]}
-                    return await app(inner, receive, send)
+                    async def proxy_send(message):
+                        if message["type"] == "http.response.start":
+                            message = {**message, "headers": [(key, value.replace(b"Path=/auth", b"Path=/api/auth")
+                                if key.lower() == b"set-cookie" else value) for key, value in message["headers"]]}
+                        await send(message)
+                    return await app(inner, receive, proxy_send)
                 return await files(scope, receive, send)
 
             listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -162,8 +201,14 @@ def browser_bridge(page, journey):
             response = journey.domain.request(request.method, request.url,
                 headers={"content-type": request.headers.get("content-type", "")}, content=request.post_data_buffer,
                 follow_redirects=False)
+            Path('.artifacts/vin-journey/domain-browser-debug.txt').write_text(request.method + ' ' + request.url + '\n' + str(response.status_code) + '\n' + str(dict(response.headers)) + '\n' + response.text, encoding='utf-8')
         elif parsed.netloc == "platform.invalid" and parsed.path == "/connections/callback/vinhomes":
             route.fulfill(status=302, headers={"location": base_url + parsed.path + "?" + parsed.query})
+            return
+        elif parsed.netloc == 'www.google.com' and parsed.path == '/s2/favicons':
+            # A decorative channel icon is a labelled static asset fixture,
+            # never a business/API response or a real internet request.
+            route.fulfill(status=200, content_type='image/svg+xml', body='<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"/>')
             return
         else:
             journey.forbidden.append(request.url)
@@ -204,7 +249,7 @@ def staff_complete(journey, case_id, ticket_id):
         assert response.status_code == status, response.text
         return response.json()
 
-    with client(journey.database, "admin") as staff:
+    with client(journey.database, "management") as staff:
         ticket = ok(staff.get("/tickets/" + ticket_id))["ticket"]
         plan = ok(staff.post("/tickets/" + ticket_id + "/plans", json={"title": "Offline repair and verify",
             "ticket_version": ticket["version"], "idempotency_key": str(uuid4()),
@@ -216,7 +261,7 @@ def staff_complete(journey, case_id, ticket_id):
         plan = ok(resident.get(BASE + "/requests/" + case_id + "/plans"))["items"][0]
         ok(resident.post(BASE + "/requests/" + case_id + "/plans/" + plan["id"] + "/decision",
             json={"expectedVersion": plan["version"], "decision": "approve", "note": "Offline resident review"}, headers=headers()))
-    with client(journey.database, "admin") as staff:
+    with client(journey.database, "management") as staff:
         work = ok(staff.get("/tickets/" + ticket_id))["workOrders"][0]
         worker = next(item for item in ok(staff.get("/catalogs"))["staff"] if item["user_id"] == "local-v3-technical")
         assignment = ok(staff.post("/work-orders/" + work["id"] + "/assignments", json={"staff_id": worker["id"],

@@ -15,7 +15,9 @@ from ..vin_platform._contracts import PlatformError
 
 class _Params(ParamsBase):
     operation: Literal["context", "create", "progress"]
-    link_id: UUID | None = None
+    # Platform link IDs are opaque strings (the producer currently stores
+    # uuid.hex). UUID coercion inserts hyphens and breaks the owner lookup.
+    link_id: str | None = Field(default=None, min_length=1, max_length=255)
     apartment_id: UUID | None = None
     description: str = Field(default="", max_length=4000)
     location: str = Field(default="", max_length=500)

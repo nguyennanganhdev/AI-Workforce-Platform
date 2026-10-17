@@ -44,7 +44,7 @@ async def authority(monkeypatch):
         cfg.set_main_option("sqlalchemy.url", database_url)
         await asyncio.to_thread(command.upgrade, cfg, "head")
         async with engine.begin() as db:
-            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0023_personal_job_constraint"
+            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0024_vin_admin_revisions"
             for user, role in (("admin", "PLATFORM_ADMIN"), ("alice", "VIN_USER"), ("bob", "VIN_USER")):
                 await db.execute(text("""INSERT INTO auth_users(id,tenant_id,email,username,password_hash,status,role,created_at,updated_at)
                     VALUES(:u,'vin',:email,:u,'offline-not-a-login','active',:r,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"""),

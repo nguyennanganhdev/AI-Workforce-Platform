@@ -36,6 +36,7 @@ async def customer(authority, monkeypatch):
         api_base_url="https://domain.fixture.invalid/customer", redirect_uri="https://platform.fixture.invalid/connections/callback",
         client_secret_ref=secret, active=True))
     link_id, apartment_id, category_id, domain_id, resolution_id = [str(uuid4()) for _ in range(5)]
+    link_id = uuid4().hex  # Real C04 producer IDs must remain opaque to tools.
     async with authority.engine.begin() as db:
         await db.execute(insert(t.links).values(id=link_id, tenant_id="vin", user_id="alice", provider_id="vinhomes",
             issuer="https://domain.fixture.invalid", subject="resident-alice", status="active", secret_ref=link_secret,
@@ -95,6 +96,14 @@ async def customer(authority, monkeypatch):
         yield SimpleNamespace(storage=storage, authority=authority, state=state,
             args=(storage, "alice", "leader", "session"), command=dict(link_id=link_id, apartment_id=apartment_id,
                 description="Vòi nước ở bếp rò rỉ", location="Bếp dưới bồn rửa", category_id=category_id))
+
+
+@pytest.mark.asyncio
+async def test_leader_tool_preserves_real_platform_hex_link_id(customer):
+    tool = CustomerService(customer.storage, None, None, "alice", "session", "leader")
+    result = await tool(operation="create", **customer.command)
+    assert result.state.value != "error"
+    assert customer.state["created"] == 1
 
 
 @pytest.mark.asyncio

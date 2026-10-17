@@ -16,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--admin-url", required=True, help="Disposable loopback PostgreSQL only")
     parser.add_argument("--ui-dir", help="Frontend dist built with Vin enabled and API /api; defaults to the repo frontend dist")
+    parser.add_argument("--scenario", choices=["customer", "customer-runtime", "admin", "builder", "automation"], help="Run just one independent journey")
     options = parser.parse_args()
     postgres = urlsplit(options.admin_url)
     if (postgres.scheme != "postgresql" or postgres.hostname not in {"127.0.0.1", "localhost", "::1"}
@@ -91,7 +92,8 @@ def main():
     folder.mkdir(parents=True, exist_ok=True)
     asyncio.run(provision())
     try:
-        result = pytest.main(["tests/vin_journey_browser_test.py", "-q", "--tb=short", "-p", "no:cacheprovider",
+        selection = 'customer and http-link' if options.scenario == 'customer-runtime' else options.scenario
+        result = pytest.main(["tests/vin_journey_browser_test.py", *(["-k", selection] if selection else []), "-q", "--tb=short", "-p", "no:cacheprovider", "-o", "faulthandler_timeout=45",
             f"--junitxml={folder / 'pytest.xml'}"])
         totals = ET.parse(folder / "pytest.xml").getroot().find("testsuite")
         summary = {key: int(totals.get(key, "0")) for key in ("tests", "failures", "errors", "skipped")}

@@ -1,10 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { cloneElement, isValidElement, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { AccessRecords, AdminRecords, EligibilityRecords, LibraryReview } from './VinAdminLists';
 import { knowledgeBaseApi } from '@/api';
-import type { AdminAccount } from '@/api/admin';
 import { vinAdminApi } from '@/api/vinAdmin';
 import type { VinCatalogEntry, VinCatalogView, VinGrant, VinQuotaPolicy } from '@/api/vinAdmin';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,8 @@ const split = (value: string) => [...new Set(value.split(/[\n,]+/).map((item) =>
 const expires = (value: string) => value ? new Date(value).toISOString() : null;
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
-	return <Label className="grid gap-2 text-sm">{label}{children}</Label>;
+	const id = useId();
+	return <div className="grid gap-2 text-sm"><Label htmlFor={id}>{label}</Label>{isValidElement<{ id?: string }>(children) ? cloneElement(children, { id }) : children}</div>;
 }
 
 function PolicyEditor({ perform, busy }: { perform: (action: () => Promise<unknown>, message: string) => Promise<void>; busy: boolean }) {
@@ -35,25 +36,41 @@ function PolicyEditor({ perform, busy }: { perform: (action: () => Promise<unkno
 	const [values, setValues] = useState<Record<string, string>>({});
 	const [models, setModels] = useState('');
 	const [enabled, setEnabled] = useState(false);
+	const [revision, setRevision] = useState<number | null>(null);
+	const [loadedSubject, setLoadedSubject] = useState('');
+	const [filter, setFilter] = useState('');
 	const [inspect, setInspect] = useState('');
 	const [selected, setSelected] = useState('');
 	const usage = useQuery({ queryKey: ['vin-admin-usage', selected], queryFn: () => vinAdminApi.usage(selected), enabled: !!selected, retry: false });
 	return <div className="max-w-3xl space-y-8"><form className="space-y-4" onSubmit={(event) => {
 		event.preventDefault();
 		const policy = Object.fromEntries(QUOTAS.map(([key]) => [key, Number(values[key])])) as unknown as VinQuotaPolicy;
-		void perform(() => vinAdminApi.savePolicy(`${kind}:${subject.trim()}`, { ...policy, models: split(models), enabled }), 'Đã lưu chính sách quota.');
+		if (revision === null || loadedSubject !== `${kind}:${subject.trim()}`) return;
+		void perform(async () => { await vinAdminApi.savePolicy(loadedSubject, { ...policy, models: split(models), enabled }, revision); setRevision(null); }, 'Đã lưu chính sách quota.');
 	}}>
 		<h2 className="font-semibold">Chính sách quota Vin</h2>
 		<p className="text-sm text-muted-foreground">Nhập đầy đủ chính sách thay thế cho đối tượng đã chọn. Người dùng ưu tiên quota cá nhân, rồi nhóm, rồi vai trò; pool là hạn mức dùng chung của nhóm.</p>
-		<p className="text-sm text-muted-foreground">API hiện chưa trả cấu hình policy đã lưu; các ô trống bên dưới không phải giá trị hiện tại.</p>
+		<p className="text-sm text-muted-foreground">Đọc chính sách trước khi sửa để giữ đúng phiên bản. Gỡ ghi đè sẽ quay về quota nhóm/vai trò; tắt enabled sẽ chặn sử dụng chính sách.</p>
 		<div className="grid gap-3 sm:grid-cols-2"><Field label="Loại đối tượng"><select className={options} value={kind} onChange={(event) => { setKind(event.target.value); setSubject(event.target.value === 'role' ? 'VIN_USER' : ''); }}>
 			<option value="role">Vai trò</option><option value="user">Người dùng</option><option value="group">Nhóm</option><option value="pool">Pool nhóm</option>
 		</select></Field><Field label="ID đối tượng"><Input required maxLength={240} value={subject} onChange={(event) => setSubject(event.target.value)} /></Field></div>
+		<Button type="button" variant="outline" disabled={busy || !subject.trim()} onClick={() => void perform(async () => {
+			const key = `${kind}:${subject.trim()}`;
+			const page = await vinAdminApi.policies({ subject: key });
+			const current = page.items.find((item) => item.subject === key);
+			setRevision(current?.revision ?? 0); setLoadedSubject(key);
+			setValues(current ? Object.fromEntries(QUOTAS.map(([name]) => [name, String(current.policy[name])])) : {});
+			setModels(current?.policy.models.join(', ') ?? ''); setEnabled(current?.policy.enabled ?? false);
+		}, 'Đã đọc chính sách; có thể sửa với phiên bản vừa tải.')}>Đọc chính sách</Button>
+		{revision !== null && loadedSubject === `${kind}:${subject.trim()}` && <p className="text-sm">{revision === 0 ? 'Chưa có chính sách riêng; tạo mới.' : `Đang sửa ${loadedSubject} · v${revision}`}</p>}
 		<div className="grid gap-3 sm:grid-cols-2">{QUOTAS.map(([key, label, min, max]) => <Field key={key} label={label}><Input type="number" required min={min} max={max} step="1" value={values[key] ?? ''} onChange={(event) => setValues({ ...values, [key]: event.target.value })} /></Field>)}</div>
 		<Field label="Model được phép (cách nhau bằng dấu phẩy)"><Textarea required maxLength={5000} value={models} onChange={(event) => setModels(event.target.value)} /></Field>
 		<Label className="flex items-center gap-2"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Cho phép dùng chính sách này</Label>
-		<Button disabled={busy} type="submit">Áp dụng chính sách thay thế</Button>
+		<Button disabled={busy || revision === null || loadedSubject !== `${kind}:${subject.trim()}`} type="submit">Áp dụng chính sách thay thế</Button>
 	</form>
+		<Input aria-label="Lọc chính sách theo đối tượng" placeholder="Ví dụ user:alice hoặc group:pilot" value={filter} onChange={(event) => setFilter(event.target.value)} />
+		<AdminRecords title="Chính sách đã lưu" filters={{ subject: filter }} load={vinAdminApi.policies} render={(row) => <><span>{row.subject} · v{row.revision} · {row.active ? (row.policy.enabled ? 'Đang áp dụng' : 'Chặn sử dụng') : 'Đã gỡ ghi đè'}</span>
+			<Button size="sm" variant="outline" disabled={busy || !row.active} onClick={() => void perform(() => vinAdminApi.removePolicy(row.subject, row.revision), 'Đã gỡ ghi đè; hạn mức quay về chính sách nhóm/vai trò.')}>Gỡ ghi đè {row.subject}</Button></>} />
 		<section className="space-y-3 border-t pt-4"><h3 className="font-medium">Kiểm tra hạn mức hiệu lực của người dùng</h3><Field label="User ID xem hạn mức"><Input value={inspect} onChange={(event) => setInspect(event.target.value)} /></Field><Button type="button" variant="outline" disabled={!inspect.trim() || usage.isFetching} onClick={() => { if (selected === inspect.trim()) void usage.refetch(); else setSelected(inspect.trim()); }}>Xem hạn mức hiệu lực</Button>
 			{usage.isError && <p role="alert">Chưa đọc được hạn mức; kiểm tra user, policy và quyền trong workspace.</p>}
 			{usage.data && <div className="space-y-1 text-sm"><p>Chính sách hiệu lực v{usage.data.policy_revision} · Chờ đối soát: {usage.data.pending_reconciliation}</p>{usage.data.effective_limits?.map((limit) => <p key={`${limit.subject}:${limit.window}`}>{limit.subject} · {limit.window}: giới hạn {limit.limit}, còn {limit.remaining}</p>)}</div>}
@@ -101,7 +118,6 @@ function AccessEditor({ catalogId, setCatalogId, perform, busy }: { catalogId: s
 	const [grantId, setGrantId] = useState('');
 	const [group, setGroup] = useState('');
 	const [user, setUser] = useState('');
-	const [membershipId, setMembershipId] = useState('');
 	return <div className="max-w-3xl space-y-8">
 		<form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void perform(async () => {
 			const result = await vinAdminApi.grant({ catalog_id: catalogId, subject_kind: subjectKind, subject_id: subject.trim(), permissions, expires_at: expires(expiry) });
@@ -115,21 +131,16 @@ function AccessEditor({ catalogId, setCatalogId, perform, busy }: { catalogId: s
 			<Field label="Hết hạn quyền (tùy chọn)"><Input type="datetime-local" value={expiry} onChange={(event) => setExpiry(event.target.value)} /></Field>
 			<Button type="submit" disabled={busy || permissions.length === 0}>Cấp quyền</Button>
 		</form>
-		<form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void perform(() => vinAdminApi.revokeGrant(grantId), 'Đã thu hồi quyền catalog.'); }}>
-			<Field label="Grant ID vừa tạo hoặc cần thu hồi"><Input required value={grantId} onChange={(event) => setGrantId(event.target.value)} /></Field><Button type="submit" variant="outline" disabled={busy}>Thu hồi grant</Button>
-		</form>
-		<form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void perform(async () => { const result = await vinAdminApi.membership(user, group, null); setMembershipId(result.id); }, 'Đã thêm thành viên nhóm quota/catalog.'); }}>
+		{grantId && <p role="status" className="text-sm">Grant vừa tạo: {grantId}</p>}
+		<form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void perform(() => vinAdminApi.membership(user, group, null), 'Đã thêm thành viên nhóm quota/catalog.'); }}>
 			<h2 className="font-semibold">Nhóm người dùng</h2><Field label="User ID thành viên"><Input required value={user} onChange={(event) => setUser(event.target.value)} /></Field><Field label="Group ID"><Input required value={group} onChange={(event) => setGroup(event.target.value)} /></Field>
 			<Button type="submit" disabled={busy}>Thêm thành viên nhóm</Button>
 		</form>
-		<form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void perform(() => vinAdminApi.revokeMembership(membershipId), 'Đã thu hồi thành viên nhóm.'); }}>
-			<Field label="Membership ID cần thu hồi"><Input required value={membershipId} onChange={(event) => setMembershipId(event.target.value)} /></Field><Button type="submit" variant="outline" disabled={busy}>Thu hồi membership</Button>
-		</form>
-		<p className="text-xs text-muted-foreground">API chưa có danh sách grants/memberships hiện hành. Lưu ID trả về để thu hồi; các ô này không đại diện toàn bộ quyền đang được cấp.</p>
+		<AccessRecords perform={perform} busy={busy} />
 	</div>;
 }
 
-export function VinAdministration({ accounts }: { accounts: AdminAccount[] }) {
+export function VinAdministration() {
 	const user = useCurrentUser()!;
 	const access = usePlatformAccess();
 	const quota = access?.view?.capabilities['quota.manage'] === true;
@@ -142,12 +153,14 @@ export function VinAdministration({ accounts }: { accounts: AdminAccount[] }) {
 	const [catalogId, setCatalogId] = useState('');
 	const [kind, setKind] = useState('knowledge_base');
 	const [environment, setEnvironment] = useState('production');
-	const visible = useQuery({ queryKey: ['vin-admin-visible-catalog', user.tenant_id, kind, environment], queryFn: () => vinAdminApi.catalog(kind, environment), enabled: catalog, retry: false });
+	const [active, setActive] = useState('');
+	const [library, setLibrary] = useState('');
+	const queries = useQueryClient();
 	const knowledge = useQuery({ queryKey: ['vin-admin-knowledge', user.tenant_id, user.id], queryFn: () => knowledgeBaseApi.listAll(), enabled: catalog, retry: false });
 	const perform = async (action: () => Promise<unknown>, done: string) => {
 		setBusy(true); setError(''); setMessage('');
-		try { await action(); setMessage(done); if (catalog) await visible.refetch(); }
-		catch (failure) { setError(failure instanceof Error ? failure.message : 'Chưa lưu được thay đổi.'); }
+		try { await action(); setMessage(done); await queries.invalidateQueries({ queryKey: ['vin-admin'] }); }
+		catch (failure) { setError(`Chưa lưu được thay đổi. Nếu phiên bản đã thay đổi, tải lại bản ghi trước khi sửa. ${failure instanceof Error ? failure.message : ''}`); }
 		finally { setBusy(false); }
 	};
 	if (!quota && !catalog) return <p role="alert">Không có quyền quản trị quota/catalog trong workspace hiện tại.</p>;
@@ -160,15 +173,18 @@ export function VinAdministration({ accounts }: { accounts: AdminAccount[] }) {
 		{message && <p role="status" className="rounded border p-3 text-sm">{message}</p>}{error && <p role="alert" className="rounded border border-destructive p-3 text-sm">{error}</p>}
 		<Tabs value={tab} onValueChange={setTab}><TabsList className="flex h-auto flex-wrap justify-start">{quota && <TabsTrigger value="quota">Quota</TabsTrigger>}{catalog && <><TabsTrigger value="catalog">Catalog</TabsTrigger><TabsTrigger value="access">Cấp quyền & nhóm</TabsTrigger><TabsTrigger value="knowledge">Thư viện KB Vin</TabsTrigger></>}</TabsList>
 			{quota && <TabsContent value="quota" className="space-y-8"><PolicyEditor perform={perform} busy={busy} />
-				<section className="space-y-3"><h2 className="font-semibold">Điều kiện dùng AI cá nhân</h2>{accounts.filter((account) => account.role === 'VIN_USER').map((account) => <div key={account.id} className="flex flex-wrap items-center gap-3 border-b py-2 text-sm"><span>{account.username} · {account.id}</span><Button size="sm" variant="outline" disabled={busy} onClick={() => void perform(() => vinAdminApi.eligibility(account.id, true), 'Đã bật điều kiện dùng AI.')}>Bật điều kiện AI</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => void perform(() => vinAdminApi.eligibility(account.id, false), 'Đã tắt điều kiện dùng AI.')}>Tắt điều kiện AI</Button></div>)}</section>
+				<EligibilityRecords perform={perform} busy={busy} />
 			</TabsContent>}
 			{catalog && <><TabsContent value="catalog" className="space-y-8"><CatalogEditor entry={entry} setEntry={setEntry} perform={perform} busy={busy} onPublished={setCatalogId} />
-				<section className="space-y-3"><h2 className="font-semibold">Catalog được cấp cho tài khoản quản trị này</h2><p className="text-sm text-muted-foreground">Danh sách hiện tại chỉ gồm tài nguyên đang hoạt động mà bạn được cấp xem; chưa phải toàn bộ catalog quản trị.</p>
+				<section className="space-y-3"><h2 className="font-semibold">Catalog toàn workspace</h2><p className="text-sm text-muted-foreground">Bao gồm tài nguyên chưa cấp cho quản trị và bản ngừng dùng. Các trang là dữ liệu hiện tại; tải lại trước khi sửa.</p>
 					<div className="flex flex-wrap gap-3"><select aria-label="Loại catalog xem" className={options + ' max-w-48'} value={kind} onChange={(event) => setKind(event.target.value)}>{['credential', 'agent', 'knowledge_base', 'mcp', 'skill'].map((value) => <option key={value}>{value}</option>)}</select><select aria-label="Môi trường catalog xem" className={options + ' max-w-48'} value={environment} onChange={(event) => setEnvironment(event.target.value)}><option value="production">Production</option><option value="sandbox">Sandbox</option></select></div>
-					{visible.isError && <p role="alert">Chưa tải được catalog.</p>}{visible.data?.items.map((item) => <div key={item.catalog_id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm"><span>{item.name} · v{item.version} · {item.resource_id}</span><Button variant="outline" size="sm" onClick={() => choose(item)}>Chuẩn bị phiên bản kế tiếp</Button></div>)}
+					<select aria-label="Trạng thái catalog xem" className={options + ' max-w-48'} value={active} onChange={(event) => setActive(event.target.value)}><option value="">Tất cả trạng thái</option><option value="true">Đang hoạt động</option><option value="false">Ngừng dùng</option></select>
+					<AdminRecords title="Tài nguyên catalog" filters={{ kind, environment, active: active ? active === 'true' : undefined }} load={vinAdminApi.catalog} render={(item) => <><span>{item.name} · v{item.version} · {item.active ? 'Đang hoạt động' : 'Ngừng dùng'} · {item.resource_id}</span><Button variant="outline" size="sm" onClick={() => choose(item)}>Chuẩn bị phiên bản kế tiếp</Button>{item.kind === 'knowledge_base' && <Button size="sm" variant="outline" onClick={() => { setLibrary(item.catalog_id); setTab('knowledge'); }}>Duyệt tài liệu {item.name}</Button>}</>} />
 				</section></TabsContent><TabsContent value="access"><AccessEditor catalogId={catalogId} setCatalogId={setCatalogId} perform={perform} busy={busy} /></TabsContent>
 				<TabsContent value="knowledge" className="space-y-4"><h2 className="font-semibold">Thư viện KB Vin</h2><p className="text-sm text-muted-foreground">Tạo, nhập tài liệu và kiểm tra trạng thái index tại trang Knowledge hiện có; sau đó đưa KB được duyệt vào catalog và cấp quyền đọc/dùng.</p><Button asChild variant="outline"><Link to="/knowledge">Mở Knowledge</Link></Button>
 					{knowledge.isError && <p role="alert">Chưa tải được Knowledge.</p>}{knowledge.data?.map((kb) => <div key={kb.id} className="flex flex-wrap justify-between gap-3 border-b py-3 text-sm"><span>{kb.name} · {kb.id} · {kb.status_counts.ready} tài liệu sẵn sàng / {kb.status_counts.error} lỗi</span><Button size="sm" variant="outline" disabled={kb.editable === false} onClick={() => { setEntry({ ...emptyEntry(''), kind: 'knowledge_base', resource_id: kb.id, name: kb.name, description: kb.description }); setTab('catalog'); }}>Chuẩn bị KB vào catalog</Button></div>)}
+					<Field label="Catalog ID thư viện cần duyệt"><Input value={library} onChange={(event) => setLibrary(event.target.value)} /></Field>
+					{library.trim() && <LibraryReview key={library} catalogId={library.trim()} perform={perform} busy={busy} />}
 				</TabsContent></>}
 		</Tabs>
 	</section>;

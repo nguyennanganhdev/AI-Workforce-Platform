@@ -430,7 +430,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 		</main>
 	) : section === 'vin' && manageVin ? (
 		<Page title="Quota & thư viện Vin" hint="Hạn mức và quyền dùng tài nguyên cho tài khoản Vin; chỉ quản trị được cấp quyền mới thay đổi cấu hình.">
-			<VinAdministration accounts={accounts} />
+			<VinAdministration />
 		</Page>
 	) : section === 'pending' ? (
 		<Page title="BQL chờ duyệt" hint="Mỗi khu có đúng một BQL. Duyệt xong, BQL đăng nhập và dùng platform cho khu của mình.">
