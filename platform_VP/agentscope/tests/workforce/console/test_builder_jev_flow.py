@@ -177,6 +177,98 @@ def assert_bounded_calls(value):
 
 
 @pytest.mark.asyncio
+async def test_captured_borderline_match_is_verified_before_requesting_clarification(storage):
+    # Captured run 315492ea: technical role matched 0.83, coverage 0.29.
+    # Replay only scripted judgments; no model API is contacted.
+    value = classifier(storage, {
+        "same_0_0": 0.83, "covers_0_0": 0.29,
+        "verify_same_0_0": 0.96, "verify_distinct_0_0": 0.04,
+    })
+    result = await decisions.decide_identities(
+        [console.PlannedAgent(name="Đánh giá sự cố kỹ thuật", objective="Đánh giá ticket kỹ thuật")],
+        [existing()], value,
+    )
+    assert result[0].action == "revise"
+    assert result[0].agent_id == "old"
+
+
+@pytest.mark.asyncio
+async def test_verified_distinct_at_threshold_has_no_float_boundary_ambiguity(storage):
+    value = classifier(storage, {"same_0_0": .46, "verify_same_0_0": .15, "verify_distinct_0_0": .85})
+    result = await decisions.decide_identities([console.PlannedAgent(name="Khác", objective="Khác nghiệp vụ")], [existing()], value)
+    assert result[0].action == "create"
+
+
+@pytest.mark.asyncio
+async def test_captured_weak_role_overlap_is_verified_as_distinct(storage):
+    # The original run blocked both roles solely because pair_1_0 was 0.18.
+    value = classifier(storage, {
+        "pair_1_0": 0.18,
+        "verify_same_pair_1_0": 0.03,
+        "verify_distinct_pair_1_0": 0.97,
+    })
+    result = await decisions.decide_identities([
+        console.PlannedAgent(name="Đánh giá", objective="Đánh giá ticket"),
+        console.PlannedAgent(name="Cập nhật cư dân", objective="Thông báo kết quả đã xác minh"),
+    ], [], value)
+    assert [d.action for d in result] == ["create", "create"]
+
+
+@pytest.mark.asyncio
+async def test_captured_three_role_shortlist_is_resolved_without_creating_duplicates(storage):
+    rows = [
+        [.83, .08, .15, .08, .12, .22, .20, .19, .14, .21, .16],
+        [.12, .80, .10, .10, .11, .17, .08, .09, .10, .09, .06],
+        [.19, .09, .12, .14, .15, .12, .15, .46, .10, .13, .10],
+    ]
+    answers = {f"same_{i}_{j}": score for i, row in enumerate(rows) for j, score in enumerate(row)}
+    answers.update({"covers_0_0": .29, "covers_1_1": .43, "pair_1_0": .10, "pair_2_0": .18, "pair_2_1": .12})
+    for key, score in list(answers.items()):
+        if (key.startswith("same_") or key.startswith("pair_")) and .15 < score < .85:
+            suffix = key.removeprefix("same_") if key.startswith("same_") else key
+            same = suffix in {"0_0", "1_1"}
+            answers[f"verify_same_{suffix}"] = .96 if same else .04
+            answers[f"verify_distinct_{suffix}"] = .04 if same else .96
+    value = classifier(storage, answers)
+    result = await decisions.decide_identities([
+        console.PlannedAgent(name="Đánh giá sự cố kỹ thuật", objective="Đánh giá ticket"),
+        console.PlannedAgent(name="Điều phối thợ và theo dõi ticket", objective="Điều phối thợ"),
+        console.PlannedAgent(name="Cập nhật và hỗ trợ cư dân", objective="Thông báo kết quả đã xác minh"),
+    ], [existing(agent_id=f"agent-{i}") for i in range(11)], value)
+    assert [d.action for d in result] == ["revise", "revise", "create"]
+    assert [d.agent_id for d in result] == ["agent-0", "agent-1", None]
+    assert value.status.stages["builder_identity_verify"]["state"] == "completed"
+    assert_bounded_calls(value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("same,distinct", [(.95, .95), (.60, .40), (.05, .05)])
+async def test_inconclusive_or_conflicting_verification_never_authorizes_creation(storage, same, distinct):
+    value = classifier(storage, {"same_0_0": .46, "verify_same_0_0": same, "verify_distinct_0_0": distinct})
+    result = await decisions.decide_identities([console.PlannedAgent(name="Thông báo", objective="Cập nhật cư dân")], [existing()], value)
+    assert result[0].action == "clarify"
+    assert result[0].candidate_ids == ["old"]
+    assert "Chuyên viên kỹ thuật" in result[0].reason
+
+
+@pytest.mark.asyncio
+async def test_identity_verification_outage_does_not_fall_back_to_creation(storage):
+    class VerifierFailure(ScriptedClassifier):
+        async def __call__(self, **kwargs):
+            if self.calls:
+                self.failure = TimeoutError()
+            return await super().__call__(**kwargs)
+
+    value = classifier(storage)
+    value.model = VerifierFailure({"same_0_0": .83})
+    result = await decisions.decide_identities([console.PlannedAgent(name="Kỹ thuật", objective="Đánh giá sự cố")], [existing()], value)
+    assert result[0].action == "clarify"
+    assert value.status.state == "unavailable"
+    assert value.status.stages["builder_identity_verify"]["state"] == "error"
+    assert value.status.stages["builder_reuse"]["state"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_large_identity_catalog_checks_last_candidate_and_every_question(storage):
     plans = [
         console.PlannedAgent(name=f"Vai trò {i}", objective=f"Nghiệp vụ {i}")

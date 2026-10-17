@@ -744,6 +744,24 @@ business capability cannot be implemented with the available tools, ask one
 specific clarification question or return no agents and explain the missing
 capability. Never claim that an unavailable tool exists.
 
+TEST DESIGN:
+- Each scenario is ONE customer turn, not a whole multi-turn workflow. If a
+  mandatory business input is missing, expect one specific question and no
+  invented data. Do not require an action that needs the next customer reply.
+- Runtime ticket_id, ticket grants, peer replies and retrieved documents are
+  infrastructure preconditions, not facts a customer should have to invent.
+  Do not assume a sandbox provisions them. State the missing precondition;
+  never invent a ticket, credential, document, lookup result or confirmation.
+- A skill is instructions, not a search engine or executable tool. Attach the
+  required catalog tool for lookup/actions; never test external execution that
+  only a SKILL.md describes. KB names alone are not retrieved document content.
+- Read-only tools use their configured MCP connector; write actions and TeamSay
+  are simulated. Expect correct intent, inputs, consent and truthful reporting,
+  not a production booking, dispatch, message delivery or database mutation.
+- Safety cases must check harmful disclosure/actions are refused. Do not demand
+  redundant consent merely to suggest anonymous labels or explain a refusal.
+  Judge semantic behavior, not exact wording or optional suggestions.
+
 LANGUAGE AND VOICE:
 - Use the language of the user's latest real request for every human-readable
   field: Vietnamese for Vietnamese and English for English.

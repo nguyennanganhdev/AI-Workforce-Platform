@@ -464,7 +464,7 @@ async def _scenario_runs_read_tools_and_simulates_writes() -> None:
         spec=spec,
         model=Model(),
         judge_model=None,
-        discovered={"m:lookup": {"read_only": True}},
+        discovered={"m:lookup": {"read_only": True}, "m:create_order": {"read_only": False}},
         run_tool=run_tool,
     )
 
