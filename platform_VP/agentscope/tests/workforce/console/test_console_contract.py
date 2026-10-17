@@ -110,6 +110,8 @@ def _generated_agent(
                     "tracking_intent": "create_only",
                 },
                 "role": role,
+                "intake_mode": "none",
+                "required_customer_inputs": [],
                 "request_modes": list(request_modes),
                 "deliverables": ["Danh sách lựa chọn và khuyến nghị rõ ràng"],
                 "completion_criteria": [
@@ -345,6 +347,35 @@ def test_contract_compiler_keeps_role_delta_and_runtime_policy_separate() -> Non
     assert "Advice, lookup and action are different intents" in runtime
     assert "A result or answer is completed" in runtime
     assert runtime.count("WORKFORCE RUNTIME EXECUTION POLICY:") == 1
+
+
+def test_contract_compiler_emits_required_input_gate() -> None:
+    payload = _generated_agent(role="coordinator").model_dump(mode="json")
+    contract = payload["behavior_contract"]
+    contract["intake_mode"] = "required_before_work"
+    contract["required_customer_inputs"] = [
+        {"key": "origin", "description": "Customer-owned starting location"},
+    ]
+    contract["requirement"]["business_profile"]["input_contract"] = {
+        "request": "string",
+        "origin": "string",
+    }
+    agent = GeneratedAgent.model_validate(payload)
+
+    authored = _compile_system_prompt(agent)
+
+    assert "required_before_work" in authored
+    assert "origin: Customer-owned starting location" in authored
+    assert _contract_checks(agent)["input_readiness"]
+
+
+def test_contract_validation_requires_explicit_intake_decision() -> None:
+    payload = _generated_agent().model_dump(mode="json")
+    del payload["behavior_contract"]["intake_mode"]
+    del payload["behavior_contract"]["required_customer_inputs"]
+    agent = GeneratedAgent.model_validate(payload)
+
+    assert not _contract_checks(agent)["input_readiness"]
 
 
 def test_builder_contract_schema_limits_prompt_bloat() -> None:

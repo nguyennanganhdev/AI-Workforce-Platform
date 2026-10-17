@@ -12,6 +12,13 @@ from .async_capabilities import AgentRequirement, BuildRequirements
 _ContractItem = Annotated[str, Field(min_length=1, max_length=240)]
 
 
+class RequiredCustomerInput(WorkforceModel):
+    """One customer-owned value that must exist before work is delegated."""
+
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    description: str = Field(min_length=1, max_length=240)
+
+
 class AgentBehaviorContract(WorkforceModel):
     """Structured source used to compile one runtime prompt and skill."""
 
@@ -30,6 +37,11 @@ class AgentBehaviorContract(WorkforceModel):
     operational_facts: tuple[_ContractItem, ...] = Field(
         min_length=1,
         max_length=10,
+    )
+    intake_mode: Literal["none", "required_before_work"] = "none"
+    required_customer_inputs: tuple[RequiredCustomerInput, ...] = Field(
+        default=(),
+        max_length=12,
     )
     no_data_behavior: str = Field(min_length=20, max_length=300)
     tool_error_behavior: str = Field(min_length=20, max_length=300)
@@ -56,6 +68,18 @@ class AgentBehaviorContract(WorkforceModel):
                 not value.strip() for value in values
             ):
                 raise ValueError(f"{field_name} must be nonblank and unique")
+        input_keys = [item.key for item in self.required_customer_inputs]
+        if len(set(input_keys)) != len(input_keys):
+            raise ValueError("required customer input keys must be unique")
+        if (self.intake_mode == "required_before_work") != bool(input_keys):
+            raise ValueError(
+                "required_before_work must declare required customer inputs",
+            )
+        profile_inputs = self.requirement.business_profile.input_contract
+        if not set(input_keys).issubset(profile_inputs):
+            raise ValueError(
+                "required customer inputs must belong to the input contract",
+            )
         return self
 
 

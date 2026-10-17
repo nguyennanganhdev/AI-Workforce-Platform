@@ -96,6 +96,26 @@ class _OtherTool(_FakeTeamSay):
         return ToolChunk(content=[TextBlock(text="noted")])
 
 
+class _FakeInputReady(_FakeTeamSay):
+    """Successful readiness declaration used by coordinator gate tests."""
+
+    name: str = "InputReady"
+    description: str = "Verify required customer inputs."
+    input_schema: dict = {
+        "type": "object",
+        "properties": {"inputs": {"type": "object"}},
+        "required": ["inputs"],
+    }
+
+    async def __call__(self, inputs: dict) -> ToolChunk:
+        self.calls.append({"inputs": inputs})
+        return ToolChunk(
+            content=[TextBlock(text="ready")],
+            state=ToolResultState.SUCCESS,
+            metadata={"input_ready": True},
+        )
+
+
 def _text(text: str) -> ChatResponse:
     """A plain text reply — ends the reasoning-acting loop."""
     return ChatResponse(content=[TextBlock(text=text)], is_last=True)
@@ -136,6 +156,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         max_nudges: int = 3,
         extra_tools: list | None = None,
         pending_question=None,
+        require_input_readiness: bool = False,
     ) -> list:
         """Drive one reply and return the streamed items."""
         toolkit = Toolkit(tools=[self.team_say, *(extra_tools or [])])
@@ -151,6 +172,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                     leader_name="Leader",
                     max_nudges=max_nudges,
                     pending_question=pending_question,
+                    require_input_readiness=require_input_readiness,
                 ),
             ],
             injection_config=InjectionConfig(inject_runtime_state=False),
@@ -190,6 +212,57 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         self.assertEqual(
             ReplyFinishedReason.COMPLETED, self._end_events(items)[0].finished_reason
         )
+
+    async def test_coordinator_cannot_handoff_before_input_ready(self) -> None:
+        ready = _FakeInputReady()
+        await self._run(
+            [
+                _call(
+                    "TeamSay",
+                    to="Peer",
+                    kind="question",
+                    content="Start too early",
+                ),
+                _call(
+                    "InputReady",
+                    inputs={
+                        "origin": {
+                            "value": "Ha Noi",
+                            "evidence_quote": "tu Ha Noi",
+                        },
+                    },
+                ),
+                _call(
+                    "TeamSay",
+                    to="Peer",
+                    kind="question",
+                    content="Use the verified origin",
+                ),
+            ],
+            extra_tools=[ready],
+            require_input_readiness=True,
+        )
+
+        self.assertEqual(1, len(ready.calls))
+        self.assertEqual(1, len(self.team_say.calls))
+        self.assertEqual("Use the verified origin", self.team_say.calls[0]["content"])
+
+    async def test_coordinator_may_ask_customer_before_input_ready(self) -> None:
+        await self._run(
+            [
+                _call(
+                    "TeamSay",
+                    to="null",
+                    kind="requires_user_input",
+                    content="Please provide the required inputs",
+                ),
+                _text("Question registered"),
+            ],
+            require_input_readiness=True,
+        )
+
+        self.assertEqual(1, len(self.team_say.calls))
+        self.assertEqual("requires_user_input", self.team_say.calls[0]["kind"])
 
     async def test_unchanged_repeated_tool_is_not_executed_again(self):
         tool = _OtherTool()

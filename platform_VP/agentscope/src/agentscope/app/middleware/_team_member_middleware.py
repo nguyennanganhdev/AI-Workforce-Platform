@@ -50,6 +50,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         max_nudges: int = 3,
         pending_question: Callable[[], Awaitable[str | None]] | None = None,
         require_report: bool = True,
+        require_input_readiness: bool = False,
     ) -> None:
         """Initialize the middleware.
 
@@ -68,6 +69,31 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         self._pending_question = pending_question
         self._paused = False
         self._require_report = require_report
+        self._require_input_readiness = require_input_readiness
+
+    @staticmethod
+    def _input_is_ready(agent: "Agent") -> bool:
+        """Return whether InputReady succeeded in this reply."""
+
+        for message in reversed(agent.state.context):
+            if message.id != agent.state.reply_id or message.role != "assistant":
+                continue
+            blocks = message.get_content_blocks()
+            results = {
+                block.id: block
+                for block in blocks
+                if isinstance(block, ToolResultBlock)
+            }
+            for call in reversed(blocks):
+                if not isinstance(call, ToolCallBlock) or call.name != "InputReady":
+                    continue
+                result = results.get(call.id)
+                return bool(
+                    result is not None
+                    and result.state == ToolResultState.SUCCESS
+                    and result.metadata.get("input_ready") is True
+                )
+        return False
 
     @staticmethod
     def _repeated_calls(agent: "Agent") -> set[tuple[str, str]]:
@@ -172,6 +198,34 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             )
         except (ValueError, TypeError):
             args = call.input
+        if self._require_input_readiness and not self._input_is_ready(agent):
+            allowed = call.name == "InputReady"
+            if call.name == "TeamSay":
+                try:
+                    kind = _json_loads_with_repair(call.input).get("kind", "result")
+                except Exception:  # noqa: BLE001  # malformed model tool input
+                    kind = None
+                allowed = kind in {
+                    "requires_user_input",
+                    "answer",
+                    "result",
+                    "error",
+                    "conflict",
+                }
+            if not allowed:
+                yield ToolResponse(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "Input readiness required. Call InputReady first with exact customer evidence, "
+                                "or call TeamSay(kind='requires_user_input', to=null) for all missing inputs. "
+                                "No business tool or peer handoff was executed."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                )
+                return
         if paused or (call.name, args) in self._repeated_calls(agent):
             yield ToolResponse(
                 content=[

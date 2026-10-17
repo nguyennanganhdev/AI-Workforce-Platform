@@ -23,6 +23,7 @@ from .._manager import BackgroundTaskManager, SchedulerManager
 from .._shared_context import SharedContextService
 from .._tool import (
     AgentInvite,
+    InputReady,
     SubmitHandover,
     SubmitVerdict,
     TeamCreate,
@@ -234,6 +235,22 @@ time or interval"
                 ),
             )
     elif team_role is not None:
+        contract = agent_record.data.builder_contract or {}
+        if contract.get("role") == "coordinator":
+            raw_inputs = contract.get("required_customer_inputs") or ()
+            required_inputs = tuple(
+                {"key": str(item["key"]), "description": str(item["description"])}
+                for item in raw_inputs
+                if isinstance(item, dict)
+                and item.get("key")
+                and item.get("description")
+            )
+            tools.append(
+                InputReady(
+                    **team_tool_kwargs,
+                    required_inputs=required_inputs,
+                ),
+            )
         tools.append(TeamSay(**team_tool_kwargs, role="worker"))
 
     # A step's turn gets one submit tool: handover until something has

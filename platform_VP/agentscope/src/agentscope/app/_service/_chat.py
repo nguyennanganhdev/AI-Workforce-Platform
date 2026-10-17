@@ -1282,6 +1282,10 @@ class ChatService:
                                 not is_reply_owner
                                 or (turn_state is not None and turn_state.mode == "specialist_question")
                             ),
+                            require_input_readiness=(
+                                (agent_record.data.builder_contract or {}).get("role")
+                                == "coordinator"
+                            ),
                         ),
                     )
 

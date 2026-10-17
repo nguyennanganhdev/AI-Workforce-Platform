@@ -429,8 +429,7 @@ class TestGetToolkitPublishedAgentCatalog(IsolatedAsyncioTestCase):
 
 
 class TestGetToolkitWorkerVariant(IsolatedAsyncioTestCase):
-    """A session passed ``team_role="worker"`` only gets ``TeamSay``;
-    the role is resolved by the caller, not looked up here."""
+    """Worker team tools are role- and contract-gated."""
 
     async def test_worker_only_gets_team_say(self) -> None:
         """A worker session receives only ``TeamSay`` from the team
@@ -473,6 +472,53 @@ class TestGetToolkitWorkerVariant(IsolatedAsyncioTestCase):
             "AgentInvite",
         ):
             self.assertNotIn(missing, names)
+
+    async def test_coordinator_gets_declared_input_ready_gate(self) -> None:
+        agent = _make_agent(source="team", name="coordinator")
+        agent.data.builder_contract = {
+            "role": "coordinator",
+            "required_customer_inputs": [
+                {"key": "origin", "description": "Customer starting location"},
+            ],
+        }
+        session = _make_session(
+            user_id="u",
+            agent_id=agent.id,
+            with_model=True,
+            team_id="t1",
+        )
+
+        toolkit = await get_toolkit(
+            storage=_NoOpStorage(),  # type: ignore[arg-type]
+            workspace=_FakeWorkspace(),  # type: ignore[arg-type]
+            workspace_manager=FakeWorkspaceManager(),
+            scheduler_manager=SchedulerManager(
+                storage=_NoOpStorage(),  # type: ignore[arg-type]
+                message_bus=_NullBus(),  # type: ignore[arg-type]
+                workspace_manager=FakeWorkspaceManager(),
+            ),
+            background_task_manager=BackgroundTaskManager(
+                message_bus=_NullBus(),  # type: ignore[arg-type]
+            ),
+            message_bus=_NullBus(),  # type: ignore[arg-type]
+            user_id="u",
+            agent_record=agent,
+            session_record=session,
+            middlewares=[],
+            resource_access_service=_make_access(_NoOpStorage()),
+            team_role="worker",
+        )
+
+        input_ready = next(
+            tool
+            for group in toolkit.tool_groups
+            for tool in group.tools
+            if tool.name == "InputReady"
+        )
+        self.assertEqual(
+            ["origin"],
+            input_ready.input_schema["properties"]["inputs"]["required"],
+        )
 
 
 class TestGetToolkitSchedulingGuard(IsolatedAsyncioTestCase):

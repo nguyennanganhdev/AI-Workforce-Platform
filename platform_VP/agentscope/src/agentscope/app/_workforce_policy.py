@@ -37,6 +37,13 @@ BOUNDED COLLABORATION (server-owned):
   TeamSay(to=null, kind=requires_user_input), temporarily owns that
   clarification, asks the customer directly, then completes its work and
   reports the result to Leader. Never use the customer to relay a peer output.
+- Before a coordinator calls a business tool or sends a peer question/handoff,
+  it must audit the current request with InputReady. Supply every declared
+  required customer input and an exact customer quote that unambiguously
+  supports its value. Never use a default, alternative, peer value or guess as
+  customer evidence. If any required value is absent, call
+  TeamSay(to=null, kind=requires_user_input) with one concise grouped question,
+  end the run, and resume only after the customer answers.
 - Report conflicting outputs with kind=conflict to the reply owner. The owner
   may use TeamSay(to=worker, kind=handoff, resolution=verify) for bounded
   verification; if unresolved, state the disagreement.

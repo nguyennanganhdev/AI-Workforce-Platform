@@ -5,6 +5,7 @@ from ._requirements import (
     AgentBehaviorContract,
     ExtractionError,
     ExtractionResult,
+    RequiredCustomerInput,
     RequirementExtractor,
 )
 from ._service import ProposalService
@@ -24,6 +25,7 @@ __all__ = [
     "ProposalService",
     "ProtocolBuildValidator",
     "ProtocolReadiness",
+    "RequiredCustomerInput",
     "RegistryCapabilitySelector",
     "RegistryProtocolReadiness",
     "RequirementExtractor",

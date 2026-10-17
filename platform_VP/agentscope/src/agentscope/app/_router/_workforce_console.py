@@ -799,6 +799,16 @@ def _compile_system_prompt(agent: GeneratedAgent) -> str:
         ensure_ascii=False,
         separators=(",", ":"),
     )
+    required_inputs = (
+        _bullets(
+            tuple(
+                f"{item.key}: {item.description}"
+                for item in contract.required_customer_inputs
+            ),
+        )
+        if contract.required_customer_inputs
+        else "- Không có input bắt buộc ngoài yêu cầu hiện tại."
+    )
     return f"""VAI TRÒ NGHIỆP VỤ
 Bạn là {agent.name} ({contract.role}). {profile.objective}
 Phạm vi: {profile.business_scope}
@@ -825,6 +835,13 @@ Dữ kiện cần bằng chứng:
 
 Input: {input_contract}
 Output: {output_contract}
+
+INTAKE TRƯỚC KHI LÀM VIỆC
+Chế độ: {contract.intake_mode}
+Input bắt buộc:
+{required_inputs}
+- Nếu chế độ là required_before_work, không tra cứu hoặc giao việc cho peer
+  trước khi runtime xác nhận tất cả input bằng InputReady.
 
 NHÁNH NGHIỆP VỤ RIÊNG
 - No data: {contract.no_data_behavior}
@@ -888,6 +905,9 @@ Các dữ kiện vận hành cần bằng chứng:
 Input contract: {json.dumps(profile.input_contract, ensure_ascii=False)}
 Output contract: {json.dumps(profile.output_contract, ensure_ascii=False)}
 
+Intake mode: {contract.intake_mode}
+Required customer inputs: {json.dumps([item.model_dump(mode="json") for item in contract.required_customer_inputs], ensure_ascii=False)}
+
 ## Quyền trả lời
 
 Thông tin cần từ khách: {contract.customer_input_policy}
@@ -931,6 +951,21 @@ def _contract_checks(agent: GeneratedAgent) -> dict[str, bool]:
             contract.customer_input_policy.strip()
             and contract.peer_coordination_policy.strip()
             and contract.internal_reporting_policy.strip()
+        ),
+        "input_readiness": (
+            {"intake_mode", "required_customer_inputs"}.issubset(
+                contract.model_fields_set,
+            )
+            and (
+                (
+                    contract.intake_mode == "none"
+                    and not contract.required_customer_inputs
+                )
+                or (
+                    contract.intake_mode == "required_before_work"
+                    and bool(contract.required_customer_inputs)
+                )
+            )
         ),
         "output_contract": bool(profile.output_contract and contract.output_sections),
         "coordinator_synthesis": (
@@ -1544,6 +1579,12 @@ The behavior contract must be concrete and reusable:
 - partial_result_behavior says how to give useful verified results while clearly
   labeling what remains unavailable;
 - customer_input_policy asks only for genuinely customer-owned required input;
+- intake_mode is required_before_work when a missing customer-owned value would
+  materially change a valid lookup, calculation, recommendation or action;
+  required_customer_inputs then lists stable snake_case keys and concise
+  descriptions, and every key also exists in BusinessProfile.input_contract.
+  Use intake_mode=none only when the request can be completed without collecting
+  any additional customer-owned value;
 - peer_coordination_policy sends one bounded TeamSay dependency to an exact live
   roster handle and waits;
 - internal_reporting_policy defines direct-mention ownership versus reporting a
