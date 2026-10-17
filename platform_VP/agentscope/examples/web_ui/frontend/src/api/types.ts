@@ -515,8 +515,12 @@ export interface ToolInfo {
 	description?: string | null;
 }
 
-export interface MCPClientStatus extends MCPClient {
-	is_healthy: boolean;
+export interface MCPClientStatus {
+	name: string;
+	is_stateful?: boolean;
+	/** Omitted for server-managed catalog resources. */
+	mcp_config?: StdioMCPConfig | HttpMCPConfig;
+	is_healthy: boolean | null;
 	tools: ToolInfo[];
 	/**
 	 * Why listing this MCP's tools failed. `null` when healthy — a red dot

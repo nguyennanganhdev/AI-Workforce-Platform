@@ -3,6 +3,11 @@
 import mimetypes
 from urllib.parse import quote
 
+from .._service._catalog_resources import (
+    catalog_authority, list_catalog_resources, require_catalog_management, resolve_catalog_resource,
+)
+from ._schema._workspace import SafeMCPClientStatus
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -56,7 +61,8 @@ async def list_mcps(
     session_id: str = Query(...),
     user_id: str = Depends(get_current_user_id),
     workspace_service: WorkspaceService = Depends(get_workspace_service),
-) -> list[MCPClientStatus]:
+    storage: StorageBase = Depends(get_storage),
+) -> list[MCPClientStatus | SafeMCPClientStatus]:
     """Return all MCP clients with live tool list and health status."""
     workspace = await workspace_service.resolve(
         user_id,
@@ -67,6 +73,17 @@ async def list_mcps(
         agent_id=agent_id,
         session_id=session_id,
     )
+
+    if catalog_authority(storage) is not None:
+        # Introspection must not connect with a cached connector after revoke,
+        # nor serialize MCPClient config containing service headers/secrets.
+        granted = {record.name: record for record in await list_catalog_resources(
+            storage, user_id, "mcp", permission="view",
+        )}
+        return [SafeMCPClientStatus(name=client.name, tools=[
+            ToolInfo(name=tool["name"], description=tool.get("description"))
+            for tool in granted[client.name].discovered_tools if tool.get("name")
+        ]) for client in clients if client.name in granted]
 
     results = []
     for client in clients:
@@ -113,6 +130,7 @@ async def add_mcp(
     that MCP is defined, and adding it to a second workspace must not
     silently redefine it.
     """
+    await require_catalog_management(storage, user_id)
     workspace = await workspace_service.resolve(
         user_id,
         agent_id,
@@ -171,7 +189,7 @@ async def add_mcps_from_library(
     added: list[str] = []
     failed: dict[str, str] = {}
     for mcp_id in body.mcp_ids:
-        record = await storage.get_mcp(user_id, mcp_id)
+        record = await resolve_catalog_resource(storage, user_id, "mcp", mcp_id)
         if record is None:
             failed[mcp_id] = "Not in your library."
             continue
@@ -248,6 +266,7 @@ async def add_skill(
     session_id: str = Query(...),
     user_id: str = Depends(get_current_user_id),
     workspace_service: WorkspaceService = Depends(get_workspace_service),
+    storage: StorageBase = Depends(get_storage),
 ) -> None:
     """Add a skill to the session's workspace from the given path.
 
@@ -256,6 +275,7 @@ async def add_skill(
     to send a folder, or ``POST /skill/from-library`` to install one
     the user already has.
     """
+    await require_catalog_management(storage, user_id)
     workspace = await workspace_service.resolve(
         user_id,
         agent_id,
@@ -280,6 +300,7 @@ async def upload_skill(
     session_id: str = Query(...),
     user_id: str = Depends(get_current_user_id),
     workspace_service: WorkspaceService = Depends(get_workspace_service),
+    storage: StorageBase = Depends(get_storage),
 ) -> None:
     """Install a skill from an uploaded folder.
 
@@ -288,6 +309,7 @@ async def upload_skill(
     claims; every limit in it is re-checked here, and the byte counts
     are verified as the tar is built.
     """
+    await require_catalog_management(storage, user_id)
     try:
         parsed = UploadManifest.model_validate_json(manifest)
         workspace_service.validate_manifest(parsed, len(files))
@@ -347,9 +369,18 @@ async def add_skills_from_library(
     added: list[str] = []
     failed: dict[str, str] = {}
     for skill_id in body.skill_ids:
-        record = await storage.get_skill(user_id, skill_id)
-        if record is None:
-            failed[skill_id] = "Not in your library."
+        record = await resolve_catalog_resource(storage, user_id, "skill", skill_id)
+        if record is None or not getattr(record, "enabled", True) or getattr(record, "review_status", "approved") != "approved":
+            failed[skill_id] = "Skill is disabled, unreviewed or no longer in your library."
+            continue
+        if getattr(record, "archive_base64", ""):
+            from .._service._skill_packages import archive_bytes, byte_stream
+            try:
+                await workspace_service.install_skill(workspace, byte_stream(archive_bytes(record)),
+                    record.archive_format, record.name, agent_id=agent_id)
+                added.append(record.name)
+            except Exception:
+                failed[record.name] = "Approved skill archive could not be installed."
             continue
         hub = skill_hubs.get(record.hub_id or "")
         if hub is None:
@@ -359,7 +390,7 @@ async def add_skills_from_library(
             continue
         try:
             archive = await hub.download(
-                user_id,
+                record.user_id,
                 record.card_id or record.name,
                 record.version,
             )

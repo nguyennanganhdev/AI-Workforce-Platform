@@ -13,6 +13,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
 import { ChannelForm } from '@/pages/channel/channel-form';
@@ -32,6 +33,7 @@ interface Props {
 
 export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType }: Props) {
 	const { t } = useTranslation();
+	const user = useCurrentUser();
 	const { runnable: agents } = useAgents();
 	const [form, setForm] = React.useState(defaultChannelForm);
 	const [channelTypes, setChannelTypes] = React.useState<ChannelTypeSchema[]>([]);
@@ -61,7 +63,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 		}
 	}, [open, agents, initialType]);
 
-	const valid = isChannelFormValid(form, 'create');
+	const valid = isChannelFormValid(form, 'create', user?.role === 'VIN_USER');
 	// The platform is chosen in the gallery, so name the dialog after it.
 	const picked = channelTypes.find((ct) => ct.channel_type === form.channelType);
 

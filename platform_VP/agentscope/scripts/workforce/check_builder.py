@@ -15,6 +15,15 @@ def main():
     parser.add_argument(
         "--storage", action="store_true", help="Also run SQL storage regressions"
     )
+    parser.add_argument(
+        "--runtime", action="store_true", help="Also run private chat/team and Leader regressions"
+    )
+    parser.add_argument(
+        "--automation", action="store_true", help="Also run schedule and private Discord regressions"
+    )
+    parser.add_argument(
+        "--contracts-only", action="store_true", help="Run shared N1/N2 contracts; any skip fails this gate"
+    )
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     os.chdir(root)
@@ -71,7 +80,30 @@ def main():
     suite = ["tests/workforce/console", "tests/audit_publish_atomicity_test.py"]
     if options.storage:
         suite.append("tests/storage_sql_test.py")
+    if options.automation:
+        suite.extend([
+            "tests/service_scheduler_test.py", "tests/schedule_router_test.py",
+            "tests/channel_discord_workforce_test.py",
+            "tests/channel_clients_test.py", "tests/channel_gateway_test.py",
+        ])
+    if options.runtime:
+        suite.extend([
+            "tests/personal_chat_test.py", "tests/personal_chat_challenge_test.py",
+            "tests/team_collaboration_test.py", "tests/team_say_shared_context_test.py",
+            "tests/team_shared_context_test.py", "tests/leader_evidence_middleware_test.py",
+            "tests/leader_runtime_gaps_test.py", "tests/room_realtime_test.py",
+            "tests/service_toolkit_test.py", "tests/service_workspace_files_test.py",
+            "tests/service_workspace_status_test.py",
+        ])
     started = perf_counter()
+    if options.contracts_only:
+        suite = [
+            "tests/workforce/console/test_vin_model_resolver_contract.py",
+            "tests/workforce/console/test_shared_catalog_consumer.py",
+            "tests/workforce/console/test_vin_runtime_attribution.py",
+            "tests/vin_shared_fixture_test.py", "tests/vin_catalog_knowledge_test.py",
+            "tests/vin_workspace_test.py",
+        ]
     result = pytest.main(
         [
             "-q",
@@ -101,7 +133,7 @@ def main():
         json.dumps(summary, indent=2), encoding="utf-8"
     )
     print(json.dumps(summary))
-    return result or int(bool(network_attempts))
+    return result or int(bool(network_attempts) or (options.contracts_only and summary["skipped"] > 0))
 
 
 if __name__ == "__main__":

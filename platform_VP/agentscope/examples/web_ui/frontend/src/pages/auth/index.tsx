@@ -18,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { VIN_EXPERIENCE_ENABLED } from '@/features/workforce/shell/flags';
 import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
@@ -45,6 +46,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 	const [errorMessage, setErrorMessage] = useState('');
 
 	useEffect(() => {
+		if (VIN_EXPERIENCE_ENABLED) return;
 		let active = true;
 		setLoadingDirectory(true);
 		authApi
@@ -66,6 +68,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 	}, []);
 
 	useEffect(() => {
+		if (VIN_EXPERIENCE_ENABLED) return;
 		if (!domainId) {
 			setAreas([]);
 			setAreaId('');
@@ -105,7 +108,8 @@ export function AuthPage({ onAuthenticated }: Props) {
 		setErrorMessage('');
 		try {
 			if (mode !== 'login') {
-				const registered = await authApi.register({
+				const personal = { email: email.trim(), username: username.trim(), password };
+				const registered = VIN_EXPERIENCE_ENABLED ? await authApi.registerPersonal(personal) : await authApi.register({
 					email: email.trim(),
 					username: username.trim(),
 					password,
@@ -117,7 +121,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 					setMode('login');
 					setIdentity(username.trim());
 					setPassword('');
-					setErrorMessage('Đã gửi đăng ký. Tài khoản BQL của khu này đang chờ quản trị duyệt; bạn đăng nhập được sau khi được duyệt.');
+					setErrorMessage(VIN_EXPERIENCE_ENABLED ? 'Đã gửi đăng ký. Tài khoản đang chờ xác minh.' : 'Đã gửi đăng ký. Tài khoản BQL của khu này đang chờ quản trị duyệt; bạn đăng nhập được sau khi được duyệt.');
 					return;
 				}
 			}
@@ -130,7 +134,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 			if (error instanceof ApiError && error.status === 403) {
 				setErrorMessage('Tài khoản đang chờ quản trị duyệt. Vui lòng thử lại sau khi được duyệt.');
 			} else if (error instanceof ApiError && error.status === 409 && mode !== 'login') {
-				setErrorMessage('Không đăng ký được: email/tên đăng nhập đã có, hoặc khu này đã có tài khoản BQL (mỗi khu một tài khoản).');
+				setErrorMessage(VIN_EXPERIENCE_ENABLED ? 'Email hoặc tên đăng nhập đã được sử dụng.' : 'Không đăng ký được: email/tên đăng nhập đã có, hoặc khu này đã có tài khoản BQL (mỗi khu một tài khoản).');
 			} else if (error instanceof ApiError && error.status === 503) {
 				setErrorMessage(t('auth.authenticationDisabled'));
 			} else {
@@ -181,7 +185,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 							<CardDescription className="mt-1.5">
 								{mode === 'login'
 									? t('auth.loginDescription')
-									: t('auth.registerDescription')}
+									: VIN_EXPERIENCE_ENABLED ? 'Tạo tài khoản cá nhân. Bạn có thể liên kết Vinhomes sau khi đăng nhập.' : t('auth.registerDescription')}
 							</CardDescription>
 						</div>
 						<div className="grid grid-cols-2 rounded-full bg-[var(--cue-bg-subtle,var(--muted))] p-1">
@@ -276,7 +280,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 									)}
 								</Field>
 
-								{mode === 'register' && (
+								{mode === 'register' && !VIN_EXPERIENCE_ENABLED && (
 									<div className="grid gap-4 sm:grid-cols-2">
 										<Field>
 											<FieldLabel>{t('auth.domain')}</FieldLabel>
@@ -339,7 +343,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 									className="w-full"
 									disabled={
 										submitting ||
-										(mode === 'register' && (!domainId || !areaId))
+										(mode === 'register' && !VIN_EXPERIENCE_ENABLED && (!domainId || !areaId))
 									}
 								>
 									{submitting && <Loader2 className="size-4 animate-spin" />}

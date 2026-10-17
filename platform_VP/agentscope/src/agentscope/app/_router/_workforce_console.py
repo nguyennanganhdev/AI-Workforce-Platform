@@ -16,6 +16,8 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 from typing import Literal
 
+from .._service._catalog_resources import list_catalog_resources
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
@@ -430,10 +432,7 @@ PLATFORM_CREDENTIAL_NAME = "Model của platform"
 
 
 async def _platform_credential(storage: StorageBase, user_id: str) -> list:
-    """A management account without a credential of its own uses the
-    platform's model key (``WORKFORCE_PLATFORM_OPENAI_API_KEY``), stored once
-    as its credential; the account may still add its own instead."""
-
+    """Compatibility path for BQL while the Vin feature is disabled."""
     key = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
     if not key:
         return []
@@ -445,7 +444,20 @@ async def _platform_credential(storage: StorageBase, user_id: str) -> list:
     return await storage.list_credentials(user_id)
 
 
-async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
+async def _model_config(storage: StorageBase, user_id: str, *, authority=None) -> ChatModelConfig:
+    from ..vin_platform import enabled
+
+    if enabled():
+        authority = authority or getattr(storage, "vin_platform_service", None)
+        if authority is None:
+            raise HTTPException(status_code=503, detail="MODEL_AUTHORITY_UNAVAILABLE")
+        from ..vin_platform._contracts import PlatformError
+        from ..vin_platform._resources import platform_model_config
+
+        try:
+            return await platform_model_config(authority, user_id)
+        except PlatformError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.code) from exc
     credentials = [c for c in await storage.list_credentials(user_id) if c.data.get("type") in {s["properties"]["type"]["const"] for s in CredentialFactory.list_schemas()}]
     credentials = credentials or await _platform_credential(storage, user_id)
     if not credentials:
@@ -486,7 +498,7 @@ async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
 
 async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
     catalog: list[BuilderTool] = []
-    for record in await storage.list_mcps(user_id):
+    for record in await list_catalog_resources(storage, user_id, "mcp"):
         if not record.enabled:
             continue
         for tool in record.discovered_tools:
@@ -1362,16 +1374,16 @@ def _agent_checks(
     }
 
 
-async def _library(storage: StorageBase, user_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
+async def _library(storage: StorageBase, user_id: str, access=None) -> tuple[dict[str, dict], dict[str, dict]]:
     """The manager's knowledge bases and enabled library skills, by id."""
 
     from .._service._agent_studio import knowledge_catalog, skill_catalog
 
-    knowledge, skills = await knowledge_catalog(storage, user_id), await skill_catalog(storage, user_id)
+    knowledge, skills = await knowledge_catalog(storage, user_id, access=access), await skill_catalog(storage, user_id)
     for record in await storage.list_knowledge_bases(user_id):
         if record.id in knowledge:
             knowledge[record.id]["revision"] = record.updated_at.isoformat()
-    for record in await storage.list_skills(user_id):
+    for record in await list_catalog_resources(storage, user_id, "skill"):
         if record.id in skills:
             skills[record.id].update(markdown=record.markdown or "", revision=record.updated_at.isoformat())
     return knowledge, skills
@@ -1470,7 +1482,7 @@ async def _prepare_builder(
         previous_transcript or body.message,
     )
     tools = await _catalog(storage, user_id)
-    knowledge, skills = await _library(storage, user_id)
+    knowledge, skills = await _library(storage, user_id, access=access)
     library = _library_note(knowledge, skills)
     model = await get_model(user_id, body.chat_model_config, access)
     model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "builder"}
@@ -1787,6 +1799,7 @@ async def publish_builder(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> PublishResponse:
     async with _proposal_locks[user_id]:
         session = await storage.get_session(
@@ -1906,6 +1919,7 @@ async def publish_builder(
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
             install_skill=_skill_installer(request, storage, user_id, record.id), stage=True,
+            access=access,
         )
         if item.skill_markdown.strip():
             await workspace.add_skill_archive(
@@ -2032,6 +2046,7 @@ async def _leader(
     storage: StorageBase,
     workspace_manager: WorkspaceManagerBase,
 ) -> tuple[AgentRecord, SessionRecord]:
+    model_config = await _model_config(storage, user_id)
     record = next(
         (
             item
@@ -2073,7 +2088,7 @@ async def _leader(
         workspace_manager,
         user_id,
         record.id,
-        await _model_config(storage, user_id),
+        model_config,
         "Ticket mới",
     )
     workspace = await workspace_manager.get_workspace(

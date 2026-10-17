@@ -11,6 +11,8 @@ One place owns the lifecycle of a business agent's :class:`AgentSpec`:
 
 from __future__ import annotations
 
+from ._catalog_resources import list_catalog_resources, resolve_catalog_resource
+
 from ...model._call_observer import usage_purpose
 
 import copy
@@ -37,6 +39,7 @@ from .._agent_spec import (
     tool_bindings,
 )
 from .._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY, governed_system_prompt
+from ..access import ResourceKind
 from ..storage import AgentRecord, InviteConfig, StorageBase
 from ._publish_gate import publication_blocker
 from ._agent_eval import catalog_allows_read
@@ -214,6 +217,7 @@ async def apply_bindings(
     install_skill: Any = None,
     previous: AgentSpec | None = None,
     stage: bool = False,
+    access: Any = None,
 ) -> None:
     """Point the agent's primary session at exactly the spec's tools/knowledge.
 
@@ -258,7 +262,7 @@ async def apply_bindings(
             if tool.requires_consent:
                 confirm.setdefault(tool.mcp_id, []).append(tool.tool_name)
     for mcp_id, names in selected.items():
-        mcp_record = await storage.get_mcp(user_id, mcp_id)
+        mcp_record = await resolve_catalog_resource(storage, user_id, "mcp", mcp_id)
         if mcp_record is None or not mcp_record.enabled:
             raise SpecPatchError(f"MCP {mcp_id} không còn khả dụng")
         client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
@@ -286,9 +290,15 @@ async def apply_bindings(
             await workspace.remove_skill(item.name, agent_id=record.id)
     knowledge_ids = [item.kb_id for item in spec.knowledge]
     if knowledge_ids:
-        available = {kb.id for kb in await storage.list_knowledge_bases(user_id)}
-        if set(knowledge_ids) - available:
-            raise SpecPatchError("Knowledge không còn trong thư viện của người quản lý.")
+        if access is not None:
+            for kb_id in knowledge_ids:
+                await access.resolve_knowledge_base(user_id, kb_id)
+        else:
+            if getattr(storage, "vin_platform_service", None) is not None:
+                raise SpecPatchError("Knowledge resolver chưa khả dụng; chưa thể phát hành.")
+            available = {kb.id for kb in await storage.list_knowledge_bases(user_id)}
+            if set(knowledge_ids) - available:
+                raise SpecPatchError("Knowledge không còn trong thư viện được cấp.")
     config = primary.config
     if knowledge_ids:
         from ..storage._model._session import SessionKnowledgeConfig
@@ -320,7 +330,7 @@ async def tool_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
     """Every enabled MCP tool keyed by ``<mcp_id>:<tool_name>``."""
 
     catalog: dict[str, dict] = {}
-    for record in await storage.list_mcps(user_id):
+    for record in await list_catalog_resources(storage, user_id, "mcp"):
         if not record.enabled:
             continue
         for tool in record.discovered_tools:
@@ -345,9 +355,17 @@ async def tool_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
     return catalog
 
 
-async def knowledge_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
+async def knowledge_catalog(storage: StorageBase, user_id: str, access=None) -> dict[str, dict]:
     """The manager's knowledge bases keyed by id (what the Builder may attach)."""
 
+    if access is not None:
+        return {
+            record.id: {"kb_id": record.id, "name": record.name, "description": record.description,
+                        "revision": record.updated_at.isoformat()}
+            for record in await access.list_resource(user_id, ResourceKind.KNOWLEDGE_BASE)
+        }
+    if getattr(storage, "vin_platform_service", None) is not None:
+        raise SpecPatchError("Knowledge resolver chưa khả dụng; hãy thử lại sau.")
     return {
         record.id: {"kb_id": record.id, "name": record.data.name, "description": record.data.description}
         for record in await storage.list_knowledge_bases(user_id)
@@ -363,7 +381,7 @@ async def skill_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
             "name": record.name,
             "description": record.description or record.display_name or "",
         }
-        for record in await storage.list_skills(user_id)
+        for record in await list_catalog_resources(storage, user_id, "skill")
         if getattr(record, "enabled", True) and getattr(record, "review_status", "approved") == "approved"
     }
 
@@ -378,9 +396,9 @@ def tool_runner(storage: StorageBase, user_id: str, spec: AgentSpec):
         tool = by_name.get(name)
         if tool is None or name in ambiguous or tool.tool_id != f"{tool.mcp_id}:{name}":
             raise RuntimeError("Sandbox tool is not uniquely bound to the server catalog")
-        mcp_record = await storage.get_mcp(user_id, tool.mcp_id)
-        if mcp_record is None or not mcp_record.enabled:
-            raise RuntimeError(f"MCP {tool.mcp_id} unavailable")
+        from ._eval_sandbox import resolve_eval_mcp
+
+        mcp_record = await resolve_eval_mcp(storage, user_id, tool.mcp_id)
         # Fetch the current server record: the draft and the earlier eval
         # snapshot are not authority to execute an external tool.
         matches = [item for item in mcp_record.discovered_tools if item.get("name") == name]

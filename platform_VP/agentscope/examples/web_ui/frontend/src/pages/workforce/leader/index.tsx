@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Spinner } from '@/components/ui/spinner';
 import { AudioProvider } from '@/context/AudioContext';
+import { usePlatformAccess } from '@/context/platform-access';
 import { useSessions } from '@/hooks/useSessions';
 import { ChatViewport } from '@/pages/chat/ChatViewport';
 
@@ -37,6 +38,7 @@ function rowPreview(view: SessionView): string {
  * each, and the selected session's chat (and its room) beside them.
  */
 function LeaderPageInner() {
+	const access = usePlatformAccess();
 	const [leader, setLeader] = useState<LeaderSession | null>(null);
 	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -52,6 +54,9 @@ function LeaderPageInner() {
 				if (!active) return;
 				setLeader(value);
 				setSelectedSessionId(value.session_id);
+			})
+			.catch(() => {
+				// The unavailable state below also covers accounts awaiting policy.
 			})
 			.finally(() => {
 				if (active) setLoading(false);
@@ -97,7 +102,7 @@ function LeaderPageInner() {
 						<Bot />
 					</EmptyMedia>
 					<EmptyTitle>Leader chưa thể khởi tạo</EmptyTitle>
-					<EmptyDescription>Hãy kiểm tra model credential rồi tải lại trang.</EmptyDescription>
+					<EmptyDescription>{access ? 'Dịch vụ AI chưa sẵn sàng cho tài khoản này. Vui lòng thử lại sau hoặc liên hệ quản trị để kiểm tra quyền và hạn mức.' : 'Hãy kiểm tra model credential rồi tải lại trang.'}</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		);
@@ -109,13 +114,13 @@ function LeaderPageInner() {
 				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
 					<div className="min-w-0">
 						<h1 className="truncate text-[15px]/5 font-semibold">Leader</h1>
-						<p className="truncate text-xs text-muted-foreground">Phiếu cư dân · Ban quản lý điều hành</p>
+						<p className="truncate text-xs text-muted-foreground">{access?.workspace?.kind === 'personal' ? 'Không gian cá nhân · Leader của bạn' : 'Phiếu cư dân · Ban quản lý điều hành'}</p>
 					</div>
 					<Button
 						variant="ghost"
 						size="icon"
-						aria-label="Tạo session thử"
-						title="Tạo session thử"
+						aria-label={access?.workspace?.kind === 'personal' ? 'Tạo cuộc trò chuyện' : 'Tạo session thử'}
+						title={access?.workspace?.kind === 'personal' ? 'Tạo cuộc trò chuyện' : 'Tạo session thử'}
 						disabled={creating}
 						onClick={createTicket}
 					>
@@ -125,7 +130,7 @@ function LeaderPageInner() {
 				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
 					{sessions.length === 0 ? (
 						<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
-							Chưa có session. Ticket từ khách hàng hiện ở đây.
+							{access?.workspace?.kind === 'personal' ? 'Bắt đầu cuộc trò chuyện mới với Leader.' : 'Chưa có session. Ticket từ khách hàng hiện ở đây.'}
 						</p>
 					) : (
 						sessions.map((view, index) => {

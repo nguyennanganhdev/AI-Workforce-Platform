@@ -46,6 +46,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { usePlatformAccess } from '@/context/platform-access';
 import { useCueTheme } from '@/hooks/useCueTheme';
 
 function errorText(error: unknown): string {
@@ -318,6 +319,7 @@ function AdminSidebar({
 
 export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
 	useCueTheme();
+	const access = usePlatformAccess();
 	const platform = user.role === 'PLATFORM_ADMIN';
 	const [accounts, setAccounts] = useState<AdminAccount[]>([]);
 	const [directory, setDirectory] = useState<DirectoryDomain[]>([]);
@@ -625,7 +627,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
 	return (
 		<SidebarProvider
-			className="h-screen min-h-0 bg-canvas"
+			className={access ? 'h-full min-h-0 bg-canvas' : 'h-screen min-h-0 bg-canvas'}
 			open={false}
 			style={{ '--sidebar-width': '16rem', '--sidebar-width-icon': '3.5rem' } as CSSProperties}
 		>

@@ -109,6 +109,15 @@ class ToolInfo(BaseModel):
     description: str | None = None
 
 
+class SafeMCPClientStatus(BaseModel):
+    """Customer projection: no endpoint, headers, command, env or credentials."""
+
+    name: str
+    is_healthy: bool | None = None
+    tools: list[ToolInfo] = Field(default_factory=list)
+    error: str | None = None
+
+
 class MCPClientStatus(MCPClient):
     """MCPClient enriched with live tool list and health status."""
 

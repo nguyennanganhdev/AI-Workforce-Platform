@@ -201,6 +201,21 @@ class SchedulerManager:
             )
             session = None
             try:
+                if record.data.once:
+                    # The existing single scheduler owner consumes once before
+                    # dispatch. C09 supplies the multi-worker atomic claim.
+                    current = await storage.get_schedule(record.user_id, record.id)
+                    if current is None or not current.data.enabled:
+                        return
+                    data = current.data.model_copy(update={
+                        "enabled": False,
+                        "last_fired_at": datetime.now().astimezone(),
+                        "last_error": "DISPATCH_OUTCOME_PENDING",
+                    })
+                    await storage.upsert_schedule(
+                        record.user_id, current.model_copy(update={"data": data}),
+                    )
+                    await self.notify_changed(record.id)
                 if record.data.stateful:
                     stateful_session_id = f"{record.id}_stateful"
                     logger.info(
@@ -336,7 +351,7 @@ class SchedulerManager:
                 current = await storage.get_schedule(record.user_id, record.id)
                 if current is None:
                     return
-                done = current.data.once and not error
+                done = current.data.once and current.data.enabled
                 data = current.data.model_copy(update={
                     "last_fired_at": datetime.now().astimezone(),
                     "last_session_id": session_id,

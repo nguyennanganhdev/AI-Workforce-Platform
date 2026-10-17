@@ -104,7 +104,7 @@ export interface TestResult {
 	checks: Array<{ name: string; passed: boolean }>;
 	judge: { passed: boolean; reason: string; criteria?: Array<{ name: string; passed: boolean; reason: string }> } | null;
 	answer: string;
-	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'error'; output?: string; output_truncated?: boolean; error_code?: string; latency_ms?: number }>;
+	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'sandbox' | 'error'; consent_assumed?: boolean; fixture_accepted?: boolean; output?: string; output_truncated?: boolean; error_code?: string; latency_ms?: number }>;
 }
 
 export interface EvalProgress {
