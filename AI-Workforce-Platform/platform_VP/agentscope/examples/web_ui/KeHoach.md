@@ -56,7 +56,7 @@ Không copy đè mù toàn bộ `web_ui_new/frontend/src` lên UI cũ.
 
 - [x] Kiểm tra Git status, không có thay đổi local trước khi tích hợp.
 - [x] Tạo branch `web-ui-new-integration`.
-- [ ] Ghi commit baseline.
+- [x] Ghi commit baseline: `a82f400` (repo Fuq-export, clean main lúc tiếp quản).
 - [x] Xác nhận `.env` và secret không nằm trong diff.
 
 ## 6. Phase 1 — Đóng băng baseline
@@ -190,9 +190,9 @@ Tiêu chí: compile pass, không request sai path, auth/session restore hoạt �
 ## 14. Phase 9 — Docker, nginx và Compose
 
 - [ ] Giữ context Compose tại `examples/web_ui`.
-- [ ] Không thêm backend Express vào Compose chính.
-- [ ] Giữ `app` AgentScope, Redis, PostgreSQL và MinIO.
-- [ ] Nginx proxy `/api/` tới `app:8000`.
+- [x] Không thêm backend Express vào Compose chính.
+- [x] Giữ `app` AgentScope, Redis, PostgreSQL và MinIO.
+- [x] Nginx proxy `/api/` tới `app:8000` (cấu hình; chưa live E2E).
 - [ ] Kiểm tra cookie path và credentials.
 - [ ] Xác nhận `VITE_API_BASE_URL` không gây CORS hoặc `/api/api`.
 - [ ] Tối ưu build cho RAM 8 GB.
@@ -217,10 +217,10 @@ pnpm --filter backend build
 pnpm format:check
 ```
 
-- [ ] TypeScript build pass.
+- [x] TypeScript build pass (Node 22.23.3, heap 1536 MB).
 - [ ] Frontend lint/format pass.
-- [ ] Backend package không bị ảnh hưởng.
-- [ ] Test hiện có pass theo chính sách must-pass.
+- [x] Backend package không bị ảnh hưởng; `pnpm --filter backend build` pass.
+- [x] Frontend test: 7 file pass, chạy tuần tự; live E2E vẫn chưa nghiệm thu.
 - [ ] Phân loại lỗi pre-existing và lỗi do migration.
 
 ## 16. Phase 11 — Smoke/E2E/browser validation
@@ -268,9 +268,9 @@ Không xóa volume PostgreSQL, Redis hoặc MinIO khi rollback.
 
 ## 19. Nhật ký thực thi
 
-| Ngày | Phase/batch | Thay đổi chính | Build/test | Commit | Blocker |
-|---|---|---|---|---|---|
-| 2026-10-17 | Lập kế hoạch | Chốt thay frontend, giữ backend/API/data | Chưa chạy integration | Chưa có | Chưa có |
+| Ngày       | Phase/batch                  | Thay đổi chính                                                                                                                       | Build/test                                                                          | Commit      | Blocker                                                       |
+| ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------- |
+| 2026-10-17 | Lập kế hoạch                 | Chốt thay frontend, giữ backend/API/data                                                                                             | Chưa chạy integration                                                               | Chưa có     | Chưa có                                                       |
 | 2026-10-17 | Phase 0-4 / frontend overlay | Chuyển design system, chat UI, locale, assets và các module UI mới; giữ router, workforce adapter/page và các module AgentScope-only | `git diff --check` pass; chưa thể build do môi trường không có Node/pnpm/Docker/WSL | Chưa commit | Thiếu toolchain để build, lint, Compose và browser smoke test |
 
 ## 20. Quy tắc bàn giao
@@ -286,3 +286,65 @@ Agent tiếp theo phải:
 5. Sau khi xong cập nhật checkbox, nhật ký, build/test, commit/hash và blocker.
 6. Không đọc hoặc commit secrets từ `.env`.
 7. Không thay backend/data nếu batch không yêu cầu rõ ràng.
+
+## 21. Tiếp quản Fuq-export — 2026-10-17
+
+- Thực tế repo ở `main`, clean tại `a82f400`; nội dung handoff về thay đổi chưa
+  commit đã cũ. Không reset, xóa source hoặc chuyển branch.
+- Toolchain cục bộ: Node 22.23.3 / pnpm 10.34.7. Install frozen lockfile với
+  `--child-concurrency=1 --network-concurrency=4` pass. Toolchain nằm ngoài repo.
+- Build lần đầu phát hiện thiếu export `BuilderProgress`; đã sửa. Khôi phục
+  AgentDialog import sau refactor và form tool/knowledge của builder-managed agent.
+- Build heap 2048 MB bị gián đoạn khi máy chỉ còn ~200 MB RAM và swap đầy;
+  không có kết quả pass cho lần đó. Sau khi môi trường phục hồi, chạy riêng
+  `pnpm --filter frontend exec tsc -b`, `pnpm --filter frontend exec vite build`
+  rồi chạy đầy đủ `pnpm --filter frontend build` với heap 1536 MB: pass.
+- `pnpm --filter frontend lint`: pass, còn 1 warning Fast Refresh ở
+  `debug-office-mock.tsx` có sẵn. Đã sửa 2 import do batch này và 1 import ở Landing
+  có sẵn trong overlay. Không lint-fix toàn repo.
+- `pnpm --filter frontend test`: 7 file pass (API contract, ticket timeline, chat events, client, session office,
+  session presentation, workforce compatibility). Test runner mới resolve alias
+  Vite; test presentation cũ mong text không có tên người nói đã được cập nhật
+  theo presentation hiện tại, vẫn kiểm tra không nhân đôi message khi reconnect.
+- `pnpm --filter backend build`: pass, không sửa hoặc chạy Express backend.
+- Agent routes dùng CRUD FastAPI; QuickAgentDialog dùng form AgentScope thay vì
+  Studio compose. Các tính năng Studio nâng cao chưa được đưa vào luồng chính.
+- Room mặc định off; nếu bật và 404 thì trả null, không poll endpoint thiếu tiếp.
+- API base `/api`, proxy FastAPI port 8000, cookie path dev đã sửa; test URL/refresh
+  xác nhận cookie credentials và không nhân đôi prefix.
+- Browser fixture smoke: landing + 13 routes, vi/en/zh, mobile 390px pass; không
+  JS error/unexpected API. Chỉ là mocked smoke, không thay thế live backend E2E.
+- Compose config pass với giá trị placeholder và `--env-file /dev/null`.
+- Chưa nghiệm thu login/register/refresh/logout thật, chat SSE/cancel, session CRUD,
+  upload và workflow quyền thật: Probe ban đầu bị giới hạn mạng sandbox. Probe có cấp quyền sau đó: health OK, anonymous refresh 401; user xác nhận chưa có tài khoản active/model kiểm thử. Không tick
+  các mục nghiệm thu này. Không tuyên bố hoàn tất migration.
+
+Commit batch và kết quả Docker/format chi tiết được cập nhật ở nhật ký tiếp theo.
+
+### Kết quả batch xác minh cuối
+
+| Batch        | Lệnh / kiểm tra                                                                                                                                                        | Kết quả                                                                                                          | Commit                    |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| Frontend/API | `pnpm --filter frontend build` (heap 1536 MB)                                                                                                                          | Pass; cảnh báo chunk >500 kB, không lỗi build                                                                    | Ghi hash sau commit       |
+| Lint/test    | `pnpm --filter frontend lint`; `pnpm --filter frontend test`; `pnpm --filter backend build`                                                                            | Pass; 7 file test, 1 warning Fast Refresh có sẵn                                                                 | Ghi hash sau commit       |
+| Contract     | Static test đối chiếu 100 client calls với FastAPI trong repo                                                                                                          | Pass; room là extension off mặc định, test riêng fallback 404                                                    | Ghi hash sau commit       |
+| Format       | `pnpm format:check`                                                                                                                                                    | Chưa pass toàn repo: các file có sẵn chưa đúng Prettier; kiểm tra riêng toàn bộ file batch đã sửa                | Ghi hash sau commit       |
+| Container    | `docker compose --env-file /dev/null -f ../../compose.yaml config --quiet`; `... build web`; `docker run --rm --add-host app:127.0.0.1 agentscope-web:latest nginx -t` | Pass; chỉ build web, không deploy hoặc đổi volume/service đang chạy                                              | Ghi hash sau commit       |
+| Live probe   | GET `/health`, POST `/auth/refresh` anonymous                                                                                                                          | Health OK; refresh 401. Chưa có tài khoản/model test (user xác nhận). OpenAPI service đang chạy khác source repo | Không nghiệm thu live E2E |
+
+- Không đưa `.env` vào diff; JSON validation, known secret-pattern scan và
+  `git diff --check` pass. Các tên credential/token trong source chỉ là API fields
+  và fixture, không phải secret thật.
+- Không thay backend/schema/data. Compose chỉ bổ sung service web với build context
+  `examples/web_ui`; Docker Node 22, pnpm 10, heap 1536 MB, install ít song song.
+- Bổ sung `.dockerignore`, `.nvmrc`, runbook và script browser smoke để tái lập.
+- `pnpm dev` chỉ khởi động Vite, không tự chạy Express.
+- **Blocker release:** active test account + model và FastAPI cùng revision repo;
+  cần hoàn tất register/login/refresh/logout, chat SSE/cancel, CRUD, upload và
+  permission workflows thật trước khi tick nghiệm thu cuối.
+
+- Browser smoke cuối chạy bằng `frontend/tests/browser.smoke.mjs` trên image
+  `agentscope-web:latest` ở container tạm port 4173: pass landing, 13 routes/deep
+  links, 3 locale, mobile; 0 JS errors, 0 unexpected requests. Container tạm đã dừng.
+- Prettier check cho toàn bộ file thay đổi: pass. Toàn repo còn 81 file có sẵn
+  chưa đúng format (không sửa hàng loạt ngoài phạm vi).

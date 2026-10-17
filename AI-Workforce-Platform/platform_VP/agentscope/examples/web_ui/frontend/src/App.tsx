@@ -61,22 +61,61 @@ const router = createBrowserRouter([
 					// Tickets and agents first: the Leader is the management board's
 					// front door; settings keep their own paths so old links still work.
 					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
-					{ path: '/workforce/leader', lazy: page(() => import('@/pages/workforce/leader'), 'LeaderPage') },
-					{ path: '/workforce/builder', lazy: page(() => import('@/pages/workforce/builder'), 'AgentBuilderPage') },
-					{ path: '/workforce/agents', lazy: page(() => import('@/pages/workforce/agents'), 'AgentManagementPage') },
-					{ path: '/workforce/agents/:agentId', lazy: page(() => import('@/pages/workforce/agents'), 'AgentDetailPage') },
+					{
+						path: '/workforce/leader',
+						lazy: page(() => import('@/pages/workforce/leader'), 'LeaderPage'),
+					},
+					{
+						path: '/workforce/builder',
+						lazy: page(() => import('@/pages/workforce/builder'), 'AgentBuilderPage'),
+					},
+					{
+						path: '/workforce/agents',
+						lazy: page(
+							() => import('@/pages/workforce/agents/compatible'),
+							'AgentManagementPage',
+						),
+					},
+					{
+						path: '/workforce/agents/:agentId',
+						lazy: page(
+							() => import('@/pages/workforce/agents/compatible'),
+							'AgentDetailPage',
+						),
+					},
 					{ path: '/settings', element: <Navigate to="/workforce/agents" replace /> },
 					// The agent map is a tab of agent management now.
-					{ path: '/agents/*', element: <Navigate to="/workforce/agents?view=graph" replace /> },
-					{ path: '/schedule', lazy: page(() => import('@/pages/schedule'), 'SchedulePage') },
-					{ path: '/channel', lazy: page(() => import('@/pages/channel'), 'ChannelPage') },
-					{ path: '/credential', lazy: page(() => import('@/pages/credential'), 'CredentialPage') },
+					{
+						path: '/agents/*',
+						element: <Navigate to="/workforce/agents?view=graph" replace />,
+					},
+					{
+						path: '/schedule',
+						lazy: page(() => import('@/pages/schedule'), 'SchedulePage'),
+					},
+					{
+						path: '/channel',
+						lazy: page(() => import('@/pages/channel'), 'ChannelPage'),
+					},
+					{
+						path: '/credential',
+						lazy: page(() => import('@/pages/credential'), 'CredentialPage'),
+					},
 					{ path: '/mcp', lazy: page(() => import('./pages/mcp'), 'MCPHubPage') },
 					{ path: '/mcp/:hubId', lazy: page(() => import('./pages/mcp'), 'MCPHubPage') },
 					{ path: '/skill', lazy: page(() => import('./pages/skill'), 'SkillHubPage') },
-					{ path: '/skill/:hubId', lazy: page(() => import('./pages/skill'), 'SkillHubPage') },
-					{ path: '/knowledge', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
-					{ path: '/knowledge/:kbId', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
+					{
+						path: '/skill/:hubId',
+						lazy: page(() => import('./pages/skill'), 'SkillHubPage'),
+					},
+					{
+						path: '/knowledge',
+						lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage'),
+					},
+					{
+						path: '/knowledge/:kbId',
+						lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage'),
+					},
 				],
 			},
 		],
@@ -138,7 +177,6 @@ function PlatformApp() {
 			</>
 		);
 	}
-
 
 	return (
 		<QueryClientProvider client={queryClient}>

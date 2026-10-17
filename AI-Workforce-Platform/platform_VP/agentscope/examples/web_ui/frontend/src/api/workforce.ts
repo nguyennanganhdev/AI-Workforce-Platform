@@ -1,4 +1,4 @@
-import { client } from './client';
+import { ApiError, client } from './client';
 import type { ChatModelConfig } from './types';
 
 export interface BuilderTool {
@@ -150,6 +150,8 @@ export interface LeaderSession {
 	name: string;
 }
 
+let roomUnavailable = false;
+
 export const workforceApi = {
 	prepare: (
 		message: string,
@@ -220,8 +222,21 @@ export const workforceApi = {
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
 	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
-	room: (sessionId: string) =>
-		client.get<RoomView>(`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room`, undefined, {
-			silent: true,
-		}),
+	// Optional extension: disabled for the stock FastAPI backend.
+	room: async (sessionId: string): Promise<RoomView | null> => {
+		if (import.meta.env.VITE_ENABLE_WORKFORCE_ROOM !== 'true' || roomUnavailable) return null;
+		try {
+			return await client.get<RoomView>(
+				`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room`,
+				undefined,
+				{ silent: true },
+			);
+		} catch (error) {
+			if (error instanceof ApiError && error.status === 404) {
+				roomUnavailable = true;
+				return null;
+			}
+			throw error;
+		}
+	},
 };

@@ -42,7 +42,6 @@ export function AccountMenu({
 	const { startOnborda } = useOnborda();
 	const user = useCurrentUser();
 
-	const inVietnamese = i18n.language.startsWith('vi');
 	const displayName = user?.username || user?.email || t('shell.account');
 
 	const handleLogout = async () => {
@@ -79,12 +78,17 @@ export function AccountMenu({
 				{/* w-auto: the default pins the menu to the trigger's width,
 				    which clips the longer labels. */}
 				<DropdownMenuContent side="top" align="start" className="w-auto min-w-52">
-					<DropdownMenuItem
-						onClick={() => i18n.changeLanguage(inVietnamese ? 'en' : 'vi')}
-					>
-						<Languages />
-						{inVietnamese ? t('common.switchToEn') : t('common.switchToVi')}
-					</DropdownMenuItem>
+					{[
+						['vi', 'Tiếng Việt'],
+						['en', 'English'],
+						['zh', '中文'],
+					].map(([code, label]) => (
+						<DropdownMenuItem key={code} onClick={() => void i18n.changeLanguage(code)}>
+							<Languages />
+							{label}
+							{i18n.resolvedLanguage === code ? ' ✓' : ''}
+						</DropdownMenuItem>
+					))}
 					{showTour && (
 						<DropdownMenuItem onClick={() => startOnborda(CHAT_TOUR_NAME)}>
 							<Compass />

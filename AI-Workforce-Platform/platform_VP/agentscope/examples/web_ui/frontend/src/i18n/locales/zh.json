@@ -1108,5 +1108,8 @@
 		"kickoff": "这是群聊“{{name}}”。{{goal}}请使用 TeamCreate 创建团队并由你担任组长，然后使用 AgentInvite 邀请成员：{{members}}。成员到齐后，请简要介绍团队并等待我的请求。",
 		"kickoffGoal": "目标：{{goal}}。",
 		"headerNote": "组长 {{leader}} · {{count}} 个智能体"
+	},
+	"agentManagement": {
+		"empty": "未找到智能体。"
 	}
 }

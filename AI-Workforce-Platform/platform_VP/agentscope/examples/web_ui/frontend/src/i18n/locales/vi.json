@@ -1107,5 +1107,8 @@
 		"kickoff": "Đây là nhóm chat “{{name}}”.{{goal}} Hãy dùng TeamCreate để lập nhóm với bạn là trưởng nhóm, rồi dùng AgentInvite để mời các thành viên: {{members}}. Khi đủ thành viên, hãy giới thiệu ngắn gọn nhóm và chờ yêu cầu của tôi.",
 		"kickoffGoal": " Mục tiêu: {{goal}}.",
 		"headerNote": "Trưởng nhóm {{leader}} · {{count}} agent"
+	},
+	"agentManagement": {
+		"empty": "Không tìm thấy agent."
 	}
 }

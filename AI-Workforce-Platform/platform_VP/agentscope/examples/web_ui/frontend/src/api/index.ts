@@ -20,6 +20,8 @@ export type * from './studio';
 export type {
 	BuilderConversationSummary,
 	BuilderMessage,
+	BuilderProgress,
+	AgentToolSettings,
 	BuilderProposal,
 	BuilderTool,
 	LeaderSession,

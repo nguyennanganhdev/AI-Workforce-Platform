@@ -5,7 +5,7 @@
 	"scripts": {
 		"dev:frontend": "pnpm --filter frontend dev",
 		"dev:backend": "pnpm --filter backend dev",
-		"dev": "concurrently \"pnpm dev:frontend\" \"pnpm dev:backend\"",
+		"dev": "pnpm dev:frontend",
 		"build:frontend": "pnpm --filter frontend build",
 		"build:backend": "pnpm --filter backend build",
 		"build": "pnpm build:frontend && pnpm build:backend",
@@ -32,5 +32,6 @@
 		"husky": "^9.1.7",
 		"lint-staged": "^17.0.5",
 		"prettier": "^3.8.3"
-	}
+	},
+	"packageManager": "pnpm@10.34.7"
 }

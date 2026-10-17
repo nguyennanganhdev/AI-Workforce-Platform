@@ -1,5 +1,11 @@
 # Bàn giao tích hợp `web_ui_new` — máy RAM 8 GB
 
+> Cập nhật tiếp quản Fuq-export: snapshot ban đầu clean tại `a82f400` trên `main`.
+> Các đoạn trạng thái cũ bên dưới được giữ làm lịch sử. Native build, lint,
+> backend build và browser fixture smoke đã pass; xem mục 21 của `KeHoach.md`
+> và `MIGRATION_RUNBOOK.md`. Chưa nghiệm thu với FastAPI thật. Không dùng
+> thông tin “chưa có Node/pnpm” hoặc “toàn bộ chưa commit” bên dưới làm trạng thái hiện tại.
+
 Ngày bàn giao: 2026-10-17  
 Nhánh làm việc: `web-ui-new-integration`  
 Thư mục: `AI-Workforce-Platform/platform_VP/agentscope/examples/web_ui`
@@ -171,4 +177,3 @@ Ghi vào `KeHoach.md`:
 - Endpoint nào đã adapter, endpoint nào còn blocker.
 - Flow nào đã smoke test.
 - Cấu hình RAM/Node/Docker đã sử dụng.
-

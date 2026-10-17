@@ -8,7 +8,8 @@
 		"build": "tsc -b && vite build",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
-		"preview": "vite preview"
+		"preview": "vite preview",
+		"test": "node --import ./tests/register-aliases.mjs --test --test-concurrency=1 tests/*.test.mjs src/features/workforce/chat/ticket_timeline/state.test.mjs"
 	},
 	"dependencies": {
 		"@agentscope-ai/agentscope": "^0.0.15",

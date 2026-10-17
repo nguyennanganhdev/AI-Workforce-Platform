@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 
-const DEFAULT_API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const DEFAULT_API_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 export const AUTH_EXPIRED_EVENT = 'agentscope:auth-expired';
 export const getBaseUrl = () => localStorage.getItem('server_url') ?? DEFAULT_API_URL;
@@ -128,7 +128,10 @@ async function streamRequest(path: string, options: RequestOptions = {}): Promis
 		if (response.status === 401 && canRefresh(path)) {
 			// A delayed 401 may belong to the token another request already
 			// replaced. Reuse the new token rather than rotate the cookie again.
-			if ((accessToken && accessToken !== sentToken) || await refreshAccessToken(requestBaseUrl)) {
+			if (
+				(accessToken && accessToken !== sentToken) ||
+				(await refreshAccessToken(requestBaseUrl))
+			) {
 				response = await send();
 			}
 			if (response.status === 401 && (!accessToken || accessToken === sentToken)) {

@@ -1110,5 +1110,8 @@
 		"kickoff": "This is the group chat “{{name}}”.{{goal}} Use TeamCreate to form the team with you as its leader, then AgentInvite to bring in: {{members}}. Once everyone has joined, briefly introduce the team and wait for my request.",
 		"kickoffGoal": " Goal: {{goal}}.",
 		"headerNote": "Led by {{leader}} · {{count}} agents"
+	},
+	"agentManagement": {
+		"empty": "No agents found."
 	}
 }

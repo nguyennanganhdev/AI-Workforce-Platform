@@ -9,7 +9,12 @@ export default defineConfig({
 	plugins: [react(), tailwindcss(), svgr()],
 	server: {
 		proxy: {
-			'/api': 'http://localhost:3000',
+			'/api': {
+				target: 'http://localhost:8000',
+				changeOrigin: true,
+				cookiePathRewrite: { '/auth': '/api/auth' },
+				rewrite: (path) => path.replace(/^\/api(?=\/|$)/, ''),
+			},
 		},
 	},
 	resolve: {
