@@ -88,6 +88,8 @@ def main():
             "tests/team_collaboration_test.py", "tests/team_say_shared_context_test.py",
             "tests/team_shared_context_test.py", "tests/leader_evidence_middleware_test.py",
             "tests/leader_runtime_gaps_test.py", "tests/room_realtime_test.py",
+            "tests/service_toolkit_test.py", "tests/service_workspace_files_test.py",
+            "tests/service_workspace_status_test.py",
         ])
     started = perf_counter()
     result = pytest.main(

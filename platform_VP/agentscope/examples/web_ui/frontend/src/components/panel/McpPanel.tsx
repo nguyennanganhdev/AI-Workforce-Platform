@@ -98,9 +98,9 @@ function McpRow({ mcp, installed, onDelete }: McpRowProps) {
 					{installed?.author && (
 						<span className="text-xs text-muted-foreground">@{installed.author}</span>
 					)}
-					<span className="text-xs text-muted-foreground/50">
+					{mcp.mcp_config && <span className="text-xs text-muted-foreground/50">
 						{mcp.mcp_config.type === 'stdio_mcp' ? '#stdio' : '#http'}
-					</span>
+					</span>}
 				</ItemTitle>
 				{installed?.description && (
 					<ItemDescription className="line-clamp-1">
@@ -111,8 +111,8 @@ function McpRow({ mcp, installed, onDelete }: McpRowProps) {
 
 			<ItemActions>
 				<span
-					className={`size-2 shrink-0 rounded-full ${mcp.is_healthy ? 'bg-green-500' : 'bg-red-500'}`}
-					title={t(mcp.is_healthy ? 'panel.mcp.healthy' : 'panel.mcp.unhealthy')}
+					className={`size-2 shrink-0 rounded-full ${mcp.is_healthy === null ? 'bg-muted-foreground/40' : mcp.is_healthy ? 'bg-green-500' : 'bg-red-500'}`}
+					title={mcp.is_healthy === null ? 'Chưa kiểm tra kết nối' : t(mcp.is_healthy ? 'panel.mcp.healthy' : 'panel.mcp.unhealthy')}
 				/>
 				{/* Only on hover: deleting is rare, and a delete button on
 				    every row competes with the status for attention. */}
@@ -127,7 +127,7 @@ function McpRow({ mcp, installed, onDelete }: McpRowProps) {
 			</ItemActions>
 
 			<ItemFooter className="min-w-0">
-				{mcp.is_healthy ? (
+				{mcp.is_healthy !== false ? (
 					<Collapsible open={open} onOpenChange={setOpen} className="min-w-0 basis-full">
 						<CollapsibleTrigger asChild>
 							<Button

@@ -9,6 +9,8 @@ import asyncio
 import os
 from collections import defaultdict
 
+from .._service._catalog_resources import resolve_catalog_resource
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
@@ -733,7 +735,7 @@ def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent
     """Put one library skill into the agent's workspace (re-fetched from its hub)."""
 
     async def install(workspace, skill_id: str) -> None:
-        record = await storage.get_skill(user_id, skill_id)
+        record = await resolve_catalog_resource(storage, user_id, "skill", skill_id)
         if record is None or not getattr(record, "enabled", True) or getattr(record, "review_status", "approved") != "approved":
             raise HTTPException(status_code=409, detail=f"Skill {skill_id} không còn trong thư viện.")
         present = {getattr(item, "name", item) for item in await workspace.list_skills(agent_id=agent_id)}
@@ -758,7 +760,8 @@ def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent
             await cache_archive(record, archive.stream, archive.format)
             await service.install_skill(workspace, byte_stream(archive_bytes(record)), archive.format, record.name, agent_id=agent_id)
             # Cache only after the existing archive validator accepted it.
-            await storage.upsert_skill(user_id, record)
+            if record.user_id == user_id:
+                await storage.upsert_skill(user_id, record)
         else:
             await service.install_skill(workspace, archive.stream, archive.format, record.name, agent_id=agent_id)
 

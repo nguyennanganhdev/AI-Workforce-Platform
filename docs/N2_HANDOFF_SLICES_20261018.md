@@ -68,7 +68,7 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   Upsert hiện tại chỉ hỗ trợ mô hình một scheduler owner của PR #99; chưa có chứng minh exactly-once
   nhiều worker hoặc delivery retry. Không bật automation cho cohort production bằng slice này.
 
-## S03 — Consumer catalog MCP/Skill (đang thực hiện)
+## S03 — Consumer catalog MCP/Skill
 
 - Khai báo owner trước khi sửa: helper consumer mới `A/_service/_catalog_resources.py` và test
   `tests/workforce/console/test_shared_catalog_consumer.py` thuộc Người 2; không định nghĩa authority.
@@ -76,3 +76,19 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
   không fallback sang resource tự sở hữu khi Vin enabled nhưng authority thiếu.
 - Call sites dự kiến: Builder/Studio catalog, bind/eval/readiness, workspace from-library và runtime preflight.
   Quyền tool/version/audience phải được resolver Người 1 kiểm tra; không suy từ prompt hoặc tên tool.
+- Schema đọc workspace `A/_router/_schema/_workspace.py` thuộc consumer workspace Người 2 trong slice này:
+  thêm DTO an toàn không kế thừa cấu hình MCP chứa header/secret; không sửa schema catalog của Người 1.
+- Đã nối Builder/Studio catalog, stage binding, readiness, eval read runner, PR #99 sandbox,
+  workspace from-library và toolkit. Runtime bỏ snapshot đã mất grant, dùng config hiện tại từ authority;
+  grant được kiểm trước fixture/grant sandbox và từng tool call của sandbox.
+- Workspace raw MCP config, skill path/upload đòi `catalog.manage`; picker from-library còn dùng được.
+  Shared skill không ghi cache vào thư viện của cư dân. DTO workspace chỉ trả tên/tool/status, không URL/header.
+  UI giữ panel cũ và hỗ trợ trạng thái kết nối chưa kiểm tra, không báo khỏe giả.
+- Test kết hợp producer SQL tạm từ worktree Người 1 (chỉ overlay module `vin_platform`, không copy WIP):
+  `check_builder.py --runtime --automation`: **390 passed, 13 skipped**, network attempts **0**, paid model calls **0**.
+  13 skip: 12 browser chạy riêng + một legacy integration gate có môi trường riêng. Producer C01/C03/C02
+  tests chạy trong kết quả này; không dùng kết quả skip của branch độc lập làm proof integration.
+  ESLint/TypeScript đạt; Ruff F821/F811/F401 helper/test mới đạt (unused import MCPClient baseline ở console còn nguyên).
+- Chờ Người 1 commit C02 ổn định và kiểm version/audience/tool allowlist nhất quán trong `resolve_catalog`.
+  Catalog version/artifact manifest chưa được pin xuyên cả publish → runtime; C08 fixture theo customer
+  và C05/C07 flow Domain chưa được producer giao. Chưa release hoặc công bố N2-02/N2-05 hoàn tất.

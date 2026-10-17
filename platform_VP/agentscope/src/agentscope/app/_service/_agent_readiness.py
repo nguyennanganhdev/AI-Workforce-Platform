@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from fastapi import HTTPException
 from ..storage import AgentRecord
+from ._catalog_resources import resolve_catalog_resource
 
 
 def publication_issue(agent: AgentRecord) -> str | None:
@@ -45,7 +46,12 @@ async def resource_manifest(storage, user_id, agent, access=None):
         if kb is None or not ready:
             issues.append(f"Knowledge {item.get('name') or kb_id}: chưa có tài liệu sẵn sàng hoặc mất quyền.")
     for item in spec.get("tools", []):
-        mcp = await storage.get_mcp(user_id, item.get("mcp_id", ""))
+        try:
+            mcp = await resolve_catalog_resource(storage, user_id, "mcp", item.get("mcp_id", ""), permission="execute")
+        except HTTPException as exc:
+            if exc.status_code not in (403, 404, 409):
+                raise
+            mcp = None
         descriptor = next((t for t in mcp.discovered_tools if t.get("name") == item.get("tool_name")), None) if mcp else None
         available = bool(mcp and mcp.enabled and descriptor)
         tools.append({"id": item.get("tool_id"), "name": item.get("tool_name"), "available": available,
@@ -53,7 +59,12 @@ async def resource_manifest(storage, user_id, agent, access=None):
         if not available:
             issues.append(f"Tool {item.get('tool_name')}: connector hoặc công cụ không còn khả dụng.")
     for item in spec.get("skills", []):
-        skill = await storage.get_skill(user_id, item["skill_id"])
+        try:
+            skill = await resolve_catalog_resource(storage, user_id, "skill", item["skill_id"], permission="execute")
+        except HTTPException as exc:
+            if exc.status_code not in (403, 404, 409):
+                raise
+            skill = None
         available = bool(skill and skill.enabled and getattr(skill, "review_status", "approved") == "approved")
         skills.append({"id": item["skill_id"], "name": item.get("name"), "available": available,
                        "version": getattr(skill, "version", None), "checksum": getattr(skill, "archive_sha256", None)})

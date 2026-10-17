@@ -16,6 +16,8 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 from typing import Literal
 
+from .._service._catalog_resources import list_catalog_resources
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
@@ -479,7 +481,7 @@ async def _model_config(storage: StorageBase, user_id: str, *, authority=None) -
 
 async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
     catalog: list[BuilderTool] = []
-    for record in await storage.list_mcps(user_id):
+    for record in await list_catalog_resources(storage, user_id, "mcp"):
         if not record.enabled:
             continue
         for tool in record.discovered_tools:
@@ -1364,7 +1366,7 @@ async def _library(storage: StorageBase, user_id: str, access=None) -> tuple[dic
     for record in await storage.list_knowledge_bases(user_id):
         if record.id in knowledge:
             knowledge[record.id]["revision"] = record.updated_at.isoformat()
-    for record in await storage.list_skills(user_id):
+    for record in await list_catalog_resources(storage, user_id, "skill"):
         if record.id in skills:
             skills[record.id].update(markdown=record.markdown or "", revision=record.updated_at.isoformat())
     return knowledge, skills

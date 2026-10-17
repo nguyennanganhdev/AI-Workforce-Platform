@@ -276,14 +276,37 @@ time or interval"
         tools += channel_tools
 
     mcps = [] if is_leader else await workspace.list_mcps(agent_id=agent_record.id, session_id=session_record.id)
+    skills = [] if is_leader else await workspace.list_skills(agent_id=agent_record.id)
+    from ._catalog_resources import catalog_authority, list_catalog_resources
+
+    if catalog_authority(storage) is not None and not is_leader:
+        # A workspace snapshot is a selection, never an execution grant.
+        # Rehydrate from authority, rather than trust cached config/headers.
+        granted = {item.name: item for item in await list_catalog_resources(
+            storage, user_id, "mcp", permission="execute",
+        )}
+        current = []
+        for client in mcps:
+            record = granted.get(client.name)
+            if record is None:
+                continue
+            fresh = record.client.model_copy(deep=True)
+            allowed = set(fresh.enable_tools) if fresh.enable_tools is not None else None
+            if client.enable_tools is not None:
+                fresh.enable_tools = [name for name in client.enable_tools if allowed is None or name in allowed]
+            fresh.confirm_tools = sorted(set(fresh.confirm_tools or []) | set(client.confirm_tools or [])) or None
+            current.append(fresh)
+        mcps = current
+        granted_skills = {item.name for item in await list_catalog_resources(
+            storage, user_id, "skill", permission="execute",
+        )}
+        skills = [item for item in skills if getattr(item, "name", None) in granted_skills]
     if any(t.get("tool_name", "").startswith("vh_management_") for t in (agent_record.data.spec or {}).get("tools", [])):
         from ._management_mcp import manager_clients
         mcps = await manager_clients(storage, management_auth_service, user_id, agent_record, mcps)
     return Toolkit(
         tools=tools,
-        skills_or_loaders=[] if is_leader else await workspace.list_skills(
-            agent_id=agent_record.id,
-        ),
+        skills_or_loaders=skills,
         mcps=mcps,
         tool_groups=tool_groups,
     )

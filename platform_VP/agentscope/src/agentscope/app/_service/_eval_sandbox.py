@@ -82,12 +82,15 @@ async def call_tool(client: MCPClient, name: str, arguments: dict, *, require_re
 class EvalSandbox:
     """One eval run on one sandbox MCP: a ticket per case, a grant per ticket."""
 
-    def __init__(self, record, config: dict, tools: list[str]) -> None:
+    def __init__(self, record, config: dict, tools: list[str], revalidate=None) -> None:
         self.record, self.config, self.tools = record, config, sorted(set(tools))
+        self.revalidate = revalidate
         self.run_id = "eval-" + uuid4().hex[:24]
         self.tickets: list[dict] = []
 
     async def prepare(self, count: int) -> None:
+        if self.revalidate is not None:
+            self.record = await self.revalidate()
         client = self.record.client
         url = _same_origin(client.mcp_config.url, str(self.config.get("fixture_path") or ""))
         async with httpx.AsyncClient(timeout=60, follow_redirects=False) as http:
@@ -106,6 +109,8 @@ class EvalSandbox:
         """The ticket for case ``index`` and a runner bound to its own bearer."""
         from ..workforce.integrations.unified._grants import scoped_client
 
+        if self.revalidate is not None:
+            self.record = await self.revalidate()
         ticket = self.tickets[index]
         base = MCPClient.model_validate(self.record.client.model_dump(mode="json"))
         try:
@@ -121,6 +126,8 @@ class EvalSandbox:
         async def run(name: str, arguments: dict) -> str:
             if name not in self.tools:
                 raise RuntimeError("Tool is not bound to the sandbox MCP")
+            if self.revalidate is not None:
+                await self.revalidate()
             return await call_tool(MCPClient.model_validate(client.model_dump(mode="json")), name, arguments,
                                    require_read_only=False)
 
@@ -133,11 +140,19 @@ async def eval_sandbox(storage, user_id: str, spec: AgentSpec) -> EvalSandbox | 
     if not configs:
         return None
     for mcp_id in dict.fromkeys(tool.mcp_id for tool in spec.tools):
-        record = await storage.get_mcp(user_id, mcp_id)
+        from ._catalog_resources import resolve_catalog_resource
+
+        async def revalidate(ident=mcp_id):
+            current = await resolve_catalog_resource(storage, user_id, "mcp", ident, permission="execute")
+            if current is None or not current.enabled:
+                raise RuntimeError("Sandbox MCP is no longer available")
+            return current
+
+        record = await revalidate()
         if record is None or not record.enabled or not isinstance(record.client.mcp_config, HttpMCPConfig):
             continue
         config = configs.get(record.client.mcp_config.url)
         if config:
             names = [t.tool_name for t in spec.tools if t.mcp_id == mcp_id and t.tool_id == f"{mcp_id}:{t.tool_name}"]
-            return EvalSandbox(record, config, names) if names else None
+            return EvalSandbox(record, config, names, revalidate=revalidate) if names else None
     return None
