@@ -91,24 +91,26 @@ class PersonalJobWorker:
 
         async def execute():
             context = await authority.jobs.context_for(job)
-            token = personal_job.set(job)
-            try:
-                if job.job_type == "delivery":
-                    result = await self._deliver(authority, context, job.payload["body"])
-                elif job.job_type in {"schedule-run", "channel-event"}:
-                    result = await self._run(authority, context, job)
-                    await authority.jobs.checkpoint(job, self.worker_id, result)
-                    await enqueue_deliveries(authority, context, job.job_id, result)
-                elif job.job_type == "publish-batch":
-                    from ._publish_batch import run
-                    # The conversation guard lease is 300s. Bound staging
-                    # below it; timeout leaves a repairable checkpoint.
-                    result = await asyncio.wait_for(run(self, authority, context, job), timeout=240)
-                else:
-                    raise PlatformError("PERSONAL_JOB_HANDLER_UNAVAILABLE", 503)
-                await authority.jobs.complete(job, self.worker_id, result)
-            finally:
-                personal_job.reset(token)
+            from ..vin_platform._context import execution_scope
+            with execution_scope(context):
+                token = personal_job.set(job)
+                try:
+                    if job.job_type == "delivery":
+                        result = await self._deliver(authority, context, job.payload["body"])
+                    elif job.job_type in {"schedule-run", "channel-event"}:
+                        result = await self._run(authority, context, job)
+                        await authority.jobs.checkpoint(job, self.worker_id, result)
+                        await enqueue_deliveries(authority, context, job.job_id, result)
+                    elif job.job_type == "publish-batch":
+                        from ._publish_batch import run
+                        # The conversation guard lease is 300s. Bound staging
+                        # below it; timeout leaves a repairable checkpoint.
+                        result = await asyncio.wait_for(run(self, authority, context, job), timeout=240)
+                    else:
+                        raise PlatformError("PERSONAL_JOB_HANDLER_UNAVAILABLE", 503)
+                    await authority.jobs.complete(job, self.worker_id, result)
+                finally:
+                    personal_job.reset(token)
 
         task = asyncio.create_task(execute())
         try:

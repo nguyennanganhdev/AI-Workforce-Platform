@@ -48,7 +48,10 @@ async def automation(authority, monkeypatch):
     await storage.upsert_schedule("alice", record)
     calls, deliveries = [], []
     async def run(user, session, agent_id, input_msg):
+        from agentscope.app.vin_platform._context import execution_context
         assert personal_job.get() is not None
+        assert execution_context.get().initiator_user_id == user
+        assert execution_context.get().billing_subject_id == user
         calls.append((user, session, input_msg))
         await storage.upsert_message(user, session, AssistantMsg(name="assistant", content="Fixture đã xử lý", finished_reason=ReplyFinishedReason.COMPLETED,
             metadata={"personal_job_id": personal_job.get().job_id}))

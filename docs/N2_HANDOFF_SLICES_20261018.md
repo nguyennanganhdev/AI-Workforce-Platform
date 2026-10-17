@@ -269,6 +269,11 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Gate còn mở: chưa thử Discord account/bot thật hoặc deploy/migrate DB ứng dụng; OAuth app cần operator provision. Queue reader C09 list hiện giới hạn 100 job đầu, N2 cần N1 giao pagination/filter mới cho lịch sử dài và repair sau hơn 100 run; consumer không query SQL authority riêng.
 - Runtime mở rộng cuối S08: **470 PASS / 19 SKIP / 0 FAIL / 0 ERROR**. 18 browser SKIP đã chạy riêng **18 PASS**, 1 SKIP là gate concurrency PostgreSQL personal_chat baseline (không được coi PASS bởi 3 consumer PG khác). Không cộng trùng coverage giữa suite. Không push/deploy, chưa upgrade DB ứng dụng.
 
+### S08 — Bổ sung execution scope theo handoff C09
+
+- Đối chiếu `N1_C05_C07_C09_CONSUMER_HANDOFF.md`: bọc toàn bộ handler schedule/channel/delivery/publish trong `execution_scope(jobs.context_for(job))`, không chỉ ChatService. Danh tính initiator/billing không lấy từ payload hoặc Discord sender. ContextVar được reset trong finally, heartbeat/fencing giữ nguyên.
+- Test fake Chat kiểm context thực tế đúng owner/billing. Chạy lại migration/storage + consumer trên PostgreSQL disposable đến 0023: **8 PASS / 0 SKIP / 0 FAIL / 0 ERROR** (`.artifacts/n2-final-postgres.log`). Ruff F401/F811/F821/F841 hai file worker/test: PASS. Không model IO hoặc upgrade DB ứng dụng.
+
 ## S09 — N2-04 batch publish — ĐANG TRIỂN KHAI
 
 - Owner bổ sung `_service/_publish_batch.py`, test `test_vin_publish_batch.py` và frontend polling/repair UI theo lane Builder/publish Người 2. Dùng C09 jobs + checkpoint và storage.activate_agents_batch từ N1; không sửa persistence.
@@ -298,3 +303,8 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Frontend eval presentation **4 PASS / 0 SKIP / 0 FAIL**; TypeScript/ESLint/Ruff module mới và build PASS (chunk-size warning). Log `.artifacts/n2-customer-eval-{contracts,runtime,build}.log`.
 - External network attempts 0, paid model calls 0 trong harness. Không model key thật, không request tới production, không sửa Domain/authority N1, không push/deploy.
 - Gate còn: operator provision sandbox profile/entitlements và linked synthetic resident; chạy nghiệm thu Domain sandbox thật bằng fake provider sau khi môi trường được bàn giao. Chưa đo chất lượng/latency/cost model thật và chưa đóng S03/business UAT.
+
+## S11 — N2-08 quota/catalog/KB Vin UI — ĐANG TRIỂN KHAI
+
+- Owner bổ sung frontend API `vinAdmin.ts`, component admin `VinAdministration.tsx`, test UI/DTO tương ứng; mở rộng trang admin hiện có theo capability quota.manage/catalog.manage. Consumer chỉ gọi API N1 đã giao, không thêm SQL hoặc sửa authority.
+- Nối effective_limits/remaining/policy_revision vào trang Tài khoản. Khi backend chưa có read policy/grant/membership, UI không tự coi giá trị mặc định là cấu hình đã lưu; ghi rõ giới hạn API và yêu cầu producer cho quản trị đầy đủ.
