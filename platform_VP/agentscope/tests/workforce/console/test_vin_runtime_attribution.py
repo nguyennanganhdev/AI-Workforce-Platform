@@ -25,14 +25,14 @@ async def test_chat_rebuilds_context_for_server_session_origin_and_restores_pare
         seen.append(execution_context.get())
 
     service._run_impl = AsyncMock(side_effect=run)
-    parent = await authority.context("resident-b")
+    parent = await authority.context("bob")
     with execution_scope(parent):
-        await service.run("resident-a", "private-session", "private-agent")
+        await service.run("alice", "private-session", "private-agent")
         assert execution_context.get() is parent
-    assert seen[0].initiator_user_id == seen[0].billing_subject_id == "resident-a"
-    assert seen[0].workspace_id == "personal:resident-a"
+    assert seen[0].initiator_user_id == seen[0].billing_subject_id == "alice"
+    assert seen[0].workspace_id == "personal:alice"
     assert seen[0].purpose == purpose and seen[0].environment == "production"
-    storage.get_session.assert_awaited_once_with("resident-a", "private-agent", "private-session")
+    storage.get_session.assert_awaited_once_with("alice", "private-agent", "private-session")
 
 
 @pytest.mark.asyncio
@@ -52,8 +52,8 @@ async def test_parallel_users_do_not_inherit_another_billing_subject(real_author
         seen.append((user_id, execution_context.get().billing_subject_id))
 
     service._run_impl = AsyncMock(side_effect=run)
-    await asyncio.gather(service.run("resident-a", "a", "agent-a"), service.run("resident-b", "b", "agent-b"))
-    assert set(seen) == {("resident-a", "resident-a"), ("resident-b", "resident-b")}
+    await asyncio.gather(service.run("alice", "a", "agent-a"), service.run("bob", "b", "agent-b"))
+    assert set(seen) == {("alice", "alice"), ("bob", "bob")}
     assert execution_context.get() is None
 
 
@@ -63,5 +63,5 @@ async def test_enabled_mode_without_authority_never_enters_runtime(monkeypatch):
     service = ChatService.__new__(ChatService)
     service._storage = SimpleNamespace()
     service._run_impl = AsyncMock()
-    await service.run("resident-a", "private-session", "private-agent")
+    await service.run("alice", "private-session", "private-agent")
     service._run_impl.assert_not_awaited()

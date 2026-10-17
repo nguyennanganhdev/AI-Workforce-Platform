@@ -21,6 +21,9 @@ def main():
     parser.add_argument(
         "--automation", action="store_true", help="Also run schedule and private Discord regressions"
     )
+    parser.add_argument(
+        "--contracts-only", action="store_true", help="Run shared N1/N2 contracts; any skip fails this gate"
+    )
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
     os.chdir(root)
@@ -81,6 +84,7 @@ def main():
         suite.extend([
             "tests/service_scheduler_test.py", "tests/schedule_router_test.py",
             "tests/channel_discord_workforce_test.py",
+            "tests/channel_clients_test.py", "tests/channel_gateway_test.py",
         ])
     if options.runtime:
         suite.extend([
@@ -92,6 +96,14 @@ def main():
             "tests/service_workspace_status_test.py",
         ])
     started = perf_counter()
+    if options.contracts_only:
+        suite = [
+            "tests/workforce/console/test_vin_model_resolver_contract.py",
+            "tests/workforce/console/test_shared_catalog_consumer.py",
+            "tests/workforce/console/test_vin_runtime_attribution.py",
+            "tests/vin_shared_fixture_test.py", "tests/vin_catalog_knowledge_test.py",
+            "tests/vin_workspace_test.py",
+        ]
     result = pytest.main(
         [
             "-q",
@@ -121,7 +133,7 @@ def main():
         json.dumps(summary, indent=2), encoding="utf-8"
     )
     print(json.dumps(summary))
-    return result or int(bool(network_attempts))
+    return result or int(bool(network_attempts) or (options.contracts_only and summary["skipped"] > 0))
 
 
 if __name__ == "__main__":
