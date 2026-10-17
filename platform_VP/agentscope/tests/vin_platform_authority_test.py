@@ -17,20 +17,22 @@ from vin_fixtures import authority as authority  # noqa: F401
 
 
 @pytest.mark.asyncio
-async def test_link_uuid_format_roundtrip_keeps_owner_and_revocation_boundary(authority):
+@pytest.mark.parametrize("stored_format", ["hex", "hyphenated"])
+async def test_link_uuid_format_roundtrip_keeps_owner_and_revocation_boundary(authority, stored_format):
     from sqlalchemy import insert, update
     ident = uuid4()
+    stored = ident.hex if stored_format == "hex" else str(ident)
     async with authority.engine.begin() as db:
-        await db.execute(insert(t.links).values(id=ident.hex, tenant_id="vin", user_id="alice", provider_id="vinhomes",
+        await db.execute(insert(t.links).values(id=stored, tenant_id="vin", user_id="alice", provider_id="vinhomes",
             issuer="https://fixture.invalid", subject="resident", status="active", secret_ref="fake-ref", scopes=["self"], revision=1, data={}))
     adapter = DomainAdapter(authority)
     alice = await authority.context("alice")
-    assert (await adapter.link(alice, str(ident)))["id"] == ident.hex
-    assert (await adapter.link(alice, ident.hex))["id"] == ident.hex
+    assert (await adapter.link(alice, str(ident)))["id"] == stored
+    assert (await adapter.link(alice, ident.hex))["id"] == stored
     with pytest.raises(PlatformError, match="DOMAIN_LINK_REQUIRED"):
         await adapter.link(await authority.context("bob"), str(ident))
     async with authority.engine.begin() as db:
-        await db.execute(update(t.links).where(t.links.c.id == ident.hex).values(status="revoked"))
+        await db.execute(update(t.links).where(t.links.c.id == stored).values(status="revoked"))
     with pytest.raises(PlatformError, match="DOMAIN_LINK_REQUIRED"):
         await adapter.link(alice, str(ident))
 
