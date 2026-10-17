@@ -191,3 +191,79 @@ async def test_hallucinated_tool_is_not_accepted_as_a_simulated_action():
     assert result["passed"] is False
     assert result["tool_calls"][0]["error_code"] == "UNKNOWN_TOOL"
     assert result["checks"][0]["passed"] is False
+
+
+@pytest.mark.asyncio
+async def test_revoked_catalog_tool_is_caught_before_spending_model_calls():
+    class NeverModel:
+        async def __call__(self, **_):
+            pytest.fail("Missing MCP must be caught before running the model")
+
+    report = await evaluation.run_spec_tests(spec=travel_spec(), model=NeverModel(),
+        judge_model=None, discovered={}, run_tool=None)
+    result = report["results"][0]
+    assert result["error_kind"] == "environment"
+    assert "vh_travel_catalog" in result["error"]
+    assert result["tool_calls"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", ["not-json", "[]", "{}"])
+async def test_invalid_tool_arguments_never_reach_connector_or_pass_eval(arguments):
+    class Model:
+        def __init__(self): self.calls = 0
+
+        async def __call__(self, **_):
+            self.calls += 1
+            content = [ToolCallBlock(id="bad", name="vh_travel_catalog", input=arguments)] if self.calls == 1 else [TextBlock(text="Không tra cứu được.")]
+            return ChatResponse(content=content, is_last=True)
+
+        async def generate_structured_output(self, **_):
+            return SimpleNamespace(content={"passed": True, "reason": "Fixture judge"})
+
+    async def connector(*_):
+        pytest.fail("Schema-invalid arguments must not reach MCP")
+
+    model = Model()
+    report = await evaluation.run_spec_tests(spec=travel_spec(), model=model, judge_model=model,
+        discovered={"m:vh_travel_catalog": {"read_only": True, "input_schema": {
+            "type": "object", "properties": {"ticket_id": {"type": "string"}}, "required": ["ticket_id"]}}}, run_tool=connector)
+    assert not report["results"][0]["passed"]
+    assert report["results"][0]["tool_calls"][0]["error_code"] == "INVALID_TOOL_ARGUMENTS"
+
+
+@pytest.mark.asyncio
+async def test_unknown_expected_tool_is_a_test_design_error_not_agent_failure():
+    spec = AgentSpec(name="Reasoning only", tests=[SpecTest(scenario="Hỏi thông tin.", expected="Trả lời.", expect_tool="invented_search")])
+    report = await evaluation.run_spec_tests(spec=spec, model=None, judge_model=None, discovered={}, run_tool=None)
+    assert report["results"][0]["error_kind"] == "test_design"
+    assert report["metrics"]["test_design_errors"] == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_can_correct_tool_arguments_after_schema_feedback():
+    class Model:
+        def __init__(self): self.calls = 0
+
+        async def __call__(self, **_):
+            self.calls += 1
+            if self.calls < 3:
+                args = {} if self.calls == 1 else {"ticket_id": "synthetic-ticket"}
+                return ChatResponse(content=[ToolCallBlock(id=str(self.calls), name="vh_travel_catalog", input=json.dumps(args))], is_last=True)
+            return ChatResponse(content=[TextBlock(text="Danh mục thử trống.")], is_last=True)
+
+        async def generate_structured_output(self, **_):
+            return SimpleNamespace(content={"passed": True, "reason": "Đã sửa input, đọc đúng dữ liệu."})
+
+    calls = []
+    async def connector(name, arguments):
+        calls.append(arguments)
+        return '{"hotels": []}'
+
+    model = Model()
+    report = await evaluation.run_spec_tests(spec=travel_spec(), model=model, judge_model=model,
+        discovered={"m:vh_travel_catalog": {"read_only": True, "input_schema": {
+            "type": "object", "properties": {"ticket_id": {"type": "string"}}, "required": ["ticket_id"]}}}, run_tool=connector)
+    assert calls == [{"ticket_id": "synthetic-ticket"}]
+    assert report["results"][0]["passed"]
+    assert report["environment"]["isolated_business_sandbox"] is False

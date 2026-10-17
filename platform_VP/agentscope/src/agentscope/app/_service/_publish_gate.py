@@ -37,7 +37,7 @@ def _result_blocker(spec: AgentSpec, report: dict | None) -> str:
     if report.get("errors") or report.get("model_error") or any(result.get("error") for result in results):
         if report.get("model_error"):
             return f"Chưa kiểm thử được {report.get('errors', 0)}/{len(results)} kịch bản: {report['model_error']}"
-        return "Kiểm thử gặp lỗi model; hãy sửa lỗi và chạy lại trước khi phát hành."
+        return "Kiểm thử gặp lỗi môi trường, cấu hình, kịch bản hoặc model; xem lỗi từng ca và chạy lại trước khi phát hành."
     if any(result.get("model_evaluated") is not True or not isinstance(result.get("judge"), dict)
            for result in results):
         return "Mọi kịch bản phải được chạy và đánh giá bằng model."
