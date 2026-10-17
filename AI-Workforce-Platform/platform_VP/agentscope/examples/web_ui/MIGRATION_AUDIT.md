@@ -30,10 +30,10 @@ The existing router remains authoritative for `/`, `/chat`, workforce leader and
 builder, schedule, channel, credential, MCP, skill, knowledge, settings, agent
 routes, and `/setup`. Deep-link handling therefore stays compatible with the
 current deployment. The agent-management routes existed before this overlay but
-their source modules were missing; the imported modules require the unsupported
-Studio API noted above.
+their source modules were missing; the original imported modules required the unsupported Studio API. The current
+route mapping uses the compatible FastAPI page instead.
 
-## Validation status
+## Initial handoff validation (superseded by the batch below)
 
 - `git diff --check`: passed.
 - Secret check: no `.env` file is included in the migration diff.
@@ -91,3 +91,9 @@ service exposes room/evaluation extensions not in this checkout. It is therefore
 not the exact backend revision being integrated. Do not change frontend contracts
 to match this unrelated runtime; live E2E needs the matching FastAPI revision plus
 an active test account and model. No existing service was redeployed.
+
+Verified commits: frontend `99a1f8b`; container integration `ccb80e5`.
+Docker image build and nginx syntax check passed. The committed browser fixture
+smoke also passed against a temporary nginx container built from this image.
+The temporary container was stopped; existing services were not redeployed.
+User confirmed no active test account/model is available: live E2E remains blocked.

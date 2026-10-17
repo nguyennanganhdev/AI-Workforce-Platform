@@ -325,11 +325,11 @@ Commit batch và kết quả Docker/format chi tiết được cập nhật ở 
 
 | Batch        | Lệnh / kiểm tra                                                                                                                                                        | Kết quả                                                                                                          | Commit                    |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| Frontend/API | `pnpm --filter frontend build` (heap 1536 MB)                                                                                                                          | Pass; cảnh báo chunk >500 kB, không lỗi build                                                                    | Ghi hash sau commit       |
-| Lint/test    | `pnpm --filter frontend lint`; `pnpm --filter frontend test`; `pnpm --filter backend build`                                                                            | Pass; 7 file test, 1 warning Fast Refresh có sẵn                                                                 | Ghi hash sau commit       |
-| Contract     | Static test đối chiếu 100 client calls với FastAPI trong repo                                                                                                          | Pass; room là extension off mặc định, test riêng fallback 404                                                    | Ghi hash sau commit       |
-| Format       | `pnpm format:check`                                                                                                                                                    | Chưa pass toàn repo: các file có sẵn chưa đúng Prettier; kiểm tra riêng toàn bộ file batch đã sửa                | Ghi hash sau commit       |
-| Container    | `docker compose --env-file /dev/null -f ../../compose.yaml config --quiet`; `... build web`; `docker run --rm --add-host app:127.0.0.1 agentscope-web:latest nginx -t` | Pass; chỉ build web, không deploy hoặc đổi volume/service đang chạy                                              | Ghi hash sau commit       |
+| Frontend/API | `pnpm --filter frontend build` (heap 1536 MB)                                                                                                                          | Pass; cảnh báo chunk >500 kB, không lỗi build                                                                    | `99a1f8b`                 |
+| Lint/test    | `pnpm --filter frontend lint`; `pnpm --filter frontend test`; `pnpm --filter backend build`                                                                            | Pass; 7 file test, 1 warning Fast Refresh có sẵn                                                                 | `99a1f8b`                 |
+| Contract     | Static test đối chiếu 100 client calls với FastAPI trong repo                                                                                                          | Pass; room là extension off mặc định, test riêng fallback 404                                                    | `99a1f8b`                 |
+| Format       | `pnpm format:check`                                                                                                                                                    | Chưa pass toàn repo: các file có sẵn chưa đúng Prettier; kiểm tra riêng toàn bộ file batch đã sửa                | `99a1f8b`                 |
+| Container    | `docker compose --env-file /dev/null -f ../../compose.yaml config --quiet`; `... build web`; `docker run --rm --add-host app:127.0.0.1 agentscope-web:latest nginx -t` | Pass; chỉ build web, không deploy hoặc đổi volume/service đang chạy                                              | `ccb80e5`                 |
 | Live probe   | GET `/health`, POST `/auth/refresh` anonymous                                                                                                                          | Health OK; refresh 401. Chưa có tài khoản/model test (user xác nhận). OpenAPI service đang chạy khác source repo | Không nghiệm thu live E2E |
 
 - Không đưa `.env` vào diff; JSON validation, known secret-pattern scan và
@@ -348,3 +348,13 @@ Commit batch và kết quả Docker/format chi tiết được cập nhật ở 
   links, 3 locale, mobile; 0 JS errors, 0 unexpected requests. Container tạm đã dừng.
 - Prettier check cho toàn bộ file thay đổi: pass. Toàn repo còn 81 file có sẵn
   chưa đúng format (không sửa hàng loạt ngoài phạm vi).
+
+### Commit và bàn giao
+
+- `99a1f8b` — frontend compatibility, locale, proxy/cookie, test runner, 7 test
+  files và browser fixture smoke/runbook.
+- `ccb80e5` — Compose web, Docker Node 22/pnpm 10, heap 1536 MB và dockerignore.
+- Batch tài liệu cuối chỉ ghi kết quả/hash, không đổi runtime.
+- User đã xác nhận **chưa có tài khoản active/model kiểm thử**; live E2E để trạng
+  thái blocked. Service FastAPI đang chạy còn lệch revision so với source đích.
+- Không deploy đè container đang chạy. Không chỉnh backend, DB hoặc volume.
