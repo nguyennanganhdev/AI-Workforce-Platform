@@ -120,6 +120,10 @@ async def test_library_review_cas_and_safe_metadata(authority, adapter, tmp_path
             await authority.administration.documents(await authority.context("other"), catalog)
         with pytest.raises(PlatformError, match="CAPABILITY_DENIED"):
             await authority.administration.review(await authority.context("alice"), catalog, "doc", review)
+        private = await authority.publish_catalog(admin, CatalogEntry(kind="knowledge_base", resource_id="private",
+            owner_id="bob", name="Misconfigured personal KB entry"))
+        with pytest.raises(PlatformError, match="RESOURCE_NOT_FOUND"):
+            await authority.administration.documents(admin, private)
         latest = await storage.get_knowledge_document("admin", "library", "doc")
         changed = latest.model_copy(deep=True)
         changed.data.version = "v2"

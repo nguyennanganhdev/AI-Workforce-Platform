@@ -91,7 +91,9 @@ class VinAdministration:
                 raise PlatformError("RESOURCE_NOT_FOUND", 404)
             # Recheck current owner tenancy, even for an inactive catalog entry.
             owner = await self.service.context(entry["owner_id"])
-            if owner.tenant_id != context.tenant_id:
+            if owner.tenant_id != context.tenant_id or owner.role == "VIN_USER":
+                # An accidental catalog entry must not turn a customer's
+                # private KB into an administratively readable Vin library.
                 raise PlatformError("RESOURCE_NOT_FOUND", 404)
         return entry
 

@@ -12,7 +12,9 @@ $taskTests = 'vinhome_Recident/services/vinhomes-api/tests'
 $taskOutput = 'E:/AI-Workforce-Platform-user1/platform_VP/agentscope/.artifacts/n1-r04-final'
 $env:PYTHONIOENCODING = 'utf-8'
 & $taskPython "$taskTests/run_vin_platform_docker_e2e.py" up --source E:/AI-Workforce-Platform-n1-r04-e2e --output $taskOutput
+if ($LASTEXITCODE -ne 0) { throw 'Fixture startup failed; inspect state and clean up before retrying' }
 & $taskPython "$taskTests/run_vin_platform_docker_e2e.py" web --output $taskOutput --platform-dist E:/AI-Workforce-Platform-user2/platform_VP/agentscope/examples/web_ui/frontend/dist --staff-dist E:/AI-Workforce-Platform/vinhome_Recident/apps/staff-web/dist
+if ($LASTEXITCODE -ne 0) { throw 'Fixture web startup failed' }
 & $taskPython "$taskTests/vin_platform_browser_roundtrip.py" --output $taskOutput
 & $taskPython "$taskTests/run_vin_platform_docker_e2e.py" down --output $taskOutput
 ```

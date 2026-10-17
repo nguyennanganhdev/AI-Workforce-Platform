@@ -79,10 +79,14 @@ def platform_app():
     from agentscope.app.storage import RedisStorage, AsyncSQLAlchemyStorage
     from agentscope.app.message_bus import RedisMessageBus
     from agentscope.app.workspace_manager import LocalWorkspaceManager
-    return create_app(storage=RedisStorage(host="127.0.0.1", port=18106),
+    from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
+    from agentscope.rag import QdrantStore
+    storage = RedisStorage(host="127.0.0.1", port=18106)
+    return create_app(storage=storage,
         shared_context_storage=AsyncSQLAlchemyStorage(os.environ["AGENTSCOPE_SQL_URL"], create_tables=False),
         message_bus=RedisMessageBus(host="127.0.0.1", port=18106),
         workspace_manager=LocalWorkspaceManager(basedir="/tmp/vin-e2e-workspaces", default_mcps=[]),
+        knowledge_base_manager=CollectionPerKbManager(storage=storage, vector_store=QdrantStore(path="/tmp/vin-e2e-qdrant")),
         auth_service=platform_auth(), enable_index_worker=False, enable_channel_worker=False, enable_scheduler=False)
 
 

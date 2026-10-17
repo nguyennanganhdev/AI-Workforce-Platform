@@ -211,6 +211,8 @@ def main(output):
             assert final["status"] == "completed", final
             assert all(item["status"] == "closed" for item in final["tickets"])
             assert final["resolution"]["photos"], final
+            expect(page.get_by_test_id("customer-case").get_by_text("Hoàn tất", exact=True)).to_be_visible(timeout=15000)
+            expect(page.get_by_role("button", name="Đồng ý", exact=True)).to_have_count(0)
             page.screenshot(path=str(output / "platform-closed.png"), full_page=True)
             step("resident_final_click_and_case_closed", service_status=final["service_status"], receipt_status=receipt.get("status"))
             model = httpx.get("http://127.0.0.1:18103/evidence", trust_env=False).json()
@@ -227,6 +229,7 @@ def main(output):
             assert commands == "0"
             evidence["bql_commands"] = int(commands)
             evidence["canonical_case_status"] = final["status"]
+            evidence["platform_card_closed"] = True
             evidence["decision_replay_matches"] = True
             evidence["model_calls"] = len(model["calls"])
             evidence["status"] = "PASS"
