@@ -266,7 +266,7 @@ async def apply_bindings(
         # Publishing cannot remove the server's consent requirement by editing
         # a draft flag. Unknown tools are also confirmation-only at runtime.
         metadata = {item.get("name"): item for item in mcp_record.discovered_tools}
-        if any(name not in metadata for name in names):
+        if stage and any(name not in metadata for name in names):
             raise SpecPatchError("Công cụ không còn trong catalog MCP; hãy đồng bộ và kiểm tra lại.")
         required = set(client.confirm_tools or []) | set(confirm.get(mcp_id) or [])
         required.update(name for name in names if not catalog_allows_read(metadata.get(name, {})))

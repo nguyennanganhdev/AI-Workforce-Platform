@@ -158,7 +158,9 @@ async def chat(
         config = console_session.config.personal_chat
         roster = [m.agent_id for m in config.members] if config and config.kind == "group" else [request.agent_id]
         for selected_id in roster:
-            selected = await resource_access_service.resolve_agent(user_id, selected_id)
+            selected = await storage.get_agent(user_id, selected_id)
+            if selected is None:
+                selected = await resource_access_service.resolve_agent(user_id, selected_id)
             if issue := publication_issue(selected):
                 raise HTTPException(409, detail={"code": "AGENT_NOT_READY", "message": issue})
     if console_session is not None and console_session.config.personal_chat is not None and console_session.config.personal_chat.kind == "group":
