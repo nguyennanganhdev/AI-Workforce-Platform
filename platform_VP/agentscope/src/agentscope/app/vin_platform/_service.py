@@ -237,9 +237,11 @@ class VinPlatformService:
             rows = (await db.execute(query)).mappings().all()
             visible = {}
             for row in rows:
-                if permission in row["permissions"]:
-                    visible[row["id"]] = {"catalog_id": row["id"], **row["data"], "permissions": row["permissions"]}
-            return sorted(visible.values(), key=lambda r: r["catalog_id"])
+                if row["data"]["environment"] != context.environment:
+                    continue
+                entry = visible.setdefault(row["id"], {"catalog_id": row["id"], **row["data"], "permissions": []})
+                entry["permissions"] = sorted(set(entry["permissions"]) | set(row["permissions"]))
+            return sorted((r for r in visible.values() if permission in r["permissions"]), key=lambda r: r["catalog_id"])
 
     async def secret_put(self, context, value, purpose):
         self.admin(context)
@@ -355,5 +357,57 @@ class VinPlatformService:
                 raise PlatformError("UPLOAD_SETTLEMENT_CONFLICT", 409)
             await db.execute(update(t.subjects).where(t.subjects.c.tenant_id == context.tenant_id,
                 t.subjects.c.subject == "user:" + context.billing_subject_id).values(**values))
-            await db.execute(update(t.automation).where(t.automation.c.id == row["id"]).values(
+            changed = await db.execute(update(t.automation).where(t.automation.c.id == row["id"],
+                t.automation.c.revision == row["revision"]).values(
                 data={"bytes": amount, "state": "stored" if stored else "released"}, revision=row["revision"] + 1))
+            if changed.rowcount != 1:
+                raise PlatformError("UPLOAD_SETTLEMENT_CONFLICT", 409)
+
+
+    async def resolve_catalog(self, context, kind, ident, *, permission="bind", version=None):
+        entries = await self.catalog(context, kind, permission)
+        entry = next((r for r in entries if r["resource_id"] == ident), None)
+        if entry is None:
+            raise PlatformError("RESOURCE_NOT_FOUND", 404)
+        if version is not None and version != entry["version"]:
+            raise PlatformError("RESOURCE_REVOKED", 409)
+        getter = getattr(self.storage, {"mcp": "get_mcp", "skill": "get_skill",
+            "knowledge_base": "get_knowledge_base", "credential": "get_credential", "agent": "get_agent"}[kind])
+        record = await getter(entry["owner_id"], ident)
+        if record is None or (kind in {"mcp", "skill"} and not record.enabled) or (
+            kind == "skill" and record.review_status != "approved"):
+            raise PlatformError("RESOURCE_REVOKED", 404)
+        return entry, record
+
+
+    async def migrate_credentials(self, context, *, dry_run=True):
+        """Remove exact shared-key copies without changing any resource ID.
+
+        No provider requests, no raw key/hash in response/audit. Unrecognized
+        legacy values require explicit operator mapping; never guess by name.
+        """
+        from ._resources import PLATFORM_KEY_REFERENCE
+        self.admin(context)
+        shared = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
+        if not shared:
+            raise PlatformError("PROVIDER_NOT_CONFIGURED", 503)
+        async with self.engine.begin() as db:
+            await self.assert_active(db, context, require_eligible=False)
+            users = (await db.execute(text("SELECT id FROM auth_users WHERE tenant_id=:t"), {"t": context.tenant_id})).scalars().all()
+        counts = {"scanned": 0, "matched": 0, "rewritten": 0, "conflicts": 0, "unmapped": 0, "dry_run": dry_run}
+        for user in users:
+            for record in await self.storage.list_credentials(user):
+                counts["scanned"] += 1
+                if record.data.get("secret_ref") == PLATFORM_KEY_REFERENCE:
+                    continue
+                if record.data.get("api_key") != shared:
+                    counts["unmapped"] += 1
+                    continue
+                counts["matched"] += 1
+                if not dry_run:
+                    replacement = {**record.data, "api_key": "server-managed", "secret_ref": PLATFORM_KEY_REFERENCE}
+                    changed = await self.storage.replace_credential_data(user, record.id, record.data, replacement)
+                    counts["rewritten" if changed else "conflicts"] += 1
+        async with self.engine.begin() as db:
+            await self.audit(db, context, "credentials.reference_migration", "tenant", **counts)
+        return counts

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from ..auth import AuthPrincipal
 from ..deps import get_current_principal
 from . import _tables as t
-from ._contracts import CapabilityView, WorkspaceState, CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent
+from ._contracts import CatalogPage, CapabilityView, WorkspaceState, CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent
 from ._domain import DomainAdapter
 
 router = APIRouter(tags=["vin-platform"])
@@ -79,9 +79,12 @@ async def usage(who=Depends(caller)):
     return await authority.quota.usage(context)
 
 
-@router.get("/catalog/{kind}")
-async def catalog(kind: str, who=Depends(caller)):
+@router.get("/catalog/{kind}", response_model=CatalogPage)
+async def catalog(kind: str, environment: str = "production", who=Depends(caller)):
     authority, context = who
+    if environment not in {"production", "sandbox"}:
+        raise HTTPException(422, detail="INVALID_ENVIRONMENT")
+    context = context.model_copy(update={"environment": environment})
     kind = {"providers": "credential", "agents": "agent", "knowledge": "knowledge_base", "mcps": "mcp", "skills": "skill"}.get(kind, kind)
     return {"items": await authority.catalog(context, kind)}
 

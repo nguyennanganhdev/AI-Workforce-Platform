@@ -443,8 +443,8 @@ class KnowledgeBaseService:
                 key=f"kb/{knowledge_base_id}/{document_id}", stream=stream,
             )
         except BaseException:
-            if context is not None:
-                await authority.settle_upload(context, document_id, stored=False)
+            # A failed stream write may have written bytes. Keep the durable
+            # reservation until cleanup proves no blob is left behind.
             raise
 
         record = KnowledgeDocumentRecord(

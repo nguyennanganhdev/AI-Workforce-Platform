@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """The utils for storage."""
 from dataclasses import dataclass
+import os
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, SecretStr
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
     from ._model import AgentRecord, TeamRecord
 
 
-def _dump_with_secrets(model: BaseModel) -> dict:
+def _dump_with_secrets(model: BaseModel, *, managed: bool = False) -> dict:
     """Dump the BaseModel instance with SecretStr fields. Used for
     storage.
 
@@ -36,8 +37,11 @@ def _dump_with_secrets(model: BaseModel) -> dict:
 
     # The legacy console can still call upsert while the runtime consumer is
     # being migrated. Never let it persist a copy of the shared platform key.
-    from ..vin_platform._resources import reference_platform_key
-    return reference_platform_key(result)
+    # Keep the legacy Redis-only path free from optional SQL/auth imports.
+    shared = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
+    if (managed or os.getenv("VIN_PLATFORM_ENABLED", "false").lower() == "true") and shared and result.get("api_key") == shared:
+        result.update(api_key="server-managed", secret_ref="vin:platform-openai")
+    return result
 
 
 async def _ensure_team_members(

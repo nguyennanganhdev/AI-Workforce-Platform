@@ -186,7 +186,8 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
 
         if record.data.retrieval_mode == "lexical":
             from ._lexical import LexicalKnowledge
-            return LexicalKnowledge(self._storage, record)
+            from ._authorized import protect_knowledge
+            return protect_knowledge(LexicalKnowledge(self._storage, record), self._storage, record)
 
         # KB manager is an owner-internal path: the credential lives
         # under the same owner as the knowledge base, so we read it
@@ -197,6 +198,14 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
             record.user_id,
             record.data.embedding_model_config.credential_id,
         )
+        authority = getattr(self._storage, "vin_platform_service", None)
+        if authority is not None:
+            from ...vin_platform._resources import resolve_platform_credential
+            from ...vin_platform._context import execution_context
+            context = execution_context.get()
+            viewer_id = context.initiator_user_id if context is not None else record.user_id
+            managed = await resolve_platform_credential(authority, viewer_id, record.data.embedding_model_config.credential_id)
+            credential_record = managed or credential_record
         if credential_record is None:
             raise KnowledgeBaseNotFoundError(
                 f"Credential "
@@ -209,7 +218,7 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
             authority=getattr(self._storage, "vin_platform_service", None),
             billing_user_id=record.user_id,
         )
-        return KnowledgeBase(
+        knowledge = KnowledgeBase(
             name=record.data.name,
             description=record.data.description,
             embedding_model=embedding_model,
@@ -217,3 +226,5 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
             collection=record.data.collection_name,
             metadata_filter=None,
         )
+        from ._authorized import protect_knowledge
+        return protect_knowledge(knowledge, self._storage, record)

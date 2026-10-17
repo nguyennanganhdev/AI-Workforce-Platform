@@ -52,8 +52,9 @@ def build_embedding_model(
         `HTTPException`:
             400 if the provider does not support embedding.
     """
-    from ..vin_platform._resources import hydrate_platform_credential
-    credential_record = hydrate_platform_credential(credential_record)
+    if credential_record.data.get("secret_ref") == "vin:platform-openai":
+        from ..vin_platform._resources import hydrate_platform_credential
+        credential_record = hydrate_platform_credential(credential_record)
     credential = CredentialFactory.from_dict(credential_record.data)
 
     credential_cls = CredentialFactory.get_credential_class(config.type)
