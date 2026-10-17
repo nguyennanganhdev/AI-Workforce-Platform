@@ -18,8 +18,10 @@ def text_payload(payload):
     # The SDK merges extra_body after ordinary arguments. No hidden input/output
     # or hosted-tool billing fields can bypass the final-payload reservation.
     extra = payload.get("extra_body") or {}
-    if not isinstance(extra, dict) or set(extra) - {"reasoning", "reasoning_effort", "service_tier", "enable_thinking"}:
+    if not isinstance(extra, dict) or set(extra) - {"reasoning", "reasoning_effort", "service_tier", "enable_thinking", "prompt_cache_key"}:
         raise PlatformError("UNBOUNDED_PROVIDER_OVERRIDE", 403)
+    if "prompt_cache_key" in extra and (not isinstance(extra["prompt_cache_key"], str) or not 1 <= len(extra["prompt_cache_key"]) <= 255):
+        raise PlatformError("INVALID_PROMPT_CACHE_KEY", 422)
     if payload.get("n", 1) != 1 or any(payload.get(k) for k in (
         "audio", "previous_response_id", "conversation", "background", "prompt", "file_ids")):
         raise PlatformError("MODEL_QUOTA_BOUND_REQUIRED", 403)

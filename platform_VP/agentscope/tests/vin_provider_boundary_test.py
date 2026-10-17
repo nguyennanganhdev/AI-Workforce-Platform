@@ -84,3 +84,15 @@ async def test_embedding_override_denied_without_io(authority):
     with pytest.raises(PlatformError):
         await embedding_attempt(model, ["hello"], {"input": ["another-payload"]})
     model._call_api.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prompt_cache_key_is_allowed_without_budget_override(authority):
+    model, endpoint, _ = await model_for(authority)
+    await observed_call(model, model._call_api, "test-model", messages=[], extra_body={"prompt_cache_key": "fixture-owner-cache-v1"})
+    assert endpoint.call_args.kwargs["extra_body"]["prompt_cache_key"] == "fixture-owner-cache-v1"
+    assert endpoint.call_args.kwargs["max_completion_tokens"] == 100
+    with pytest.raises(PlatformError, match="INVALID_PROMPT_CACHE_KEY"):
+        await observed_call(model, model._call_api, "test-model", messages=[], extra_body={"prompt_cache_key": {"input": "hidden"}})
+    assert endpoint.await_count == 1
+    await model.client.close()
