@@ -2,7 +2,6 @@
 """AgentScope app factory."""
 
 import secrets
-import os
 from typing import TYPE_CHECKING, Any, Type
 
 from .._logging import logger
@@ -358,9 +357,10 @@ def create_app(
     app.state.resource_access_policy = (
         resource_access_policy or DenyAllResourceAccessPolicy()
     )
-    enabled = vin_platform_enabled if vin_platform_enabled is not None else os.getenv("VIN_PLATFORM_ENABLED", "false").lower() == "true"
+    from .vin_platform import enabled as vin_enabled
+    vin_mode = vin_platform_enabled if vin_platform_enabled is not None else vin_enabled()
     app.state.vin_platform_service = None
-    if enabled:
+    if vin_mode:
         if auth_service is None:
             raise ValueError("VIN_PLATFORM_ENABLED requires authenticated SQL authority")
         from .vin_platform import PlatformError, VinPlatformService

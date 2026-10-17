@@ -19,7 +19,8 @@ async def resource_context(service, user_id):
 def reference_platform_key(data):
     """Prevent legacy console code from copying the shared key into user data."""
     key = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
-    if os.getenv("VIN_PLATFORM_ENABLED", "false").lower() == "true" and key and data.get("api_key") == key:
+    from . import enabled
+    if enabled() and key and data.get("api_key") == key:
         return {**data, "api_key": "server-managed", "secret_ref": PLATFORM_KEY_REFERENCE}
     return data
 
