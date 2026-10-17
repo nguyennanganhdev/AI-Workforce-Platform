@@ -220,3 +220,11 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Đã đáp ứng 8 điểm review trong phạm vi sửa code/contract offline. S03 vẫn **CHỜ E2E** cho
   pin resource/artifact xuyên publish→runtime, KB upload/index/citation thật và gate còn mở ở kế hoạch;
   không đánh dấu task N2-02/N2-05/N2-07 hay U01–U30 hoàn tất chỉ từ các số PASS này.
+
+### Đối chiếu SHA helper sau rebase của Người 1
+
+- Chủ dự án xác nhận SHA mới `95021844c1d2adda20f1ab342c38de13395d94b5` tương ứng SHA cũ `2e2caa00`.
+  Đã kiểm tra Git: nội dung `vin_platform/__init__.py` giữa hai SHA giống nhau (diff rỗng).
+- Console/catalog consumer đã gọi helper này từ `30f26f11`; không còn chờ helper.
+  Kết quả test R02 vẫn gắn với bản ghép `13e4605a` nêu trên, không tự áp sang các commit N1 mới hơn.
+- Lần cập nhật này chỉ sửa handoff/đối chiếu source; không chạy lại runtime hoặc dùng model key.
