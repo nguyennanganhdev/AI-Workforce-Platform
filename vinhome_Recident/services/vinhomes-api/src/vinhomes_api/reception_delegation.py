@@ -97,6 +97,8 @@ async def start_run(db, actor_id: str, channel_id: str, message_id: str, policy_
     `db` is already scoped to the resident who sent the message. Each message gets its own
     delegation, so a token never outlives its turn.
     """
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(db, actor_id)
     await db.execute(text("select 1 from channels where id=:id for update"), {"id": channel_id})
     client = await reception_client(db)
     # A turn lasts seconds and its token ten minutes: anything still active after that was abandoned.

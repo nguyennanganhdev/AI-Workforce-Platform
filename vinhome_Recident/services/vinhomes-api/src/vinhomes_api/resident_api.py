@@ -162,6 +162,8 @@ async def list_requests(request: Request, scope: Resident,
 
 @router.post("/requests", status_code=201, response_model=RequestView, operation_id="createResidentRequest", dependencies=[Depends(require_key)])
 async def create_request(body: CreateRequest, request: Request, response: Response, scope: Resident):
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(*scope)
     result = await cases.create_case(scope, body, request, key_header(request))
     response.headers["Location"] = f"{BASE}/requests/{result['id']}"
     return result

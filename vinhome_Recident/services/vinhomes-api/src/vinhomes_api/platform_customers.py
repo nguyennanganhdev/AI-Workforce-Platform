@@ -96,9 +96,20 @@ LOGIN = """<!doctype html><html lang="vi"><meta charset="utf-8"><title>Liên k�
 <script nonce="{nonce}">document.getElementById('login').onsubmit=async e=>{{e.preventDefault();let f=new FormData(e.target);let r=await fetch(new URL('../../auth/login',location.href),{{method:'POST',credentials:'same-origin',headers:{{'Content-Type':'application/json','x-vinhomes-surface':'resident'}},body:JSON.stringify(Object.fromEntries(f))}});if(r.ok)location.reload();else document.getElementById('error').textContent='Không đăng nhập được. Kiểm tra tài khoản hoặc thử lại sau.';}};</script></html>"""
 
 
-def private_html(body, nonce):
-    return HTMLResponse(body, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
-        "Content-Security-Policy": "default-src 'none'; form-action 'self'; connect-src 'self'; script-src 'nonce-" + nonce + "'; base-uri 'none'; frame-ancestors 'none'"})
+def private_html(body, nonce, redirect_uri=None):
+    # A no-referrer HTML form sends Origin:null in Chromium, so the real
+    # same-origin consent POST would fail the browser mutation boundary.
+    # same-origin preserves that boundary while withholding cross-origin URLs.
+    form_action = "'self'"
+    if redirect_uri:
+        # Chromium checks the POST's redirect target against form-action too.
+        # Only the registered, exact-validated client's origin is permitted.
+        parsed = urlsplit(redirect_uri)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or not re.fullmatch(r"[A-Za-z0-9.:[\]-]+", parsed.netloc):
+            raise HTTPException(400, "Invalid registered redirect origin")
+        form_action += " " + parsed.scheme + "://" + parsed.netloc
+    return HTMLResponse(body, headers={"Cache-Control": "no-store", "Referrer-Policy": "same-origin",
+        "Content-Security-Policy": "default-src 'none'; form-action " + form_action + "; connect-src 'self'; script-src 'nonce-" + nonce + "'; base-uri 'none'; frame-ancestors 'none'"})
 
 
 @router.get("/link/authorize", response_class=HTMLResponse)
@@ -136,7 +147,7 @@ async def authorize(request: Request, client_id: str = Query(max_length=100), re
     body = f'''<!doctype html><html lang="vi"><meta charset="utf-8"><title>Đồng ý liên kết Vinhomes</title>
 <h1>Liên kết tài khoản Vinhomes</h1><p>{html.escape(user['name'])}, cho phép Platform đọc hồ sơ cư trú và tạo/theo dõi yêu cầu của chính bạn. Các quyết định cần xác nhận vẫn do bạn thực hiện. Có thể thu hồi liên kết bất cứ lúc nào.</p>
 <form method="post"><input type="hidden" name="transaction" value="{ident}"><input type="hidden" name="csrf" value="{csrf}"><button name="decision" value="allow">Đồng ý</button><button name="decision" value="deny">Từ chối</button></form></html>'''
-    response = private_html(body, nonce)
+    response = private_html(body, nonce, redirect_uri)
     response.set_cookie("vin_link_csrf_" + ident.hex, csrf, max_age=300, httponly=True,
         secure=request.url.scheme == "https", samesite="lax", path="/")
     return response
@@ -331,7 +342,7 @@ async def customer_projection(scope, ident, row):
         FROM tickets t JOIN vh_resident_case_tickets ct ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id
         WHERE ct.case_id=:case AND t.tenant_id={TENANT} ORDER BY t.id"""), {"case": ident})).mappings()]
     approvals = [dict(r) for r in (await scope[0].execute(text(f"""SELECT a.id,a.work_order_id,a.kind,a.status,
-        a.request_detail,a.expires_at,t.version AS ticket_version FROM work_approvals a
+        a.request_detail,a.expires_at,t.version AS ticket_version,t.version AS version FROM work_approvals a
         JOIN work_orders w ON w.id=a.work_order_id AND w.tenant_id=a.tenant_id
         JOIN tickets t ON t.id=w.ticket_id AND t.tenant_id=w.tenant_id
         JOIN vh_resident_case_tickets ct ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id
@@ -606,7 +617,7 @@ async def decide(ident: UUID, body: Decision, request: Request, scope=Depends(cu
             approval_id = UUID(body.payload["approval_id"])
         except (KeyError, ValueError, TypeError) as exc:
             raise HTTPException(422, "approval_id required") from exc
-        permitted = (await scope[0].execute(text(f"""SELECT a.id FROM work_approvals a JOIN work_orders w
+        permitted = (await scope[0].execute(text(f"""SELECT a.id,a.kind FROM work_approvals a JOIN work_orders w
             ON w.id=a.work_order_id AND w.tenant_id=a.tenant_id JOIN vh_resident_case_tickets ct
             ON ct.ticket_id=w.ticket_id AND ct.tenant_id=w.tenant_id WHERE ct.case_id=:case AND a.id=:approval
             AND a.tenant_id={TENANT} AND a.requested_to_user_id=:u"""),
@@ -615,6 +626,8 @@ async def decide(ident: UUID, body: Decision, request: Request, scope=Depends(cu
             raise HTTPException(404, "Customer approval not found")
         payload = ResidentApprovalDecision.model_validate({k: v for k, v in body.payload.items() if k != "approval_id"})
         result = await decide_resident_approval(approval_id, payload, request, scope)
+        if payload.approved and permitted.kind == "customer_completion":
+            await complete_customer_case(scope, ident)
     elif body.action in {"cancel", "reschedule"}:
         from . import platform_work as work
         ticket = (await scope[0].execute(text(f"""SELECT t.id,t.version FROM tickets t JOIN vh_resident_case_tickets ct
@@ -640,6 +653,46 @@ async def decide(ident: UUID, body: Decision, request: Request, scope=Depends(cu
         raise HTTPException(409, "Action requires a ticket-bound consent; not supported for this case")
     await cases.save_receipt(scope, "platform-intent", str(ident), key, fingerprint, result, 200, ident)
     return result
+
+
+async def complete_customer_case(scope, ident):
+    """Close the Domain case only after this resident closed every linked ticket.
+
+    A closed ticket projection alone must not leave the canonical case in the
+    staff intake queue. The source command already verified consent/owner/QC.
+    This creates the same durable resolution/response shape as resident cases.
+    """
+    db, actor = scope
+    tickets = list((await db.execute(text(f"""SELECT t.id,t.version,t.status FROM tickets t
+        JOIN vh_resident_case_tickets ct ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id
+        WHERE ct.case_id=:case AND t.tenant_id={TENANT} ORDER BY t.id FOR SHARE OF t"""), {"case": ident})).mappings())
+    if not tickets or any(ticket["status"] != "closed" for ticket in tickets):
+        return
+    row = await cases.lock_case(scope, ident)
+    if row["status"] == "completed":
+        return
+    revision = uuid4()
+    basis = {str(ticket["id"]): ticket["version"] for ticket in tickets}
+    await db.execute(text(f"""INSERT INTO vh_resident_resolutions(id,tenant_id,case_id,summary,published_by,basis_versions)
+        VALUES(:revision,{TENANT},:case,:summary,:actor,cast(:basis as jsonb))"""),
+        {"revision": revision, "case": ident, "summary": "Cư dân đã xác nhận kết quả hoàn tất của các công việc liên quan.",
+         "actor": actor, "basis": json.dumps(basis)})
+    await db.execute(text(f"""INSERT INTO vh_resident_resolution_responses(tenant_id,case_id,resolution_id,actor_id,decision)
+        VALUES({TENANT},:case,:revision,:actor,'confirm')"""), {"case": ident, "revision": revision, "actor": actor})
+    await db.execute(text(f"""INSERT INTO vh_resident_resolution_photos(tenant_id,resolution_id,file_id)
+        SELECT DISTINCT e.tenant_id,:revision,e.file_id FROM evidence_items e
+        JOIN work_orders w ON w.id=e.work_order_id AND w.tenant_id=e.tenant_id
+        JOIN vh_resident_case_tickets ct ON ct.ticket_id=w.ticket_id AND ct.tenant_id=w.tenant_id
+        JOIN files f ON f.id=e.file_id AND f.tenant_id=e.tenant_id
+        JOIN file_objects o ON o.id=f.accepted_object_id AND o.tenant_id=f.tenant_id
+        WHERE ct.case_id=:case AND e.tenant_id={TENANT} AND e.status='active'
+          AND e.purpose IN ('after','verification') AND w.status='completed'
+          AND f.status='ready' AND f.deleted_at IS NULL AND o.status='ready'
+          AND o.scan_status='clean' AND o.verified_at IS NOT NULL
+          AND o.mime_type IN ('image/jpeg','image/png','image/webp')"""), {"case": ident, "revision": revision})
+    await db.execute(text(f"""UPDATE vh_resident_cases SET status='completed',current_resolution_id=:revision,
+        version=version+1,updated_at=now() WHERE id=:case AND tenant_id={TENANT}"""), {"case": ident, "revision": revision})
+    await cases.event(db, ident, "Bạn đã xác nhận kết quả", "resident.case.confirm")
 
 def main():
     """Provision a registered client with the DB operator, outside runtime API."""

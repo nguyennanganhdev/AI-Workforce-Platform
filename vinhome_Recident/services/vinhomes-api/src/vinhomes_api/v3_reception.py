@@ -99,6 +99,8 @@ def draft_result(row):
 )
 async def draft(channel_id: str, body: DraftCreate, scope: Scope):
     await _owned_chat(scope, channel_id, lock=True)
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(*scope)
     content = {
         "type": "ticket_draft",
         "incidents": [r.model_dump(mode="json") for r in body.incidents],
@@ -176,6 +178,8 @@ async def drafts(channel_id: str, scope: Scope):
     response_model=AgentBusinessResponse,
 )
 async def commit(channel_id: str, draft_id: UUID, index: int, scope: Scope):
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(*scope)
     return await commit_draft(channel_id, draft_id, index, scope)
 
 

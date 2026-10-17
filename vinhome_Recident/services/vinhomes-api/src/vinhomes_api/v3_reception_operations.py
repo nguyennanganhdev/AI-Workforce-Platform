@@ -1239,6 +1239,9 @@ async def execute(call: OperationCall, scope: Scope):
     replay = await _lock_idempotency(scope[0], tenant, actor, call)
     if replay is not None:
         return replay
+    if call.operation in {"create_ticket_draft", "update_ticket_incident", "submit_ticket_assessment", "handoff_ticket"}:
+        from .intake_cohorts import require_legacy_intake
+        await require_legacy_intake(scope[0], actor)
     result = await _dispatch(scope, call)
     if not isinstance(result, dict):
         result = jsonable_encoder(result)

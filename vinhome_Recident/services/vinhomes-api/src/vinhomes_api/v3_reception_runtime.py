@@ -238,6 +238,8 @@ class IntakeCheck(BaseModel):
 async def intake_check(channel_id: str, body: IntakeCheck, scope: Scope) -> dict[str, object]:
     db, run = scope
     _own_channel(channel_id, run)
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(db, run["user_id"])
     await db.execute(text("select pg_advisory_xact_lock(hashtextextended(:key,0))"),
                      {"key": "reception-intake:" + channel_id})
     messages, asked = await conversation(db, channel_id, run["user_id"], str(body.message_id))
