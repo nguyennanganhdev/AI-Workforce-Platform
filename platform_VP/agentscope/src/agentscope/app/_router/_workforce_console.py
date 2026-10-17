@@ -2122,6 +2122,21 @@ async def bootstrap_leader(
     )
 
 
+@workforce_console_router.get("/leader/{agent_id}/sessions/{session_id}/service-cases")
+async def customer_service_cases(
+    agent_id: str,
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+):
+    from .._service._customer_cases import session_cases
+    from ..vin_platform._contracts import PlatformError
+    try:
+        return await session_cases(storage, user_id, agent_id, session_id)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
 @workforce_console_router.post(
     "/leader/tickets",
     response_model=LeaderSessionView,

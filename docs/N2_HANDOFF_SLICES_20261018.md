@@ -228,3 +228,22 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Console/catalog consumer đã gọi helper này từ `30f26f11`; không còn chờ helper.
   Kết quả test R02 vẫn gắn với bản ghép `13e4605a` nêu trên, không tự áp sang các commit N1 mới hơn.
 - Lần cập nhật này chỉ sửa handoff/đối chiếu source; không chạy lại runtime hoặc dùng model key.
+
+## S07 — N2-03 trên bản ghép 18/10 — ĐANG TRIỂN KHAI
+
+- Local dev_Chien đã merge N1 b27f0c9c và N2 69e869f1: e7b80da6; nhánh Người 2 rebase lên mốc này. Chưa push/deploy.
+- Owner bổ sung theo lane console/runtime: `_service/_customer_cases.py`, `_tool/_customer_service.py`, test `test_vin_customer_cases.py`; frontend API/component/test customer cases. Không sửa package authority/storage/Domain của Người 1.
+- Dùng C05/C06/C07 qua adapter/contract hiện có, lưu liên kết session-case bằng automation CAS của authority. Tool Leader chỉ đọc/tạo/materialize; quyết định ký intent chỉ do nút UI gọi endpoint C06, không có tool quyết định hoặc ticket-grant.
+- Test dùng fixture chung + fake transport; chưa ghi PASS khi chưa chạy.
+
+### S07 — Kết quả slice C05/C07 + xác nhận kết quả
+
+- Leader VIN_USER có tool `CustomerService` (context/create/progress); recheck owner/role/session mỗi lần. C05 tạo case trước IO, consumer gắn session bằng authority automation CAS; retry giữ nguyên case key và ticket command/version. Không gọi ticket-grants hoặc partner/BQL workflow.
+- Trang Leader giữ shell/chat hiện có, thêm mục thu gọn yêu cầu dịch vụ. C07 hiển thị sync_status/as_of/next_action, timeline có phân trang, tiến độ staff, kết quả và ảnh qua authenticated proxy. Link bị thu hồi/lỗi/gap không được hiện là dữ liệu hiện hành hoặc mở xác nhận.
+- Tool không có operation quyết định. UI mở thẻ review rồi cú bấm xác nhận cuối mới POST C06; server ký exact payload/version. Retry UI giữ key và note; stale revision bị Domain từ chối. Prompt riêng theo server role cho biết phải xác nhận trên thẻ, không route sang BQL.
+- Contract harness: **31 PASS / 0 SKIP / 0 FAIL / 0 ERROR** (7 ca consumer mới + 24 baseline). Real shared authority/migrations, actual C05/C06/C07 adapters + in-process fake Domain HTTP; không model IO.
+- Runtime + automation harness: **456 PASS / 17 SKIP / 0 FAIL / 0 ERROR**. 16 SKIP browser đã chạy riêng trên build mới: **16 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, gồm 3 ca customer card mới (375/1280px, không ký khi xem/mở/hủy thẻ; sync pending khóa nút). Một SKIP còn lại là concurrency PostgreSQL của personal_chat_test, chưa nghiệm thu gate đó.
+- TypeScript, ESLint, Ruff F401/F811/F821, Vin-enabled frontend build: PASS; build chỉ còn cảnh báo chunk size. Log `.artifacts/n2-customer-{contracts,runtime,all-browser,build}.log`, không commit artifact.
+- External network attempts trong harness: 0; browser chặn ngoài origin; paid model calls: 0. Không đọc key/.env, không dùng Domain/Discord thật, không push/deploy.
+- **N2-03 chưa nghiệm thu toàn task**: cần N1 bổ sung C07 `pending_decisions[].version` (revision work approval, không phải ticket_version), projection phương án (`plan_id`, own revision, title/amount/steps/canDecide) và route đọc phương án nếu cần. Consumer không đoán revision hoặc bật duyệt khi thiếu. Test mong đợi: quote/plan cập nhật giữa review/click bị từ chối; đúng owner + đúng revision có receipt, replay không duyệt lần hai. Các consumer decision này sẽ nối khi owner giao contract; chưa sửa Domain/authority của N1.
+- Đính chính phạm vi lint: Ruff F401 cho console còn 1 import MCPClient không dùng đã có ở baseline; không xóa dead code ngoài slice. Ruff F821/F811 toàn file sửa và F401 các module/test mới đạt. Không tính lỗi nền này là PASS.

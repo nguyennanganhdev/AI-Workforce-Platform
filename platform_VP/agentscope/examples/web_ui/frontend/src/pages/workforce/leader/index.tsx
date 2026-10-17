@@ -1,6 +1,7 @@
 import { Bot, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { CustomerCases } from './CustomerCases';
 import { sessionApi, workforceApi } from '@/api';
 import type { LeaderSession, SessionView } from '@/api';
 import { sessionTime } from '@/components/chat/session-row-utils';
@@ -167,7 +168,8 @@ function LeaderPageInner() {
 				</div>
 			</aside>
 
-			<main className="flex min-w-0 flex-1 overflow-hidden">
+			<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+				{access?.workspace?.kind === 'personal' && selectedSessionId && <CustomerCases key={selectedSessionId} agentId={leader.agent_id} sessionId={selectedSessionId} />}
 				<ChatViewport
 					agentId={leader.agent_id}
 					sessionId={selectedSessionId}
