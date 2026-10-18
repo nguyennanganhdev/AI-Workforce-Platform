@@ -1,5 +1,7 @@
 # Người 2 — handoff các slice từ baseline PR #99
 
+S18 đang triển khai theo yêu cầu cấu hình sử dụng thật của chủ dự án: owner N2 bổ sung `_service/_customer_mcp.py`, test consumer riêng và script provisioning/deploy Platform. Dùng C02/C05/Domain ticket_grant có sẵn; không sửa authority, schema, model resolver hoặc Domain N1. Provider nguồn được chủ dự án xác nhận là `awp-develop2-app-1`; chỉ cấu hình, không tự gọi model thật. Báo cáo fixture S16/S17 giữ nguyên, không áp sang môi trường owner-use sau đổi cấu hình.
+
 > Kết quả mới nhất: **S17** sửa lỗi cửa đăng nhập staff trên staging. Form login thật desktop/mobile **2 PASS/0 SKIP**, hết vòng 401; lỗi nằm ở nginx fixture N2, không sửa source staff N1. Các gate S16 vẫn giữ nguyên: PostgreSQL 16 PASS/0 SKIP, concurrency 1 PASS/0 SKIP, CMD smoke 2 PASS/0 SKIP, restore 4/4 kho, bảy journey image-bundle 7 PASS/0 SKIP. Đây chưa phải chữ ký UAT/model-quality/agent tự giao staff. Xem manifest `docs/vin-platform/evidence/n2-s16-20261018.json` và runbook RC.
 
 Phạm vi theo hai kế hoạch đã chốt ngày 18/10 và chỉ dẫn mới nhất của chủ dự án.

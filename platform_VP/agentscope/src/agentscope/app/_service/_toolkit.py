@@ -307,6 +307,10 @@ time or interval"
             storage, user_id, "skill", permission="execute",
         )}
         skills = [item for item in skills if getattr(item, "name", None) in granted_skills]
+        if (await catalog_authority(storage).context(user_id)).role == "VIN_USER":
+            from ._customer_mcp import customer_tools
+            mcps, delegated = await customer_tools(storage, user_id, mcps, granted)
+            tools.extend(delegated)
     if any(t.get("tool_name", "").startswith("vh_management_") for t in (agent_record.data.spec or {}).get("tools", [])):
         from ._management_mcp import manager_clients
         mcps = await manager_clients(storage, management_auth_service, user_id, agent_record, mcps)
