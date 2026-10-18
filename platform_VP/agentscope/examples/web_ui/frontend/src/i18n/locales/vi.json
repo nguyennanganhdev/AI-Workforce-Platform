@@ -194,9 +194,9 @@
 			"hint": "Không có lựa chọn phù hợp? Cứ gõ câu trả lời của bạn.",
 			"continue": "Tiếp tục",
 			"options": [
-				"Cư dân căn S1.01-1201 báo nước rỉ dưới bồn rửa bếp từ sáng, xử lý giúp tôi",
-				"Cư dân báo ổ cắm phòng khách đang bốc khói và có mùi khét",
-				"Hành lang tầng 12 có vết bẩn lớn, cần giao người vệ sinh",
+				"Lên kế hoạch đi TP.HCM – Hà Nội 20–22/11 cho 3 người, tổng 8 triệu",
+				"Tìm khách sạn gần Hồ Gươm cho 2 đêm, dưới 1 triệu mỗi đêm",
+				"Gợi ý nhà hàng và điểm tham quan cho chiều thứ bảy",
 				"Đội agent hiện có những ai và mỗi agent phụ trách việc gì?"
 			]
 		},
@@ -237,8 +237,8 @@
 			"fit": "Vừa khung nhìn",
 			"legendLive": "trả lời trong 15 phút qua",
 			"legendIdle": "đã cấu hình, đang rảnh",
-			"resident": "Cư dân",
-			"residentNote": "gửi yêu cầu qua đối tác",
+			"resident": "Khách hàng",
+			"residentNote": "gửi yêu cầu qua kênh kết nối",
 			"you": "Bạn",
 			"youNote": "trò chuyện trực tiếp",
 			"leader": "Leader",
@@ -701,16 +701,16 @@
 		"noTts": "Không dùng giọng nói"
 	},
 	"auth": {
-		"heroTitle": "Xây dựng và vận hành tác nhân AI cho khu vực của bạn",
-		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý tác nhân AI và nhận yêu cầu được định tuyến đúng lĩnh vực, đúng khu vực.",
+		"heroTitle": "Dựng đội agent AI của riêng bạn",
+		"heroDescription": "Thêm gói hoặc kết nối MCP của bạn, mô tả việc cần làm và để đội agent tự phối hợp, tự kiểm chứng kết quả.",
 		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
 		"showcase": {
 			"live": "Đang hoạt động",
-			"caption": "Minh hoạ: yêu cầu của cư dân được Leader định tuyến tới đúng agent và được xử lý",
+			"caption": "Minh hoạ: yêu cầu được Leader giao cho đúng agent và được xử lý",
 			"statusIdle": "Chờ yêu cầu",
 			"statusBusy": "Đang xử lý",
 			"statusDone": "Hoàn tất",
-			"resident": "Cư dân",
+			"resident": "Khách hàng",
 			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
 			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
 			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
@@ -1065,7 +1065,7 @@
 		"description": "Mô tả agent cần làm gì. Agent Builder dựng bản nháp (lời dặn, công cụ, kiến thức, kịch bản kiểm thử); bạn chỉnh và phát hành ở trang Quản lý agent.",
 		"templates": "Bắt đầu từ mẫu",
 		"role": "Agent này làm gì?",
-		"rolePlaceholder": "Ví dụ: tiếp nhận yêu cầu vệ sinh của cư dân, hỏi đủ vị trí và mức độ, rồi giao cho nhân viên vệ sinh đang trực.",
+		"rolePlaceholder": "Ví dụ: tìm chuyến bay theo ngày và số khách, so sánh giá và báo lại lựa chọn rẻ nhất; chưa đặt vé khi chưa được đồng ý.",
 		"team": "Cho phép tách thành một đội nhiều agent",
 		"teamHint": "Builder tự quyết khi việc gồm nhiều chuyên môn khác nhau.",
 		"waiting": "Agent Builder đang dựng bản nháp, có thể mất một đến vài phút.",
@@ -1076,11 +1076,11 @@
 		"presets": {
 			"reception": {
 				"name": "Lễ tân",
-				"prompt": "Lễ tân của ban quản lý: tiếp nhận yêu cầu của cư dân, hỏi đủ căn hộ, sự cố, thời gian và chuyển đúng bộ phận. Lịch sự, rõ ràng, gọi cư dân là bạn."
+				"prompt": "Lễ tân: tiếp nhận yêu cầu của khách hàng, hỏi đủ thông tin cần thiết và chuyển đúng bộ phận. Lịch sự, rõ ràng, gọi khách là bạn."
 			},
 			"technician": {
 				"name": "Kỹ thuật",
-				"prompt": "Chuyên viên kỹ thuật điện nước: đánh giá sự cố từ mô tả và ảnh của cư dân, nêu mức khẩn cấp, hướng dẫn xử lý tạm thời an toàn và đề xuất loại thợ cần cử."
+				"prompt": "Chuyên viên kỹ thuật: đánh giá sự cố từ mô tả và ảnh của khách hàng, nêu mức khẩn cấp, hướng dẫn xử lý tạm thời an toàn và đề xuất người cần cử."
 			},
 			"cleaning": {
 				"name": "Vệ sinh",
@@ -1088,7 +1088,7 @@
 			},
 			"report": {
 				"name": "Báo cáo phiếu",
-				"prompt": "Báo cáo cho ban quản lý: tổng hợp tình trạng các phiếu (đang mở, quá hạn, chờ cư dân xác nhận) theo khu, nêu phiếu cần chú ý và lý do."
+				"prompt": "Báo cáo: tổng hợp tình trạng các yêu cầu (đang mở, quá hạn, chờ khách xác nhận), nêu yêu cầu cần chú ý và lý do."
 			}
 		}
 	},
@@ -1098,14 +1098,14 @@
 		"title": "Nhóm chat mới",
 		"description": "Chọn các agent sẽ cùng làm việc. Trưởng nhóm điều phối và giao việc cho các thành viên.",
 		"name": "Tên nhóm",
-		"namePlaceholder": "Ví dụ: Đội chăm sóc cư dân",
+		"namePlaceholder": "Ví dụ: Đội lên kế hoạch du lịch",
 		"members": "Thành viên",
 		"selected": "Đã chọn {{count}}",
 		"searchPlaceholder": "Tìm agent…",
 		"leader": "Trưởng nhóm",
 		"makeLeader": "Đặt làm trưởng nhóm",
 		"goal": "Nhóm này làm gì? (không bắt buộc)",
-		"goalPlaceholder": "Mục tiêu chung của nhóm, ví dụ: tiếp nhận và xử lý yêu cầu sửa chữa của cư dân.",
+		"goalPlaceholder": "Mục tiêu chung của nhóm, ví dụ: lên lịch trình và chi phí cho chuyến đi của khách.",
 		"willEnable": "Sẽ bật “Cho phép được mời” cho {{names}} để trưởng nhóm mời được vào nhóm.",
 		"blocked": "Không mời được {{names}}: agent chưa bật “Cho phép được mời” và bạn không có quyền sửa.",
 		"notEnough": "Cần ít nhất 2 agent để lập nhóm, bạn đang có {{count}}.",

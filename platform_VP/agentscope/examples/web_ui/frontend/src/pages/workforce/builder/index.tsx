@@ -752,9 +752,9 @@ const WELCOME_TEAM: { which: PortraitKey; label: string }[] = [
 ];
 
 const WELCOME_PROMPTS = [
-	'Tạo đội agent xử lý ticket sự cố kỹ thuật của cư dân: đánh giá, giao thợ, báo cư dân.',
-	'Tạo agent tư vấn cư dân về nội quy và bàn giao căn hộ, trả lời từ kho tri thức của BQL.',
-	'Tạo agent báo cáo tình trạng ticket hằng ngày cho Ban quản lý.',
+	'Tạo đội agent lên kế hoạch du lịch: vé, khách sạn, ăn uống, tham quan trong một ngân sách tổng.',
+	'Tạo agent trả lời câu hỏi của khách hàng từ kho tài liệu của bạn, luôn trích nguồn.',
+	'Tạo agent báo cáo hằng ngày các yêu cầu đang mở và quá hạn.',
 ];
 
 /** An empty conversation: the team to build, and a few ways to start. */

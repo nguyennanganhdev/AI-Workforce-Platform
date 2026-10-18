@@ -57,7 +57,7 @@ export function ActivityDialog() {
 			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
 				<DialogHeader>
 					<DialogTitle>Hoạt động và chi phí · 30 ngày</DialogTitle>
-					<DialogDescription>Kết quả xử lý và mức sử dụng trợ lý trong 30 ngày. Phiếu hoàn tất cần được cư dân xác nhận.</DialogDescription>
+					<DialogDescription>Kết quả xử lý và mức sử dụng trợ lý trong 30 ngày. Yêu cầu hoàn tất khi khách hàng xác nhận.</DialogDescription>
 				</DialogHeader>
 				<div className="flex gap-2"><Button variant="outline" size="sm" disabled={loading} onClick={load}><RefreshCw /> Cập nhật</Button>
 					</div>

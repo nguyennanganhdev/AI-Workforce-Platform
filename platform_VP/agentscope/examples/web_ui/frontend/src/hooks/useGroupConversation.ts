@@ -40,7 +40,7 @@ export function useGroupConversation(sessionId: string | null, agentId: string |
 	const messages = current.events.filter(e => e.kind !== 'external_event').map(e => {
 		const member = roster.find(m => m.agent_id === e.source_agent_id);
 		const recipients = e.recipient_session_ids.map(id => roster.find(m => m.session_id === id)?.name).filter(Boolean).join(', ');
-		const name = e.kind === 'customer_message' ? 'BQL' : member?.name ?? 'Context';
+		const name = e.kind === 'customer_message' ? 'Bạn' : member?.name ?? 'Context';
 		const msg = (e.kind === 'customer_message' ? UserMsg : AssistantMsg)({ name, content: e.content });
 		return { ...msg, id: e.source_message_id ?? `group:${e.id}`, created_at: e.created_at, finished_at: e.created_at, metadata: { ...msg.metadata, group_event: true, group_kind: e.kind, group_to: recipients, group_to_ids: roster.filter(m => e.recipient_session_ids.includes(m.session_id)).map(m => m.agent_id), group_analysis: e.report_type === 'analysis', office_agent_id: e.source_agent_id, group_revision: e.revision } } as Msg;
 	});

@@ -429,7 +429,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 			<Skeleton className="h-64 w-full" />
 		</main>
 	) : section === 'vin' && manageVin ? (
-		<Page title="Quota & thư viện Vin" hint="Hạn mức và quyền dùng tài nguyên cho tài khoản Vin; chỉ quản trị được cấp quyền mới thay đổi cấu hình.">
+		<Page title="Người dùng, hạn mức & thư viện" hint="Hạn mức, quyền dùng AI, catalog và gói cho tài khoản cá nhân; chỉ quản trị được cấp quyền mới thay đổi cấu hình.">
 			<VinAdministration />
 		</Page>
 	) : section === 'pending' ? (

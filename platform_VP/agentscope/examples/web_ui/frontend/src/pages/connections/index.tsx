@@ -74,7 +74,7 @@ export function ConnectionsPage() {
 				})}>Liên kết Vinhomes</Button>
 				<p className="text-sm leading-6 text-muted-foreground">Bạn đăng nhập và cho phép chia sẻ tại Vinhomes. Platform không thu mật khẩu Vinhomes.</p>
 			</section>
-			<section className="space-y-2"><h2 className="font-semibold">Kênh cá nhân</h2><p className="text-sm text-muted-foreground">Discord sẽ khả dụng sau khi hoàn tất xác minh danh tính và kiểm tra quyền riêng tư. Chưa mở kết nối cho cư dân.</p></section>
+			<section className="space-y-2"><h2 className="font-semibold">Kênh cá nhân</h2><p className="text-sm text-muted-foreground">Discord sẽ khả dụng sau khi hoàn tất xác minh danh tính và kiểm tra quyền riêng tư.</p></section>
 		</main>
 	);
 }

@@ -335,8 +335,8 @@ export default function AgentMap3D({
 				<gridHelper args={[(radius + 6) * 2, Math.round(radius + 6) * 2, '#94a3b8', '#cbd5e1']} position={[0, 0.005, 0]} material-transparent material-opacity={0.25} />
 				<ContactShadows position={[0, 0.01, 0]} opacity={0.35} scale={(radius + 6) * 2} blur={2.4} far={4} />
 
-				<Entry at={layout.resident} title="Cư dân / khách hàng" overlay={overlay} />
-				<Entry at={layout.manager} title="Ban quản lý" overlay={overlay} />
+				<Entry at={layout.resident} title="Khách hàng" overlay={overlay} />
+				<Entry at={layout.manager} title="Người quản lý" overlay={overlay} />
 				{leader && (
 					<>
 						<Edge from={layout.resident} to={layout[leader.id]} link={null} active={leader.live} motion={motion} dim={selectedId !== null} now={now} />

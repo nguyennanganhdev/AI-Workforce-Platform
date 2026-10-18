@@ -240,10 +240,10 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 	return (
 		<DialogCard
 			from="Leader"
-			to="Cư dân"
+			to="Khách hàng"
 			toPerson
 			kind={refused ? 'error' : 'reply'}
-			note={refused ? 'Nội dung chưa được gửi cho cư dân.' : resultNote(pair)}
+			note={refused ? 'Nội dung chưa được gửi cho khách hàng.' : resultNote(pair)}
 		>
 			<Markdown>{refused ? 'Cần xác minh lại trước khi gửi cập nhật.' : teamMessageText(String(args.text ?? args.answer ?? ''))}</Markdown>
 		</DialogCard>

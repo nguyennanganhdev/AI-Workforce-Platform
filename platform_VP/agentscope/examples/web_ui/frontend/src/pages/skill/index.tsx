@@ -367,7 +367,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 					<label className="block text-sm">Tên phiên bản<Input name="name" pattern="[a-z0-9][a-z0-9-]{1,79}" placeholder="evidence-review-v1" required /></label>
 					<label className="block text-sm">Mô tả<Input name="description" required maxLength={1000} /></label>
 					<label className="block text-sm">Hướng dẫn SKILL.md<Textarea name="markdown" required minLength={40} maxLength={100000} rows={8} /></label>
-					<p className="text-xs text-muted-foreground">Lưu thành bản chờ duyệt. Không đặt mật khẩu hoặc dữ liệu cư dân trong skill.</p>
+					<p className="text-xs text-muted-foreground">Lưu thành bản chờ duyệt. Không đặt mật khẩu hoặc dữ liệu cá nhân trong skill.</p>
 					<Button size="sm" disabled={saving}>Lưu bản chờ duyệt</Button>
 				</form>
 			</details>}

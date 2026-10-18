@@ -1023,7 +1023,7 @@ export function ChatViewport({
 										groupChat={view?.session.config.personal_chat?.kind === 'group'}
 										className="w-full"
 										showWorkspace={!isTicketView && !view?.session.config.personal_chat}
-										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? (privateAccount ? 'Trao đổi với Leader hoặc @agent của bạn…' : 'Ban quản lý trao đổi với Leader hoặc @agent…') : undefined}
+										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? 'Trao đổi với Leader hoặc @agent của bạn…' : undefined}
 										agentName={agentName}
 										msgs={transcript}
 										loading={messagesLoading}

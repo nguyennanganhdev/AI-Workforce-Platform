@@ -137,7 +137,7 @@ export function StringListEditor({
 }
 
 const SOURCE_LABEL: Record<string, string> = {
-	manager: 'BQL',
+	manager: 'Người quản lý',
 	builder: 'Builder',
 	agent: 'Agent tự học',
 	template: 'Mẫu',
@@ -227,7 +227,7 @@ export function EscalationEditor({
 					/>
 					<Input
 						value={item.to}
-						placeholder="Chuyển cho ai (bảo vệ, BQL...)"
+						placeholder="Chuyển cho ai (bộ phận, người phụ trách...)"
 						onChange={(event) =>
 							onChange(items.map((v, i) => (i === index ? { ...v, to: event.target.value } : v)))
 						}

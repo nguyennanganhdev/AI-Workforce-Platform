@@ -49,8 +49,8 @@ function PolicyEditor({ perform, busy }: { perform: (action: () => Promise<unkno
 		if (revision === null || loadedSubject !== `${kind}:${subject.trim()}`) return;
 		void perform(async () => { await vinAdminApi.savePolicy(loadedSubject, { ...policy, models: split(models), enabled }, revision); setRevision(null); }, 'Đã lưu chính sách quota.');
 	}}>
-		<h2 className="font-semibold">Chính sách quota Vin</h2>
-		<p className="text-sm text-muted-foreground">Nhập đầy đủ chính sách thay thế cho đối tượng đã chọn. Người dùng ưu tiên quota cá nhân, rồi nhóm, rồi vai trò; pool là hạn mức dùng chung của nhóm.</p>
+		<h2 className="font-semibold">Chính sách hạn mức</h2>
+		<p className="text-sm text-muted-foreground">Nhập đầy đủ chính sách thay thế cho đối tượng đã chọn. Người dùng ưu tiên quota cá nhân, rồi nhóm, rồi vai trò; pool là hạn mức dùng chung của nhóm. Tài khoản cá nhân chưa có chính sách nào dùng hạn mức mặc định của server (PERSONAL_DEFAULT_*).</p>
 		<p className="text-sm text-muted-foreground">Đọc chính sách trước khi sửa để giữ đúng phiên bản. Gỡ ghi đè sẽ quay về quota nhóm/vai trò; tắt enabled sẽ chặn sử dụng chính sách.</p>
 		<div className="grid gap-3 sm:grid-cols-2"><Field label="Loại đối tượng"><select className={options} value={kind} onChange={(event) => { setKind(event.target.value); setSubject(event.target.value === 'role' ? 'VIN_USER' : ''); }}>
 			<option value="role">Vai trò</option><option value="user">Người dùng</option><option value="group">Nhóm</option><option value="pool">Pool nhóm</option>
