@@ -23,7 +23,7 @@ def run(*args, env=None):
     return result.stdout
 
 
-def check(output, image):
+def check(output, image, source_revision=None):
     report = {"status": "RUNNING", "paid_model_calls": 0, "app_db_migrations": 0, "deployed": False}
     output.mkdir(parents=True, exist_ok=True)
     try:
@@ -52,7 +52,7 @@ def check(output, image):
         report["compose_flag_wiring"] = "PASS; linked-customer false/true, cohort cutover always off"
         if image:
             inspect = json.loads(run("docker", "image", "inspect", image))[0]
-            revision = run("git", "-c", "safe.directory=" + ROOT.as_posix(), "-C", str(ROOT), "rev-parse", "HEAD").strip()
+            revision = source_revision or run("git", "-c", "safe.directory=" + ROOT.as_posix(), "-C", str(ROOT), "rev-parse", "HEAD").strip()
             assert inspect["Config"]["Labels"]["org.opencontainers.image.revision"] == revision
             assert inspect["Config"]["Cmd"] == ["python", "-m", "vinhomes_api"]
             run("docker", "run", "--rm", "--network", "none", "--entrypoint", "python", image, "-m", "pip", "check")
@@ -86,6 +86,7 @@ print(json.dumps({'uid':os.getuid(),'files':files,'excluded_file_violations':bad
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image")
+    parser.add_argument("--source-revision", help="Pinned image revision; current Python/SQL files must still match")
     parser.add_argument("--output", type=Path, required=True)
     options = parser.parse_args()
-    check(options.output.resolve(), options.image)
+    check(options.output.resolve(), options.image, options.source_revision)
