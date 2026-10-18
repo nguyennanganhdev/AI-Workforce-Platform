@@ -14,6 +14,9 @@ COPY frontend frontend
 # The browser calls the API at this address (baked in at build time).
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+# Git Bash rewrites "/api" to "C:/Program Files/Git/api"; refuse anything that is not a path or URL.
+RUN case "$VITE_API_BASE_URL" in /*|http://*|https://*) ;; \
+    *) echo "VITE_API_BASE_URL must start with / or http(s)://, got: $VITE_API_BASE_URL" >&2; exit 1 ;; esac
 RUN pnpm --filter frontend run build
 RUN if [ "$VITE_API_BASE_URL" = "/api" ]; then \
     WEB_DIST_DIR=/web/frontend/dist node --test frontend/tests/production-api.test.mjs; \

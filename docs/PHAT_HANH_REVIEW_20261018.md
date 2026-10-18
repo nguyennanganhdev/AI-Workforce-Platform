@@ -8,10 +8,12 @@ Không lượt kiểm thử nào gọi model thật. Chất lượng trả lời
 
 | Nơi | Thành phần | Image | Trước đó |
 |---|---|---|---|
-| Platform `vagen-platform.duckdns.org` | app, web | `agentscope-platform[-web]:ff9cf617-review-20261018` | `a185cc2d-leader-boundary-20261018` |
+| Platform `vagen-platform.duckdns.org` | app, web | app `agentscope-platform:ff9cf617-review-20261018`, web `agentscope-platform-web:ff9cf617-review-20261018-fix1` | `a185cc2d-leader-boundary-20261018` |
 | Domain `vinhome-platform.duckdns.org` | api, scheduler, platform-sync | `vinhomes-domain-api:cce8448e-review-20261018` | `9dd7504f-op2-capabilities-20261017` |
 | Domain | reception | `vinhomes-domain-reception:cce8448e-review-20261018` | `fix-reception-assets-20261015-…` |
 | Domain | resident | `vinhomes-domain-resident:cce8448e-review-20261018` | `stability-20261016-…` |
+
+**Sửa web ngày 18/10, khoảng 22:10:** image web đầu tiên được build từ Git Bash. Git Bash đổi `VITE_API_BASE_URL=/api` thành `C:/Program Files/Git/api`, nên trang đăng nhập Platform báo "Cannot reach the server". Đã build lại web từ PowerShell với giá trị mặc định `/api` (`agentscope-platform-web:ff9cf617-review-20261018-fix1`) và chỉ đổi service `web`. `.env` trước khi sửa: `env.before-webfix`. Dockerfile web nay từ chối giá trị không bắt đầu bằng `/` hoặc `http(s)://`. Domain không bị ảnh hưởng (đã quét bundle).
 
 Commit `cce8448e` và `ff9cf617` chỉ khác nhau ở phần Platform: kênh Telegram/Zalo và phiên thử Leader. Image Domain không đổi giữa hai commit.
 
