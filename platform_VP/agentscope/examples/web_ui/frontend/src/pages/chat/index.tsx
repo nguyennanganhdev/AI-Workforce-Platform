@@ -14,7 +14,7 @@ import {
 	Trash2,
 	Users,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
@@ -42,7 +42,14 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from '@/components/ui/empty';
 import {
 	Sidebar,
 	SidebarContent,
@@ -106,8 +113,17 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	}>();
 	const { t } = useTranslation();
 	const queryClient = useQueryClient();
-	const { agents, loading: agentsLoading, error: agentsError, refetch: refetchAgents } = useAgents();
-	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
+	const {
+		agents,
+		loading: agentsLoading,
+		error: agentsError,
+		refetch: refetchAgents,
+	} = useAgents();
+	const publishedAgents = useMemo(
+		() => agents.filter((agent) => agent.data.lifecycle_state === 'published'),
+		[agents],
+	);
+	const selectedAgent = publishedAgents.find((a) => a.id === urlAgentId) ?? null;
 	const {
 		sessions,
 		loading: sessionsLoading,
@@ -147,7 +163,9 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		? (currentView?.team?.members.find((m) => m.agent.id === urlMemberId) ?? null)
 		: null;
 	const effectiveAgentId =
-		focusedMember && focusedMember.session_id ? focusedMember.agent.id : (selectedAgent?.id ?? null);
+		focusedMember && focusedMember.session_id
+			? focusedMember.agent.id
+			: (selectedAgent?.id ?? null);
 	const effectiveSessionId =
 		focusedMember && focusedMember.session_id
 			? focusedMember.session_id
@@ -176,16 +194,16 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	// so we don't pollute history).
 	useEffect(() => {
 		if (agentsLoading || agentsError || selectedAgent) return;
-		if (agents.length === 0) {
+		if (publishedAgents.length === 0) {
 			localStorage.removeItem(LAST_AGENT_KEY);
 			localStorage.removeItem(LAST_SESSION_KEY);
 			if (urlAgentId) navigate('/chat', { replace: true });
 			return;
 		}
 		const remembered = localStorage.getItem(LAST_AGENT_KEY);
-		const agent = agents.find((a) => a.id === remembered) ?? agents[0];
+		const agent = publishedAgents.find((a) => a.id === remembered) ?? publishedAgents[0];
 		navigate(`/chat/${agent.id}`, { replace: true });
-	}, [agents, agentsLoading, agentsError, selectedAgent, urlAgentId, navigate]);
+	}, [publishedAgents, agentsLoading, agentsError, selectedAgent, urlAgentId, navigate]);
 
 	// Redirect: URL has an agent but no session, or its sessionId no
 	// longer exists for this agent → reopen the last session viewed
@@ -234,7 +252,13 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	// list to pick from. Once per agent, so a failure does not loop.
 	const autoStarted = useRef<Set<string>>(new Set());
 	useEffect(() => {
-		if (!urlAgentId || !selectedAgent || sessionsLoading || sessionsError || sessions.length > 0)
+		if (
+			!urlAgentId ||
+			!selectedAgent ||
+			sessionsLoading ||
+			sessionsError ||
+			sessions.length > 0
+		)
 			return;
 		if (autoStarted.current.has(urlAgentId)) return;
 		autoStarted.current.add(urlAgentId);
@@ -266,7 +290,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	};
 
 	// Show group conversations here; agents remain accessible through search.
-	const agentById = new Map(agents.map((a) => [a.id, a]));
+	const agentById = new Map(publishedAgents.map((a) => [a.id, a]));
 	const activeGroup = groupChats.find((g) => g.sessionId === urlSessionId) ?? null;
 	const visibleGroups = groupChats
 		.filter((group) => agentById.has(group.agentId))
@@ -465,14 +489,18 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 					<p className="mt-4 mb-1 px-3 text-[13px]/[18px] font-medium text-[var(--cue-text-tertiary,var(--muted-foreground))]">
 						{t('chat.agents.label')}
 					</p>
-					{agents.map((agent) => (
+					{publishedAgents.map((agent) => (
 						<ChatRow
 							key={`a:${agent.id}`}
 							avatarId={agent.id}
 							avatarLabel={agent.data.name}
 							title={agent.data.name}
 							active={!activeGroup && agent.id === urlAgentId}
-							status={!activeGroup && agent.id === urlAgentId ? (currentView?.status ?? 'idle') : 'idle'}
+							status={
+								!activeGroup && agent.id === urlAgentId
+									? (currentView?.status ?? 'idle')
+									: 'idle'
+							}
 							preview={agent.data.invite_config?.invite_description?.trim() ?? ''}
 							onSelect={() => {
 								navigate(`/chat/${agent.id}`);
@@ -577,7 +605,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 			<GroupChatDialog
 				open={groupOpen}
 				onOpenChange={setGroupOpen}
-				agents={agents}
+				agents={publishedAgents}
 				modelConfig={{
 					chat: (currentView ?? sessions[0])?.session.config.chat_model_config,
 					fallback: (currentView ?? sessions[0])?.session.config
@@ -592,7 +620,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 			<SearchPalette
 				open={searchOpen}
 				onOpenChange={setSearchOpen}
-				agents={agents}
+				agents={publishedAgents}
 				sessions={sessions}
 				loading={sessionsLoading}
 				currentAgent={selectedAgent}
@@ -622,6 +650,7 @@ export const ChatPage = () => {
 	const navigate = useNavigate();
 	const { t } = useTranslation();
 	const { agents, loading, refetch } = useAgents();
+	const publishedAgents = agents.filter((agent) => agent.data.lifecycle_state === 'published');
 	const [quickAgentOpen, setQuickAgentOpen] = useState(false);
 	const [groupOpen, setGroupOpen] = useState(false);
 
@@ -632,7 +661,7 @@ export const ChatPage = () => {
 
 	// With no agent there is nobody to talk to: say so, and offer the two ways
 	// to make one (a quick agent here, or a tested one in the Builder).
-	if (agents.length === 0) {
+	if (publishedAgents.length === 0) {
 		return (
 			<>
 				<div className="flex h-full flex-col">
@@ -648,9 +677,9 @@ export const ChatPage = () => {
 							<EmptyMedia variant="icon">
 								<Bot />
 							</EmptyMedia>
-							<EmptyTitle>Chưa có agent nào</EmptyTitle>
+							<EmptyTitle>Chưa có agent đã publish</EmptyTitle>
 							<EmptyDescription>
-								Tạo agent đầu tiên để bắt đầu trò chuyện, hoặc dựng và kiểm thử agent trong Builder.
+								Tạo và publish agent trong Builder để bắt đầu trò chuyện.
 							</EmptyDescription>
 						</EmptyHeader>
 						<EmptyContent className="flex-row justify-center gap-2">
@@ -658,7 +687,10 @@ export const ChatPage = () => {
 								<Plus />
 								{t('quickAgent.title')}
 							</Button>
-							<Button variant="outline" onClick={() => navigate('/workforce/builder')}>
+							<Button
+								variant="outline"
+								onClick={() => navigate('/workforce/builder')}
+							>
 								Mở Builder
 							</Button>
 						</EmptyContent>
@@ -677,7 +709,7 @@ export const ChatPage = () => {
 				<GroupChatDialog
 					open={groupOpen}
 					onOpenChange={setGroupOpen}
-					agents={agents}
+					agents={publishedAgents}
 					onCreateAgent={() => {
 						setGroupOpen(false);
 						setQuickAgentOpen(true);

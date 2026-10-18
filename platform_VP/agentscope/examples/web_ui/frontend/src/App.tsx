@@ -58,12 +58,11 @@ const router = createBrowserRouter([
 			{
 				errorElement: <RouteError />,
 				children: [
-					// Tickets and agents first: the Leader is the management board's
-					// front door; settings keep their own paths so old links still work.
-					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
+					// Preserve old entry links while chat becomes the main workspace.
+					{ path: '/', element: <Navigate to="/chat" replace /> },
 					{
 						path: '/workforce/leader',
-						lazy: page(() => import('@/pages/workforce/leader'), 'LeaderPage'),
+						element: <Navigate to="/chat" replace />,
 					},
 					{
 						path: '/workforce/builder',

@@ -7,6 +7,18 @@ from ...model import ChatModelBase
 from ..._logging import logger
 
 
+_OPENAI_RESPONSES_MODELS = {
+    "gpt-6-astra",
+    "gpt-6.1-sol",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.5-pro",
+    "gpt-5.4-pro",
+    "gpt-5.2-pro",
+}
+_OPENAI_NON_STREAMING_MODELS = {"gpt-5.5-pro"}
+
+
 async def get_model(
     user_id: str,
     config: ChatModelConfig,
@@ -46,6 +58,15 @@ async def get_model(
 
     credential = CredentialFactory.from_dict(credential_record.data)
     model_cls = credential.get_chat_model_class()
+    if (
+        credential.type == "openai_credential"
+        and config.model in _OPENAI_RESPONSES_MODELS
+    ):
+        # GPT-6 tool calling is fully supported through Responses; some GPT-6
+        # variants reject tools through Chat Completions.
+        from ...model import OpenAIResponseModel
+
+        model_cls = OpenAIResponseModel
     parameters = (
         model_cls.Parameters(**config.parameters)
         if config.parameters
@@ -55,6 +76,7 @@ async def get_model(
         credential=credential,
         model=config.model,
         parameters=parameters,
+        stream=config.model not in _OPENAI_NON_STREAMING_MODELS,
     )
 
     # Override the context size and the formatter's input types with the

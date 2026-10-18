@@ -519,6 +519,10 @@ class TestGetToolkitWorkerVariant(IsolatedAsyncioTestCase):
             ["origin"],
             input_ready.input_schema["properties"]["inputs"]["required"],
         )
+        origin_schema = input_ready.input_schema["properties"]["inputs"][
+            "properties"
+        ]["origin"]
+        self.assertEqual(["value", "source_message_id"], origin_schema["required"])
 
 
 class TestGetToolkitSchedulingGuard(IsolatedAsyncioTestCase):

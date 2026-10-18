@@ -89,13 +89,14 @@ const parseTeamSay = (
 	input: string,
 	participants: TeamActivityParticipant[],
 	effectiveKind?: unknown,
+	effectiveTarget?: unknown,
 ): ParsedTeamSay | null => {
 	try {
 		const value = JSON.parse(input) as Record<string, unknown>;
 		const kind = typeof effectiveKind === 'string' ? effectiveKind : typeof value.kind === 'string' ? value.kind : 'result';
 		return {
 			kind,
-			targetName: resolveTargetName(value.to, kind, participants),
+			targetName: resolveTargetName(effectiveTarget ?? value.to, kind, participants),
 			content: typeof value.content === 'string' ? value.content.trim() || null : null,
 		};
 	} catch {
@@ -135,7 +136,13 @@ const buildHistoryActivities = (
 		for (const block of message.content) {
 			if (block.type !== 'tool_call') continue;
 			const teamCall = isTeamSay(block.name);
-			const teamSay = teamCall ? parseTeamSay(block.input, participants, results.get(block.id)?.metadata?.kind) : null;
+			const result = results.get(block.id);
+			const teamSay = teamCall ? parseTeamSay(
+				block.input,
+				participants,
+				result?.metadata?.kind,
+				result?.metadata?.effective_to,
+			) : null;
 			activities.push({
 				// Tool-call ids survive transcript projection, so they are the
 				// stable identity across Leader and worker history copies.
@@ -147,7 +154,7 @@ const buildHistoryActivities = (
 				kind: teamSay?.kind ?? null,
 				toolName: block.name,
 				detail: teamSay?.content ?? null,
-				state: activityState(block, results.get(block.id)),
+				state: activityState(block, result),
 				createdAt: block.created_at || message.created_at,
 			});
 		}
@@ -205,7 +212,12 @@ const runtimeFromHistory = (
 		};
 	}
 	if (call && isTeamSay(call.name) && activityState(call, result ?? undefined) !== 'error') {
-		const teamSay = parseTeamSay(call.input, participants, result?.metadata?.kind);
+		const teamSay = parseTeamSay(
+			call.input,
+			participants,
+			result?.metadata?.kind,
+			result?.metadata?.effective_to,
+		);
 		if (teamSay?.kind === 'requires_user_input') {
 			return {
 				status: 'waiting',

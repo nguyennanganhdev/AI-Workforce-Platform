@@ -21,7 +21,7 @@ from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.rag.blob_store import S3BlobStore
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
 from agentscope.app.storage import AsyncSQLAlchemyStorage, RedisStorage
-from agentscope.app.workspace_manager import LocalWorkspaceManager
+from agentscope.app.workspace_manager import IsolationPolicy, LocalWorkspaceManager
 from agentscope.credential import OpenAICredential
 from agentscope.embedding import OpenAIEmbeddingModel
 from agentscope.mcp import HttpMCPConfig, MCPClient, StdioMCPConfig
@@ -181,6 +181,8 @@ app = create_app(
             os.path.dirname(os.path.abspath(__file__)),
             "workspaces",
         ),
+        # Team chats may reuse an agent definition, never conversation state.
+        isolation=IsolationPolicy.PER_SESSION,
         # The default MCP servers that will be added into the workspace
         default_mcps=default_mcps,
     ),

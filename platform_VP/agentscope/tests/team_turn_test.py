@@ -11,7 +11,6 @@ from agentscope.app._team_turn import (
     finish_team_turn,
     get_team_turn,
     register_user_input_request,
-    return_team_reply_to_leader,
     start_team_turn,
     team_is_awaiting_user,
     team_is_paused,
@@ -153,7 +152,7 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
         self.assertTrue(first)
         self.assertEqual(state.task_id, "hotel-task")
 
-    async def test_specialist_owns_clarification_then_returns_to_leader(self) -> None:
+    async def test_worker_question_keeps_leader_reply_ownership(self) -> None:
         await start_team_turn(
             self.bus,
             "team",
@@ -170,24 +169,10 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
             default_reply_owner_agent_id="leader-agent",
             customer_session_id="leader-session",
             question_key="missing:account",
-            specialist_owner_session_id="audit-session",
-            specialist_owner_agent_id="audit-agent",
         )
 
         self.assertFalse(duplicate)
         self.assertTrue(first)
-        self.assertEqual(state.mode, "specialist_question")
-        self.assertEqual(state.reply_owner_session_id, "audit-session")
-
-        returned = await return_team_reply_to_leader(
-            self.bus,
-            "team",
-            specialist_session_id="audit-session",
-            leader_session_id="leader-session",
-            leader_agent_id="leader-agent",
-        )
-        self.assertTrue(returned)
-        state = await get_team_turn(self.bus, "team")
         self.assertEqual(state.mode, "leader")
         self.assertEqual(state.reply_owner_session_id, "leader-session")
 

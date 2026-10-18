@@ -18,19 +18,17 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from agentscope.app._router._workforce_console import (
+    _BUILDER_ARTIFACT_SNAPSHOT_KEY,
     _BUILDER_BACKFILL_KEY,
     GeneratedAgent,
     PlannedAgent,
     ProposalView,
     ProposedAgentView,
-    _builder_contract_digest,
-    _compile_system_prompt,
+    _artifact_snapshot,
     _existing_agent_covers,
-    _normalise_skill,
     _record_contract_artifacts_match,
     _text_digest,
 )
-from agentscope.app._workforce_policy import governed_system_prompt
 from agentscope.app.storage import AgentRecord, RedisStorage
 from agentscope.app.workforce.builder import AgentBehaviorContract
 
@@ -192,15 +190,9 @@ def _verify_backfill(record: AgentRecord) -> bool:
     if not _record_contract_artifacts_match(record, generated):
         return False
     selected_tools = sorted(_tool_ids(record))[::2]
-    required_capabilities = (
-        [_capability_key(f"tool:{tool_id}") for tool_id in selected_tools]
-        if selected_tools
-        else [
-            item.capability
-            for item in contract.requirement.capabilities
-            if item.required
-        ]
-    )
+    required_capabilities = [
+        item.capability for item in contract.requirement.capabilities if item.required
+    ]
     planned = PlannedAgent(
         name=record.data.name,
         objective=contract.requirement.business_profile.objective,
@@ -223,19 +215,6 @@ def _matches(record: AgentRecord, item: ProposedAgentView) -> bool:
     contract = item.behavior_contract
     if contract is None or item.reuse_agent_id is not None:
         return False
-    generated = GeneratedAgent(
-        name=item.name,
-        execution_mode=item.execution_mode,
-        behavior_contract=contract,
-        selected_tool_ids=[tool.id for tool in item.selected_tools],
-        selected_knowledge_base_ids=[
-            knowledge.id for knowledge in item.selected_knowledge_bases
-        ],
-    )
-    expected_prompt = governed_system_prompt(
-        "business",
-        _compile_system_prompt(generated),
-    )
     return bool(
         record.source == "user"
         and record.data.system_role == "business"
@@ -246,10 +225,14 @@ def _matches(record: AgentRecord, item: ProposedAgentView) -> bool:
         and _tool_ids(record) == {tool.id for tool in item.selected_tools}
         and set(record.data.knowledge_base_ids)
         == {knowledge.id for knowledge in item.selected_knowledge_bases}
-        and record.data.system_prompt == expected_prompt
-        and item.system_prompt == expected_prompt
-        and record.data.generated_skill == _normalise_skill(generated)
+        and record.data.system_prompt == item.system_prompt
         and item.skill_markdown == record.data.generated_skill
+        and item.evaluation.get("passed") is True
+        and item.evaluation.get("contract_compiled") is True
+        and (
+            not record.data.builder_contract
+            or record.data.builder_contract == contract.model_dump(mode="json")
+        )
     )
 
 
@@ -257,19 +240,6 @@ def _mismatch_reasons(record: AgentRecord, item: ProposedAgentView) -> list[str]
     contract = item.behavior_contract
     if contract is None:
         return ["missing_contract"]
-    generated = GeneratedAgent(
-        name=item.name,
-        execution_mode=item.execution_mode,
-        behavior_contract=contract,
-        selected_tool_ids=[tool.id for tool in item.selected_tools],
-        selected_knowledge_base_ids=[
-            knowledge.id for knowledge in item.selected_knowledge_bases
-        ],
-    )
-    expected_prompt = governed_system_prompt(
-        "business",
-        _compile_system_prompt(generated),
-    )
     checks = {
         "reused_proposal": item.reuse_agent_id is None,
         "name": record.data.name == item.name,
@@ -278,10 +248,12 @@ def _mismatch_reasons(record: AgentRecord, item: ProposedAgentView) -> list[str]
         "tools": _tool_ids(record) == {tool.id for tool in item.selected_tools},
         "knowledge": set(record.data.knowledge_base_ids)
         == {knowledge.id for knowledge in item.selected_knowledge_bases},
-        "record_prompt": record.data.system_prompt == expected_prompt,
-        "proposal_prompt": item.system_prompt == expected_prompt,
-        "record_skill": record.data.generated_skill == _normalise_skill(generated),
-        "proposal_skill": item.skill_markdown == record.data.generated_skill,
+        "record_prompt": record.data.system_prompt == item.system_prompt,
+        "record_skill": item.skill_markdown == record.data.generated_skill,
+        "evaluation": item.evaluation.get("passed") is True
+        and item.evaluation.get("contract_compiled") is True,
+        "contract": not record.data.builder_contract
+        or record.data.builder_contract == contract.model_dump(mode="json"),
     }
     return [name for name, passed in checks.items() if not passed]
 
@@ -354,13 +326,16 @@ async def _run(
             for item in proposals:
                 by_name[item.name].append(item)
             for record in await storage.list_agents(user_id):
-                if _canonical_contract(record) is not None:
-                    if _BUILDER_BACKFILL_KEY in record.data.evaluation:
-                        if not _verify_backfill(record):
-                            raise RuntimeError(
-                                f"Backfill verification failed for agent {record.id}",
-                            )
-                        verified += 1
+                canonical = _canonical_contract(record)
+                if canonical is not None and (
+                    _BUILDER_ARTIFACT_SNAPSHOT_KEY in record.data.evaluation
+                    or _BUILDER_BACKFILL_KEY in record.data.evaluation
+                ):
+                    if not _verify_backfill(record):
+                        raise RuntimeError(
+                            f"Backfill verification failed for agent {record.id}",
+                        )
+                    verified += 1
                     continue
                 if record.data.execution_mode is None:
                     continue
@@ -417,21 +392,28 @@ async def _run(
                     f"name={record.data.name!r}",
                 )
                 if apply:
-                    record.data.builder_contract = contract.model_dump(mode="json")
-                    if synthetic:
-                        record.data.evaluation = {
-                            **record.data.evaluation,
-                            _BUILDER_BACKFILL_KEY: {
-                                "contract_sha256": _builder_contract_digest(contract),
-                                "system_prompt_sha256": _text_digest(
-                                    record.data.system_prompt,
-                                ),
-                                "generated_skill_sha256": _text_digest(
-                                    record.data.generated_skill,
-                                ),
-                            },
-                        }
-                    await storage.upsert_agent(user_id, record)
+                    updated_record = record.model_copy(deep=True)
+                    updated_record.data.builder_contract = contract.model_dump(
+                        mode="json",
+                    )
+                    snapshot_key = (
+                        _BUILDER_BACKFILL_KEY
+                        if synthetic
+                        else _BUILDER_ARTIFACT_SNAPSHOT_KEY
+                    )
+                    updated_record.data.evaluation = {
+                        **updated_record.data.evaluation,
+                        snapshot_key: _artifact_snapshot(
+                            contract,
+                            updated_record.data.system_prompt,
+                            updated_record.data.generated_skill,
+                        ),
+                    }
+                    if not _verify_backfill(updated_record):
+                        raise RuntimeError(
+                            f"Backfill verification failed for agent {record.id}",
+                        )
+                    await storage.upsert_agent(user_id, updated_record)
                     saved = await storage.get_agent(user_id, record.id)
                     if saved is None or not _verify_backfill(saved):
                         raise RuntimeError(

@@ -15,8 +15,12 @@ await context.addInitScript(() => {
 		localStorage.setItem('agentscope-ui-language', 'en');
 });
 let authenticated = false;
+let agents = [];
+const sessionRequests = [];
 await context.route('**/api/**', async (route) => {
-	const path = new URL(route.request().url()).pathname.slice(4);
+	const url = new URL(route.request().url());
+	const path = url.pathname.slice(4);
+	if (path.startsWith('/sessions/')) sessionRequests.push(url.searchParams.get('agent_id'));
 	let body;
 	if (path === '/auth/refresh') {
 		if (!authenticated) return route.fulfill({ status: 401, json: { detail: 'anonymous' } });
@@ -33,7 +37,7 @@ await context.route('**/api/**', async (route) => {
 			area_id: 'a',
 		};
 	else if (path === '/directory/domains') body = [];
-	else if (path === '/agent/') body = { agents: [], total: 0 };
+	else if (path === '/agent/') body = { agents, total: agents.length };
 	else if (path === '/agent/schema/v2')
 		body = { schema: { type: 'object', properties: {} }, defaults: {} };
 	else if (path === '/credential/') body = { credentials: [], total: 0 };
@@ -113,6 +117,28 @@ try {
 	await page.waitForTimeout(300);
 	assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
 	console.log('PASS locales and mobile width');
+	agents = [
+		{
+			id: 'draft-agent',
+			user_id: 'u',
+			editable: true,
+			created_at: '2026-10-18T00:00:00Z',
+			updated_at: '2026-10-18T00:00:00Z',
+			data: {
+				id: 'draft-agent',
+				name: 'Private Draft',
+				lifecycle_state: 'draft',
+				system_prompt: '',
+				context_config: {},
+				react_config: {},
+				invite_config: {},
+			},
+		},
+	];
+	await page.goto(`${base}/chat/draft-agent`);
+	await page.getByText('Chưa có agent đã publish', { exact: true }).waitFor();
+	assert.equal(sessionRequests.includes('draft-agent'), false);
+	console.log('PASS unpublished agent deep link cannot open a session');
 	console.log(JSON.stringify({ errors, unexpected }, null, 2));
 	assert.deepEqual(unexpected, []);
 	assert.deepEqual(errors, []);

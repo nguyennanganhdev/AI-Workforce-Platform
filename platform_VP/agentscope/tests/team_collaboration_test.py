@@ -107,6 +107,125 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         self.assertEqual("answer", event.kind)
 
+    async def test_peer_result_is_normalized_to_causal_answer(self):
+        question = await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Find available flights",
+        )
+
+        answer = await self.say(
+            "peer",
+            to="Leader",
+            kind="result",
+            content="Flight VN123 is available",
+        )
+
+        self.assertEqual("answer", answer.metadata["kind"])
+        recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == answer.metadata["handoff_id"]
+        }
+        self.assertEqual({"worker-session"}, recipients)
+        event = next(
+            item
+            for item in self.storage.context.state.events
+            if item.id == answer.metadata["handoff_id"]
+        )
+        self.assertEqual(question.metadata["handoff_id"], event.in_reply_to)
+        self.assertEqual(question.metadata["handoff_id"], event.thread_id)
+        self.assertEqual(2, event.hop_count)
+
+    async def test_result_cannot_be_used_to_start_peer_work(self):
+        result = await self.tool("worker")(
+            to="Peer",
+            kind="result",
+            content="Inspect the provider and report its status",
+        )
+
+        self.assertEqual("error", result.state)
+        self.assertIn("send kind='question'", result.content[0].text)
+        self.assertNotIn("peer-session", self.storage.context.state.tasks[
+            self.task
+        ].collaboration)
+
+    async def test_dynamic_nested_answers_return_to_each_requester(self):
+        self.storage.agents["specialist"] = self.storage.agents[
+            "worker"
+        ].model_copy(deep=True, update={"id": "specialist"})
+        self.storage.agents["specialist"].data.name = "Specialist"
+        self.storage.sessions["specialist-session"] = self.storage.sessions[
+            "worker-session"
+        ].model_copy(update={"id": "specialist-session", "agent_id": "specialist"})
+        self.storage.team.data.members.append(
+            TeamMember(
+                owner_id="u",
+                agent_id="specialist",
+                session_id="specialist-session",
+                role="created",
+            )
+        )
+
+        root = await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Inspect the observed anomaly",
+        )
+        nested = await self.say(
+            "peer",
+            to="Specialist",
+            kind="question",
+            content="Check whether the related change is compatible",
+        )
+
+        premature = await self.tool("peer")(
+            to="Leader",
+            kind="result",
+            content="The investigation is complete",
+        )
+        self.assertEqual("error", premature.state)
+        self.assertIn(root.metadata["handoff_id"], premature.content[0].text)
+
+        specialist_answer = await self.say(
+            "specialist",
+            to="Leader",
+            kind="answer",
+            content="The change is incompatible",
+            in_reply_to=nested.metadata["handoff_id"],
+        )
+        specialist_recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == specialist_answer.metadata["handoff_id"]
+        }
+        self.assertEqual({"peer-session"}, specialist_recipients)
+
+        peer_answer = await self.say(
+            "peer",
+            to="Leader",
+            kind="answer",
+            content="The anomaly started after an incompatible change",
+            in_reply_to=root.metadata["handoff_id"],
+        )
+        peer_recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == peer_answer.metadata["handoff_id"]
+        }
+        self.assertEqual({"worker-session"}, peer_recipients)
+        self.assertEqual({}, self.branch("worker").waiting_for)
+
+        synthesis = await self.say(
+            "worker",
+            to="Leader",
+            kind="result",
+            content="The incompatible change caused the observed anomaly",
+        )
+        self.assertEqual("result", synthesis.metadata["kind"])
+
     async def test_reply_owner_also_sleeps_after_asking_peer(self):
         question = await self.say(
             "leader", to="Worker", kind="question", content="Look up available options",
@@ -171,43 +290,84 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         self.assertEqual("waiting_peer", receipt["status"])
 
-    async def test_worker_handoff_activates_only_the_selected_peer(self):
-        await self.say(
+    async def test_worker_handoff_is_normalized_to_causal_peer_question(self):
+        request = await self.say(
             "worker",
             to="Peer",
             kind="handoff",
             content="Handle the remaining specialist lookup",
         )
 
+        self.assertEqual("question", request.metadata["kind"])
+        self.assertEqual("waiting_peer", self.branch("worker").status)
         self.assertEqual("running", self.branch("peer").status)
         pending = await self.service.collaboration_review(
             "u", "ticket-1", "leader-session"
         )
         self.assertIn("peer-session", pending)
 
-    async def test_shared_peer_answer_releases_all_waiters_for_that_provider(self):
+    async def test_peer_answer_releases_only_its_linked_waiter(self):
         first = await self.say(
             "worker", to="Peer", kind="question", content="Provide the price"
         )
-        await self.say(
-            "worker", to="Peer", kind="question", content="Provide availability"
+        second = await self.say(
+            "leader", to="Peer", kind="question", content="Provide availability"
         )
-        self.assertEqual(2, len(self.branch("worker").waiting_for))
+        self.assertEqual(1, len(self.branch("worker").waiting_for))
+        self.assertEqual(1, len(self.branch("leader").waiting_for))
 
         answer = await self.say(
             "peer",
             to="Worker",
             kind="answer",
-            content="The shared result contains price and availability",
+            content="The price is 1,500,000 VND",
             in_reply_to=first.metadata["handoff_id"],
         )
 
         self.assertEqual({}, self.branch("worker").waiting_for)
         self.assertEqual("running", self.branch("worker").status)
         self.assertEqual(
+            {second.metadata["handoff_id"]: "peer-session"},
+            self.branch("leader").waiting_for,
+        )
+        self.assertEqual(
             (answer.metadata["handoff_id"],),
             self.branch("worker").evidence_event_ids,
         )
+
+        leader_answer = await self.say(
+            "peer",
+            to="Leader",
+            kind="answer",
+            content="The option is available",
+            in_reply_to=second.metadata["handoff_id"],
+        )
+        self.assertEqual({}, self.branch("leader").waiting_for)
+        recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == leader_answer.metadata["handoff_id"]
+        }
+        self.assertEqual({"leader-session"}, recipients)
+
+    async def test_ambiguous_peer_result_requires_exact_reply_id(self):
+        await self.say(
+            "worker", to="Peer", kind="question", content="Provide the price"
+        )
+        await self.say(
+            "leader", to="Peer", kind="question", content="Provide availability"
+        )
+
+        result = await self.tool("peer")(
+            to="Leader",
+            kind="result",
+            content="The requested details are ready",
+        )
+
+        self.assertEqual("error", result.state)
+        self.assertIn("multiple peer questions", result.content[0].text)
+        self.assertEqual(1, len(self.branch("worker").waiting_for))
+        self.assertEqual(1, len(self.branch("leader").waiting_for))
 
     async def test_peer_evidence_is_attached_to_coordinator_synthesis(self):
         question = await self.say(
@@ -250,7 +410,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         self.assertEqual("completed", self.branch("worker").status)
 
-    async def test_worker_question_is_only_a_proposal_owner_approves_one(self):
+    async def test_worker_question_is_registered_for_the_reply_owner(self):
         await self.say(
             "worker",
             to="Leader",
@@ -258,22 +418,25 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             question_key="missing:choice",
             content="Which option do you choose?",
         )
-        self.assertIsNone(await self.service.pending_user_question("u", "ticket-1"))
-        self.assertIsNone(self.storage.turn)
         self.assertEqual(
-            "user_input_proposal", self.storage.context.state.events[-1].kind
-        )
-        await self.say(
-            "leader",
-            kind="requires_user_input",
-            question_key="missing:choice",
-            content="Which verified option do you choose?",
-        )
-        self.assertEqual(
-            "Which verified option do you choose?",
+            "Which option do you choose?",
             await self.service.pending_user_question("u", "ticket-1"),
         )
-        second = await self.tool("leader")(
+        self.assertEqual("leader", self.storage.turn.mode)
+        self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
+        self.assertEqual(
+            "requires_user_input", self.storage.context.state.events[-1].kind
+        )
+        recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.kind == "requires_user_input"
+            and not handoff.handoff_id.startswith("intent:")
+        }
+        self.assertEqual({"leader-session"}, recipients)
+
+        second = await self.tool("worker")(
+            to="Leader",
             kind="requires_user_input",
             question_key="missing:date",
             content="Which date?",
@@ -281,7 +444,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual("error", second.state)
         self.assertEqual(1, len(self.storage.turn.pending_question_ids))
 
-    async def test_specialist_asks_customer_then_returns_result_to_leader(self):
+    async def test_internal_specialist_never_takes_customer_reply_ownership(self):
         question = await self.say(
             "worker",
             to="null",
@@ -289,93 +452,212 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             content="Which account should I inspect?",
         )
         self.assertEqual("requires_user_input", question.metadata["kind"])
-        self.assertEqual("specialist_question", self.storage.turn.mode)
-        self.assertEqual("worker-session", self.storage.turn.reply_owner_session_id)
-
-        from agentscope.app._team_turn import start_team_turn
-
-        await start_team_turn(
-            self.bus,
-            "ticket-1",
-            reply_owner_session_id="worker-session",
-            reply_owner_agent_id="worker",
-            customer_session_id="leader-session",
-            mode="specialist_question",
-            task_id=self.task,
-            storage=self.storage,
-            user_id="u",
-        )
-        await self.say(
-            "worker",
-            to="Leader",
-            kind="result",
-            content="Account A has been inspected; no issue was found.",
-        )
         self.assertEqual("leader", self.storage.turn.mode)
         self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
+        self.assertEqual(
+            "Which account should I inspect?",
+            await self.service.pending_user_question("u", "ticket-1"),
+        )
 
-    async def test_specialist_result_resumes_the_waiting_requester(self):
+    async def test_misdirected_customer_question_is_forced_to_reply_owner(self):
+        question = await self.say(
+            "worker",
+            to="Peer",
+            kind="requires_user_input",
+            content="Which city are you departing from?",
+        )
+
+        self.assertTrue(question.metadata["customer_question_registered"])
+        self.assertEqual("Leader", question.metadata["effective_to"])
+        recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == question.metadata["handoff_id"]
+        }
+        self.assertEqual({"leader-session"}, recipients)
+
+    async def test_nested_customer_input_need_returns_to_requester_then_leader(self):
         request = await self.say(
             "worker",
             to="Peer",
             kind="question",
             content="Find the available flights",
         )
-        await self.say(
+        nested = await self.say(
             "peer",
-            to="null",
+            to="Leader",
             kind="requires_user_input",
             content="Which travel date should I use?",
         )
 
-        from agentscope.app._team_turn import finish_team_turn, start_team_turn
-
-        await start_team_turn(
-            self.bus,
-            "ticket-1",
-            reply_owner_session_id="peer-session",
-            reply_owner_agent_id="peer",
-            customer_session_id="leader-session",
-            mode="specialist_question",
-            task_id=self.task,
-            storage=self.storage,
-            user_id="u",
+        self.assertEqual("answer", nested.metadata["kind"])
+        recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == nested.metadata["handoff_id"]
+        }
+        self.assertEqual({"worker-session"}, recipients)
+        event = next(
+            item
+            for item in self.storage.context.state.events
+            if item.id == nested.metadata["handoff_id"]
         )
-        await self.bus.queue_drain(
-            MessageBusKeys.wakeup_queue(),
-            max_count=10,
+        self.assertEqual(request.metadata["handoff_id"], event.in_reply_to)
+        self.assertEqual(
+            "CUSTOMER_INPUT_REQUIRED: Which travel date should I use?",
+            event.content,
+        )
+        self.assertIsNone(
+            await self.service.pending_user_question("u", "ticket-1"),
+        )
+        self.assertIsNone(
+            await self.service.collaboration_pause(
+                "u", "ticket-1", "worker-session"
+            ),
+        )
+
+        grouped = await self.say(
+            "worker",
+            to="Leader",
+            kind="requires_user_input",
+            content="Which travel date should I use?",
+        )
+        self.assertTrue(grouped.metadata["customer_question_registered"])
+        self.assertEqual("Leader", grouped.metadata["effective_to"])
+        self.assertEqual(
+            "Which travel date should I use?",
+            await self.service.pending_user_question("u", "ticket-1"),
+        )
+        self.assertEqual("leader", self.storage.turn.mode)
+        self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
+
+    async def test_planner_waits_for_all_peers_before_grouping_customer_input(self):
+        self.storage.agents["specialist"] = self.storage.agents[
+            "worker"
+        ].model_copy(deep=True, update={"id": "specialist"})
+        self.storage.agents["specialist"].data.name = "Specialist"
+        self.storage.sessions["specialist-session"] = self.storage.sessions[
+            "worker-session"
+        ].model_copy(update={"id": "specialist-session", "agent_id": "specialist"})
+        self.storage.team.data.members.append(
+            TeamMember(
+                owner_id="u",
+                agent_id="specialist",
+                session_id="specialist-session",
+                role="created",
+            )
         )
 
         await self.say(
-            "peer",
-            to="Worker",
-            kind="result",
-            content="Two matching flights were found",
-            in_reply_to=request.metadata["handoff_id"],
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Find available flights",
+        )
+        await self.say(
+            "worker",
+            to="Specialist",
+            kind="question",
+            content="Find suitable restaurants",
         )
 
-        self.assertFalse(
-            await finish_team_turn(
-                self.bus,
-                "ticket-1",
-                session_id="peer-session",
-                storage=self.storage,
-                user_id="u",
+        flight_need = await self.say(
+            "peer",
+            to="Leader",
+            kind="requires_user_input",
+            content="Which cabin class should I search?",
+        )
+        self.assertEqual("answer", flight_need.metadata["kind"])
+        self.assertEqual("Worker", flight_need.metadata["effective_to"])
+        self.assertEqual("waiting_peer", self.branch("worker").status)
+
+        premature = await self.tool("worker")(
+            to="Leader",
+            kind="requires_user_input",
+            content="Which cabin class should I search?",
+        )
+        self.assertEqual("error", premature.state)
+        self.assertIn("wait for all direct peer responses", premature.content[0].text)
+        self.assertIsNone(
+            await self.service.pending_user_question("u", "ticket-1"),
+        )
+
+        restaurant_result = await self.say(
+            "specialist",
+            to="Leader",
+            kind="result",
+            content="Three suitable restaurants are available",
+        )
+        self.assertEqual("answer", restaurant_result.metadata["kind"])
+        self.assertEqual("Worker", restaurant_result.metadata["effective_to"])
+        self.assertIsNone(
+            await self.service.collaboration_pause(
+                "u", "ticket-1", "worker-session"
             ),
         )
-        self.assertEqual({}, self.branch("worker").waiting_for)
-        self.assertEqual("running", self.branch("worker").status)
-        self.assertEqual("leader", self.storage.turn.mode)
-        self.assertEqual("running", self.storage.turn.status)
-        self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
-        wakeups = await self.bus.queue_drain(
-            MessageBusKeys.wakeup_queue(),
-            max_count=10,
+
+        grouped = await self.say(
+            "worker",
+            to="Leader",
+            kind="requires_user_input",
+            content="Which cabin class should I search?",
         )
-        self.assertIn(
-            "worker-session",
-            {payload["session_id"] for _entry_id, payload in wakeups},
+        self.assertTrue(grouped.metadata["customer_question_registered"])
+        self.assertEqual("Leader", grouped.metadata["effective_to"])
+
+    async def test_nested_worker_cannot_question_or_conflict_past_requester(self):
+        request = await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Find available flights",
         )
+
+        ask_back = await self.say(
+            "peer",
+            to="Leader",
+            kind="question",
+            content="Which airport should I use?",
+        )
+        self.assertEqual("Worker", ask_back.metadata["effective_to"])
+        ask_recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == ask_back.metadata["handoff_id"]
+        }
+        self.assertEqual({"worker-session"}, ask_recipients)
+
+        await self.say(
+            "worker",
+            to="Peer",
+            kind="answer",
+            content="Use Nội Bài airport",
+            in_reply_to=ask_back.metadata["handoff_id"],
+        )
+        conflict = await self.say(
+            "peer",
+            to="Leader",
+            kind="conflict",
+            content="Two providers disagree on availability",
+            in_reply_to=request.metadata["handoff_id"],
+        )
+        self.assertEqual("answer", conflict.metadata["kind"])
+        self.assertEqual("Worker", conflict.metadata["effective_to"])
+        conflict_event = next(
+            item
+            for item in self.storage.context.state.events
+            if item.id == conflict.metadata["handoff_id"]
+        )
+        self.assertEqual(
+            "PEER_CONFLICT: Two providers disagree on availability",
+            conflict_event.content,
+        )
+        conflict_recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == conflict.metadata["handoff_id"]
+        }
+        self.assertEqual({"worker-session"}, conflict_recipients)
 
     async def test_fixed_workforce_leader_cannot_ask_customer_question(self):
         self.storage.agents["leader"].data.system_role = "leader"
@@ -385,9 +667,9 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             content="What is missing?",
         )
         self.assertEqual("error", result.state)
-        self.assertIn("does not ask", result.content[0].text)
+        self.assertIn("registered by a responsible worker", result.content[0].text)
 
-    async def test_failed_specialist_question_restores_leader_ownership(self):
+    async def test_failed_worker_question_preserves_leader_ownership(self):
         with patch.object(
             self.service,
             "append_event",
@@ -452,7 +734,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual("stopped", self.branch("worker").status)
         self.assertEqual("running", self.storage.context.state.tasks[self.task].status)
 
-    async def test_same_receipt_is_free_but_new_keys_do_not_bypass_no_progress(self):
+    async def test_same_message_is_suppressed_even_with_new_keys(self):
         for _ in range(2):
             await self.say(
                 "worker",
@@ -462,16 +744,18 @@ class TestCollaboration(IsolatedAsyncioTestCase):
                 idempotency_key="same",
             )
         self.assertEqual(1, self.branch("worker").exchanges)
+        duplicates = []
         for key in ("another", "third"):
-            await self.say(
+            duplicates.append(await self.say(
                 "worker",
                 to="Leader",
                 kind="progress",
                 content="Still checking",
                 idempotency_key=key,
-            )
-        self.assertEqual("stopped", self.branch("worker").status)
-        self.assertIn("repeated", self.branch("worker").reason)
+            ))
+        self.assertEqual(1, self.branch("worker").exchanges)
+        self.assertEqual("running", self.branch("worker").status)
+        self.assertTrue(all(result.metadata["duplicate"] for result in duplicates))
 
     async def test_future_promise_is_progress_not_completion_evidence(self):
         report = await self.say(
@@ -499,19 +783,24 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual("progress", report.metadata["kind"])
         self.assertEqual("running", self.branch("worker").status)
 
-    async def test_complete_does_not_require_evidence_or_close_ticket(self):
-        result = await self.say(
-            "worker", to="Leader", kind="result", content="Option available"
-        )
-        completed = await self.tool("leader")(
+    async def test_leader_cannot_contact_worker_after_terminal_result(self):
+        await self.say("worker", to="Leader", kind="result", content="Option available")
+        blocked = await self.tool("leader")(
             to="Worker",
             kind="handoff",
-            content="Enough",
+            content="Please confirm this result again",
             resolution="complete",
         )
-        self.assertEqual("running", completed.state)
+        self.assertEqual("error", blocked.state)
+        self.assertEqual(
+            "terminal_report_already_delivered",
+            blocked.metadata["reason"],
+        )
         self.assertEqual("completed", self.branch("worker").status)
         self.assertEqual("running", self.storage.context.state.tasks[self.task].status)
+
+        # A new customer message starts a new bounded cycle and makes the
+        # worker available again.
         await self.service.append_event(
             user_id="u",
             team_id="ticket-1",
@@ -591,6 +880,71 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual("running", self.storage.context.state.tasks[self.task].status)
         await self.say(
             "worker", to="Peer", kind="question", content="Handle the new requirement"
+        )
+
+    async def test_customer_answer_returns_to_requester_before_finalization(self):
+        question = await self.say(
+            "worker",
+            to="Leader",
+            kind="requires_user_input",
+            content="Which account should I inspect?",
+            question_key="missing:account",
+        )
+        answer = await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            task_id=self.task,
+            kind="customer_message",
+            content="Inspect account A.",
+            event_id="customer-account-answer",
+            in_reply_to=question.metadata["handoff_id"],
+        )
+        self.assertEqual(question.metadata["handoff_id"], answer.in_reply_to)
+        self.assertFalse(
+            await self.service.seal_final_answer(
+                "u",
+                "ticket-1",
+                "leader-session",
+                expected_event_revision=answer.revision,
+            )
+        )
+
+        routed = await self.say(
+            "leader",
+            to="Peer",
+            kind="answer",
+            content="The customer selected account A.",
+            in_reply_to=question.metadata["handoff_id"],
+        )
+        recipients = {
+            handoff.recipient_session_id
+            for handoff in self.storage.handoffs.values()
+            if handoff.handoff_id == routed.metadata["handoff_id"]
+        }
+        self.assertEqual({"worker-session"}, recipients)
+        self.assertEqual("running", self.branch("worker").status)
+        await self.say(
+            "worker",
+            to="Leader",
+            kind="result",
+            content="Account A was inspected and the plan is complete.",
+        )
+        self.assertEqual(
+            [],
+            await self.service.collaboration_review(
+                "u", "ticket-1", "leader-session"
+            ),
+        )
+        revision = await self.service.latest_event_revision(
+            "u", "ticket-1", self.task
+        )
+        self.assertTrue(
+            await self.service.seal_final_answer(
+                "u",
+                "ticket-1",
+                "leader-session",
+                expected_event_revision=revision,
+            )
         )
 
     async def test_review_auto_completes_any_delivered_result(self):

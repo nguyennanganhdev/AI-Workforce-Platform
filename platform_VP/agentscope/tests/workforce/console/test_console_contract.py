@@ -6,11 +6,12 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._router._schema import MCPView
 from agentscope.app._router._workforce_console import (
+    _BUILDER_ARTIFACT_SNAPSHOT_KEY,
     _BUILDER_BACKFILL_KEY,
     _LEADER_PROMPT,
     BuilderGeneration,
@@ -22,13 +23,17 @@ from agentscope.app._router._workforce_console import (
     PlannedAgentView,
     PrepareRequest,
     ProposalView,
+    ProposedAgentView,
+    PublishRequest,
     _agent_tool_settings,
+    _artifact_snapshot,
     _builder_contract_digest,
     _builder_session,
     _claim_exclusive_tool_ids,
     _compile_skill_body,
     _compile_system_prompt,
     _contract_checks,
+    _enforce_dynamic_collaboration,
     _execution_mode_matches_tools,
     _existing_agent_covers,
     _generate,
@@ -38,18 +43,22 @@ from agentscope.app._router._workforce_console import (
     _normalise_skill,
     _outline,
     _outline_issues,
+    _record_contract_artifacts_match,
     _replace_agent_session_knowledge,
     _replace_agent_workspace_mcps,
     _resolve_outline_reuse_candidate,
+    _resolve_proposal_reuse_candidate,
     _resolve_reuse_candidate,
     _resolve_selected_knowledge_bases,
     _resolve_selected_tools,
     _reused_outline_view,
     _reused_proposal_view,
+    _schema_keys,
     _select_model_name,
     _similarity,
     _stored_proposal,
     _text_digest,
+    publish_builder,
 )
 from agentscope.app._workforce_policy import (
     BUSINESS_AGENT_EVIDENCE_POLICY,
@@ -63,6 +72,7 @@ from scripts.backfill_builder_contracts import (
     _canonical_contract,
     _synthesised_contract,
 )
+from scripts.backfill_builder_contracts import _matches as _backfill_matches
 
 
 def _generated_agent(
@@ -110,8 +120,19 @@ def _generated_agent(
                     "tracking_intent": "create_only",
                 },
                 "role": role,
-                "intake_mode": "none",
-                "required_customer_inputs": [],
+                "intake_mode": (
+                    "required_before_work" if role == "coordinator" else "none"
+                ),
+                "required_customer_inputs": (
+                    [
+                        {
+                            "key": "request",
+                            "description": "Yêu cầu đầu-cuối do khách hàng xác nhận",
+                        },
+                    ]
+                    if role == "coordinator"
+                    else []
+                ),
                 "request_modes": list(request_modes),
                 "deliverables": ["Danh sách lựa chọn và khuyến nghị rõ ràng"],
                 "completion_criteria": [
@@ -251,6 +272,42 @@ def test_backfilled_agent_reuses_natural_request_when_scope_and_tools_match() ->
     )
 
 
+def test_published_artifact_snapshot_survives_compiler_change() -> None:
+    agent = _generated_agent()
+    record = _published_agent_record(agent)
+    record.data.system_prompt = "Prompt được publish bằng compiler cũ"
+    record.data.generated_skill = "Skill được publish bằng compiler cũ"
+    record.data.evaluation[_BUILDER_ARTIFACT_SNAPSHOT_KEY] = _artifact_snapshot(
+        agent.behavior_contract,
+        record.data.system_prompt,
+        record.data.generated_skill,
+    )
+
+    assert _record_contract_artifacts_match(record, agent)
+    record.data.system_prompt += " đã bị sửa sau publish"
+    assert not _record_contract_artifacts_match(record, agent)
+
+
+def test_backfill_seals_historical_proposal_without_current_compiler() -> None:
+    agent = _generated_agent(name="Agent compiler cũ")
+    record = _published_agent_record(agent)
+    record.data.system_prompt = "Prompt lịch sử"
+    record.data.generated_skill = "Skill lịch sử"
+    item = ProposedAgentView(
+        name=agent.name,
+        objective=agent.behavior_contract.requirement.business_profile.objective,
+        execution_mode=agent.execution_mode,
+        system_prompt=record.data.system_prompt,
+        selected_tools=[],
+        skill_name="agent-compiler-cu",
+        skill_markdown=record.data.generated_skill,
+        evaluation={"passed": True, "contract_compiled": True},
+        behavior_contract=agent.behavior_contract,
+    )
+
+    assert _backfill_matches(record, item)
+
+
 def test_agent_schema_does_not_expose_server_owned_builder_fields() -> None:
     schema = AgentData.model_json_schema()
 
@@ -304,6 +361,20 @@ def test_mcp_view_exposes_catalog_but_not_connection_secret() -> None:
     assert "headers" not in payload
 
 
+def test_builder_projects_tool_schema_fields_for_dependency_reasoning() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "optional_limit": {"type": "integer"},
+            "trace_id": {"type": "string"},
+        },
+        "required": ["trace_id"],
+    }
+
+    assert _schema_keys(schema) == ["trace_id"]
+    assert _schema_keys({"type": "object"}) == []
+
+
 def test_skill_normalisation_adds_safe_front_matter() -> None:
     agent = _generated_agent(
         name="Hotel Agent",
@@ -347,6 +418,50 @@ def test_contract_compiler_keeps_role_delta_and_runtime_policy_separate() -> Non
     assert "Advice, lookup and action are different intents" in runtime
     assert "A result or answer is completed" in runtime
     assert runtime.count("WORKFORCE RUNTIME EXECUTION POLICY:") == 1
+
+
+def test_builder_enforces_dynamic_collaboration_without_domain_rules() -> None:
+    payload = _generated_agent(role="coordinator").model_dump(mode="json")
+    contract = payload["behavior_contract"]
+    contract["peer_coordination_policy"] = (
+        "Luôn chuyển mọi việc về Leader để xử lý tiếp."
+    )
+    contract["internal_reporting_policy"] = (
+        "Mọi specialist đều gửi kết quả thẳng về Leader trong mọi trường hợp."
+    )
+    contract["synthesis_policy"] = (
+        "Giao đồng thời cho tất cả specialist rồi hỏi Leader chọn phương án."
+    )
+
+    normalized = _enforce_dynamic_collaboration(
+        GeneratedAgent.model_validate(payload),
+    )
+    normalized_contract = normalized.behavior_contract
+
+    assert "đúng một specialist" in normalized_contract.synthesis_policy
+    assert "live roster" in normalized_contract.peer_coordination_policy
+    assert "không chuyển peer work qua Leader" in (
+        normalized_contract.peer_coordination_policy
+    )
+    assert "answer kèm in_reply_to" in (normalized_contract.internal_reporting_policy)
+    assert "khi Leader là requester" in (normalized_contract.internal_reporting_policy)
+
+
+def test_input_readiness_matches_runtime_tool_availability() -> None:
+    coordinator_payload = _generated_agent(role="coordinator").model_dump(mode="json")
+    coordinator_payload["behavior_contract"]["intake_mode"] = "none"
+    coordinator_payload["behavior_contract"]["required_customer_inputs"] = []
+    coordinator = GeneratedAgent.model_validate(coordinator_payload)
+
+    specialist_payload = _generated_agent().model_dump(mode="json")
+    specialist_payload["behavior_contract"]["intake_mode"] = "required_before_work"
+    specialist_payload["behavior_contract"]["required_customer_inputs"] = [
+        {"key": "request", "description": "Yêu cầu của khách hàng"},
+    ]
+    specialist = GeneratedAgent.model_validate(specialist_payload)
+
+    assert not _contract_checks(coordinator)["input_readiness"]
+    assert not _contract_checks(specialist)["input_readiness"]
 
 
 def test_contract_compiler_emits_required_input_gate() -> None:
@@ -583,13 +698,15 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
                     BuilderGeneration(agents=[repaired]),
                 ]
                 self.calls = 0
+                self.prompts = []
 
             async def count_tokens(self, messages, tools):
                 del messages, tools
                 return 100
 
             async def generate_structured_output(self, messages, schema):
-                del messages, schema
+                del schema
+                self.prompts.append(str(messages[0].content))
                 output = self.outputs[self.calls]
                 self.calls += 1
                 return SimpleNamespace(content=output.model_dump(mode="json"))
@@ -604,6 +721,8 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
                     mcp_id="travel",
                     mcp_name="Travel",
                     tool_name="book",
+                    input_keys=["option_id"],
+                    output_keys=["booking_id"],
                 )
             ],
             [],
@@ -617,6 +736,9 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(2, model.calls)
+        self.assertIn("Team tool-flow map", model.prompts[0])
+        self.assertIn('"input_keys": ["option_id"]', model.prompts[0])
+        self.assertIn('"output_keys": ["booking_id"]', model.prompts[0])
         self.assertEqual("tool_backed", generation.agents[0].execution_mode)
         self.assertEqual(
             [],
@@ -1038,6 +1160,124 @@ def test_outline_reuse_falls_back_when_model_selects_the_wrong_agent_id() -> Non
     assert _resolve_outline_reuse_candidate(planned, [record], set(), set()) is record
 
 
+def test_publish_recheck_blocks_a_child_of_a_published_agent() -> None:
+    parent = _generated_agent(
+        name="Agent du lịch đã publish",
+        execution_mode="tool_backed",
+        selected_tool_ids=["travel:search", "travel:recommend"],
+    )
+    record = _published_agent_record(parent)
+    child = ProposedAgentView(
+        name="Agent tìm lựa chọn du lịch",
+        objective=parent.behavior_contract.requirement.business_profile.objective,
+        execution_mode="tool_backed",
+        system_prompt="unused by reuse matching",
+        selected_tools=[
+            BuilderTool(
+                id="travel:search",
+                mcp_id="travel",
+                mcp_name="Travel",
+                tool_name="search",
+            ),
+        ],
+        skill_name="travel-search",
+        skill_markdown="unused by reuse matching",
+        evaluation={"passed": True},
+        behavior_contract=parent.behavior_contract,
+    )
+
+    assert (
+        _resolve_proposal_reuse_candidate(
+            child,
+            [record],
+            {"travel:search", "travel:recommend"},
+            set(),
+        )
+        is record
+    )
+
+
+class TestBuilderPublishReuseGuard(IsolatedAsyncioTestCase):
+    async def test_late_published_match_is_reported_without_creating_agent(
+        self,
+    ) -> None:
+        existing_agent = _generated_agent(name="Agent đã publish")
+        existing_record = _published_agent_record(existing_agent)
+        proposed_agent = _generated_agent(name="Agent đề xuất trùng")
+        proposal = ProposalView(
+            conversation_id="conversation-1",
+            proposal_id="proposal-1",
+            status="ready",
+            assistant_message="Sẵn sàng phát hành",
+            agents=[
+                ProposedAgentView(
+                    name=proposed_agent.name,
+                    objective=(
+                        proposed_agent.behavior_contract.requirement.business_profile.objective
+                    ),
+                    execution_mode=proposed_agent.execution_mode,
+                    system_prompt=governed_system_prompt(
+                        "business",
+                        _compile_system_prompt(proposed_agent),
+                    ),
+                    selected_tools=[],
+                    skill_name="agent-de-xuat-trung",
+                    skill_markdown=_normalise_skill(proposed_agent),
+                    evaluation={"passed": True, "contract_compiled": True},
+                    behavior_contract=proposed_agent.behavior_contract,
+                ),
+            ],
+            chat_model_config=ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4.1-mini",
+                parameters={},
+            ),
+            fixed_config={},
+        )
+        storage = SimpleNamespace(
+            get_session=AsyncMock(return_value=object()),
+            list_messages=AsyncMock(
+                return_value=(
+                    [
+                        AssistantMsg(
+                            name="agent_builder",
+                            content="Sẵn sàng phát hành",
+                            structured_output={
+                                "workforce_builder_proposal": proposal.model_dump(
+                                    mode="json",
+                                ),
+                            },
+                        ),
+                    ],
+                    None,
+                ),
+            ),
+            list_mcps=AsyncMock(return_value=[]),
+            list_agents=AsyncMock(return_value=[existing_record]),
+            upsert_agent=AsyncMock(),
+        )
+        access = SimpleNamespace(list_resource=AsyncMock(return_value=[]))
+
+        with self.assertRaises(HTTPException) as blocked:
+            await publish_builder(
+                PublishRequest(
+                    conversation_id="conversation-1",
+                    proposal_id="proposal-1",
+                    expected_revision=1,
+                ),
+                user_id="user-1",
+                storage=storage,
+                workspace_manager=SimpleNamespace(),
+                access=access,
+            )
+
+        self.assertEqual(status.HTTP_409_CONFLICT, blocked.exception.status_code)
+        self.assertIn(existing_record.data.name, blocked.exception.detail)
+        self.assertIn("Builder không cho tạo lại", blocked.exception.detail)
+        storage.upsert_agent.assert_not_awaited()
+
+
 def test_workforce_model_default_does_not_depend_on_card_order() -> None:
     assert (
         _select_model_name(
@@ -1066,6 +1306,10 @@ def test_builder_prepare_requires_user_selected_model() -> None:
 def test_workforce_agents_answer_in_natural_vietnamese() -> None:
     assert "Always answer the customer in natural Vietnamese" in _LEADER_PROMPT
     assert "helpful person" in _LEADER_PROMPT
+    assert "Rewrite internal reports into one coherent response" in _LEADER_PROMPT
+    assert "never paste them verbatim" in _LEADER_PROMPT
+    assert "Do not call TeamSay back to its sender" in _LEADER_PROMPT
+    assert "Reply to the customer immediately" in _LEADER_PROMPT
 
 
 def test_leader_is_domain_agnostic_and_stops_unproductive_discussion() -> None:
@@ -1123,10 +1367,8 @@ def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> No
     assert "stale rule" not in refreshed
     assert refreshed.count("WORKFORCE RUNTIME EXECUTION POLICY:") == 1
     assert "assemble the right team" in WORKFORCE_LEADER_PROMPT
-    assert "ask the customer for task-specific" in WORKFORCE_LEADER_PROMPT
-    assert "specialist that needs customer-owned information asks" in (
-        WORKFORCE_LEADER_PROMPT
-    )
+    assert "Ask task-specific questions only" in WORKFORCE_LEADER_PROMPT
+    assert "Customer clarification is the narrow" in WORKFORCE_LEADER_PROMPT
     assert "Follow the authored business role" in governed
     assert "create, update, delete, submit, communicate" in governed
     assert "Never ask the customer to type a confirmation" in governed

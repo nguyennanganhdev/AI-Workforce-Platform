@@ -81,6 +81,15 @@ class _FakeTeamSay(ToolBase):
         return ToolChunk(
             content=[TextBlock(text=self._output)],
             state=self._state,
+            metadata=(
+                {
+                    "kind": "requires_user_input",
+                    "customer_question_registered": True,
+                    "effective_to": "Leader",
+                }
+                if kind == "requires_user_input"
+                else {}
+            ),
         )
 
 
@@ -156,6 +165,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         max_nudges: int = 3,
         extra_tools: list | None = None,
         pending_question=None,
+        require_report: bool = True,
         require_input_readiness: bool = False,
     ) -> list:
         """Drive one reply and return the streamed items."""
@@ -172,6 +182,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                     leader_name="Leader",
                     max_nudges=max_nudges,
                     pending_question=pending_question,
+                    require_report=require_report,
                     require_input_readiness=require_input_readiness,
                 ),
             ],
@@ -228,7 +239,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                     inputs={
                         "origin": {
                             "value": "Ha Noi",
-                            "evidence_quote": "tu Ha Noi",
+                            "source_message_id": "customer-message-1",
                         },
                     },
                 ),
@@ -311,7 +322,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_registered_customer_question_is_emitted_without_model_text(
+    async def test_internal_worker_question_is_not_emitted_to_customer(
         self,
     ) -> None:
         items = await self._run(
@@ -326,7 +337,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             ],
         )
 
-        self.assertIn(
+        self.assertNotIn(
             "Bạn xuất phát từ đâu và có bao nhiêu người?",
             [item.delta for item in items if isinstance(item, TextBlockDeltaEvent)],
         )
@@ -334,6 +345,62 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             ReplyFinishedReason.COMPLETED,
             self._end_events(items)[0].finished_reason,
         )
+
+    async def test_misdirected_customer_question_stops_after_registration(self):
+        items = await self._run(
+            [
+                _call(
+                    "TeamSay",
+                    to="Planner",
+                    kind="requires_user_input",
+                    content="Which city are you departing from?",
+                ),
+                _text("This second model call must not run."),
+            ],
+        )
+
+        self.assertEqual(1, self.model.cnt)
+        self.assertEqual(1, len(self.team_say.calls))
+        self.assertEqual(
+            ReplyFinishedReason.COMPLETED,
+            self._end_events(items)[0].finished_reason,
+        )
+
+    async def test_direct_mention_owner_emits_its_registered_question(self) -> None:
+        question = "Which city are you departing from?"
+        items = await self._run(
+            [
+                _call(
+                    "TeamSay",
+                    to="null",
+                    kind="requires_user_input",
+                    content=question,
+                ),
+                _text("Question registered."),
+            ],
+            require_report=False,
+        )
+
+        self.assertIn(
+            question,
+            [item.delta for item in items if isinstance(item, TextBlockDeltaEvent)],
+        )
+
+    async def test_direct_mention_owner_relays_peer_question_exactly(self) -> None:
+        question = "Which account should be inspected?"
+
+        async def pending_question() -> str:
+            return question
+
+        items = await self._run(
+            [_text("I guessed account B and already inspected it.")],
+            pending_question=pending_question,
+            require_report=False,
+        )
+        deltas = [
+            item.delta for item in items if isinstance(item, TextBlockDeltaEvent)
+        ]
+        self.assertEqual([question], deltas)
 
     async def test_broadcast_report_is_not_accepted(self) -> None:
         """A worker broadcast cannot satisfy the final-report contract."""

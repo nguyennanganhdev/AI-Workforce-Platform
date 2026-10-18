@@ -380,3 +380,44 @@ Commit batch và kết quả Docker/format chi tiết được cập nhật ở 
   image Fuq-export, vì Compose hiện có mặc định trỏ tới tên image khác.
 - Live E2E có đăng nhập/model vẫn blocked như đã ghi; deploy không đồng nghĩa
   đã nghiệm thu feature parity với backend đang chạy khác revision.
+
+### Merge dev_TeamHoang và chuẩn bị publish — 2026-10-18
+
+- Repository đích: `nguyennanganhdev/AI-Workforce-Platform`.
+- Worktree riêng: `/home/jiuka13a/Coding/Project/AI-Workforce-Platform-publish`;
+  nhánh `feat/web-ui-new-fastapi-20261017`. Không đổi nhánh hoặc reset checkout gốc,
+  bảo toàn thay đổi tại checkout gốc và Fuq-export.
+- Snapshot UI đã kiểm tra được commit thành `044ab23`; merge
+  `origin/dev_TeamHoang` tại `7b9c1f3` bằng `git merge --no-commit`.
+- [x] Xử lý 5 conflict: App, ASMessageBubble, ChatContent, ChatViewport, chat/index.
+  Giữ shell/layout/card của UI mới, chuyển entry/leader cũ về chat, giữ quy tắc
+  chỉ mở chat với agent published. Sidebar settings cũng bỏ mục Leader đã bị
+  upstream thay thế; deep link cũ vẫn redirect.
+- [x] Giữ semantics `team_reply_owner`, `effective_to`, nút reply tới agent;
+  khôi phục merge SSE theo reply_id để không trộn nội dung các agent. Giữ hỗ trợ
+  message_upserted của UI mới; bỏ git badge như upstream. Backend và Python tests
+  khớp nguyên bản `7b9c1f3`, không sửa backend/schema để che mapping.
+- [x] Cài dependency: Node 22.23.3, pnpm 10.34.7;
+  `NODE_OPTIONS=--max-old-space-size=1536 pnpm install --frozen-lockfile --child-concurrency=1 --network-concurrency=4` — pass.
+  Husky báo không tìm thấy `.git` trong thư mục workspace lồng; không chặn install.
+- [x] `pnpm --filter frontend build` — pass TypeScript/Vite; còn cảnh báo chunk
+  lớn hơn 500 kB. Chạy từng bước tuần tự, heap 1536 MB trên máy 8 GB.
+- [x] `pnpm --filter frontend lint` — pass sau khi sửa lỗi import-order do merge;
+  còn 1 warning Fast Refresh có sẵn tại debug-office-mock.tsx.
+- [x] `pnpm --filter frontend test` — pass 8 file test, gồm API contract với
+  FastAPI checkout, client/cookie URL, room fallback, team ownership/effective
+  recipient, terminal state, interleaved SSE và các test session/timeline.
+- [x] Preview `pnpm --filter frontend preview --host 127.0.0.1 --port 4173 --strictPort`
+  và `CHROME_PATH=/usr/bin/google-chrome PLAYWRIGHT_MODULE=/home/jiuka13a/Coding/Project/.ui-toolchain/node_modules/playwright/index.mjs node frontend/tests/browser.smoke.mjs`
+  — pass landing, 13 routes/deep links, vi/en/zh, mobile và chặn mở session từ
+  agent draft; 0 JS errors, 0 request ngoài fixture. Đây là API mock smoke.
+- [x] `git diff --check`, kiểm tra file `.env` và known-secret patterns — pass;
+  không thêm credential/token thật. Prettier áp dụng cho file xử lý thủ công;
+  không format hàng loạt các file pre-existing.
+- [ ] Live E2E auth, chat/cancel/SSE thật, upload và permission workflows: vẫn
+  blocked vì chưa có tài khoản active/model (user đã xác nhận). Chưa chạy lại
+  toàn bộ Python backend suite. Không tuyên bố nghiệm thu production.
+- Không rebuild/redeploy container trong batch merge/push này; container port
+  5173 vẫn là image deploy ngày 2026-10-17. Browser smoke dùng preview riêng.
+- Log ngoài repo: `publish-merge-build.log`, `publish-merge-lint.log`,
+  `publish-merge-tests.log`, `publish-merge-browser.log` tại thư mục Project.

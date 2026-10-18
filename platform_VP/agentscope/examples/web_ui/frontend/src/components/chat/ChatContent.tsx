@@ -6,12 +6,11 @@ import {
 	type TextBlock,
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
-import { GitBranch, TriangleAlert } from 'lucide-react';
+import { TriangleAlert, X } from 'lucide-react';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 
+import { visibleTeamMessages } from './team-presentation';
 import { Button } from '../ui/button';
-import { DiffStats } from './tool-renderers/_shared';
-import type { GitStatus } from '@/api';
 import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
 import { ChoiceCard } from '@/components/chat/ChoiceCard';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
@@ -80,7 +79,8 @@ interface ChatContentProps {
 	 */
 	phase: ReplyPhase;
 	disabled: boolean;
-	onSend: (content: ContentBlock[]) => void;
+	onSend: (content: ContentBlock[], targetAgentId?: string) => void;
+	teamChat?: boolean;
 	onUserConfirm: (
 		toolCall: ToolCallBlock,
 		confirm: boolean,
@@ -113,10 +113,6 @@ interface ChatContentProps {
 	cwd: string | null;
 	/** Persists a new working directory. */
 	onCwdChange: (cwd: string | null) => void | Promise<void>;
-	/** Git state of {@link cwd}; `null` hides the branch badge entirely. */
-	git?: GitStatus | null;
-	/** Re-reads the git state, since nothing polls for it. */
-	onRefreshGit?: () => void | Promise<void>;
 	/** Who is on the other end: names the composer and the empty state. */
 	agentName?: string;
 }
@@ -129,6 +125,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	phase,
 	disabled,
 	onSend,
+	teamChat = false,
 	onUserConfirm,
 	autoComplete,
 	mentions,
@@ -141,11 +138,24 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	sessionId,
 	cwd,
 	onCwdChange,
-	git,
-	onRefreshGit,
 	agentName,
 }) => {
 	const { t, i18n } = useTranslation();
+	const visibleMessages = useMemo(
+		() => visibleTeamMessages(msgs, agentId, teamChat),
+		[msgs, agentId, teamChat],
+	);
+	const lastVisibleAssistant = [...visibleMessages]
+		.reverse()
+		.find(
+			({ message, teamMode }) => message.role === 'assistant' && teamMode !== 'activity',
+		)?.message;
+	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
+	useEffect(() => setReplyTarget(null), [sessionId]);
+	const handleSend = (content: ContentBlock[]) => {
+		onSend(content, replyTarget?.agentId);
+		setReplyTarget(null);
+	};
 	const ticketView = useContext(TicketViewContext);
 	// Only a session that finished loading with nothing in it is empty.
 	// Treating "no messages yet" as empty would flash the greeting over
@@ -183,12 +193,16 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	const toConfirmedToolCalls = useMemo(() => {
 		if (msgs.length === 0) return [];
 
-		return msgs.filter((message) => message.role === 'assistant').flatMap((message) => {
-			const resolved = new Set(getContentBlocks(message, 'tool_result').map((result) => result.id));
-			return getContentBlocks(message, 'tool_call')
-				.filter((tc) => tc.state === 'asking' && !resolved.has(tc.id))
-				.map((tc) => ({ replyId: message.id, toolCall: tc }));
-		});
+		return msgs
+			.filter((message) => message.role === 'assistant')
+			.flatMap((message) => {
+				const resolved = new Set(
+					getContentBlocks(message, 'tool_result').map((result) => result.id),
+				);
+				return getContentBlocks(message, 'tool_call')
+					.filter((tc) => tc.state === 'asking' && !resolved.has(tc.id))
+					.map((tc) => ({ replyId: message.id, toolCall: tc }));
+			});
 	}, [msgs]);
 	const cardVisible = toConfirmedToolCalls.length > 0 || footerSlot != null;
 
@@ -230,8 +244,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					<MessageScroller>
 						<MessageScrollerViewport>
 							<MessageScrollerContent className="px-4 pt-2 pb-4">
-								{msgs.map((message, index) => {
-									const previous = msgs[index - 1];
+								{visibleMessages.map(({ message, teamMode }, index) => {
+									const previous = visibleMessages[index - 1]?.message;
 									const at = new Date(message.created_at);
 									const previousAt = previous
 										? new Date(previous.finished_at ?? previous.created_at)
@@ -254,13 +268,23 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 											)}
 											<ASMessageBubble
 												message={message}
+												teamChatMode={teamMode}
+												onReplyTo={
+													teamMode === 'customer-reply'
+														? (targetAgentId, name) =>
+																setReplyTarget({
+																	agentId: targetAgentId,
+																	name,
+																})
+														: undefined
+												}
 												onUserConfirm={onUserConfirm}
 											/>
 										</MessageScrollerItem>
 									);
 								})}
-								{msgs.length > 0 &&
-									msgs[msgs.length - 1].finished_reason ===
+								{lastVisibleAssistant &&
+									lastVisibleAssistant.finished_reason ===
 										ReplyFinishedReason.EXCEED_MAX_ITERS &&
 									phase === 'idle' && (
 										<Alert
@@ -309,6 +333,19 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				<div className="relative w-full px-4 pb-4">
 					{/* In flow, not overlaid: the transcript shrinks to make room, so the
 					    card never hides the message it answers. */}
+					{replyTarget && (
+						<div className="mb-2 flex items-center justify-between rounded-xl bg-muted px-3 py-2 text-sm">
+							<span>Trả lời {replyTarget.name}</span>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								aria-label="Hủy trả lời agent"
+								onClick={() => setReplyTarget(null)}
+							>
+								<X />
+							</Button>
+						</div>
+					)}
 					<FlipCard
 						visible={cardVisible}
 						className={cn(cardVisible && 'mb-2 max-h-[50vh] overflow-y-auto')}
@@ -338,7 +375,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 								? t('chat.messagePlaceholder', { name: agentName })
 								: undefined)
 						}
-						onSend={onSend}
+						onSend={handleSend}
 						disabled={disabled}
 						autoComplete={autoComplete}
 						mentions={mentions}
@@ -355,39 +392,6 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 										value={cwd}
 										onChange={onCwdChange}
 									/>
-								)}
-								{git && (
-									<Button
-										className="font-mono"
-										variant="secondary"
-										size="sm"
-										onClick={() => void onRefreshGit?.()}
-										title={t('workdir.gitTooltip', {
-											staged: git.staged,
-											unstaged: git.unstaged,
-											untracked: git.untracked,
-										})}
-									>
-										<GitBranch />
-										{/* A detached HEAD has no branch to name, so
-										    fall back to the commit it sits on. The
-										    server sends no git at all when it has
-										    neither. */}
-										{git.branch ?? git.head?.slice(0, 7)}
-										{git.ahead !== null && git.ahead > 0 && (
-											<span className="text-xs">↑{git.ahead}</span>
-										)}
-										{git.behind !== null && git.behind > 0 && (
-											<span className="text-xs">↓{git.behind}</span>
-										)}
-										{/* Renders nothing when both are zero, so a
-										    clean tree shows just the branch. */}
-										<DiffStats
-											className="text-xs font-mono"
-											insertions={git.insertions}
-											deletions={git.deletions}
-										/>
-									</Button>
 								)}
 							</div>
 						}

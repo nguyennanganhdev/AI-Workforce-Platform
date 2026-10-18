@@ -4,9 +4,9 @@
 This tool **borrows** a pre-existing user-owned agent by minting a fresh
 team-scoped :class:`SessionRecord` on top of the *existing*
 :class:`AgentRecord`. The borrowed agent keeps its definition, including
-its system prompt and context/react configs. Workspace and model are taken
-from the *caller's* own session of that agent, so a cross-owner borrow
-never picks up the owner's MCPs, skills, cache, or session permissions.
+its system prompt and context/react configs. Every borrow gets a fresh session
+and workspace; only the immutable agent definition and selected tool
+declarations are reused.
 
 When the team is dissolved or the leader is deleted, only the borrowed
 session is cleaned up — the underlying :class:`AgentRecord` survives
@@ -213,10 +213,9 @@ by asking it to list or stat a specific path). Skip this handshake for \
 tasks where only message content matters.
 - ``TeamSay`` is the primary communication channel between you and the \
 invited agent.
-- ``TeamDelete`` does NOT delete the invited agent — only the \
-team-scoped session is cleaned up. If you invite the same agent into \
-multiple teams over time, it may retain long-term memory or files from \
-earlier collaborations with you.
+- ``TeamDelete`` does NOT delete the invited agent — only the isolated \
+team-scoped session is cleaned up. A later invitation starts with new private \
+conversation state and a new workspace.
 
 ## Available invitable agents"""
 
@@ -591,26 +590,22 @@ class AgentInvite(_TeamToolBase):
             # not block the invite.
             leader_name = leader.name if leader else leader_session.agent_id
 
-            # Reuse the caller's own primary session only for its workspace.
-            # The borrowed agent runs with the leader's primary and fallback
-            # models for this team. The lookup is caller-scoped, so a
-            # cross-owner borrow never reuses the owner's session, MCPs,
-            # skills, or cache. The workspace is created lazily on first chat.
+            # The borrowed agent runs with the leader's models but receives a
+            # fresh session and workspace. Its primary session is consulted
+            # only as a source for legacy MCP declarations.
             invited_sessions = await self._storage.list_sessions(
                 self._user_id,
                 invited.id,
             )
-            if invited_sessions:
-                primary = invited_sessions[0]
-                borrowed_workspace_id = primary.config.workspace_id
-            else:
-                borrowed_workspace_id = (
-                    await self._workspace_manager.assign_workspace_id(
-                        user_id=self._user_id,
-                        agent_id=invited.id,
-                        session_id=_generate_id(),
-                    )
+            primary = invited_sessions[0] if invited_sessions else None
+            borrowed_session_id = _generate_id()
+            borrowed_workspace_id = (
+                await self._workspace_manager.assign_isolated_workspace_id(
+                    user_id=self._user_id,
+                    agent_id=invited.id,
+                    session_id=borrowed_session_id,
                 )
+            )
 
             # Permission context is NOT inherited from the leader.
             # PermissionContext.working_directories and allow/deny/ask
@@ -625,6 +620,7 @@ class AgentInvite(_TeamToolBase):
             # HITL prompts in this team will re-confirm any sensitive
             # tool call.
             worker_state = AgentState(
+                session_id=borrowed_session_id,
                 # permission_context defaults to a fresh
                 # ``PermissionContext()``; tasks_context defaults to
                 # empty. Both are the intended reset for the borrowed
@@ -657,6 +653,7 @@ class AgentInvite(_TeamToolBase):
                     ),
                 ),
                 state=worker_state,
+                session_id=borrowed_session_id,
                 origin=TeamOrigin(),
             )
 
@@ -704,7 +701,14 @@ class AgentInvite(_TeamToolBase):
                 else:
                     # Compatibility for manually-authored invitable agents
                     # created before Builder persisted exact tool bindings.
-                    mcp_specs = await workspace.list_mcps(
+                    assert primary is not None
+                    source_workspace = await self._workspace_manager.get_workspace(
+                        self._user_id,
+                        invited.id,
+                        primary.id,
+                        primary.config.workspace_id,
+                    )
+                    mcp_specs = await source_workspace.list_mcps(
                         agent_id=invited.id,
                         session_id=primary.id,
                     )

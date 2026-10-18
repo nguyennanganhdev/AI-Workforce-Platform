@@ -689,7 +689,7 @@ class Agent:
                     raise error
                 logger.warning(
                     "[AGENT %s]: Summary generation failed: %s. "
-                    "Falling back to context truncation.",
+                    "Falling back to a deterministic context summary.",
                     self.name,
                     error,
                 )
@@ -708,10 +708,8 @@ class Agent:
             if res is not None:
                 new_summary = cfg.summary_template.format(**res.content)
             else:
-                # Keep the previous summary if the compression failed
-                new_summary = self.state.summary or (
-                    "<system-info>Some earlier messages were truncated for "
-                    "limited context.</system-info>"
+                new_summary = self._deterministic_context_summary(
+                    msgs_to_compress,
                 )
 
             # Offload the compressed context if offloader is provided
@@ -788,6 +786,54 @@ class Agent:
         except asyncio.CancelledError:
             await apply_task
             raise
+
+    def _deterministic_context_summary(self, messages: list[Msg]) -> str:
+        """Build a bounded extractive summary without another model call."""
+        if isinstance(self.state.summary, str):
+            previous = self.state.summary
+        else:
+            previous = "\n".join(
+                block.text
+                for block in self.state.summary
+                if isinstance(block, TextBlock)
+            )
+
+        seen: set[str] = set()
+        entries: list[str] = []
+        for msg in messages:
+            text = re.sub(r"\s+", " ", msg.get_text_content() or "").strip()
+            key = text.casefold()
+            if not text or key in seen:
+                continue
+            seen.add(key)
+            entries.append(f"{msg.name} ({msg.role}): {text}")
+
+        prefix = (
+            "<system-info>Deterministic fallback summary; verified tool and "
+            "transaction state is provided separately."
+        )
+        suffix = "</system-info>"
+        max_chars = max(160, min(8000, int(self.model.context_size * 1.5)))
+        budget = max(0, max_chars - len(prefix) - len(suffix) - 2)
+        sections: list[str] = []
+
+        if previous and budget:
+            prior = re.sub(r"\s+", " ", previous).strip()
+            prior = prior[: max(0, budget // 3)]
+            if prior:
+                sections.append(f"Previous: {prior}")
+                budget -= len(sections[-1]) + 1
+
+        selected: list[str] = []
+        for entry in reversed(entries):
+            if budget <= 0:
+                break
+            clipped = entry[:budget]
+            selected.append(clipped)
+            budget -= len(clipped) + 1
+        sections.extend(reversed(selected))
+        body = "\n".join(sections)
+        return f"{prefix}\n{body}\n{suffix}"
 
     async def _limit_context_images(self, cfg: ContextConfig) -> None:
         """Limit the number of images in the context according to

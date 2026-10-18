@@ -9,16 +9,15 @@ from typing_extensions import deprecated
 
 from ..._logging import logger
 from ...workspace import LocalWorkspace
-from ._base import WorkspaceManagerBase, IsolationPolicy
+from ._base import IsolationPolicy, WorkspaceManagerBase
 
 
 class LocalWorkspaceManager(WorkspaceManagerBase):
     """Manages LocalWorkspace instances with TTL-based lazy lifecycle.
 
-    Workspaces are keyed by ``workspace_id`` in the cache. On cache miss
-    the manager reconstructs the workspace from ``basedir/agent_id`` — the
-    workdir is deterministic for local workspaces so no storage lookup is
-    needed.
+    Workspaces are keyed by ``workspace_id`` in both the cache and filesystem.
+    Different workspace ids cannot see each other's files, MCP declarations,
+    or file-backed memory.
     """
 
     def __init__(
@@ -125,8 +124,14 @@ class LocalWorkspaceManager(WorkspaceManagerBase):
                 self._cache[workspace_id] = (ws, time.monotonic())
                 return ws
 
-            # Workdir is deterministic for local workspaces — no storage needed
-            workdir = os.path.join(self._basedir, agent_id)
+            # The workspace id is the isolation boundary, as on sandboxed backends.
+            root = os.path.realpath(self._basedir)
+            workdir = os.path.realpath(os.path.join(root, workspace_id))
+            if not workdir.startswith(root + os.sep):
+                raise ValueError(
+                    f"workspace_id {workspace_id!r} escapes the workspace "
+                    "base directory",
+                )
             ws = LocalWorkspace(
                 workspace_id=workspace_id,
                 workdir=workdir,
@@ -155,19 +160,17 @@ class LocalWorkspaceManager(WorkspaceManagerBase):
             falls back to :meth:`assign_workspace_id` under the
             manager's isolation policy and reuses the cache path.
         """
-        del user_id, session_id  # accepted for interface parity
-
-        workdir = os.path.join(self._basedir, agent_id)
-        os.makedirs(workdir, exist_ok=True)
-        ws = LocalWorkspace(
-            workdir=workdir,
-            default_mcps=self._default_mcps,
-            skill_paths=self._skill_paths,
+        workspace_id = await self.assign_isolated_workspace_id(
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id,
         )
-        await ws.initialize()
-        async with self._lock:
-            self._cache[ws.workspace_id] = (ws, time.monotonic())
-        return ws
+        return await self.get_workspace(
+            user_id,
+            agent_id,
+            session_id,
+            workspace_id,
+        )
 
     async def close(self, workspace_id: str) -> None:
         """Close and evict a single workspace from the cache."""

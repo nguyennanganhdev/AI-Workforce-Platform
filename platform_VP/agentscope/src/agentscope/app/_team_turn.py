@@ -159,7 +159,7 @@ async def start_team_turn(
     reply_owner_session_id: str,
     reply_owner_agent_id: str,
     customer_session_id: str,
-    mode: Literal["leader", "direct_mention", "specialist_question"],
+    mode: Literal["leader", "direct_mention"],
     task_id: str | None = None,
     storage: StorageBase | None = None,
     user_id: str | None = None,
@@ -195,14 +195,11 @@ async def register_user_input_request(
     question_key: str | None = None,
     storage: StorageBase | None = None,
     user_id: str | None = None,
-    specialist_owner_session_id: str | None = None,
-    specialist_owner_agent_id: str | None = None,
 ) -> tuple[TeamTurnState, bool, bool]:
-    """Record one customer question and optionally transfer reply ownership.
+    """Record one customer question without changing reply ownership.
 
     Returns ``(state, duplicate, first_question)``. Only one distinct question
-    may be pending. A specialist owner asks it directly; legacy callers may
-    keep the existing owner for proposal/review behavior.
+    may be pending. The current reply owner is the only customer-facing agent.
     """
     normalised = _normalise_question(question_key or content)
     async with bus.acquire_lock(
@@ -224,12 +221,6 @@ async def register_user_input_request(
             )
         elif task_id is not None:
             state.task_id = task_id
-        if specialist_owner_session_id is not None:
-            if specialist_owner_agent_id is None:
-                raise ValueError("specialist owner agent id is required")
-            state.reply_owner_session_id = specialist_owner_session_id
-            state.reply_owner_agent_id = specialist_owner_agent_id
-            state.mode = "specialist_question"
         duplicate = any(
             _is_similar_question(normalised, existing)
             for existing in state.pending_questions
@@ -257,48 +248,6 @@ async def register_user_input_request(
             user_id=user_id,
         )
         return state, False, first_question
-
-
-async def return_team_reply_to_leader(
-    bus: MessageBus,
-    team_id: str,
-    *,
-    specialist_session_id: str,
-    leader_session_id: str,
-    leader_agent_id: str,
-    storage: StorageBase | None = None,
-    user_id: str | None = None,
-) -> bool:
-    """Return a specialist-owned clarification turn to the team leader."""
-
-    async with bus.acquire_lock(
-        MessageBusKeys.team_turn_lock(team_id),
-        ttl_secs=MessageBusKeys.TEAM_TURN_LOCK_TTL_SECS,
-    ):
-        state = await get_team_turn(
-            bus,
-            team_id,
-            storage=storage,
-            user_id=user_id,
-        )
-        if (
-            state is None
-            or state.mode != "specialist_question"
-            or state.reply_owner_session_id != specialist_session_id
-        ):
-            return False
-        state.reply_owner_session_id = leader_session_id
-        state.reply_owner_agent_id = leader_agent_id
-        state.mode = "leader"
-        state.status = "running"
-        await _put_team_turn(
-            bus,
-            team_id,
-            state,
-            storage=storage,
-            user_id=user_id,
-        )
-        return True
 
 
 async def reject_user_input_request(

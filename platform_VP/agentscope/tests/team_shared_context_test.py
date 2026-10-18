@@ -3,7 +3,6 @@
 import asyncio
 import hashlib
 import json
-import re
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
@@ -13,7 +12,6 @@ from agentscope.app._shared_context import (
     SharedContextBudgetError,
     SharedContextConfig,
     SharedContextService,
-    SharedContextSummaryError,
 )
 from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
 from agentscope.app.middleware import InboxMiddleware, SharedContextIsolationMiddleware
@@ -24,7 +22,14 @@ from agentscope.app.storage import (
     TeamHandoffRecord,
     TeamSharedContextRecord,
 )
-from agentscope.message import AssistantMsg, HintBlock, SystemMsg, TextBlock, UserMsg
+from agentscope.message import (
+    AssistantMsg,
+    HintBlock,
+    SystemMsg,
+    TextBlock,
+    ToolCallBlock,
+    UserMsg,
+)
 from agentscope.model import ChatResponse, ChatUsage
 from agentscope.state import AgentState
 
@@ -84,10 +89,8 @@ class _MeasuredModel:
         self,
         *,
         fail_summary: bool = False,
-        invalid_sources: bool = False,
     ) -> None:
         self.fail_summary = fail_summary
-        self.invalid_sources = invalid_sources
         self.count_calls = 0
         self.summary_calls = 0
 
@@ -101,19 +104,11 @@ class _MeasuredModel:
         self.summary_calls += 1
         if self.fail_summary:
             raise RuntimeError("summarizer unavailable")
-        messages = kwargs["messages"]
-        prompt = "".join(message.get_text_content() or "" for message in messages)
-        source_ids = re.findall(r'"id":"([^"]+)".*?"kind":', prompt)
-        if '"source_ref":"previous_summary"' in prompt:
-            source_ids.append("previous_summary")
-        if self.invalid_sources:
-            source_ids = ["invented-event"]
         return SimpleNamespace(
             content={
                 "processed": [
                     {
                         "text": "Earlier shared work was completed",
-                        "source_event_ids": list(dict.fromkeys(source_ids)),
                     },
                 ],
                 "important_results": [],
@@ -344,6 +339,113 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertEqual(
             [event.id for event in represented],
             ["customer-1", "tool-1"],
+        )
+
+    async def test_booking_receipt_is_authoritative_and_same_call_is_reused(self):
+        customer = await self.service.append_event(
+            user_id="u",
+            team_id="booking-team",
+            kind="customer_message",
+            content="Book the selected flight",
+        )
+        call = ToolCallBlock(
+            id="booking-call",
+            name="mcp__travel__book_flight",
+            input='{"flight_id":"VN131"}',
+        )
+        exact = json.dumps(
+            {
+                "tool_call": call.model_dump(mode="json"),
+                "tool_result": {
+                    "id": "booking-call",
+                    "name": call.name,
+                    "output": [
+                        {
+                            "type": "text",
+                            "text": '{"booking_id":"FB-1","status":"confirmed"}',
+                        },
+                    ],
+                    "state": "success",
+                    "metadata": {},
+                },
+                "state": "success",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="booking-team",
+            task_id=customer.task_id,
+            kind="external_event",
+            content=exact,
+            delta=ContextDelta(add_confirmed_facts=(exact,)),
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="booking-team",
+            task_id=customer.task_id,
+            kind="result",
+            content="Booking FB-1 confirmed.",
+            source_session_id="booking-agent",
+        )
+
+        packet, _ = await self.service.prepare_packet(
+            model=self.model,  # type: ignore[arg-type]
+            user_id="u",
+            team_id="booking-team",
+            task_id=customer.task_id,
+        )
+        data = json.loads(packet)
+        self.assertIn("FB-1", json.dumps(data["authoritative_state"]))
+        self.assertNotIn("FB-1", json.dumps(data["recent_events"]))
+
+        middleware = SharedContextIsolationMiddleware(
+            "task",
+            self.service,
+            "u",
+            "booking-team",
+            task_id=customer.task_id,
+        )
+        executed = False
+
+        async def execute(**_kwargs):
+            nonlocal executed
+            executed = True
+            if False:
+                yield None
+
+        agent = SimpleNamespace(
+            state=AgentState(session_id="booking-session"),
+            name="Booking Agent",
+        )
+        reused = [
+            result
+            async for result in middleware.on_acting(
+                agent,
+                {"tool_call": call},
+                execute,
+            )
+        ]
+        self.assertFalse(executed)
+        self.assertTrue(reused[0].metadata["reused_authoritative_result"])
+        self.assertIn("FB-1", reused[0].content[0].text)
+
+        await self.service.append_event(
+            user_id="u",
+            team_id="booking-team",
+            task_id=customer.task_id,
+            kind="customer_message",
+            content="Check the booking again now",
+        )
+        self.assertIsNone(
+            await self.service.successful_tool_result(
+                "u",
+                "booking-team",
+                customer.task_id,
+                call.name,
+                call.input,
+            ),
         )
 
     def setUp(self) -> None:
@@ -578,7 +680,22 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertIn("Verified Place is available", packet)
         self.assertNotIn("raw-only-value", packet)
 
-    async def test_summary_retry_receives_source_error_and_scoped_schema(self) -> None:
+    def test_worker_report_is_trusted_without_tool_evidence(self):
+        report = SharedContextEvent(
+            id="worker-report",
+            revision=2,
+            task_id="task-1",
+            kind="answer",
+            content="Flight details supplied to the Leader",
+            source_session_id="flight-agent",
+        )
+
+        self.assertEqual(
+            {report.id},
+            self.service._trusted_event_ids({report.id: report}),
+        )
+
+    async def test_summary_retry_requires_only_concise_structured_text(self) -> None:
         prompts = []
         schemas = []
 
@@ -587,18 +704,15 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
                 prompts.append(kwargs["messages"][0].get_text_content())
                 schemas.append(kwargs["structured_model"].model_json_schema())
                 return SimpleNamespace(
-                    content={
-                        "processed": [
-                            {
-                                "text": "User selected an option",
-                                "source_event_ids": (
-                                    ["nested-message-id"]
-                                    if len(prompts) == 1
-                                    else ["event:3", "previous_summary"]
-                                ),
-                            }
-                        ]
-                    }
+                    content=(
+                        {}
+                        if len(prompts) == 1
+                        else {
+                            "processed": [
+                                {"text": "User selected an option"},
+                            ]
+                        }
+                    ),
                 )
 
         event = SharedContextEvent(
@@ -619,24 +733,17 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             Model(), prior, [event]
         )
         self.assertEqual((attempts, calls), (2, 2))
-        self.assertIn("nested-message-id", prompts[1])
-        self.assertIn("actual-event", text)
-        self.assertNotIn("nested-message-id", text)
-        enums = schemas[0]["$defs"]["ScopedSummaryPoint"]["properties"][
-            "source_event_ids"
-        ]["items"]["enum"]
-        self.assertEqual(set(enums), {"event:3", "previous_summary"})
+        self.assertIn("Previous validation error", prompts[1])
+        self.assertIn("User selected an option", text)
+        self.assertNotIn("source_event_ids", str(schemas[0]))
 
-    async def test_summary_missing_source_is_never_silently_accepted(self) -> None:
+    async def test_summary_does_not_require_per_event_citations(self) -> None:
         class Model(_MeasuredModel):
             async def generate_structured_output(model, **kwargs):
                 return SimpleNamespace(
                     content={
                         "processed": [
-                            {
-                                "text": "Partial",
-                                "source_event_ids": ["event:1"],
-                            }
+                            {"text": "Two customer requests were condensed"},
                         ]
                     }
                 )
@@ -651,8 +758,12 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             )
             for i in (1, 2)
         ]
-        with self.assertRaisesRegex(SharedContextSummaryError, "missing=.*event:2"):
-            await self.service._summarize(Model(), None, events)
+        text, _input, _output, attempts, calls = await self.service._summarize(
+            Model(), None, events
+        )
+        self.assertIn("Two customer requests were condensed", text)
+        self.assertNotIn("sources:", text)
+        self.assertEqual((attempts, calls), (1, 1))
 
     async def test_summary_may_omit_transient_internal_question(self) -> None:
         class Model(_MeasuredModel):
@@ -661,10 +772,7 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
                 return SimpleNamespace(
                     content={
                         "processed": [
-                            {
-                                "text": "Customer requirement preserved",
-                                "source_event_ids": ["event:1"],
-                            }
+                            {"text": "Customer requirement preserved"},
                         ]
                     }
                 )
@@ -690,8 +798,8 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             Model(), None, events
         )
 
-        self.assertIn("customer", text)
-        self.assertNotIn("peer-question", text)
+        self.assertIn("Customer requirement preserved", text)
+        self.assertNotIn("Provide the hotel price", text)
         self.assertEqual((attempts, calls), (1, 1))
 
     async def test_summary_may_omit_raw_tool_event_kept_as_authoritative_fact(
@@ -703,10 +811,7 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
                 return SimpleNamespace(
                     content={
                         "processed": [
-                            {
-                                "text": "Customer requirement preserved",
-                                "source_event_ids": ["event:1"],
-                            }
+                            {"text": "Customer requirement preserved"},
                         ]
                     }
                 )
@@ -732,8 +837,8 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             Model(), None, events
         )
 
-        self.assertIn("customer", text)
-        self.assertNotIn("provider-call", text)
+        self.assertIn("Customer requirement preserved", text)
+        self.assertNotIn("Raw provider envelope", text)
         self.assertEqual((attempts, calls), (1, 1))
 
     def test_legacy_single_summary_migrates_to_active_task(self) -> None:
@@ -960,6 +1065,33 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertNotIn("Unreferenced-result-two", references)
         self.assertEqual((isolated, tokens), ("", 0))
 
+    async def test_packet_exposes_customer_source_message_id(self) -> None:
+        await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            kind="customer_message",
+            content="Two adults, no special preference",
+            event_id="customer-event-1",
+            source_message_id="customer-message-1",
+        )
+
+        packet, _ = await self.service.prepare_packet(
+            model=self.model,  # type: ignore[arg-type]
+            user_id="u",
+            team_id="ticket-1",
+        )
+        data = json.loads(packet)
+        customer_item = next(
+            item
+            for item in data["authoritative_state"]["items"]
+            if item["authority"] == "customer_confirmed"
+        )
+
+        self.assertEqual(
+            ["customer-message-1"],
+            customer_item["source_message_ids"],
+        )
+
     async def test_reference_can_target_an_event_from_another_task(self) -> None:
         referenced = await self.service.append_event(
             user_id="u",
@@ -1027,9 +1159,11 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
 
         self.assertTrue(packet)
         self.assertLessEqual(measured, self.service.config.packet_max_tokens)
-        self.assertIn('"summary_failed_packet_fallback"', packet)
-        self.assertEqual(record.state.summaries, {})
+        self.assertNotIn('"summary_failed_packet_fallback"', packet)
+        self.assertIn(record.state.active_task_id, record.state.summaries)
+        self.assertIn("Deterministic conversation summary", packet)
         self.assertEqual(len(record.state.events), 8)
+        self.assertEqual(record.state.metrics.compactions, 1)
         self.assertEqual(record.state.metrics.compaction_failures, 1)
         self.assertEqual(failing.summary_calls, 2)
         self.assertEqual(record.state.metrics.last_summary_attempts, 2)
@@ -1105,26 +1239,21 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             newest_revision,
         )
 
-    async def test_summary_with_unverifiable_sources_is_rejected(self) -> None:
-        invalid = _MeasuredModel(invalid_sources=True)
-        for index in range(8):
-            await self.service.append_event(
-                user_id="u",
-                team_id="ticket-1",
-                kind="progress",
-                content=f"event-{index} " + ("x " * 30),
+    def test_repeated_events_are_deduped_before_summary(self) -> None:
+        events = [
+            SharedContextEvent(
+                id=f"result-{index}",
+                revision=index,
+                task_id="task",
+                kind="result",
+                content="Same flight result",
             )
+            for index in (1, 2)
+        ]
 
-        await self.service.prepare_packet(
-            model=invalid,  # type: ignore[arg-type]
-            user_id="u",
-            team_id="ticket-1",
-        )
-        record = await self.storage.get_team_shared_context("u", "ticket-1")
+        deduped = self.service._dedupe_summary_events(events)
 
-        self.assertEqual(record.state.summaries, {})
-        self.assertEqual(record.state.metrics.compaction_failures, 1)
-        self.assertEqual(invalid.summary_calls, 2)
+        self.assertEqual(["result-2"], [event.id for event in deduped])
 
     async def test_required_state_over_budget_fails_instead_of_truncating(self) -> None:
         service = SharedContextService(

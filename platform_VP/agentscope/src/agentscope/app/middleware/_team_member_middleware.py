@@ -68,6 +68,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         self._max_nudges: int = max_nudges
         self._pending_question = pending_question
         self._paused = False
+        self._reply_owner_question: str | None = None
         self._require_report = require_report
         self._require_input_readiness = require_input_readiness
 
@@ -139,19 +140,39 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
 
     async def on_reasoning(self, agent, input_kwargs, next_handler):
         self._paused = False
-        if self._pending_question and await self._pending_question():
-            self._paused = True
-            # No model call or new tool work while the customer owes an answer.
-            agent.state.append_context(
-                agent.name,
-                [
-                    HintBlock(
-                        hint="Internal assignment paused; wait for its dependency or reply-owner decision. Do not ask the customer for another agent's output."
-                    )
-                ],
-            )
-            yield agent.state.context[-1]
-            return
+        self._reply_owner_question = None
+        pending = await self._pending_question() if self._pending_question else None
+        if pending:
+            if not self._require_report:
+                self._reply_owner_question = pending
+                agent.state.append_context(
+                    agent.name,
+                    [
+                        HintBlock(
+                            hint=(
+                                "Ask the customer exactly this registered question "
+                                f"and nothing else: {pending}"
+                            ),
+                        ),
+                    ],
+                )
+                input_kwargs = {
+                    **input_kwargs,
+                    "tool_choice": ToolChoice(mode="none"),
+                }
+            else:
+                self._paused = True
+                # No model call or new tool work while the customer owes an answer.
+                agent.state.append_context(
+                    agent.name,
+                    [
+                        HintBlock(
+                            hint="Internal assignment paused; wait for its dependency or reply-owner decision. Do not ask the customer for another agent's output."
+                        )
+                    ],
+                )
+                yield agent.state.context[-1]
+                return
         if (
             self._last_tool_call_reports_to_leader(agent)
             or LeaderEvidenceMiddleware._expected_reports(agent)
@@ -172,8 +193,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     HintBlock(
                         hint=(
                             "Repeated tool calls returned identical results with no progress. "
-                            "Call TeamSay(to=null, kind='requires_user_input') "
-                            "for genuinely customer-owned missing information, or "
+                            "Send TeamSay(kind='requires_user_input') for genuinely "
+                            "customer-owned missing information; the runtime returns "
+                            "nested needs to your direct requester. Otherwise use "
                             f"TeamSay(to={self._leader_name!r}, kind='result') "
                             "to report the blocker. "
                             "Do not retry tools or invent an external identifier/outcome."
@@ -217,8 +239,8 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     content=[
                         TextBlock(
                             text=(
-                                "Input readiness required. Call InputReady first with exact customer evidence, "
-                                "or call TeamSay(kind='requires_user_input', to=null) for all missing inputs. "
+                                "Input readiness required. Call InputReady first with customer source_message_id from Shared Context, "
+                                "or send TeamSay(kind='requires_user_input') for all missing inputs; nested needs return to your requester. "
                                 "No business tool or peer handoff was executed."
                             ),
                         ),
@@ -302,9 +324,19 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 return False
             declared_kind = kwargs.get("kind")
             kind = result.metadata.get("kind", declared_kind or "result")
+            if (
+                kind == "requires_user_input"
+                and result.metadata.get("customer_question_registered")
+            ):
+                return True
             if kind == "requires_user_input" and self._is_null_target(
                 kwargs.get("to"),
             ):
+                return True
+            if kind == "answer" and result.metadata.get("effective_to"):
+                # The runtime may causally reroute a nested worker's result or
+                # missing-input need to the direct requester even when the model
+                # supplied ``to=null`` or incorrectly named the Leader.
                 return True
             if kind == "progress" or not kwargs.get("to"):
                 return False
@@ -363,7 +395,10 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 and result.state == ToolResultState.SUCCESS
                 and result.metadata.get("kind", kwargs.get("kind"))
                 == "requires_user_input"
-                and TeamMemberLoopMiddleware._is_null_target(kwargs.get("to"))
+                and (
+                    result.metadata.get("customer_question_registered")
+                    or TeamMemberLoopMiddleware._is_null_target(kwargs.get("to"))
+                )
             ):
                 content = kwargs.get("content")
                 return content.strip() if isinstance(content, str) else None
@@ -450,12 +485,31 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         nudges = 0
 
         async for evt in next_handler(**input_kwargs):
+            if self._reply_owner_question and isinstance(
+                evt,
+                (TextBlockStartEvent, TextBlockDeltaEvent, TextBlockEndEvent),
+            ):
+                continue
             if not isinstance(evt, ReplyEndEvent):
                 yield evt
                 continue
 
             # For the ReplyEndEvent
-            question = self._pending_customer_question(agent)
+            # Internal workers only register the question for the reply owner;
+            # a directly mentioned reply owner may ask it itself.
+            question = self._reply_owner_question or (
+                self._pending_customer_question(agent)
+                if not self._require_report
+                else None
+            )
+            if self._reply_owner_question:
+                for message in agent.state.context:
+                    if message.id == agent.state.reply_id:
+                        message.content = [
+                            block
+                            for block in message.content
+                            if not isinstance(block, TextBlock)
+                        ]
             if question and not self._reply_has_customer_question(
                 agent,
                 question,
@@ -550,11 +604,12 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             else:
                 instruction = (
                     "<system-reminder>You MUST call the tool `TeamSay` "
-                    "to report to the reply owner "
-                    f"{self._leader_name!r} with kind=result/error to finish your task. "
+                    "to finish your task. Answer an incoming peer question with "
+                    "kind=answer and its exact in_reply_to; only a root assignment "
+                    f"reports kind=result/error to {self._leader_name!r}. "
                     "If missing another agent's output, use TeamSay(to=that peer, kind=question, content=a specific task) and wait. "
                     "Progress alone is not a completed assignment. For genuinely customer-owned missing information, "
-                    "use TeamSay(to=null, kind=requires_user_input) and ask the customer directly."
+                    "send TeamSay(kind=requires_user_input); the runtime follows the caller chain."
                     "</system-reminder>"
                 )
 

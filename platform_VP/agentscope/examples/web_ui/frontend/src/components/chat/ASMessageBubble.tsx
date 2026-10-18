@@ -9,8 +9,8 @@ import type {
 	ToolResultBlock,
 } from '@agentscope-ai/agentscope/message';
 import {
-	ArrowDown,
-	ArrowUp,
+	ArrowRight,
+	Reply,
 	Check,
 	CheckCircle,
 	ChevronRight,
@@ -26,7 +26,13 @@ import { memo, useContext, useEffect, useRef, useState } from 'react';
 
 import { TicketViewContext } from './team-roster';
 import { DialogToolCard, HandoverCard, TeamMessageCard, TicketCard } from './TeamDialog';
-import { DIALOG_TOOLS, parseHandover, teamHintSource, teamMessageText, toolLabel } from './teamDialogText';
+import {
+	DIALOG_TOOLS,
+	parseHandover,
+	teamHintSource,
+	teamMessageText,
+	toolLabel,
+} from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
 import { DiffStats } from './tool-renderers/_shared';
 import { countDiffStats, getResultDiff } from './tool-renderers/_shared-utils';
@@ -53,7 +59,7 @@ import { Message, MessageFooter, MessageContent } from '@/components/ui/message'
 import { useAudioBlock, useReplayController } from '@/context/audio-context';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
-import { copyToClipboard, formatNumber, formatTime } from '@/utils/common';
+import { copyToClipboard, formatTime } from '@/utils/common';
 import 'streamdown/styles.css';
 
 /**
@@ -403,6 +409,8 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
+	teamChatMode?: 'customer-reply' | 'activity';
+	onReplyTo?: (agentId: string, name: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -417,20 +425,19 @@ interface MessageBubbleProps {
  * Running state is derived from `message.finished_at`: a missing or null
  * `finished_at` means the agent is still producing this reply. The bottom
  * status row shows a single left-aligned badge laid out as
- * `[state-icon] [duration] [↑in ↓out]`:
+ * `[state-icon] [duration]`:
  *   - State icon: spinning `Loader2` while running, static `CheckCircle`
  *     once finished.
  *   - Duration is `now - created_at` while running (ticking each second),
  *     `finished_at - created_at` once complete.
- *   - Token counts only appear once `usage` is populated with non-zero
- *     values — typically after the message finishes.
  *
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
+function ASMessageBubbleComponent({ message, teamChatMode, onReplyTo }: MessageBubbleProps) {
 	const ticketView = useContext(TicketViewContext);
 	const isUser = message.role === 'user';
+	const isTeamChat = teamChatMode !== undefined;
 	const { t } = useTranslation();
 	// A partner handover reads as the card reception confirmed (see the
 	// route's ticket_input); the lines the Leader reads stay in the message.
@@ -438,10 +445,7 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
 		: undefined;
 
-	const isRunning = !message.finished_at;
-	const hasUsage =
-		!!message.usage &&
-		((message.usage.input_tokens ?? 0) > 0 || (message.usage.output_tokens ?? 0) > 0);
+	const isRunning = !message.finished_at && !message.finished_reason;
 
 	// Tick once per second while running so the elapsed time updates live.
 	const [now, setNow] = useState(() => Date.now());
@@ -468,67 +472,156 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		.map((b) => b.text)
 		.join('\n\n');
 
+	const teamAgentId = message.metadata?.team_agent_id;
+	const communications = message.content.flatMap((block) => {
+		if (block.type !== 'tool_call' || block.name !== 'TeamSay') return [];
+		try {
+			const payload = JSON.parse(block.input) as {
+				to?: string | null;
+				kind?: string;
+				content?: string;
+			};
+			if (!payload.content || (!isTeamChat && plainText.includes(payload.content.trim())))
+				return [];
+			const result = message.content.find(
+				(item) => item.type === 'tool_result' && item.id === block.id,
+			) as ToolResultBlock | undefined;
+			const effectiveTo = result?.metadata?.effective_to;
+			return [
+				{
+					id: block.id,
+					...payload,
+					to: typeof effectiveTo === 'string' ? effectiveTo : payload.to,
+					failed: result?.state === 'error',
+				},
+			];
+		} catch {
+			return [];
+		}
+	});
+	const agentCommunications = communications.filter((communication) => {
+		const target = communication.to?.trim().toLowerCase();
+		return Boolean(
+			target &&
+			!['null', 'none', 'customer'].includes(target) &&
+			target.split('@')[0] !== message.name.trim().toLowerCase().split('@')[0],
+		);
+	});
 	const startMs = new Date(message.created_at).getTime();
-	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
+	const terminalTime =
+		message.finished_at ??
+		[...message.content].reverse().find((block) => block.finished_at)?.finished_at ??
+		message.created_at;
+	const endMs = isRunning ? now : new Date(terminalTime).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
 	const visibleBlocks = blocks.filter((block) => {
+		if (isTeamChat && (block.type === 'tool_call_group' || block.type === 'dialog'))
+			return false;
 		if (block.type === 'data' || (ticket?.request && block.type === 'text')) return false;
 		if (!ticketView) return true;
 		if (block.type === 'hint' && block.source) {
 			try {
 				if (JSON.parse(block.source).sublabel === 'Runtime State') return false;
-			} catch { /* Plain hint labels remain visible. */ }
+			} catch {
+				/* Plain hint labels remain visible. */
+			}
 		}
-		if (block.type === 'text' && /^(Đã gửi (tin cho người dùng|cho người dùng)|Đã giao việc cho phòng, chờ báo cáo)\.?$/.test(block.text.trim())) return false;
+		if (
+			block.type === 'text' &&
+			/^(Đã gửi (tin cho người dùng|cho người dùng)|Đã giao việc cho phòng, chờ báo cáo)\.?$/.test(
+				block.text.trim(),
+			)
+		)
+			return false;
 		return true;
 	});
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
-				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
-				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
-				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
-				{visibleBlocks
-					.map((block, index) => (
-						// Only the agent's prose gets a bubble. Thinking, hints and
-						// tool runs stay bare one-line disclosures — bubbling each
-						// would bury the answer under its own working. An empty text
-						// block (a reply that has not streamed a token yet) stays
-						// bare too, so no hollow bubble flashes.
-						<Bubble
-							key={index}
-							variant={
-								isUser
-									? 'question'
-									: block.type === 'text' && block.text
-										? 'agent'
-										: 'ghost'
-							}
-						>
-							<BubbleContent>
-								<ASBlock block={block} />
-							</BubbleContent>
-						</Bubble>
-					))}
-				{message.finished_reason === ReplyFinishedReason.ERROR && (
-					<Alert
-						variant="destructive"
-						className="m-2 w-[calc(100%-1rem)] border-red-200 bg-red-50 text-destructive dark:border-red-900 dark:bg-red-950 dark:text-red-50"
+				{!isUser && message.name && (!isTeamChat || agentCommunications.length === 0) && (
+					<div
+						className="px-2 pt-2 text-sm font-medium text-muted-foreground"
+						data-agent-name={message.name}
 					>
-						<TriangleAlert />
-						<AlertTitle>{t('messageBubble.error.title')}</AlertTitle>
-						<AlertDescription>
-							{ticketView ? (String(message.error?.type) === 'context_budget'
-								? 'Lượt trước bị gián đoạn do hội thoại quá dài. Dữ liệu phiếu vẫn được lưu; hãy tiếp tục trao đổi.'
-								: 'Lượt xử lý chưa hoàn tất. Vui lòng kiểm tra trạng thái phiếu và thử lại.') : t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
-								defaultValue:
-									message.error?.message ?? t('messageBubble.error.unknown'),
-							})}
-						</AlertDescription>
-					</Alert>
+						{message.name}
+					</div>
 				)}
+				{isTeamChat
+					? agentCommunications.map((communication) => (
+							<div
+								key={communication.id}
+								className="mx-2 my-2 flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+							>
+								<span className="font-medium text-foreground">{message.name}</span>
+								<ArrowRight className="size-3.5 shrink-0" />
+								<span className="font-medium text-foreground">
+									{communication.to?.split('@')[0]}
+								</span>
+								{communication.failed && (
+									<span className="text-destructive">· Gọi thất bại</span>
+								)}
+							</div>
+						))
+					: null}
+				{isTeamChat && isRunning && !plainText && (
+					<div className="shimmer px-2 py-2 text-sm text-muted-foreground">
+						{t('messageBubble.thinking')}
+					</div>
+				)}
+
+				{ticketView && message.metadata?.actor === 'management' && (
+					<p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>
+				)}
+				{ticketView && message.metadata?.audience === 'management' && (
+					<p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>
+				)}
+				{ticket?.request && (
+					<TicketCard request={ticket.request} facts={ticket.facts ?? []} />
+				)}
+				{visibleBlocks.map((block, index) => (
+					// Only the agent's prose gets a bubble. Thinking, hints and
+					// tool runs stay bare one-line disclosures — bubbling each
+					// would bury the answer under its own working. An empty text
+					// block (a reply that has not streamed a token yet) stays
+					// bare too, so no hollow bubble flashes.
+					<Bubble
+						key={index}
+						variant={
+							isUser
+								? 'question'
+								: block.type === 'text' && block.text
+									? 'agent'
+									: 'ghost'
+						}
+					>
+						<BubbleContent>
+							<ASBlock block={block} />
+						</BubbleContent>
+					</Bubble>
+				))}
+				{teamChatMode !== 'activity' &&
+					message.finished_reason === ReplyFinishedReason.ERROR && (
+						<Alert
+							variant="destructive"
+							className="m-2 w-[calc(100%-1rem)] border-red-200 bg-red-50 text-destructive dark:border-red-900 dark:bg-red-950 dark:text-red-50"
+						>
+							<TriangleAlert />
+							<AlertTitle>{t('messageBubble.error.title')}</AlertTitle>
+							<AlertDescription>
+								{ticketView
+									? String(message.error?.type) === 'context_budget'
+										? 'Lượt trước bị gián đoạn do hội thoại quá dài. Dữ liệu phiếu vẫn được lưu; hãy tiếp tục trao đổi.'
+										: 'Lượt xử lý chưa hoàn tất. Vui lòng kiểm tra trạng thái phiếu và thử lại.'
+									: t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
+											defaultValue:
+												message.error?.message ??
+												t('messageBubble.error.unknown'),
+										})}
+							</AlertDescription>
+						</Alert>
+					)}
 				<AttachmentGroup className="max-w-full">
 					{blocks
 						.filter((block) => block.type === 'data')
@@ -542,7 +635,7 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 							<CopyButton text={plainText} />
 						</MessageFooter>
 					)
-				) : (
+				) : teamChatMode === 'activity' ? null : (
 					<MessageFooter className="gap-1 font-mono">
 						<Badge
 							variant="secondary"
@@ -554,23 +647,21 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 								<CheckCircle data-icon="inline-start" />
 							)}
 							<span className="tabular-nums tracking-tighter">{elapsedText}</span>
-							{hasUsage && (
-								<>
-									<ArrowUp data-icon="inline-start" className="ml-1" />
-									<span className="tabular-nums">
-										{formatNumber(message.usage?.input_tokens ?? 0)}
-									</span>
-									<ArrowDown data-icon="inline-start" className="ml-1" />
-									<span className="tabular-nums">
-										{formatNumber(message.usage?.output_tokens ?? 0)}
-									</span>
-								</>
-							)}
 							{audioBlocks.map((block) => (
 								<AudioInlineControl key={block.id} block={block} />
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
+						{onReplyTo && plainText && typeof teamAgentId === 'string' && (
+							<Button
+								variant="ghost"
+								size="xs"
+								onClick={() => onReplyTo(teamAgentId, message.name)}
+								aria-label={`Trả lời ${message.name}`}
+							>
+								<Reply className="size-3" /> Trả lời
+							</Button>
+						)}
 					</MessageFooter>
 				)}
 			</MessageContent>
@@ -644,7 +735,13 @@ interface ASBlockProps {
 	block: ExtendedContentBlock;
 }
 
-function BlockDuration({ createdAt, finishedAt }: { createdAt?: string; finishedAt?: string | null }) {
+function BlockDuration({
+	createdAt,
+	finishedAt,
+}: {
+	createdAt?: string;
+	finishedAt?: string | null;
+}) {
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => {
 		if (!createdAt || finishedAt) return;
@@ -652,7 +749,11 @@ function BlockDuration({ createdAt, finishedAt }: { createdAt?: string; finished
 		return () => clearInterval(timer);
 	}, [createdAt, finishedAt]);
 	if (!createdAt) return null;
-	const seconds = Math.max(0, ((finishedAt ? new Date(finishedAt).getTime() : now) - new Date(createdAt).getTime()) / 1000);
+	const seconds = Math.max(
+		0,
+		((finishedAt ? new Date(finishedAt).getTime() : now) - new Date(createdAt).getTime()) /
+			1000,
+	);
 	return <span className="ml-2 text-xs tabular-nums">{formatTime(seconds)}</span>;
 }
 
@@ -738,7 +839,12 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			const team = teamHintSource(block.source);
 			if (team && typeof block.hint === 'string') {
 				return (
-					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} at={block.created_at} />
+					<TeamMessageCard
+						sender={team.sender}
+						kind={team.kind}
+						text={block.hint}
+						at={block.created_at}
+					/>
 				);
 			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
@@ -791,7 +897,10 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 							)}
 						>
 							<span>{hintLabel + (hintSublabel ? ` - ${hintSublabel}` : '')}</span>
-							<BlockDuration createdAt={block.created_at} finishedAt={block.finished_at} />
+							<BlockDuration
+								createdAt={block.created_at}
+								finishedAt={block.finished_at}
+							/>
 							<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
 						</div>
 					</CollapsibleTrigger>
@@ -804,10 +913,29 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			);
 		}
 		case 'tool_call_group': {
-			if (ticketView) return <div className="space-y-1 text-xs text-muted-foreground">{block.calls.map(({ call, result }) => {
-				const end = result?.finished_at ?? call.finished_at;
-				return <p key={call.id}>{toolLabel(call.name)} · {result?.state === 'error' ? 'Chưa thực hiện được' : result?.state === 'success' ? 'Đã có kết quả' : result?.state === 'denied' ? 'Không được phép' : result?.state === 'interrupted' ? 'Đã dừng' : 'Đang xử lý…'}<BlockDuration createdAt={call.created_at} finishedAt={end} /></p>;
-			})}</div>;
+			if (ticketView)
+				return (
+					<div className="space-y-1 text-xs text-muted-foreground">
+						{block.calls.map(({ call, result }) => {
+							const end = result?.finished_at ?? call.finished_at;
+							return (
+								<p key={call.id}>
+									{toolLabel(call.name)} ·{' '}
+									{result?.state === 'error'
+										? 'Chưa thực hiện được'
+										: result?.state === 'success'
+											? 'Đã có kết quả'
+											: result?.state === 'denied'
+												? 'Không được phép'
+												: result?.state === 'interrupted'
+													? 'Đã dừng'
+													: 'Đang xử lý…'}
+									<BlockDuration createdAt={call.created_at} finishedAt={end} />
+								</p>
+							);
+						})}
+					</div>
+				);
 			const { title, insertions, deletions } = summarizeToolGroup(block.calls, t);
 			const hasRunningCall = block.calls.some(
 				(c) => !c.result || c.result.state === 'running',

@@ -19,7 +19,6 @@ from .._team_turn import (
     get_team_turn,
     register_user_input_request,
     reject_user_input_request,
-    return_team_reply_to_leader,
 )
 from ..message_bus import MessageBusKeys
 from ..storage import (
@@ -75,8 +74,9 @@ class _TeamSayParams(ParamsBase):
         description=(
             "Recipient member handle. Leaders may pass ``null`` to broadcast. "
             "Workers must use a specific roster handle except when "
-            "``kind=requires_user_input``: then ``null`` transfers temporary "
-            "customer-clarification ownership and does not broadcast."
+            "``kind=requires_user_input``: then ``null`` routes a nested "
+            "request back to the direct requester, or a root request to the "
+            "current reply owner. The runtime owns this causal routing."
         ),
     )
     kind: Literal[
@@ -181,12 +181,18 @@ when done — just wait for their message. \
 - Each invited member starts working immediately. When it finishes its task, \
 it calls ``TeamSay`` to report results back to you. You do not need to prompt \
 it again — just wait for its reply.
-- **DO NOT** reply to a member's report message unless you have further \
-questions or requirements. ``TeamSay`` is for coordination, not chit-chat — \
-your top priority is to complete the overall task.
-- The fixed Workforce Leader never asks for task-specific missing information.
-  Delegate intake to the responsible specialist; that specialist can ask the
-  customer directly and returns completed work for final synthesis.
+- **DO NOT** call this tool after a member sends ``kind=result`` or \
+``kind=error``. Those reports are terminal and the runtime resolves them \
+automatically. Do not acknowledge, approve, mark complete, repeat, question or \
+reopen them; synthesize the customer-facing answer instead. Only a \
+``kind=conflict`` may require bounded verification.
+- The fixed Workforce Leader is the customer-facing owner for an unaddressed
+  chat turn. A worker registers missing customer information with
+  ``kind=requires_user_input``; ask naturally for the same information once,
+  then route the customer's answer back with ``kind=answer`` and
+  ``in_reply_to`` set to the registered question id. Do not expose internal
+  wording, agents or routing. The runtime selects the responsible worker; do
+  not retry with another recipient or message kind.
 - Normal team work uses ``context_mode="task"`` and
   ``result_scope="shared"`` so later members receive important results.
   Use ``isolated`` only for an independent side question; it defaults to a
@@ -204,10 +210,13 @@ your top priority is to complete the overall task.
 _WORKER_DESCRIPTION = """Send an internal message to one team member.
 
 ## When to Use This Tool
-- **IMPORTANT**: When you are an internal collaborator and finish your assigned
-task, you MUST call this tool to report your results to the reply owner named in
-your runtime instructions. Report to the Leader only when the Leader is that
-reply owner.
+- If the current ``<team-message>`` has ``kind="question"``, finish that peer
+  dependency with ``kind="answer"`` and ``in_reply_to`` set to its
+  ``handoff_id``. The runtime routes that answer back to the requester.
+- **IMPORTANT**: When an incoming ``<team-message>`` has ``kind="question"``,
+  report only to that requester with ``kind="answer"`` and the exact
+  ``in_reply_to``. For a root assignment sent directly by the Leader, report the
+  terminal result/error to the Leader.
 - If the runtime says the customer directly addressed you, you own the customer
 reply. Use this tool to ask capable peers for bounded dependencies, then answer
 the customer directly after their verified results arrive. Do not send your
@@ -216,13 +225,19 @@ terminal ``result`` or ``error`` to the Leader in that direct-mention turn.
 - Use ``kind="question"`` when your own work needs the peer's answer; you will
   wait for it. A peer may ask you back for clarification, and the runtime will
   wake you to answer before you return to your existing wait.
-- Use ``kind="handoff"`` for a separate remaining deliverable you do not own.
-  The selected peer becomes active and is tracked independently.
+- Never use ``kind="result"`` to start work in another agent. ``result`` is a
+  terminal report; use ``question`` when you need the peer's output and
+  ``handoff`` only when transferring an independently owned deliverable.
+- Use ``kind="question"`` whenever you need another worker's output. Worker to
+  worker ``handoff`` is normalized to a causal question so the peer cannot
+  bypass you when it reports.
 - If genuinely customer-owned information is missing, call this exactly once
-  with ``to=null`` and ``kind="requires_user_input"``. This makes you the
-  temporary customer-facing owner for the clarification. Ask the same concise
-  question naturally in your final reply. After the customer answers, finish
-  your task and report the result to the Leader for synthesis.
+  with ``kind="requires_user_input"`` and a concise customer-ready question.
+  If another worker requested your work, the runtime returns that need to the
+  requester, never directly to the Leader. The requester collects every peer
+  response and propagates one grouped question upstream. A root worker's grouped
+  request reaches the Leader; only the current reply owner addresses the customer.
+  End the run after sending it.
 
 ## When NOT to Use This Tool
 - You want to talk to yourself — use your own reasoning.
@@ -412,9 +427,8 @@ class TeamSay(_TeamToolBase):
                     content=[
                         TextBlock(
                             text=(
-                                "TeamSay: the Workforce Leader does not ask "
-                                "task-specific customer questions. Delegate "
-                                "intake to the responsible specialist."
+                                "TeamSay: the Workforce Leader may ask only a "
+                                "question registered by a responsible worker."
                             ),
                         ),
                     ],
@@ -492,26 +506,6 @@ class TeamSay(_TeamToolBase):
                 team_id=team.id,
                 task_id=effective_task_id,
             )
-            try:
-                (
-                    hop_count,
-                    parent_thread_id,
-                ) = await shared_context.validate_handoff_link(
-                    self._user_id,
-                    team.id,
-                    effective_task_id,
-                    in_reply_to,
-                    thread_id,
-                    recipient_session_id=self._session_id,
-                )
-            except ValueError as exc:
-                return ToolChunk(
-                    content=[TextBlock(text=f"TeamSay: {exc}.")],
-                    state=ToolResultState.ERROR,
-                )
-            if thread_id is None:
-                thread_id = parent_thread_id
-
             def _handoff_id() -> str:
                 if idempotency_key:
                     return idempotency_key
@@ -558,23 +552,301 @@ class TeamSay(_TeamToolBase):
                     ),
                     leader.name,
                 )
+            session_names = {
+                sid: name for name, (sid, _agent_id) in directory.items()
+            }
+            pending_requests = (
+                await shared_context.pending_peer_requests(
+                    self._user_id,
+                    team.id,
+                    self._session_id,
+                    effective_task_id,
+                )
+                if self._role == "worker"
+                else ()
+            )
 
-            # A worker may take temporary reply ownership solely to obtain
-            # customer-owned information. Addressing the current owner keeps
-            # the legacy proposal/review path for non-Workforce callers.
-            direct_specialist_question = (
+            # A worker never transfers a nested assignment away from its caller.
+            # Treat worker-to-worker handoffs as causal questions so every
+            # result, error, or missing-input response has a concrete requester.
+            handoff_target = directory.get(to) if to is not None else None
+            if (
                 self._role == "worker"
-                and kind in {"requires_user_input", "user_input_proposal"}
+                and kind == "handoff"
+                and handoff_target is not None
+                and handoff_target[0] != leader.session_id
+            ):
+                kind = "question"
+
+            if (
+                self._role == "worker"
+                and pending_requests
+                and kind == "question"
+                and to == reply_owner_name
+            ):
+                if len(pending_requests) > 1:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: multiple upstream requests are "
+                                    "active. Ask the exact requester instead of "
+                                    "bypassing it to the reply owner."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                requester_session_id = pending_requests[0][1]
+                if requester_session_id != leader.session_id:
+                    to = session_names.get(
+                        requester_session_id,
+                        requester_session_id,
+                    )
+
+            if (
+                self._role == "worker"
+                and pending_requests
+                and kind == "handoff"
+                and to == reply_owner_name
+                and any(
+                    requester_session_id != leader.session_id
+                    for _question_id, requester_session_id in pending_requests
+                )
+            ):
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "TeamSay: a nested worker cannot hand work past "
+                                "its direct requester to the Leader. Reply to "
+                                "the requester or ask a bounded peer question."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                )
+
+            if self._role == "worker" and kind in {
+                "result",
+                "error",
+                "requires_user_input",
+                "user_input_proposal",
+                "conflict",
+                "progress",
+            }:
+                if (
+                    await shared_context.collaboration_pause(
+                        self._user_id,
+                        team.id,
+                        self._session_id,
+                        effective_task_id,
+                    )
+                    == "waiting_peer"
+                ):
+                    upstream_hint = (
+                        f" with in_reply_to={pending_requests[0][0]!r}"
+                        if len(pending_requests) == 1
+                        else ""
+                    )
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: your own peer dependency is still "
+                                    "unresolved. End this run and wait for all "
+                                    "direct peer responses before aggregating or "
+                                    f"reporting upstream{upstream_hint}."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                if pending_requests:
+                    if in_reply_to is None and len(pending_requests) > 1:
+                        return ToolChunk(
+                            content=[
+                                TextBlock(
+                                    text=(
+                                        "TeamSay: multiple peer questions are "
+                                        "waiting for your response. Use the exact "
+                                        "in_reply_to from the upstream request you "
+                                        "are answering."
+                                    ),
+                                ),
+                            ],
+                            state=ToolResultState.ERROR,
+                        )
+                    if in_reply_to is not None:
+                        matched_request = next(
+                            (
+                                request
+                                for request in pending_requests
+                                if request[0] == in_reply_to
+                            ),
+                            None,
+                        )
+                        if matched_request is None:
+                            return ToolChunk(
+                                content=[
+                                    TextBlock(
+                                        text=(
+                                            "TeamSay: in_reply_to does not identify "
+                                            "a peer question waiting for your answer."
+                                        ),
+                                    ),
+                                ],
+                                state=ToolResultState.ERROR,
+                            )
+                        question_id, requester_session_id = matched_request
+                    else:
+                        question_id, requester_session_id = pending_requests[0]
+                    requester_name = session_names.get(
+                        requester_session_id,
+                        requester_session_id,
+                    )
+                    if kind in {"result", "error"}:
+                        # The causal dependency is server-owned. Models often use
+                        # ``result`` for a completed peer answer; normalize it
+                        # instead of failing and making them retry toward Leader.
+                        kind = "answer"
+                        to = requester_name
+                        in_reply_to = question_id
+                    elif kind == "progress":
+                        to = requester_name
+                        in_reply_to = question_id
+                    elif requester_session_id != leader.session_id:
+                        # A nested specialist cannot bypass the worker that asked
+                        # it. Resolve this dependency back to that requester; the
+                        # requester can aggregate all peer needs and propagate one
+                        # customer question upstream. It may re-open this peer with
+                        # a new question after the customer supplies the value.
+                        nested_kind = kind
+                        kind = "answer"
+                        to = requester_name
+                        in_reply_to = question_id
+                        marker = (
+                            "PEER_CONFLICT"
+                            if nested_kind == "conflict"
+                            else "CUSTOMER_INPUT_REQUIRED"
+                        )
+                        content = f"{marker}: {content}"
+
+            if kind == "answer":
+                if not in_reply_to:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: kind='answer' requires in_reply_to "
+                                    "from the incoming peer question."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                parent_delivery = await shared_context.storage.get_team_handoff(
+                    self._user_id,
+                    hashlib.sha256(
+                        f"{in_reply_to}\0{self._session_id}".encode(),
+                    ).hexdigest(),
+                )
+                if parent_delivery is None or parent_delivery.kind not in {
+                    "question",
+                    "requires_user_input",
+                }:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: in_reply_to must identify a peer "
+                                    "or customer question delivered to this "
+                                    "reply owner."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                if parent_delivery.kind == "requires_user_input" and not (
+                    is_reply_owner
+                ):
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: only the current reply owner may "
+                                    "route a customer's answer."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                requester_name = session_names.get(parent_delivery.source_session_id)
+                if requester_name is None:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: the peer question requester is no "
+                                    "longer in the team."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                # The causal link, not a model-selected name, owns answer routing.
+                to = requester_name
+
+            # Validate after result/error normalization so a model that reports
+            # one pending peer answer as ``result`` still inherits the real
+            # parent thread and hop count.
+            try:
+                (
+                    hop_count,
+                    parent_thread_id,
+                ) = await shared_context.validate_handoff_link(
+                    self._user_id,
+                    team.id,
+                    effective_task_id,
+                    in_reply_to,
+                    thread_id,
+                    recipient_session_id=self._session_id,
+                )
+            except ValueError as exc:
+                return ToolChunk(
+                    content=[TextBlock(text=f"TeamSay: {exc}.")],
+                    state=ToolResultState.ERROR,
+                )
+            if thread_id is None:
+                thread_id = parent_thread_id
+
+            if (
+                self._role == "worker"
+                and kind in {"result", "error"}
                 and not is_reply_owner
-                and to is None
-            )
-            if direct_specialist_question:
-                kind = "requires_user_input"
-            proposal = (
-                kind in {"requires_user_input", "user_input_proposal"}
-                and not is_reply_owner
-                and not direct_specialist_question
-            )
+                and to != reply_owner_name
+            ):
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "TeamSay: terminal result/error must go to the "
+                                f"reply owner {reply_owner_name!r}. To obtain work "
+                                "from a peer, send kind='question'; to answer a "
+                                "peer, send kind='answer' with in_reply_to."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                )
+
+            # Missing customer information never transfers reply ownership.
+            # ``null`` remains a model-friendly shorthand for the current owner.
+            if self._role == "worker" and kind == "requires_user_input" and not (
+                is_reply_owner
+            ):
+                to = reply_owner_name
+            proposal = kind == "user_input_proposal" and not is_reply_owner
             if proposal:
                 if to != reply_owner_name:
                     return ToolChunk(
@@ -609,16 +881,26 @@ class TeamSay(_TeamToolBase):
                 # continue until it sends a concrete result/question/error.
                 kind = "progress"
 
-            if kind == "requires_user_input" and (
-                is_reply_owner or direct_specialist_question
-            ):
+            if kind == "requires_user_input":
+                if not is_reply_owner and to != reply_owner_name:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: requires_user_input must be sent "
+                                    f"to the reply owner {reply_owner_name!r}."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
                 question_id = _handoff_id()
                 turn, duplicate, _first = await register_user_input_request(
                     self._message_bus,
                     team.id,
                     content,
-                    default_reply_owner_session_id=self._session_id,
-                    default_reply_owner_agent_id=self._agent_id,
+                    default_reply_owner_session_id=leader.session_id,
+                    default_reply_owner_agent_id=leader.agent.id,
                     customer_session_id=(
                         turn.customer_session_id
                         if turn is not None
@@ -629,13 +911,25 @@ class TeamSay(_TeamToolBase):
                     question_key=question_key,
                     storage=shared_context.storage,
                     user_id=self._user_id,
-                    specialist_owner_session_id=(
-                        self._session_id if direct_specialist_question else None
-                    ),
-                    specialist_owner_agent_id=(
-                        self._agent_id if direct_specialist_question else None
-                    ),
                 )
+                if duplicate and (
+                    is_reply_owner or question_id not in turn.pending_question_ids
+                ):
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "Duplicate customer question suppressed; "
+                                    "the reply owner already has it."
+                                ),
+                            ),
+                        ],
+                        metadata={
+                            "kind": "requires_user_input",
+                            "customer_question_registered": True,
+                            "effective_to": reply_owner_name,
+                        },
+                    )
                 if not duplicate and effective_scope == "shared":
                     try:
                         question_event = await shared_context.append_event(
@@ -651,7 +945,11 @@ class TeamSay(_TeamToolBase):
                             in_reply_to=in_reply_to,
                             artifact_refs=artifact_refs,
                             hop_count=hop_count,
-                            reply_owner_agent_id=self._agent_id,
+                            reply_owner_agent_id=(
+                                turn.reply_owner_agent_id
+                                if turn is not None
+                                else leader.agent.id
+                            ),
                             based_on_revision=based_on_revision,
                             reference_event_ids=reference_event_ids,
                             delta=context_delta,
@@ -664,16 +962,6 @@ class TeamSay(_TeamToolBase):
                             storage=shared_context.storage,
                             user_id=self._user_id,
                         )
-                        if direct_specialist_question:
-                            await return_team_reply_to_leader(
-                                self._message_bus,
-                                team.id,
-                                specialist_session_id=self._session_id,
-                                leader_session_id=leader.session_id,
-                                leader_agent_id=leader.agent.id,
-                                storage=shared_context.storage,
-                                user_id=self._user_id,
-                            )
                         raise
                     if question_event.stale:
                         await reject_user_input_request(
@@ -695,20 +983,22 @@ class TeamSay(_TeamToolBase):
                             ],
                             state=ToolResultState.ERROR,
                         )
-                return ToolChunk(
-                    content=[
-                        TextBlock(
-                            text=(
-                                "Customer question already registered; ask it "
-                                "once in your final reply."
-                                if duplicate
-                                else "Customer question registered; ask it once "
-                                "in your final reply, then wait."
+                if is_reply_owner:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "Customer question registered; ask it once "
+                                    "in your final reply, then wait."
+                                ),
                             ),
-                        ),
-                    ],
-                    metadata={"kind": "requires_user_input"},
-                )
+                        ],
+                        metadata={
+                            "kind": "requires_user_input",
+                            "customer_question_registered": True,
+                            "effective_to": reply_owner_name,
+                        },
+                    )
 
             if self._role == "worker" and to is None:
                 return ToolChunk(
@@ -785,22 +1075,6 @@ class TeamSay(_TeamToolBase):
                     },
                 )
 
-            if (
-                self._role == "worker"
-                and kind == "requires_user_input"
-                and to != reply_owner_name
-            ):
-                return ToolChunk(
-                    content=[
-                        TextBlock(
-                            text=(
-                                "TeamSay: requires_user_input must be sent "
-                                f"to the reply owner {reply_owner_name!r}."
-                            ),
-                        ),
-                    ],
-                    state=ToolResultState.ERROR,
-                )
             if turn is not None and turn.status != "running":
                 reporting_to_owner = self._role == "worker" and to == reply_owner_name
                 if not reporting_to_owner:
@@ -815,6 +1089,49 @@ class TeamSay(_TeamToolBase):
                             ),
                         ],
                         state=ToolResultState.ERROR,
+                    )
+
+            if self._role == "leader" and is_reply_owner:
+                # A terminal report is already accepted by the runtime before
+                # the Leader reasons over it. Never deliver acknowledgements or
+                # follow-up work back to a completed/stopped sender; the next
+                # action belongs in the customer-facing response.
+                await shared_context.collaboration_review(
+                    self._user_id,
+                    team.id,
+                    self._session_id,
+                )
+                snapshot = await shared_context.storage.get_team_shared_context(
+                    self._user_id,
+                    team.id,
+                )
+                task = (
+                    snapshot.state.tasks.get(effective_task_id)
+                    if snapshot is not None
+                    else None
+                )
+                terminal_targets = [
+                    sid
+                    for sid, _aid in recipients
+                    if task is not None
+                    and (branch := task.collaboration.get(sid)) is not None
+                    and branch.customer_revision == task.latest_customer_revision
+                    and branch.status in {"completed", "stopped"}
+                ]
+                if terminal_targets:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: this member already sent a terminal "
+                                    "result/error. Do not contact it again in this "
+                                    "customer turn; answer the customer now using "
+                                    "the delivered report."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                        metadata={"reason": "terminal_report_already_delivered"},
                     )
 
             # Use the team directory so cross-owner invited agents retain
@@ -832,33 +1149,6 @@ class TeamSay(_TeamToolBase):
                 kind == "progress"
                 or (turn is not None and turn.status != "running")
             )
-            if kind == "requires_user_input":
-                turn, duplicate, first_question = await register_user_input_request(
-                    self._message_bus,
-                    team.id,
-                    content,
-                    default_reply_owner_session_id=leader.session_id,
-                    default_reply_owner_agent_id=leader.agent.id,
-                    customer_session_id=leader.session_id,
-                    task_id=effective_task_id,
-                    question_id=_handoff_id(),
-                    question_key=question_key,
-                    storage=shared_context.storage,
-                    user_id=self._user_id,
-                )
-                if duplicate:
-                    return ToolChunk(
-                        content=[
-                            TextBlock(
-                                text=(
-                                    "Duplicate customer question suppressed; "
-                                    "the reply owner already has it."
-                                ),
-                            ),
-                        ],
-                    )
-                wake = first_question and turn.status == "running"
-
             handoff_id = _handoff_id()
             # Journal before changing dependencies. The existing dispatcher
             # replays this intent after a crash between reservation and delivery.
@@ -910,19 +1200,8 @@ class TeamSay(_TeamToolBase):
                     },
                 )
                 await shared_context.persist_handoff(intent)
-            # A specialist owns only the temporary customer clarification.
-            # Its terminal reply must still settle the peer that requested it.
             coordination_owner_session_id = (
-                leader.session_id
-                if (
-                    turn is not None
-                    and turn.mode == "specialist_question"
-                    and turn.reply_owner_session_id == self._session_id
-                    and kind in {"result", "answer", "error"}
-                )
-                else turn.reply_owner_session_id
-                if turn is not None
-                else leader.session_id
+                turn.reply_owner_session_id if turn is not None else leader.session_id
             )
             coordination = await shared_context.coordinate_handoff(
                 user_id=self._user_id,
@@ -950,6 +1229,24 @@ class TeamSay(_TeamToolBase):
                 ),
             )
             kind, content = coordination["kind"], coordination["content"]
+            if coordination.get("duplicate"):
+                await shared_context.mark_handoff(intent, "consumed")
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "Duplicate team message suppressed; the first "
+                                "delivery remains authoritative. Do not retry it."
+                            ),
+                        ),
+                    ],
+                    metadata={
+                        "handoff_id": handoff_id,
+                        "kind": kind,
+                        "duplicate": True,
+                        "collaboration_status": coordination["status"],
+                    },
+                )
             # Carry server-owned dependency lineage into synthesized results
             # without requiring the model to reproduce opaque event IDs.
             reference_event_ids = tuple(
@@ -995,20 +1292,6 @@ class TeamSay(_TeamToolBase):
                             storage=shared_context.storage,
                             user_id=self._user_id,
                         )
-                    if (
-                        turn is not None
-                        and turn.mode == "specialist_question"
-                        and turn.reply_owner_session_id == self._session_id
-                    ):
-                        await return_team_reply_to_leader(
-                            self._message_bus,
-                            team.id,
-                            specialist_session_id=self._session_id,
-                            leader_session_id=leader.session_id,
-                            leader_agent_id=leader.agent.id,
-                            storage=shared_context.storage,
-                            user_id=self._user_id,
-                        )
                     return ToolChunk(
                         content=[
                             TextBlock(
@@ -1022,22 +1305,6 @@ class TeamSay(_TeamToolBase):
                         ],
                         state=ToolResultState.ERROR,
                     )
-
-            if (
-                turn is not None
-                and turn.mode == "specialist_question"
-                and turn.reply_owner_session_id == self._session_id
-                and kind in {"result", "answer", "error"}
-            ):
-                await return_team_reply_to_leader(
-                    self._message_bus,
-                    team.id,
-                    specialist_session_id=self._session_id,
-                    leader_session_id=leader.session_id,
-                    leader_agent_id=leader.agent.id,
-                    storage=shared_context.storage,
-                    user_id=self._user_id,
-                )
 
             directive_refs = reference_event_ids
             if context_mode == "references" and shared_event is not None:
@@ -1199,7 +1466,15 @@ class TeamSay(_TeamToolBase):
                 metadata={
                     "handoff_id": handoff_id,
                     "kind": kind,
+                    "effective_to": to,
                     "collaboration_status": coordination["status"],
+                    **(
+                        {
+                            "customer_question_registered": True,
+                        }
+                        if kind == "requires_user_input"
+                        else {}
+                    ),
                 },
             )
         except Exception as e:  # noqa: BLE001 - tool returns structured error

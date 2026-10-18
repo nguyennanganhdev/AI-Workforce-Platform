@@ -88,6 +88,14 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             )
         )
 
+    def test_optional_follow_up_does_not_hide_a_delivered_result(self):
+        text = (
+            "Chuyến bay VJ122 khởi hành lúc 08:45, tổng giá 2.010.000 VND. "
+            "Nếu cần thêm thông tin, vui lòng cho biết."
+        )
+
+        self.assertFalse(LeaderEvidenceMiddleware._is_customer_intake(text))
+
     async def test_leader_question_is_blocked_even_with_worker_evidence(self):
         middleware = LeaderEvidenceMiddleware(
             _Storage(),
@@ -153,7 +161,21 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             }
         self.assertEqual(1, LeaderEvidenceMiddleware._expected_reports(agent))
 
-    async def test_registered_specialist_question_ends_leader_silently(self):
+    def test_customer_answer_routing_counts_as_one_dispatch(self):
+        agent = self._agent(dispatched=True)
+        for call in agent.state.context[-1].get_content_blocks("tool_call"):
+            call.name = "TeamSay"
+            call.input = json.dumps(
+                {
+                    "kind": "answer",
+                    "content": "The customer selected account A.",
+                    "in_reply_to": "question-1",
+                },
+            )
+
+        self.assertEqual(1, LeaderEvidenceMiddleware._expected_reports(agent))
+
+    async def test_registered_worker_question_is_asked_by_leader(self):
         shared = _SharedContext((0, 0, 0, False))
         shared.pending_user_question = AsyncMock(
             return_value="Bạn cho mình mã yêu cầu được không?"
@@ -164,7 +186,9 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
 
         async def next_handler(**kwargs):
             for event in _text_round(
-                "reply-1", "bad", "Technician arrives in 30 minutes."
+                "reply-1",
+                "natural-question",
+                "Bạn cho mình xin mã yêu cầu để kiểm tra nhé?",
             ):
                 yield event
 
@@ -175,12 +199,45 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             )
         ]
         text = "".join(e.delta for e in output if isinstance(e, TextBlockDeltaEvent))
-        self.assertEqual(text, "")
-        self.assertEqual(len(output), 1)
-        self.assertIsInstance(output[0], ReplyEndEvent)
+        self.assertEqual("Bạn cho mình xin mã yêu cầu để kiểm tra nhé?", text)
+        self.assertNotEqual(text, await shared.pending_user_question())
         self.assertIsNone(output[-1].error)
 
-    async def test_pending_specialist_question_skips_another_leader_model_call(self):
+    async def test_settled_tool_only_turn_is_nudged_to_answer_customer(self):
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(),
+            _SharedContext((1, 0, 1, False)),
+            "u",
+            "leader",
+            "session-1",
+            wait_seconds=0,
+        )
+        agent = self._agent(dispatched=False)
+
+        async def next_handler(**kwargs):
+            del kwargs
+            yield ReplyEndEvent(session_id="session-1", reply_id="reply-1")
+            for event in _text_round(
+                "reply-1",
+                "customer-answer",
+                "Mình đã tổng hợp xong: hiện chưa có lựa chọn phù hợp.",
+            ):
+                yield event
+
+        output = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+        text = "".join(
+            event.delta for event in output if isinstance(event, TextBlockDeltaEvent)
+        )
+
+        self.assertEqual(
+            "Mình đã tổng hợp xong: hiện chưa có lựa chọn phù hợp.",
+            text,
+        )
+        self.assertTrue(
+            any(message.get_content_blocks("hint") for message in agent.state.context)
+        )
+
+    async def test_pending_worker_question_allows_leader_customer_reply(self):
         shared = _SharedContext((0, 0, 0, True))
         shared.pending_user_question = AsyncMock(
             return_value="Bạn đi mấy người và xuất phát từ đâu?",
@@ -190,11 +247,12 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         )
         agent = self._agent(dispatched=True)
         called = False
+        selected_tool_choice = None
 
         async def next_handler(**kwargs):
-            nonlocal called
-            del kwargs
+            nonlocal called, selected_tool_choice
             called = True
+            selected_tool_choice = kwargs.get("tool_choice")
             if False:
                 yield None
 
@@ -202,9 +260,9 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             event async for event in middleware.on_reasoning(agent, {}, next_handler)
         ]
 
-        self.assertFalse(called)
-        self.assertEqual(len(output), 1)
-        self.assertIsInstance(output[0].content[-1], HintBlock)
+        self.assertTrue(called)
+        self.assertEqual("none", selected_tool_choice.mode)
+        self.assertEqual(output, [])
 
     async def test_dispatched_planner_ends_before_next_model_call(self):
         shared = _SharedContext((0, 0, 0, True))
@@ -272,6 +330,43 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
                     )
                 ]
                 self.assertEqual(called, should_reason)
+
+    async def test_terminal_reports_force_customer_text_without_team_tools(self):
+        shared = _SharedContext((1, 0, 1, False))
+        task = SimpleNamespace(
+            latest_customer_revision=1,
+            collaboration={
+                "worker-session": SimpleNamespace(
+                    customer_revision=1,
+                    status="completed",
+                ),
+            },
+        )
+        shared.storage.get_team_shared_context.return_value = SimpleNamespace(
+            state=SimpleNamespace(active_task_id="task", tasks={"task": task}),
+        )
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(), shared, "u", "leader", "session-1"
+        )
+        selected_tool_choice = None
+
+        async def next_handler(**kwargs):
+            nonlocal selected_tool_choice
+            selected_tool_choice = kwargs.get("tool_choice")
+            if False:
+                yield None
+
+        output = [
+            event
+            async for event in middleware.on_reasoning(
+                self._agent(dispatched=False),
+                {},
+                next_handler,
+            )
+        ]
+
+        self.assertEqual([], output)
+        self.assertEqual("none", selected_tool_choice.mode)
 
     async def test_delegation_ends_without_wait_timeout_placeholder(self):
         middleware = LeaderEvidenceMiddleware(
@@ -605,7 +700,7 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         )
 
         self.assertIn("chuyến bay A", text)
-        self.assertIn("chưa có đủ bằng chứng", text)
+        self.assertIn("chưa được các agent cung cấp", text)
         self.assertNotIn("xin leader", text.casefold())
         self.assertNotIn("thử lại", text.casefold())
         self.assertNotIn("sẽ tiếp tục", text.casefold())

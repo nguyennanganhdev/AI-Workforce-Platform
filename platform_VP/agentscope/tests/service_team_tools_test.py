@@ -231,6 +231,55 @@ class TestTeamCreate(_TeamToolsTestBase):
             },
         )
 
+    async def test_separate_leader_sessions_get_separate_team_memory(self) -> None:
+        """One leader agent may own many unrelated team conversations."""
+
+        first = await TeamCreate(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+        )(name="first", description="first conversation")
+        self.assertNotEqual(first.state, ToolResultState.ERROR)
+        first_session = await self.storage.get_session(
+            self.user_id, self.leader_agent.id, self.leader_session.id,
+        )
+
+        second_session = await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=self.leader_agent.id,
+            config=SessionConfig(workspace_id="second-workspace"),
+        )
+        second = await TeamCreate(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=second_session.id,
+            agent_id=self.leader_agent.id,
+        )(name="second", description="second conversation")
+        self.assertNotEqual(second.state, ToolResultState.ERROR)
+        second_session = await self.storage.get_session(
+            self.user_id, self.leader_agent.id, second_session.id,
+        )
+
+        self.assertNotEqual(first_session.id, second_session.id)
+        self.assertNotEqual(first_session.team_id, second_session.team_id)
+        shared = SharedContextService(self.storage, self.bus)
+        await shared.append_event(
+            user_id=self.user_id,
+            team_id=first_session.team_id,
+            kind="customer_message",
+            content="first-team-only",
+        )
+        second_context = await self.storage.get_team_shared_context(
+            self.user_id,
+            second_session.team_id,
+        )
+        self.assertIsNone(second_context)
+
     async def test_team_charter_is_not_semantically_validated(self) -> None:
         await self.storage.upsert_message(
             self.user_id,
@@ -1036,7 +1085,12 @@ class TestTeamSay(_TeamToolsTestBase):
                 ],
                 "state": "running",
                 "is_last": True,
-                "metadata": {"handoff_id": AnyString(), "kind": "result", "collaboration_status": "running"},
+                "metadata": {
+                    "handoff_id": AnyString(),
+                    "kind": "result",
+                    "effective_to": target_agent.data.name,
+                    "collaboration_status": "running",
+                },
                 "id": AnyString(),
             },
         )
@@ -1104,7 +1158,12 @@ class TestTeamSay(_TeamToolsTestBase):
                 ],
                 "state": "running",
                 "is_last": True,
-                "metadata": {"handoff_id": AnyString(), "kind": "result", "collaboration_status": "running"},
+                "metadata": {
+                    "handoff_id": AnyString(),
+                    "kind": "result",
+                    "effective_to": None,
+                    "collaboration_status": "running",
+                },
                 "id": AnyString(),
             },
         )
@@ -1928,15 +1987,15 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
         self.assertEqual(member.owner_id, self.user_id)
         self.assertEqual(member.description, "Expert on X.")
 
-        # The borrowed session is distinct from Monday's primary
-        # session but inherits its workspace_id.
+        # Both the session and workspace are isolated from Monday's primary.
         self.assertNotEqual(member.session_id, self.monday_session.id)
         borrowed = await self.storage.get_session(
             self.user_id,
             self.monday_agent.id,
             member.session_id,
         )
-        self.assertEqual(borrowed.config.workspace_id, "ws-monday")
+        self.assertEqual(borrowed.state.session_id, member.session_id)
+        self.assertNotEqual(borrowed.config.workspace_id, "ws-monday")
         self.assertEqual(borrowed.team_id, team.id)
         self.assertEqual(borrowed.origin, TeamOrigin())
 
@@ -1957,6 +2016,121 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             max_count=10,
         )
         self.assertEqual(primary_inbox, [])
+
+    async def test_same_agent_gets_fresh_memory_in_each_team(self) -> None:
+        """Keeping an old team cannot leak its worker memory into a new one."""
+        target = f"Monday@{self.monday_agent.id[:8]}"
+        agent_config = self.monday_agent.data.model_copy(deep=True)
+        primary_state = self.monday_session.state.model_copy(deep=True)
+        primary_state.summary = "private primary-session memory"
+        primary_state.middle_context = {"private": True}
+        await self.storage.update_session_state(
+            self.user_id,
+            self.monday_agent.id,
+            self.monday_session.id,
+            primary_state,
+        )
+        first = await AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )(target=target, prompt="first assignment")
+        self.assertNotEqual(first.state, ToolResultState.ERROR)
+
+        first_leader = await self.storage.get_session(
+            self.user_id,
+            self.leader_agent.id,
+            self.leader_session.id,
+        )
+        first_team = await self.storage.get_team(
+            self.user_id,
+            first_leader.team_id,
+        )
+        first_member = first_team.data.members[0]
+        first_worker = await self.storage.get_session(
+            self.user_id,
+            self.monday_agent.id,
+            first_member.session_id,
+        )
+
+        second_leader = await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=self.leader_agent.id,
+            config=SessionConfig(workspace_id="ws-second-leader"),
+        )
+        created = await TeamCreate(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=second_leader.id,
+            agent_id=self.leader_agent.id,
+        )(name="second-team", description="independent conversation")
+        self.assertNotEqual(created.state, ToolResultState.ERROR)
+
+        second = await AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=second_leader.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )(target=target, prompt="second assignment")
+        self.assertNotEqual(second.state, ToolResultState.ERROR)
+
+        second_leader = await self.storage.get_session(
+            self.user_id,
+            self.leader_agent.id,
+            second_leader.id,
+        )
+        second_team = await self.storage.get_team(
+            self.user_id,
+            second_leader.team_id,
+        )
+        second_member = second_team.data.members[0]
+        second_worker = await self.storage.get_session(
+            self.user_id,
+            self.monday_agent.id,
+            second_member.session_id,
+        )
+
+        self.assertEqual(first_member.agent_id, second_member.agent_id)
+        self.assertEqual(first_member.agent_id, self.monday_agent.id)
+        stored_agent = await self.storage.get_agent(
+            self.user_id,
+            self.monday_agent.id,
+        )
+        self.assertEqual(stored_agent.data, agent_config)
+        self.assertNotEqual(first_team.id, second_team.id)
+        self.assertNotEqual(first_worker.id, second_worker.id)
+        self.assertNotEqual(
+            first_worker.config.workspace_id,
+            second_worker.config.workspace_id,
+        )
+        self.assertEqual(first_worker.state.session_id, first_worker.id)
+        self.assertEqual(second_worker.state.session_id, second_worker.id)
+        self.assertNotEqual(
+            first_worker.state.reply_context.reply_id,
+            second_worker.state.reply_context.reply_id,
+        )
+        for worker in (first_worker, second_worker):
+            self.assertEqual(worker.state.summary, "")
+            self.assertEqual(worker.state.context, [])
+            self.assertEqual(worker.state.tasks_context.tasks, [])
+            self.assertEqual(worker.state.middle_context, {})
+            self.assertEqual(worker.state.tool_context.read_file_cache, [])
+        primary = await self.storage.get_session(
+            self.user_id,
+            self.monday_agent.id,
+            self.monday_session.id,
+        )
+        self.assertEqual(primary.state.summary, "private primary-session memory")
+        self.assertEqual(primary.state.middle_context, {"private": True})
 
 
 class TestAgentInviteCrossOwner(_AgentInviteTestBase):

@@ -32,11 +32,26 @@ function parseArgs(input: string | undefined): Record<string, unknown> {
 type Tone = 'task' | 'report' | 'talk' | 'review' | 'error' | 'reply';
 
 const TONE: Record<Tone, { edge: string; pill: string }> = {
-	task: { edge: 'before:bg-sky-400', pill: 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300' },
-	report: { edge: 'before:bg-emerald-400', pill: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
-	talk: { edge: 'before:bg-violet-400', pill: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
-	review: { edge: 'before:bg-amber-400', pill: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
-	error: { edge: 'before:bg-red-400', pill: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300' },
+	task: {
+		edge: 'before:bg-sky-400',
+		pill: 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+	},
+	report: {
+		edge: 'before:bg-emerald-400',
+		pill: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+	},
+	talk: {
+		edge: 'before:bg-violet-400',
+		pill: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+	},
+	review: {
+		edge: 'before:bg-amber-400',
+		pill: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+	},
+	error: {
+		edge: 'before:bg-red-400',
+		pill: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300',
+	},
 	reply: { edge: 'before:bg-foreground/70', pill: 'bg-foreground text-background' },
 };
 
@@ -95,7 +110,9 @@ function ToolTrace({ calls }: { calls: RoomEntry[] }) {
 			<CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
 				<Wrench className="size-3.5 shrink-0" />
 				<span className="shrink-0">Đã gọi {calls.length} công cụ</span>
-				<span className="min-w-0 flex-1 truncate text-left font-mono">{names.join(' · ')}</span>
+				<span className="min-w-0 flex-1 truncate text-left font-mono">
+					{names.join(' · ')}
+				</span>
 				<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
 			</CollapsibleTrigger>
 			<CollapsibleContent>
@@ -103,7 +120,10 @@ function ToolTrace({ calls }: { calls: RoomEntry[] }) {
 					{calls.map((call, index) => {
 						const tool = toolLabel(call.text.split(' ')[0]);
 						return (
-							<li key={index} className="rounded-lg bg-muted/60 px-2.5 py-1.5 font-mono text-xs">
+							<li
+								key={index}
+								className="rounded-lg bg-muted/60 px-2.5 py-1.5 font-mono text-xs"
+							>
 								<span className="font-semibold">{tool}</span>
 							</li>
 						);
@@ -155,7 +175,12 @@ export function DialogCard({
 						</span>
 					</>
 				)}
-				<span className={cn('ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', tone.pill)}>
+				<span
+					className={cn(
+						'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+						tone.pill,
+					)}
+				>
 					{labelOf(kind, decision)}
 				</span>
 			</div>
@@ -213,7 +238,11 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 							from="Leader"
 							to={cleanName(String(item.target ?? ''))}
 							kind="assign"
-							note={after.length > 0 && <>Bắt đầu sau khi {after.join(', ')} báo kết quả</>}
+							note={
+								after.length > 0 && (
+									<>Bắt đầu sau khi {after.join(', ')} báo kết quả</>
+								)
+							}
 						>
 							<Markdown>{teamMessageText(String(item.prompt ?? ''))}</Markdown>
 						</DialogCard>
@@ -226,7 +255,10 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 		return (
 			<DialogCard
 				from="Leader"
-				to={cleanName(String(args.to ?? '')) || 'Cả phòng'}
+				to={
+					cleanName(String(pair.result?.metadata?.effective_to ?? args.to ?? '')) ||
+					'Cả phòng'
+				}
 				kind={String(args.kind ?? '')}
 				decision={String(args.decision ?? '')}
 				note={resultNote(pair)}
@@ -245,7 +277,11 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 			kind={refused ? 'error' : 'reply'}
 			note={refused ? 'Nội dung chưa được gửi cho cư dân.' : resultNote(pair)}
 		>
-			<Markdown>{refused ? 'Cần xác minh lại trước khi gửi cập nhật.' : teamMessageText(String(args.text ?? args.answer ?? ''))}</Markdown>
+			<Markdown>
+				{refused
+					? 'Cần xác minh lại trước khi gửi cập nhật.'
+					: teamMessageText(String(args.text ?? args.answer ?? ''))}
+			</Markdown>
 		</DialogCard>
 	);
 }
@@ -257,11 +293,16 @@ export function TicketCard({ request, facts }: { request: string; facts: string[
 			<div className="flex items-center gap-1.5 text-[13px]/[18px] text-muted-foreground">
 				<Inbox className="size-3.5" /> Yêu cầu từ lễ tân
 			</div>
-			<p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[15px]/6 text-foreground">{request}</p>
+			<p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[15px]/6 text-foreground">
+				{request}
+			</p>
 			{facts.length > 0 && (
 				<div className="mt-2 flex flex-wrap gap-1.5">
 					{facts.map((fact) => (
-						<span key={fact} className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+						<span
+							key={fact}
+							className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+						>
 							{fact}
 						</span>
 					))}

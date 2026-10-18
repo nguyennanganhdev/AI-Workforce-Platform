@@ -6,9 +6,10 @@ from collections.abc import Awaitable, Callable
 
 from ..._logging import logger
 from ...agent import Agent
-from ...message import Msg, TextBlock
+from ...message import Msg, TextBlock, ToolResultBlock, ToolResultState
 from ...middleware import MiddlewareBase
 from ...model import ChatResponse
+from ...tool import ToolResponse
 from .._shared_context import SharedContextBudgetError, SharedContextService
 from ..storage import ContextMode, StorageBase
 
@@ -338,6 +339,32 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             async for result in next_handler(**input_kwargs):
                 yield result
             return
+        call = input_kwargs["tool_call"]
+        if call.name.startswith("mcp__"):
+            cached = await self._service.successful_tool_result(
+                self._user_id,
+                self._team_id,
+                self._task_id,
+                call.name,
+                call.input,
+            )
+            if cached is not None:
+                prior = ToolResultBlock.model_validate(cached["tool_result"])
+                content = (
+                    prior.output
+                    if isinstance(prior.output, list)
+                    else [TextBlock(text=prior.output)]
+                )
+                yield ToolResponse(
+                    content=content,
+                    state=ToolResultState.SUCCESS,
+                    metadata={
+                        **prior.metadata,
+                        "reused_authoritative_result": True,
+                        "source_event_ids": cached["source_event_ids"],
+                    },
+                )
+                return
         remaining, epoch = await self._service.measure_collaboration(
             self._user_id, self._team_id, session_id, task_id=self._task_id
         )

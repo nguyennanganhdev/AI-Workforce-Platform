@@ -4,7 +4,6 @@ import {
 	Cable,
 	Calendars,
 	Compass,
-	Crown,
 	Hammer,
 	KeyRound,
 	Languages,
@@ -78,16 +77,6 @@ export function AppSidebar() {
 						<SidebarMenu>
 							<SidebarMenuItem>
 								<SidebarMenuButton
-									tooltip={{ children: 'Leader', hidden: false }}
-									isActive={location.pathname === '/workforce/leader'}
-									onClick={() => navigate('/workforce/leader')}
-									className="justify-center"
-								>
-									<Crown />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem>
-								<SidebarMenuButton
 									tooltip={{ children: 'Agent Builder', hidden: false }}
 									isActive={location.pathname === '/workforce/builder'}
 									onClick={() => navigate('/workforce/builder')}
@@ -108,7 +97,7 @@ export function AppSidebar() {
 							</SidebarMenuItem>
 							<SidebarMenuItem key={'chat'}>
 								<SidebarMenuButton
-									tooltip={{ children: 'Agent debug', hidden: false }}
+									tooltip={{ children: 'Chat', hidden: false }}
 									isActive={
 										location.pathname === '/chat' ||
 										location.pathname.startsWith('/chat/')

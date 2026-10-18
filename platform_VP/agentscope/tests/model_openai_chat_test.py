@@ -211,6 +211,23 @@ class TestOpenAIChatNonStream(IsolatedAsyncioTestCase):
 
         self.assertNotIn("extra_body", mock_create.call_args.kwargs)
 
+    async def test_reasoning_effort_is_forwarded_without_ui_toggle(self) -> None:
+        model = OpenAIChatModel(
+            credential=OpenAICredential(api_key="test"),
+            model="gpt-5.6-luna",
+            stream=False,
+            parameters=OpenAIChatModel.Parameters(reasoning_effort="high"),
+        )
+        model.client = self.mock_client
+        mock_create = AsyncMock(
+            return_value=_mock_completion(text="Done"),
+        )
+        self.mock_client.chat.completions.create = mock_create
+
+        await model([])
+
+        self.assertEqual(mock_create.call_args.kwargs["reasoning_effort"], "high")
+
     async def test_constructor_extra_body_forwarded(
         self,
     ) -> None:

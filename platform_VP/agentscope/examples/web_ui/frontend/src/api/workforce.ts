@@ -7,6 +7,8 @@ export interface BuilderTool {
 	mcp_name: string;
 	tool_name: string;
 	description: string;
+	input_keys: string[];
+	output_keys: string[];
 }
 
 export interface BuilderKnowledgeBase {

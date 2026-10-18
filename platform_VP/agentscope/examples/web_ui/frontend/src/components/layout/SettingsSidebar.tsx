@@ -3,7 +3,6 @@ import {
 	BookText,
 	Cable,
 	Calendars,
-	Crown,
 	Hammer,
 	KeyRound,
 	LibraryBig,
@@ -46,7 +45,6 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	{
 		label: 'shell.groupWorkforce',
 		items: [
-			{ label: 'shell.leader', icon: Crown, path: '/workforce/leader' },
 			{ label: 'shell.builder', icon: Hammer, path: '/workforce/builder' },
 			{ label: 'shell.agentStudio', icon: Users, path: '/workforce/agents', prefix: true },
 		],

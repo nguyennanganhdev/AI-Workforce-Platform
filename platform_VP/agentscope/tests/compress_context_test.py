@@ -2816,19 +2816,18 @@ class ContextCompressionTest(IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_summary_failure_truncates_context(self) -> None:
-        """Summary failures fall back to lossy context truncation."""
+    async def test_summary_failure_uses_deterministic_summary(self) -> None:
+        """Summary failures preserve a bounded local transcript summary."""
         agent, _ = _make_failing_compression_agent()
         expected_state = agent.state.model_copy(deep=True)
         expected_state.context = expected_state.context[1:]
-        expected_state.summary = (
-            "<system-info>Some earlier messages were truncated for limited "
-            "context.</system-info>"
-        )
 
         await agent.compress_context()
 
-        self.assertEqual(agent.state, expected_state)
+        self.assertEqual(agent.state.context, expected_state.context)
+        self.assertIn("Deterministic fallback summary", agent.state.summary)
+        self.assertIn("User (user):", agent.state.summary)
+        self.assertLessEqual(len(agent.state.summary), 200)
 
     async def test_summary_failure_raises_without_truncation_fallback(
         self,
@@ -2901,7 +2900,8 @@ class ContextCompressionTest(IsolatedAsyncioTestCase):
 
         await agent.compress_context()
 
-        self.assertEqual(agent.state, expected_state)
+        self.assertEqual(agent.state.context, expected_state.context)
+        self.assertEqual(agent.state.summary.count(reminder), 1)
 
     async def asyncTearDown(self) -> None:
         """The async teardown method."""
