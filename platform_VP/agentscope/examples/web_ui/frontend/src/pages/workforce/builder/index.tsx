@@ -315,7 +315,7 @@ export function AgentBuilderPage() {
 	};
 	const undecided = (proposal?.planned_agents ?? []).filter((agent) => agent.similar && !decisions[agent.name]);
 
-	const publish = async () => {
+	const publish = async (onlyPassed = false) => {
 		if (!proposal?.proposal_id) return;
 		setWorking(true);
 		const startedAt = Date.now();
@@ -325,8 +325,9 @@ export function AgentBuilderPage() {
 				proposal.conversation_id,
 				proposal.proposal_id,
 				proposal.revision,
+				onlyPassed,
 			);
-			setProposal({ ...proposal, status: 'published' });
+			if (!onlyPassed) setProposal({ ...proposal, status: 'published' });
 			await refreshConversation(proposal.conversation_id);
 			await loadAgents();
 			const updated = result.agents.filter((agent) => agent.updated).length;
@@ -369,6 +370,8 @@ export function AgentBuilderPage() {
 			setWorking(false);
 		}
 	};
+	// Agents that passed can go live now; the rest stay in the proposal to be fixed.
+	const passedCount = (proposal?.agents ?? []).filter((agent) => !agent.reuse_agent_id && agent.evaluation.passed).length;
 	const repairRounds = Math.max(0, ...(proposal?.agents ?? []).map((agent) => agent.evaluation.repair?.round ?? 0));
 	const canRepair =
 		proposal?.status === 'blocked' &&
@@ -520,8 +523,13 @@ export function AgentBuilderPage() {
 										</p>
 									</div>
 									{proposal.status === 'ready' && (
-										<Button onClick={publish} disabled={working}>
+										<Button onClick={() => void publish()} disabled={working}>
 											<Rocket /> Phát hành
+										</Button>
+									)}
+									{proposal.status === 'blocked' && passedCount > 0 && (
+										<Button variant="outline" onClick={() => void publish(true)} disabled={working}>
+											<Rocket /> Phát hành {passedCount} agent đã đạt
 										</Button>
 									)}
 									{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (

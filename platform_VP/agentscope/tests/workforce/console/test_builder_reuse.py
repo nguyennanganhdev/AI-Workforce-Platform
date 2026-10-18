@@ -134,6 +134,53 @@ def test_publishing_an_update_adds_a_version_to_the_existing_agent_and_reuse_cre
     assert record.id == "a1" and record.data.lifecycle_state == "published" and record.data.published_version >= 1
 
 
+def test_only_passed_publishes_the_passing_agents_and_keeps_the_rest_to_fix():
+    from datetime import UTC, datetime
+
+    from agentscope.app._agent_spec import AgentSpec, SpecTest, spec_hash
+    from agentscope.app._service._publish_gate import EVALUATOR, seal_report
+
+    spec = AgentSpec(name="Agent Vệ Sinh", tests=[SpecTest(id=f"t{n}", scenario=f"Hỏi {n}", expected="An toàn",
+                                                          safety_critical=n == 0) for n in range(5)])
+    report = seal_report(spec, {"spec_hash": spec_hash(spec), "evaluator": EVALUATOR, "ran_at": datetime.now(UTC).isoformat(),
+        "total": 5, "passed": 5, "pass_rate": 1., "errors": 0, "model_error": None,
+        "results": [{"test_id": t.id, "passed": True, "model_evaluated": True, "judge": {"passed": True}, "checks": [],
+                     "error": None} for t in spec.tests]})
+    old = existing("a1", "Agent Vệ Sinh", CLEANING)
+    passing = console.ProposedAgentView(name="Agent Vệ Sinh", objective=CLEANING, system_prompt="Bạn " * 20,
+        selected_tools=[], skill_name="", skill_markdown="", spec=spec.model_dump(mode="json"),
+        evaluation={"passed": True, "checks": {"static": True}, "model_report": report},
+        update_agent_id="a1", update_agent_name="Agent Vệ Sinh")
+    failing = console.ProposedAgentView(name="Agent Đặt Phòng", objective="Đặt phòng", system_prompt="Bạn " * 20,
+        selected_tools=[], skill_name="", skill_markdown="", spec={"name": "Agent Đặt Phòng"},
+        evaluation={"passed": False, "checks": {"static": True}, "publish_blocker": "Kiểm thử đạt 3/5"})
+    proposal = console.ProposalView(conversation_id="b1", proposal_id="p1", revision=1, status="blocked",
+        assistant_message="ok", chat_model_config=CONFIG, fixed_config={}, agents=[passing, failing])
+    message = AssistantMsg(name="builder", content="ok", structured_output={"workforce_builder_proposal": proposal.model_dump(mode="json")})
+    saved = []
+    storage = SimpleNamespace(get_session=AsyncMock(return_value=object()), list_messages=AsyncMock(return_value=([message], False)),
+        get_agent=AsyncMock(return_value=old), claim_builder_publish=AsyncMock(return_value=True), upsert_message=AsyncMock(),
+        upsert_agent=AsyncMock(side_effect=lambda _u, record: saved.append(record)))
+
+    def publish(only_passed):
+        return asyncio.run(console.publish_builder(console.PublishRequest(conversation_id="b1", proposal_id="p1",
+            expected_revision=1, only_passed=only_passed), SimpleNamespace(), "u", storage, object()))
+
+    with patch.object(console, "_primary_session", AsyncMock(return_value=SimpleNamespace(id="s1"))), \
+         patch("agentscope.app._service._agent_studio.apply_bindings", AsyncMock()):
+        with pytest.raises(HTTPException) as exc:
+            publish(False)
+        assert exc.value.status_code == 409 and not saved
+        result = publish(True)
+    assert [(a.agent_id, a.updated) for a in result.agents] == [("a1", True)]
+    assert [record.id for record in saved] == ["a1"]
+    kept = console.ProposalView.model_validate(
+        storage.upsert_message.await_args.args[2].structured_output["workforce_builder_proposal"])
+    assert kept.status == "blocked" and kept.proposal_id != "p1" and kept.revision == 2
+    assert [(item.name, item.reuse_agent_id) for item in kept.agents] == [("Agent Vệ Sinh", "a1"), ("Agent Đặt Phòng", None)]
+    assert "Agent Đặt Phòng" in storage.upsert_message.await_args.args[2].get_text_content()
+
+
 def test_the_library_note_stays_valid_json_and_counts_what_it_leaves_out():
     import json
 

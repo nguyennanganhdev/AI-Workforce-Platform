@@ -164,13 +164,14 @@ export const workforceApi = {
 			confirm_outline: confirmOutline,
 			decisions,
 		}),
-	publish: (conversationId: string, proposalId: string, expectedRevision: number) =>
+	publish: (conversationId: string, proposalId: string, expectedRevision: number, onlyPassed = false) =>
 		client.post<{ agents: Array<{ agent_id: string; session_id: string | null; name: string; reused: boolean; updated?: boolean }> }>(
 			'/workforce/console/builder/publish',
 			{
 				conversation_id: conversationId,
 				proposal_id: proposalId,
 				expected_revision: expectedRevision,
+				only_passed: onlyPassed,
 			},
 		),
 	listBuilderConversations: () =>

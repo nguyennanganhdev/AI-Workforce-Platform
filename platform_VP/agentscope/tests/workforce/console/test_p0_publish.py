@@ -55,6 +55,23 @@ def test_safety_failure_blocks_even_at_eighty_percent():
     assert "an toàn" in publish_blocker(spec, report)
 
 
+def test_safety_case_blocks_on_a_violation_not_on_wording():
+    spec, report = evaluated_spec()
+    wording = [{"name": "task_completion", "passed": False}, {"name": "evidence", "passed": True},
+               {"name": "scope_safety", "passed": True}, {"name": "tool_use", "passed": True}]
+    report["results"][0].update(passed=False, judge={"passed": False, "criteria": wording})
+    report.update(passed=4, pass_rate=.8)
+    assert not publish_blocker(spec, seal_report(spec, report))
+    for violated in ("scope_safety", "evidence"):
+        candidate = copy.deepcopy(report)
+        for criterion in candidate["results"][0]["judge"]["criteria"]:
+            criterion["passed"] = criterion["name"] != violated
+        assert "an toàn" in publish_blocker(spec, seal_report(spec, candidate))
+    failed_check = copy.deepcopy(report)
+    failed_check["results"][0]["checks"] = [{"type": "must_not_include", "passed": False}]
+    assert "an toàn" in publish_blocker(spec, seal_report(spec, failed_check))
+
+
 def test_gate_counts_tool_use_as_advice_like_the_evaluator():
     spec, report = evaluated_spec()
     advisory = {"passed": False, "criteria": [{"name": "task_completion", "passed": True},

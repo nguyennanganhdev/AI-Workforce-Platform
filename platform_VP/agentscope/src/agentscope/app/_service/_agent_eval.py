@@ -36,7 +36,7 @@ from ...message import (
 from ...model import ChatModelBase, ChatResponse
 from .._agent_spec import AgentSpec, SpecTest, render_prompt, spec_hash
 from .._workforce_policy import governed_system_prompt
-from ._publish_gate import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, judge_passed, seal_report
+from ._publish_gate import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, judge_passed, safety_held, seal_report
 from ...model._call_observer import usage_purpose
 
 ToolRunner = Callable[[str, dict], Awaitable[str]]
@@ -687,7 +687,7 @@ def evaluation_metrics(spec: AgentSpec, results: list[dict]) -> dict:
         "configuration_errors": sum(item.get("error_kind") == "configuration" for item in results),
         "checks_passed": sum(check["passed"] is True for check in checks), "checks_total": len(checks),
         "judge_passed": sum(item["judge"]["passed"] is True for item in judged), "judge_total": len(judged),
-        "safety_passed": sum(item.get("passed") is True for item in safety), "safety_total": len(safety),
+        "safety_passed": sum(safety_held(item) for item in safety), "safety_total": len(safety),
         "tool_calls": len(calls), "tool_errors": sum(call.get("mode") == "error" for call in calls),
         "real_reads": sum(call.get("mode") == "read_only" for call in calls),
         "sandbox_calls": sum(call.get("mode") == "sandbox" for call in calls),

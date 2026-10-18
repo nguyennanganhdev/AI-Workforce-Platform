@@ -271,6 +271,7 @@ class PublishRequest(BaseModel):
     conversation_id: str
     proposal_id: str
     expected_revision: int = Field(ge=1)
+    only_passed: bool = False
 
 
 class PublishedAgent(BaseModel):
@@ -2044,13 +2045,23 @@ async def publish_builder(
                 status_code=409,
                 detail="Builder proposal revision changed",
             )
-        if proposal.status != "ready":
+        # only_passed publishes the agents that passed now; the rest stay here to be fixed.
+        pending = [item for item in proposal.agents if not item.reuse_agent_id]
+        chosen = {id(item) for item in pending if not body.only_passed or item.evaluation.get("passed")}
+        partial = len(chosen) < len(pending)
+        if partial and not chosen:
+            raise HTTPException(status_code=409, detail="Chưa có agent nào đạt eval để phát hành.")
+        if not partial and proposal.status != "ready":
             raise HTTPException(
                 status_code=409,
                 detail="Proposal chưa đạt điều kiện phát hành",
             )
         for item in proposal.agents:
+            if not item.reuse_agent_id and id(item) not in chosen:
+                continue
             if item.reuse_agent_id:
+                if partial:
+                    continue
                 # Reused as it is in production: nothing about it changes.
                 reused = await storage.get_agent(user_id, item.reuse_agent_id)
                 if (reused is None or reused.data.lifecycle_state != "published"
@@ -2087,7 +2098,11 @@ async def publish_builder(
     result: list[PublishedAgent] = []
     prepared = []
     for item in proposal.agents:
+        if not item.reuse_agent_id and id(item) not in chosen:
+            continue
         if item.reuse_agent_id:
+            if partial:
+                continue
             result.append(
                 PublishedAgent(
                     agent_id=item.reuse_agent_id,
@@ -2188,14 +2203,30 @@ async def publish_builder(
 
     for record in prepared:
         await _save_agent(storage, user_id, record)
-    proposal.status = "published"
+    text = ("Mình đã phát hành agent lên platform.", "Your agent is now published on the platform.")
+    if partial:
+        # Published agents stay in the proposal as reused ones: later evals and repairs
+        # leave them alone, and the remainder is published under a new proposal id.
+        done = [item for item in proposal.agents if id(item) in chosen]
+        for item, record in zip(done, prepared, strict=True):
+            item.reuse_agent_id, item.reuse_agent_name = record.id, record.data.name
+            item.evaluation = {**item.evaluation, "reused": True}
+        left = [item.name for item in proposal.agents if not item.reuse_agent_id]
+        proposal.proposal_id = _generate_id()
+        proposal.revision += 1
+        proposal.status = "blocked"
+        text = (f"Đã phát hành {len(done)} agent đạt eval: {', '.join(item.name for item in done)}. "
+                f"Còn {len(left)} agent chưa đạt: {', '.join(left)}; sửa hoặc chạy lại eval rồi phát hành tiếp.",
+                f"Published {len(done)} agents that passed evaluation. {len(left)} still need fixes: {', '.join(left)}.")
+    else:
+        proposal.status = "published"
     await storage.upsert_message(
         user_id,
         body.conversation_id,
         AssistantMsg(
             name="agent_builder",
             content=(
-                "Mình đã phát hành agent lên platform."
+                text[0]
                 if _response_language(
                     next(
                         (
@@ -2207,7 +2238,7 @@ async def publish_builder(
                     ),
                 )
                 == "vi"
-                else "Your agent is now published on the platform."
+                else text[1]
             ),
             structured_output={
                 "workforce_builder_proposal": proposal.model_dump(mode="json"),
