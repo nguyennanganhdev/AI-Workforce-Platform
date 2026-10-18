@@ -1,11 +1,10 @@
 """Server-enforced customer-input readiness gate for coordinators."""
 
-import unicodedata
 from typing import Any
 
 from ...message import TextBlock, ToolResultState
 from ...tool import ToolChunk
-from ..storage._utils import _resolve_team_leader
+from .._shared_context import SharedContextService
 from ._team_tool_base import _TeamToolBase
 
 _INPUT_VALUE_SCHEMA = {
@@ -16,19 +15,18 @@ _INPUT_VALUE_SCHEMA = {
             "minLength": 1,
             "description": "The customer-owned value, without defaults or alternatives.",
         },
-        "evidence_quote": {
+        "source_message_id": {
             "type": "string",
             "minLength": 1,
-            "description": "An exact quote from a customer message that supports the value.",
+            "description": (
+                "The source_message_id of the supporting customer_message "
+                "event in Shared Context."
+            ),
         },
     },
-    "required": ["value", "evidence_quote"],
+    "required": ["value", "source_message_id"],
     "additionalProperties": False,
 }
-
-
-def _normalise_text(value: str) -> str:
-    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
 
 
 class InputReady(_TeamToolBase):
@@ -80,10 +78,13 @@ class InputReady(_TeamToolBase):
 
 Required intake: {declared}.
 Call this tool in a separate step, then wait for success before doing business
-work. Each evidence_quote must be copied exactly from a customer message and
-must unambiguously support its value. Never use a guess, default, example,
-provider result or peer message. If one value is missing, do not call this tool;
-call TeamSay(to=null, kind=requires_user_input) with one grouped question."""
+work. For each value, copy source_message_id from its supporting
+kind=customer_message event, or from source_message_ids on its customer-confirmed
+authoritative item, in Shared Context. Never use an agent/peer message, guess,
+default, example or provider result. If one value is missing, do not call this
+tool; send TeamSay(kind=requires_user_input) to the reply owner with one grouped
+question. If a source ID is rejected, reload Shared Context and correct the
+reference; do not ask the customer to repeat information already present."""
 
     async def __call__(self, inputs: dict[str, dict[str, str]]) -> ToolChunk:
         if self._required_inputs and set(inputs) != set(self._required_inputs):
@@ -92,7 +93,7 @@ call TeamSay(to=null, kind=requires_user_input) with one grouped question."""
             return ToolChunk(
                 content=[
                     TextBlock(
-                        text=f"InputReady rejected: missing={missing}, extra={extra}. Ask the customer for missing values.",
+                        text=f"InputReady rejected: missing={missing}, extra={extra}. Send one grouped question to the reply owner.",
                     ),
                 ],
                 state=ToolResultState.ERROR,
@@ -107,42 +108,40 @@ call TeamSay(to=null, kind=requires_user_input) with one grouped question."""
 
         try:
             team = await self._require_team()
-            leader = await _resolve_team_leader(self._storage, self._user_id, team)
-            if leader is None:
-                raise ValueError("team leader conversation is unavailable")
-            messages, _ = await self._storage.list_messages(
-                self._user_id,
-                leader.session_id,
-                limit=200,
+            shared_context = self._shared_context or SharedContextService(
+                self._storage,
+                self._message_bus,
             )
-            customer_messages = [
-                _normalise_text(block.text)
-                for message in messages
-                if message.role == "user"
-                for block in message.get_content_blocks()
-                if isinstance(block, TextBlock) and block.text.strip()
-            ]
+            record = await shared_context.storage.get_team_shared_context(
+                self._user_id,
+                team.id,
+            )
+            if record is None or record.state.active_task_id is None:
+                raise ValueError("shared customer context is unavailable")
+            active_task_id = record.state.active_task_id
+            customer_source_ids = {
+                event.source_message_id or event.id
+                for event in record.state.events
+                if event.kind == "customer_message"
+                and event.task_id == active_task_id
+                and not event.stale
+            }
             unsupported: list[str] = []
             for key, item in inputs.items():
                 value = str(item.get("value", "")).strip()
-                quote = str(item.get("evidence_quote", "")).strip()
-                normalised_quote = _normalise_text(quote)
-                if (
-                    not value
-                    or not normalised_quote
-                    or not any(
-                        normalised_quote in customer_message
-                        for customer_message in customer_messages
-                    )
-                ):
+                source_message_id = str(item.get("source_message_id", "")).strip()
+                if not value or source_message_id not in customer_source_ids:
                     unsupported.append(key)
             if unsupported:
                 return ToolChunk(
                     content=[
                         TextBlock(
                             text=(
-                                "InputReady rejected: exact customer evidence was not found for "
-                                f"{sorted(unsupported)}. Ask the customer instead of guessing."
+                                "InputReady rejected: valid customer source_message_id "
+                                f"was not found for {sorted(unsupported)}. Reload "
+                                "Shared Context and correct the source reference. "
+                                "Do not ask the customer to repeat information "
+                                "already present."
                             ),
                         ),
                     ],

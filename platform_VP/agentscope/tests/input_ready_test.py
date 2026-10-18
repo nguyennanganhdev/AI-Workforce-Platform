@@ -2,24 +2,29 @@
 
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from agentscope.app._tool._input_ready import InputReady
-from agentscope.message import ToolResultState, UserMsg
+from agentscope.message import ToolResultState
 
 
 class InputReadyTest(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
+        self.customer_source_id = "customer-message-1"
         self.storage = SimpleNamespace(
-            list_messages=AsyncMock(
-                return_value=(
-                    [
-                        UserMsg(
-                            "user",
-                            "Toi di tu Ha Noi, gom 2 nguoi vao cuoi tuan nay.",
-                        ),
-                    ],
-                    False,
+            get_team_shared_context=AsyncMock(
+                return_value=SimpleNamespace(
+                    state=SimpleNamespace(
+                        active_task_id="task-1",
+                        events=[
+                            SimpleNamespace(
+                                kind="customer_message",
+                                task_id="task-1",
+                                stale=False,
+                                source_message_id=self.customer_source_id,
+                            ),
+                        ],
+                    ),
                 ),
             ),
         )
@@ -35,38 +40,44 @@ class InputReadyTest(IsolatedAsyncioTestCase):
                 {"key": "party_size", "description": "Number of people"},
             ),
         )
-        self.tool._require_team = AsyncMock(return_value=object())
+        self.tool._require_team = AsyncMock(return_value=SimpleNamespace(id="team-1"))
 
-    @patch(
-        "agentscope.app._tool._input_ready._resolve_team_leader",
-        new_callable=AsyncMock,
-    )
-    async def test_accepts_exact_customer_evidence(self, resolve: AsyncMock) -> None:
-        resolve.return_value = SimpleNamespace(session_id="leader-session")
-
+    async def test_accepts_authoritative_customer_source(self) -> None:
         result = await self.tool(
             inputs={
-                "origin": {"value": "Ha Noi", "evidence_quote": "tu Ha Noi"},
-                "party_size": {"value": "2", "evidence_quote": "2 nguoi"},
+                "origin": {
+                    "value": "Ha Noi",
+                    "source_message_id": self.customer_source_id,
+                },
+                "party_size": {
+                    "value": "2",
+                    "source_message_id": self.customer_source_id,
+                },
             },
         )
 
         self.assertEqual(ToolResultState.SUCCESS, result.state)
         self.assertTrue(result.metadata["input_ready"])
+        item_schema = self.tool.input_schema["properties"]["inputs"]["properties"]
+        self.assertEqual(
+            ["value", "source_message_id"],
+            item_schema["origin"]["required"],
+        )
 
-    @patch(
-        "agentscope.app._tool._input_ready._resolve_team_leader",
-        new_callable=AsyncMock,
-    )
-    async def test_rejects_missing_customer_evidence(self, resolve: AsyncMock) -> None:
-        resolve.return_value = SimpleNamespace(session_id="leader-session")
-
+    async def test_rejects_unknown_customer_source(self) -> None:
         result = await self.tool(
             inputs={
-                "origin": {"value": "Ho Chi Minh", "evidence_quote": "Ho Chi Minh"},
-                "party_size": {"value": "2", "evidence_quote": "2 nguoi"},
+                "origin": {
+                    "value": "Ho Chi Minh",
+                    "source_message_id": "peer-message-1",
+                },
+                "party_size": {
+                    "value": "2",
+                    "source_message_id": self.customer_source_id,
+                },
             },
         )
 
         self.assertEqual(ToolResultState.ERROR, result.state)
         self.assertIn("origin", result.content[0].text)
+        self.assertIn("Do not ask the customer to repeat", result.content[0].text)

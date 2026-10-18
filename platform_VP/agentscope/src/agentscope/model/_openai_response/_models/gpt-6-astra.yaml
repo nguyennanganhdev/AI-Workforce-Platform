@@ -23,3 +23,13 @@ parameter_overrides:
   # thinking toggle has nothing to surface — reasoning_effort is the knob.
   thinking_enable:
     hidden: true
+  reasoning_effort:
+    default: medium
+    enum:
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
+  temperature:
+    hidden: true

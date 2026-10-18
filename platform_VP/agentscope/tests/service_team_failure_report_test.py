@@ -18,6 +18,7 @@ from utils import AnyString
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._bus_ops import deliver_to_inbox
 from agentscope.app._service import ChatService
+from agentscope.app._service._chat import _WorkerContext
 from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
 from agentscope.app.storage import (
     AgentData,
@@ -26,6 +27,7 @@ from agentscope.app.storage import (
     SessionConfig,
     SessionRecord,
     TeamData,
+    TeamMember,
     TeamRecord,
     TeamSharedContextRecord,
     TeamTurnRecord,
@@ -366,6 +368,81 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
                 ),
             },
         )
+
+    async def test_nested_worker_failure_returns_only_to_direct_requester(self) -> None:
+        """A failed child wakes its caller without bypassing it to the leader."""
+
+        flight_agent = _agent("agent-f", "flight", source="team")
+        flight_session = _session("session-f", flight_agent.id)
+        self.storage.agents[flight_agent.id] = flight_agent
+        self.storage.sessions[flight_session.id] = flight_session
+        self.team.data.members = [
+            TeamMember(
+                owner_id=_USER,
+                agent_id=self.worker_agent.id,
+                session_id=self.worker_session.id,
+                role="created",
+            ),
+            TeamMember(
+                owner_id=_USER,
+                agent_id=flight_agent.id,
+                session_id=flight_session.id,
+                role="created",
+            ),
+        ]
+        service = ChatService(
+            storage=self.storage,
+            workspace_manager=self.workspace_manager,
+            scheduler_manager=object(),
+            background_task_manager=object(),
+            message_bus=self.bus,
+            resource_access_service=object(),
+        )
+        await service._shared_context.append_event(
+            user_id=_USER,
+            team_id=self.team.id,
+            kind="customer_message",
+            content="Plan the trip",
+        )
+        task_id = await service._shared_context.active_task_id(
+            _USER,
+            self.team.id,
+        )
+        await service._shared_context.coordinate_handoff(
+            user_id=_USER,
+            team_id=self.team.id,
+            task_id=task_id,
+            sender=self.worker_session.id,
+            recipients=(flight_session.id,),
+            owner=self.leader_session.id,
+            handoff_id="planner-to-flight",
+            kind="question",
+            content="Find flights",
+        )
+
+        await service._notify_leader_of_failure(
+            _USER,
+            _WorkerContext(
+                team_id=self.team.id,
+                leader_session_id=self.leader_session.id,
+                leader_agent_id=self.leader_agent.id,
+                leader_name=self.leader_agent.data.name,
+            ),
+            flight_session.id,
+            flight_agent.data.name,
+            ReplyFinishedReason.ERROR,
+            "provider failed",
+        )
+
+        leader_entries = await self.bus.queue_drain(
+            MessageBusKeys.inbox(self.leader_session.id),
+        )
+        planner_entries = await self.bus.queue_drain(
+            MessageBusKeys.inbox(self.worker_session.id),
+        )
+        self.assertEqual([], leader_entries)
+        self.assertEqual(1, len(planner_entries))
+        self.assertIn("Team member 'flight' hit an error", planner_entries[0][1]["hint"])
 
     async def test_worker_interruption_reaches_the_leader(self) -> None:
         """An interrupted worker turn is reported too."""

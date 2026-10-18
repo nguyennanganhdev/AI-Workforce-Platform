@@ -186,6 +186,77 @@ class _SharedStorage:
 class TestRunContextResolution(IsolatedAsyncioTestCase):
     """Team identity is read once and shared by toolkit + middleware."""
 
+    async def test_completed_turn_drops_automatic_leader_wakeup(self):
+        leader = AgentRecord(
+            id="leader",
+            user_id="u",
+            data=AgentData(
+                name="Leader",
+                context_config=ContextConfig(),
+                react_config=ReActConfig(),
+            ),
+        )
+        config = SessionConfig(
+            workspace_id="ws",
+            chat_model_config=ChatModelConfig(
+                type="test",
+                credential_id="cred",
+                model="test",
+                parameters={},
+            ),
+        )
+        session = SessionRecord(
+            id="leader-session",
+            user_id="u",
+            agent_id=leader.id,
+            team_id="team",
+            config=config,
+        )
+        team = TeamRecord(
+            id="team",
+            user_id="u",
+            session_id=session.id,
+            data=TeamData(name="Team"),
+        )
+        storage = _Storage({session.id: session}, {leader.id: leader}, team)
+        shared_storage = _SharedStorage()
+        shared_storage.team_turn = TeamTurnRecord(
+            id=team.id,
+            user_id="u",
+            team_id=team.id,
+            turn_id="finished-turn",
+            reply_owner_session_id=session.id,
+            reply_owner_agent_id=leader.id,
+            customer_session_id=session.id,
+            status="completed",
+        )
+        agent_was_built = False
+
+        class _Agent:
+            def __init__(self, **_kwargs):
+                nonlocal agent_was_built
+                agent_was_built = True
+
+        class _Access:
+            async def resolve_agent(self, *_args):
+                return leader.model_copy(deep=True)
+
+        service = ChatService(
+            storage=storage,
+            workspace_manager=_WorkspaceManager(),
+            scheduler_manager=object(),
+            background_task_manager=object(),
+            message_bus=InMemoryMessageBus(),
+            resource_access_service=_Access(),
+            custom_agent_cls=_Agent,
+            shared_context_storage=shared_storage,  # type: ignore[arg-type]
+        )
+
+        await service._run_impl("u", session.id, leader.id, None)
+
+        self.assertFalse(agent_was_built)
+        self.assertEqual({}, storage.messages)
+
     async def test_worker_feed_is_shared_and_racing_reply_starts_fresh_run(self):
         worker = AgentRecord(id="worker", user_id="u", data=AgentData(
             name="Hotel", context_config=ContextConfig(), react_config=ReActConfig(),
@@ -460,7 +531,7 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 "get_team_calls": 1,
                 "team_role": "worker",
                 "channel_tools": [],
-                "fallback_to_truncation": False,
+                "fallback_to_truncation": True,
                 "retry_drop_oldest": False,
                 "shared_packet_in_private_system_prompt": False,
                 "leader_names": ["Leader"],

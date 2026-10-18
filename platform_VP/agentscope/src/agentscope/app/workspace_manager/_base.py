@@ -152,6 +152,18 @@ class WorkspaceManagerBase(ABC):
             self._reserved[(user_id, agent_id)] = workspace_id
             return workspace_id
 
+    async def assign_isolated_workspace_id(
+        self,
+        *,
+        user_id: str,
+        agent_id: str,
+        session_id: str,
+    ) -> str:
+        """Mint a workspace that cannot be reused by another session."""
+
+        del user_id, agent_id, session_id
+        return await self._mint_workspace_id()
+
     async def _mint_workspace_id(self) -> str:
         """Produce an id for a workspace nobody holds yet.
 

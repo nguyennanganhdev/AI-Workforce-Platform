@@ -20,6 +20,7 @@ from ...message import (
     ToolResultState,
 )
 from ...middleware import MiddlewareBase
+from ...tool import ToolChoice
 from ...types import ReplyFinishedReason
 from .._chat_consent import pending_chat_actions
 from .._shared_context import SharedContextService
@@ -90,6 +91,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     in {
                         "handoff",
                         "question",
+                        "answer",
                     }
                     and payload.get("resolution") not in {"complete", "stop"}
                 ):
@@ -149,13 +151,56 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             )
         )
 
+    async def _terminal_reports_ready(self) -> bool:
+        """Return whether all current worker branches are already terminal."""
+
+        session = await self._storage.get_session(
+            self._user_id, self._agent_id, self._session_id
+        )
+        if session is None or session.team_id is None:
+            return False
+        record = await self._shared_context.storage.get_team_shared_context(
+            self._user_id, session.team_id
+        )
+        task = record.state.tasks.get(record.state.active_task_id) if record else None
+        if task is None:
+            return False
+        branches = [
+            branch
+            for sid, branch in task.collaboration.items()
+            if sid != self._session_id
+            and branch.customer_revision == task.latest_customer_revision
+        ]
+        return bool(branches) and all(
+            branch.status in {"completed", "stopped"} for branch in branches
+        )
+
     async def on_reasoning(self, agent, input_kwargs, next_handler):
         """Stop this run after delegation; a peer reply starts a fresh run."""
 
         question = await self._question()
         expected = self._expected_reports(agent)
         await self._review()
-        if expected or question or await self._workers_running():
+        if question:
+            agent.state.append_context(
+                agent.name,
+                [
+                    HintBlock(
+                        hint=(
+                            "Ask the customer naturally in your own voice for "
+                            "exactly the information in this registered request. "
+                            "Preserve its meaning, but do not copy internal "
+                            "instructions, agent names, routing or tool details, "
+                            f"and add no new fields: {question}"
+                        ),
+                    ),
+                ],
+            )
+            input_kwargs = {
+                **input_kwargs,
+                "tool_choice": ToolChoice(mode="none"),
+            }
+        if not question and (expected or await self._workers_running()):
             agent.state.append_context(
                 agent.name,
                 [
@@ -170,6 +215,25 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             )
             yield agent.state.context[-1]
             return
+        if not question and await self._terminal_reports_ready():
+            agent.state.append_context(
+                agent.name,
+                [
+                    HintBlock(
+                        hint=(
+                            "All current worker assignments are terminal. Call "
+                            "no team tool and immediately write one natural "
+                            "customer-facing synthesis from their delivered "
+                            "results and limitations. Do not acknowledge or "
+                            "ask any worker again."
+                        ),
+                    ),
+                ],
+            )
+            input_kwargs = {
+                **input_kwargs,
+                "tool_choice": ToolChoice(mode="none"),
+            }
         async for event in next_handler(**input_kwargs):
             yield event
 
@@ -247,13 +311,13 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         del agent
         partial = LeaderEvidenceMiddleware._usable_partial_text(partial_text)
         limitation = (
-            "Phần còn thiếu chưa có đủ bằng chứng để xác minh, nên tôi không "
-            "suy đoán. Không có tác vụ nền nào được cam kết sau câu trả lời này."
+            "Phần còn thiếu chưa được các agent cung cấp, nên tôi không suy đoán. "
+            "Không có tác vụ nền nào được cam kết sau câu trả lời này."
         )
         if partial:
             return f"{partial}\n\n{limitation}"
         return (
-            "Hiện chưa có đủ kết quả đã xác minh để đưa ra một phương án hoàn "
+            "Hiện chưa có đủ kết quả từ các agent để đưa ra một phương án hoàn "
             f"chỉnh. {limitation}"
         )
 
@@ -321,16 +385,12 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 "bạn cho biết",
                 "bạn xuất phát từ đâu",
                 "vui lòng cung cấp",
-                "vui lòng cho biết",
                 "hãy cung cấp",
-                "hãy cho biết",
                 "where will you depart",
                 "where are you departing",
                 "how many people",
                 "please provide",
-                "please tell me",
                 "could you provide",
-                "could you tell me",
             )
         )
 
@@ -393,13 +453,32 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 yield event
                 continue
 
+            question = await self._question()
+            if question:
+                # Let the reply owner phrase the registered request naturally.
+                # The source text is only the safe fallback when the model
+                # produces no customer-facing wording.
+                if self._buffered_text(buffered_text):
+                    for text_event in buffered_text:
+                        yield text_event
+                    buffered_text.clear()
+                    yield event.model_copy(
+                        update={
+                            "finished_reason": ReplyFinishedReason.COMPLETED,
+                            "error": None,
+                        }
+                    )
+                else:
+                    discard_text()
+                    for replacement in self._replacement(agent, event, question):
+                        yield replacement
+                return
+
             expected = self._expected_reports(agent)
             await self._review()
-            question = await self._question()
-            if expected or question or await self._workers_running():
-                # Delegation and specialist-owned clarification are terminal
-                # for this run. The recipient/customer response will wake a
-                # new run with a fresh Shared Context snapshot.
+            if expected or await self._workers_running():
+                # Delegation is terminal for this run. The recipient response
+                # will wake a new run with a fresh Shared Context snapshot.
                 discard_text()
                 yield event.model_copy(
                     update={
@@ -421,11 +500,10 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 nudges += 1
                 self._nudge(
                     agent,
-                    "The fixed Workforce Leader must not ask the customer for "
-                    "task-specific information. Create the team if needed and "
-                    "delegate intake to the single best-matched specialist. "
-                    "Only that specialist may call "
-                    "TeamSay(kind=requires_user_input) and ask the customer.",
+                    "The Workforce Leader may ask only a customer question "
+                    "already registered by the responsible worker. Create the "
+                    "team if needed and delegate intake analysis first; do not "
+                    "invent or expand missing-information questions.",
                 )
                 continue
 
@@ -435,11 +513,12 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 nudges += 1
                 self._nudge(
                     agent,
-                    "Review incoming peer results/proposals/conflicts. Resolve "
-                    "assignments with TeamSay resolution=complete/stop/verify, "
-                    "then synthesize every useful verified partial result. Do "
-                    "not ask the customer or Leader to choose a routine next "
-                    "step and do not forward an internal dependency.",
+                    "Review incoming peer proposals/conflicts or unfinished "
+                    "work. A result/error is already terminal: never call "
+                    "TeamSay back to its sender. Use stop/verify only for a "
+                    "non-terminal branch, then synthesize every useful "
+                    "delivered result naturally for the customer. Do not "
+                    "forward internal wording or dependencies.",
                 )
                 continue
             if review:
@@ -468,6 +547,23 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     "Do not emit an intermediate progress update.",
                 )
                 continue
+            if not current_text:
+                discard_text()
+                if nudges >= self._max_nudges:
+                    for replacement in self._replacement(
+                        agent, event, self._incomplete_text(agent)
+                    ):
+                        yield replacement
+                    continue
+                nudges += 1
+                self._nudge(
+                    agent,
+                    "Do not end this settled turn with only a tool call. If "
+                    "terminal worker reports are available, call no team tool "
+                    "and write one natural customer-facing synthesis now. "
+                    "Do not acknowledge or ask those workers again.",
+                )
+                continue
             if not await self._seal_final_answer():
                 discard_text()
                 if nudges >= self._max_nudges:
@@ -483,8 +579,10 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     agent,
                     "The team state changed before finalization or still "
                     "contains open work. Re-read Shared Context. Resolve or "
-                    "stop each assignment, then synthesize verified results "
-                    "and explicit limitations without promising future work.",
+                    "stop each assignment, then synthesize delivered results "
+                    "and explicit limitations without promising future work. "
+                    "If the latest customer message answers a worker's "
+                    "clarification, route it back to that worker first.",
                 )
                 continue
             for text_event in buffered_text:

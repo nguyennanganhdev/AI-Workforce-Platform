@@ -459,7 +459,13 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 			const payload = JSON.parse(block.input) as { to?: string | null; kind?: string; content?: string };
 			if (!payload.content || plainText.includes(payload.content.trim())) return [];
 			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
-			return [{ id: block.id, ...payload, failed: result?.state === 'error' }];
+			const effectiveTo = result?.metadata?.effective_to;
+			return [{
+				id: block.id,
+				...payload,
+				to: typeof effectiveTo === 'string' ? effectiveTo : payload.to,
+				failed: result?.state === 'error',
+			}];
 		} catch {
 			return [];
 		}

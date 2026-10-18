@@ -545,14 +545,14 @@ class ChatService:
         finished_reason: ReplyFinishedReason,
         detail: str,
     ) -> None:
-        """Tell a worker's team leader that the worker stopped early.
+        """Tell a failed worker's direct requester, falling back to the leader.
 
         A member reports through ``TeamSay``; a member that failed or
-        was interrupted never got there, so without this the leader
+        was interrupted never got there, so without this its requester
         waits forever for an answer that is not coming. Delivered as a
-        system reminder in the leader's inbox — not as a team message,
-        because the member did not say this, the framework did — waking
-        the leader when it is idle.
+        system reminder in the requester's inbox — not as a team message,
+        because the member did not say this, the framework did. A root
+        worker with no peer requester still reports to the leader.
 
         Best-effort: a failure to notify is logged and dropped rather
         than replacing the failure being reported.
@@ -648,14 +648,9 @@ class ChatService:
                     ensure_ascii=False,
                 ),
             )
-            await deliver_to_inbox(
-                self._message_bus,
-                user_id=user_id,
-                session_id=team_ctx.leader_session_id,
-                agent_id=team_ctx.leader_agent_id,
-                payload=hint.model_dump(mode="json"),
-            )
-            if released_sessions:
+            recipients = released_sessions or (team_ctx.leader_session_id,)
+            members_by_session = {}
+            if any(sid != team_ctx.leader_session_id for sid in recipients):
                 team = await self._storage.get_team(user_id, team_ctx.team_id)
                 members = (
                     await _ensure_team_members(self._storage, user_id, team)
@@ -665,23 +660,31 @@ class ChatService:
                 members_by_session = {
                     member.session_id: member for member in members
                 }
-                for released_session_id in released_sessions:
-                    if released_session_id == team_ctx.leader_session_id:
-                        continue
-                    member = members_by_session.get(released_session_id)
+            for recipient_session_id in recipients:
+                if recipient_session_id == team_ctx.leader_session_id:
+                    recipient_agent_id = team_ctx.leader_agent_id
+                else:
+                    member = members_by_session.get(recipient_session_id)
                     if member is None:
+                        logger.warning(
+                            "Could not route failure for %r: requester session %r "
+                            "is no longer in team %r.",
+                            worker_name,
+                            recipient_session_id,
+                            team_ctx.team_id,
+                        )
                         continue
-                    await deliver_to_inbox(
-                        self._message_bus,
-                        user_id=user_id,
-                        session_id=released_session_id,
-                        agent_id=member.agent_id,
-                        payload=hint.model_dump(mode="json"),
-                    )
+                    recipient_agent_id = member.agent_id
+                await deliver_to_inbox(
+                    self._message_bus,
+                    user_id=user_id,
+                    session_id=recipient_session_id,
+                    agent_id=recipient_agent_id,
+                    payload=hint.model_dump(mode="json"),
+                )
         except Exception:  # pylint: disable=broad-except
             logger.exception(
-                "Failed to notify team leader %r that member %r stopped.",
-                team_ctx.leader_name,
+                "Failed to notify the upstream requester that member %r stopped.",
                 worker_name,
             )
 
@@ -1100,6 +1103,19 @@ class ChatService:
                                 storage=self._shared_context.storage,
                                 user_id=user_id,
                             )
+                        if (
+                            input_msg is None
+                            and turn_state is not None
+                            and turn_state.status != "running"
+                        ):
+                            logger.info(
+                                "Skipping wake-up for session %s: team turn %s "
+                                "is %s and already has a customer-facing reply.",
+                                session_id,
+                                turn_state.turn_id,
+                                turn_state.status,
+                            )
+                            return
                         if turn_state is not None:
                             is_reply_owner = (
                                 turn_state.reply_owner_session_id == session_id
@@ -1151,7 +1167,8 @@ class ChatService:
                                     "description": (
                                         "Team composition, delegation and final "
                                         "synthesis; does not perform specialist "
-                                        "work or ask task-specific questions."
+                                        "work; asks only worker-registered customer "
+                                        "questions."
                                     ),
                                 },
                             )
@@ -1275,13 +1292,24 @@ class ChatService:
                     middlewares.append(
                         TeamMemberLoopMiddleware(
                             leader_name=(report_target_name or team_ctx.leader_name),
-                            pending_question=lambda: self._shared_context.collaboration_pause(
-                                user_id, team_ctx.team_id, session_id, context_task_id,
+                            pending_question=(
+                                (
+                                    lambda: self._shared_context.pending_user_question(
+                                        user_id,
+                                        team_ctx.team_id,
+                                    )
+                                )
+                                if is_reply_owner
+                                else (
+                                    lambda: self._shared_context.collaboration_pause(
+                                        user_id,
+                                        team_ctx.team_id,
+                                        session_id,
+                                        context_task_id,
+                                    )
+                                )
                             ),
-                            require_report=(
-                                not is_reply_owner
-                                or (turn_state is not None and turn_state.mode == "specialist_question")
-                            ),
+                            require_report=not is_reply_owner,
                             require_input_readiness=(
                                 (agent_record.data.builder_contract or {}).get("role")
                                 == "coordinator"
@@ -1590,40 +1618,35 @@ class ChatService:
                 if isinstance(team_ctx, _LeaderContext):
                     attachment += (
                         " You compose the team, delegate work and synthesize "
-                        "completed reports. Never ask a task-specific customer "
-                        "question; assign missing-information intake to the "
-                        "responsible specialist."
+                        "completed reports. A responsible worker identifies "
+                        "missing customer information and registers one exact "
+                        "question; you ask it without changing or answering it, "
+                        "then route the customer's answer back to that worker."
                     )
                 elif isinstance(team_ctx, _WorkerContext):
                     if is_reply_owner:
-                        if turn_state is not None and turn_state.mode == (
-                            "specialist_question"
-                        ):
-                            attachment += (
-                                " You temporarily own this customer clarification. "
-                                "Use the answer to finish your assigned work, then "
-                                f"send kind=result/error to {team_ctx.leader_name!r}; "
-                                "the Leader owns final synthesis. Ask another "
-                                "question only when genuinely required, registering "
-                                "it first with TeamSay(to=null, "
-                                "kind='requires_user_input')."
-                            )
-                        else:
-                            attachment += (
-                                " The user explicitly addressed you, so you own "
-                                "the customer reply for this turn. Reply directly "
-                                "once. Other members are internal collaborators. "
-                                "Before asking the user for missing information, "
-                                "call TeamSay(kind='requires_user_input', to=null, "
-                                "content=<question>) once."
-                            )
+                        attachment += (
+                            " The user explicitly addressed you, so you own "
+                            "the customer reply for this turn. Reply directly "
+                            "once. Other members are internal collaborators. "
+                            "Before asking the user for missing information, "
+                            "call TeamSay(kind='requires_user_input', to=null, "
+                            "content=<question>) once."
+                        )
                     else:
                         attachment += (
-                            " You are an internal collaborator. Never address "
-                            "the customer unless you first call TeamSay(to=null, "
-                            "kind='requires_user_input') for information your own "
-                            "assignment genuinely needs. Otherwise report results "
-                            "to the current reply owner "
+                            " You are an internal collaborator and never address "
+                            "the customer. For genuinely missing customer-owned "
+                            "information, call TeamSay(kind='requires_user_input', "
+                            "to=null) with one customer-ready question and end the "
+                            "run. The runtime returns nested needs to the worker that "
+                            "asked you; never bypass it to the Leader. After all peer "
+                            "responses arrive, group CUSTOMER_INPUT_REQUIRED needs "
+                            "and propagate one request upstream. If an incoming team "
+                            "message has kind='question', answer its sender with "
+                            "kind='answer' and in_reply_to=<handoff_id>; never send "
+                            "that answer to the Leader. Only a root assignment "
+                            "reports terminal results to the current reply owner "
                             f"{(report_target_name or team_ctx.leader_name)!r}."
                         )
 
@@ -1666,8 +1689,8 @@ class ChatService:
                 agent_state.session_id = session_id
                 context_config = agent_record.data.context_config
                 if team is not None:
-                    # Workforce turns must never silently discard old private
-                    # context when summarization fails.
+                    # Shared context keeps the raw audit trail; private memory
+                    # may use a deterministic summary if its model call fails.
                     output_reserve_tokens = max(
                         1,
                         int(
@@ -1707,7 +1730,7 @@ class ChatService:
                                 context_config.context_buffer_ratio,
                                 max(0.0, safe_trigger_ratio - 0.01),
                             ),
-                            "compression_fallback_to_truncation": False,
+                            "compression_fallback_to_truncation": True,
                             "compression_retry_drop_oldest": False,
                         },
                     )
@@ -1793,6 +1816,9 @@ class ChatService:
                     if call is not None and (
                         call.name.startswith("mcp__")
                         or call.name == "search_knowledge"
+                    ) and not (
+                        result is not None
+                        and result.metadata.get("reused_authoritative_result")
                     ):
                         exact = json.dumps(
                             {
@@ -2257,7 +2283,7 @@ class ChatService:
                         )
 
                     # A customer-facing answer closes this team turn. Only a
-                    # registered specialist question becomes
+                    # registered customer question becomes
                     # ``awaiting_user_input``; an ordinary final answer becomes
                     # ``completed``. Both keep late internal work asleep until
                     # the next explicit customer message.

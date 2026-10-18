@@ -23,6 +23,20 @@ parameter_overrides:
   # thinking toggle has nothing to surface — reasoning_effort is the knob.
   thinking_enable:
     hidden: true
+  reasoning_effort:
+    default: medium
+    enum:
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
+  temperature:
+    hidden: true
+  top_p:
+    hidden: true
+  parallel_tool_calls:
+    hidden: true
   # Voice only applies to omni-style models; hide the field for this
   # non-omni model so the frontend popover doesn't render it.
   voice:

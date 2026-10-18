@@ -74,6 +74,7 @@ _BUILDER_SEMANTIC_REPAIR_ATTEMPTS = 1
 _BUILDER_GENERATION_CONCURRENCY = 3
 _BUILDER_AUTHORED_PROMPT_MAX_CHARS = 5_000
 _BUILDER_BACKFILL_KEY = "builder_contract_backfill_v1"
+_BUILDER_ARTIFACT_SNAPSHOT_KEY = "builder_artifact_snapshot_v1"
 # Builder prompts also carry the MCP catalog plus a large output schema, so
 # compact earlier than runtime private memory's 80% hard threshold.
 _BUILDER_SUMMARY_TRIGGER_RATIO = 0.60
@@ -97,6 +98,8 @@ class BuilderTool(BaseModel):
     mcp_name: str
     tool_name: str
     description: str = ""
+    input_keys: list[str] = Field(default_factory=list, max_length=100)
+    output_keys: list[str] = Field(default_factory=list, max_length=100)
 
 
 class BuilderKnowledgeBase(BaseModel):
@@ -335,6 +338,7 @@ class UpdateAgentToolsRequest(BaseModel):
 
 
 _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+_publish_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 def _fixed_config() -> dict:
@@ -408,6 +412,18 @@ def _builder_contract_digest(contract: AgentBehaviorContract) -> str:
     return _text_digest(payload)
 
 
+def _artifact_snapshot(
+    contract: AgentBehaviorContract,
+    system_prompt: str,
+    generated_skill: str,
+) -> dict[str, str]:
+    return {
+        "contract_sha256": _builder_contract_digest(contract),
+        "system_prompt_sha256": _text_digest(system_prompt),
+        "generated_skill_sha256": _text_digest(generated_skill),
+    }
+
+
 def _record_contract_artifacts_match(
     record: AgentRecord,
     generated: GeneratedAgent,
@@ -419,7 +435,9 @@ def _record_contract_artifacts_match(
     )
     if compiled:
         return True
-    snapshot = record.data.evaluation.get(_BUILDER_BACKFILL_KEY)
+    snapshot = record.data.evaluation.get(
+        _BUILDER_ARTIFACT_SNAPSHOT_KEY,
+    ) or record.data.evaluation.get(_BUILDER_BACKFILL_KEY)
     return bool(
         isinstance(snapshot, dict)
         and snapshot.get("contract_sha256")
@@ -652,6 +670,38 @@ def _planned_agent_from_view(agent: PlannedAgentView) -> PlannedAgent:
     )
 
 
+def _resolve_proposal_reuse_candidate(
+    agent: ProposedAgentView,
+    existing: list[AgentRecord],
+    available_tool_ids: set[str],
+    available_knowledge_ids: set[str],
+) -> AgentRecord | None:
+    """Recheck new proposal items against the latest published catalog."""
+
+    if agent.reuse_agent_id or agent.behavior_contract is None:
+        return None
+    contract = agent.behavior_contract
+    requirement = contract.requirement
+    return _resolve_reuse_candidate(
+        PlannedAgent(
+            name=agent.name,
+            objective=requirement.business_profile.objective,
+            required_capabilities=[
+                item.capability for item in requirement.capabilities if item.required
+            ],
+            request_modes=list(contract.request_modes),
+            effect=requirement.effect.value,
+            suggested_tool_ids=[tool.id for tool in agent.selected_tools],
+            suggested_knowledge_base_ids=[
+                knowledge.id for knowledge in agent.selected_knowledge_bases
+            ],
+        ),
+        existing,
+        available_tool_ids,
+        available_knowledge_ids,
+    )
+
+
 def _reused_outline_view(
     record: AgentRecord,
     tools: list[BuilderTool],
@@ -767,6 +817,36 @@ def _execution_mode_matches_tools(
 
 def _agent_objective(agent: GeneratedAgent) -> str:
     return agent.behavior_contract.requirement.business_profile.objective
+
+
+def _enforce_dynamic_collaboration(agent: GeneratedAgent) -> GeneratedAgent:
+    """Keep collaboration topology dynamic and independent from the domain."""
+
+    contract = agent.behavior_contract
+    synthesis_policy = (
+        "Khởi động đúng một specialist phù hợp, truyền mục tiêu đầu-cuối và để "
+        "specialist nối tiếp dependency trực tiếp; chỉ mở nhánh độc lập khi cần; "
+        "tổng hợp bằng chứng, blocker và tự quyết định lựa chọn thường lệ."
+        if contract.role == "coordinator"
+        else contract.synthesis_policy
+    )
+    normalized = AgentBehaviorContract.model_validate(
+        {
+            **contract.model_dump(mode="json"),
+            "peer_coordination_policy": (
+                "Đọc shared context; nếu mục tiêu còn thiếu dependency mà live "
+                "roster có peer phù hợp, gửi đúng một TeamSay question hữu hạn "
+                "cho peer đó rồi kết thúc lượt; không chuyển peer work qua Leader."
+            ),
+            "internal_reporting_policy": (
+                "Trả lời đúng agent đã hỏi bằng TeamSay answer kèm in_reply_to; "
+                "chỉ gửi terminal result/error cho Leader khi Leader là requester "
+                "nội bộ hiện tại; direct mention thì tự trả khách."
+            ),
+            "synthesis_policy": synthesis_policy,
+        },
+    )
+    return agent.model_copy(update={"behavior_contract": normalized})
 
 
 def _bullets(values: tuple[str, ...]) -> str:
@@ -919,6 +999,8 @@ Tổng hợp: {contract.synthesis_policy}
 Nếu khách @mention trực tiếp, agent tự tổng hợp và trả khách. Nếu đang làm nội
 bộ, agent gửi `result/error` hoàn chỉnh cho reply owner hiện tại. Không gửi báo
 cáo tiến độ, lời hứa tiếp tục hoặc yêu cầu Leader quyết định hộ.
+Nếu thiếu dữ liệu do khách sở hữu, agent nội bộ gửi một câu hỏi gọn cho reply
+owner bằng `requires_user_input`, không tự hỏi khách.
 
 ## Định dạng đầu ra
 
@@ -958,11 +1040,13 @@ def _contract_checks(agent: GeneratedAgent) -> dict[str, bool]:
             )
             and (
                 (
-                    contract.intake_mode == "none"
+                    contract.role == "specialist"
+                    and contract.intake_mode == "none"
                     and not contract.required_customer_inputs
                 )
                 or (
-                    contract.intake_mode == "required_before_work"
+                    contract.role == "coordinator"
+                    and contract.intake_mode == "required_before_work"
                     and bool(contract.required_customer_inputs)
                 )
             )
@@ -1160,9 +1244,28 @@ async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
                     mcp_name=record.client.name,
                     tool_name=tool_name,
                     description=str(tool.get("description") or ""),
+                    input_keys=_schema_keys(tool.get("input_schema")),
+                    output_keys=_schema_keys(tool.get("output_schema")),
                 ),
             )
     return catalog
+
+
+def _schema_keys(value: object) -> list[str]:
+    """Project a JSON schema to bounded field names for Builder reasoning."""
+
+    if not isinstance(value, dict):
+        return []
+    properties = value.get("properties")
+    if not isinstance(properties, dict):
+        return []
+    required = value.get("required")
+    ordered = required if isinstance(required, list) else list(properties)
+    return list(
+        dict.fromkeys(
+            str(key) for key in ordered if isinstance(key, str) and key in properties
+        ),
+    )[:100]
 
 
 async def _knowledge_catalog(
@@ -1357,6 +1460,18 @@ knowledge-base context, or combines verified peer results. Live lookup, current
 state, external action and monitor work require matching registered tools or a
 verified runtime protocol. Never invent a tool or create two agents for the same
 capability. Incorporate the user's latest feedback into the revised outline.
+When the requested outcome must combine two or more specialist results into one
+plan, diagnosis or recommendation, include one context-only coordinator. The
+coordinator owns intake, dependency sequencing and final synthesis, and owns no
+provider tool.
+Infer the team from the business outcome and tool metadata; the manager is not
+expected to name agents, assign tools or describe handoff mechanics. Tool
+input_keys are the values needed to call a tool. Tool output_keys and descriptions
+show evidence that may unlock another tool. When one tool can produce evidence
+needed by another tool, prefer separate narrow specialists for those evidence
+stages so the runtime can form a peer dependency; do not collapse the whole
+connected graph into one all-tools agent unless the manager explicitly asks for
+one agent.
 For every planned agent, list concise required_capabilities, request_modes and
 effect. Before proposing a new identity, compare it with the existing-agent
 catalog. If one existing published agent has the same business scope and its
@@ -1537,6 +1652,20 @@ async def _generate(
 ) -> tuple[BuilderGeneration, int, int]:
     tools_by_id = {tool.id: tool for tool in tools}
     knowledge_by_id = {knowledge.id: knowledge for knowledge in knowledge_bases}
+    team_tool_flow = [
+        {
+            "tool_name": tool.tool_name,
+            "description": tool.description,
+            "input_keys": tool.input_keys,
+            "output_keys": tool.output_keys,
+        }
+        for tool_id in dict.fromkeys(
+            tool_id
+            for item in approved_outline.agents
+            for tool_id in item.suggested_tool_ids
+        )
+        if (tool := tools_by_id.get(tool_id)) is not None
+    ]
     instructions = """You are Agent Builder, not the runtime Leader.
 The approved outline supplied below is authoritative. Copy its agent sequence,
 names, objectives, required_capabilities, request_modes, effect,
@@ -1579,18 +1708,25 @@ The behavior contract must be concrete and reusable:
 - partial_result_behavior says how to give useful verified results while clearly
   labeling what remains unavailable;
 - customer_input_policy asks only for genuinely customer-owned required input;
-- intake_mode is required_before_work when a missing customer-owned value would
-  materially change a valid lookup, calculation, recommendation or action;
-  required_customer_inputs then lists stable snake_case keys and concise
-  descriptions, and every key also exists in BusinessProfile.input_contract.
-  Use intake_mode=none only when the request can be completed without collecting
-  any additional customer-owned value;
+- a coordinator always uses intake_mode=required_before_work and declares every
+  customer-owned value needed by any downstream specialist as stable snake_case
+  required_customer_inputs; every key also exists in BusinessProfile.input_contract.
+  A specialist uses intake_mode=none because missing customer input is routed to
+  its current reply owner at runtime;
 - peer_coordination_policy sends one bounded TeamSay dependency to an exact live
-  roster handle and waits;
+  roster handle and waits. Express domain-specific handoff triggers using output
+  fields or missing capabilities, never a permanent agent ID or fixed roster;
+- infer those triggers from the team tool-flow map: an output field or described
+  identifier that supplies another tool's input is a peer dependency. A specialist
+  completes its own evidence stage, asks the capable peer directly, waits for the
+  linked answer, then returns to its original requester;
 - internal_reporting_policy defines direct-mention ownership versus reporting a
   completed result/error to the current internal reply owner;
-- synthesis_policy requires a coordinator to combine peer evidence into a usable
-  recommendation and forbids asking Leader to approve routine business choices;
+- synthesis_policy requires a coordinator to start exactly one suitable
+  specialist, pass the end-to-end goal, let specialists continue dependencies
+  directly, open another independent branch only when necessary, combine peer
+  evidence into a usable recommendation, and never ask Leader to approve routine
+  business choices;
 - output_sections defines a natural customer answer, not internal status prose.
 
 Minimize the runtime prompt cost. Write only role-specific business facts and
@@ -1662,6 +1798,26 @@ model settings or internal IDs in human-facing text.
                         instructions
                         + "\nApproved outline (authoritative JSON):\n"
                         + single_outline.model_dump_json()
+                        + "\nApproved team capability map (context only; use it "
+                        "to author capability-triggered peer dependencies, but "
+                        "do not copy sibling identity or tools):\n"
+                        + json.dumps(
+                            [
+                                {
+                                    "objective": item.objective,
+                                    "required_capabilities": (
+                                        item.required_capabilities
+                                    ),
+                                    "request_modes": item.request_modes,
+                                    "effect": item.effect,
+                                }
+                                for item in approved_outline.agents
+                            ],
+                            ensure_ascii=False,
+                        )
+                        + "\nTeam tool-flow map (context only; tool IDs remain "
+                        "owned by the authoritative current-agent outline):\n"
+                        + json.dumps(team_tool_flow, ensure_ascii=False)
                         + "\nRegistered tool catalog:\n"
                         + json.dumps(
                             [tool.model_dump(mode="json") for tool in scoped_tools],
@@ -1697,6 +1853,15 @@ model settings or internal IDs in human-facing text.
                     try:
                         generation = _BuilderAgentGeneration.model_validate(
                             draft_content,
+                        )
+                        generation = generation.model_copy(
+                            update={
+                                "agents": [
+                                    _enforce_dynamic_collaboration(
+                                        generation.agents[0],
+                                    ),
+                                ],
+                            },
                         )
                         issues = _generation_issues(
                             generation,
@@ -2478,7 +2643,15 @@ async def prepare_builder(
             if agent.reuse_agent_id and (
                 reuse is None or reuse.id != agent.reuse_agent_id
             ):
-                agent = agent.model_copy(update={"reuse_agent_id": None})
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Agent được đề xuất tái sử dụng không còn vượt qua kiểm tra "
+                        "canonical contract/artifact. Builder không chuyển âm thầm "
+                        "sang tạo agent mới; hãy làm mới catalog hoặc backfill "
+                        "artifact snapshot của agent đã publish."
+                    ),
+                )
             legacy_duplicates = _legacy_duplicate_candidates(
                 agent,
                 existing,
@@ -2846,6 +3019,23 @@ async def publish_builder(
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
     access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> PublishResponse:
+    async with _publish_locks[user_id]:
+        return await _publish_builder(
+            body,
+            user_id,
+            storage,
+            workspace_manager,
+            access,
+        )
+
+
+async def _publish_builder(
+    body: PublishRequest,
+    user_id: str,
+    storage: StorageBase,
+    workspace_manager: WorkspaceManagerBase,
+    access: ResourceAccessService,
+) -> PublishResponse:
     async with _proposal_locks[user_id]:
         session = await storage.get_session(
             user_id,
@@ -2985,6 +3175,31 @@ async def publish_builder(
                     ),
                 )
             item.selected_knowledge_bases = selected_knowledge
+        current_tools = await _catalog(storage, user_id)
+        available_tool_ids = {tool.id for tool in current_tools}
+        available_knowledge_ids = {knowledge.id for knowledge in knowledge_catalog}
+        current_agents = [
+            record
+            for record in await storage.list_agents(user_id)
+            if record.source == "user" and record.data.system_role == "business"
+        ]
+        for item in proposal.agents:
+            reuse = _resolve_proposal_reuse_candidate(
+                item,
+                current_agents,
+                available_tool_ids,
+                available_knowledge_ids,
+            )
+            if reuse is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Agent đề xuất “{item.name}” là phần nghiệp vụ đã được "
+                        f"agent “{reuse.data.name}” publish bao phủ. Có thể tái sử "
+                        "dụng từ agent đã publish này; Builder không cho tạo lại. "
+                        "Hãy tạo lại outline để dùng agent hiện có."
+                    ),
+                )
         proposal.status = "published"
 
     model_config = proposal.chat_model_config
@@ -3031,6 +3246,14 @@ async def publish_builder(
             reused_record.data.knowledge_base_ids = [
                 knowledge.id for knowledge in item.selected_knowledge_bases
             ]
+            reused_record.data.evaluation = {
+                **reused_record.data.evaluation,
+                _BUILDER_ARTIFACT_SNAPSHOT_KEY: _artifact_snapshot(
+                    item.behavior_contract,
+                    reused_record.data.system_prompt,
+                    reused_record.data.generated_skill,
+                ),
+            }
             await storage.upsert_agent(user_id, reused_record)
             await _replace_agent_session_knowledge(
                 storage,
@@ -3074,6 +3297,14 @@ async def publish_builder(
                 evaluation=item.evaluation,
             ),
         )
+        record.data.evaluation = {
+            **record.data.evaluation,
+            _BUILDER_ARTIFACT_SNAPSHOT_KEY: _artifact_snapshot(
+                item.behavior_contract,
+                record.data.system_prompt,
+                record.data.generated_skill,
+            ),
+        }
         await storage.upsert_agent(user_id, record)
         session = await _primary_session(
             storage,

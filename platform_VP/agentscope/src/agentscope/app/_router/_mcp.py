@@ -6,6 +6,7 @@ This is the user-level collection an install lands in, distinct from
 Installing from a hub only writes here; putting an MCP into a workspace
 stays a separate, explicit act.
 """
+
 import asyncio
 from datetime import UTC, datetime
 
@@ -36,6 +37,7 @@ async def _discover_tools(client: MCPClient, timeout: float) -> list[dict]:
             "name": tool.name,
             "description": tool.description or "",
             "input_schema": tool.inputSchema or {},
+            "output_schema": tool.outputSchema or {},
         }
         for tool in raw_tools
     ]
