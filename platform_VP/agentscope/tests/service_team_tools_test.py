@@ -41,7 +41,7 @@ from agentscope.app.access import (
     ResourceKind,
     ResourceRef,
 )
-from agentscope.app.message_bus import RedisMessageBus
+from agentscope.app.message_bus import RedisMessageBus, MessageBusKeys
 from agentscope.app.storage import (
     AgentData,
     AgentRecord,
@@ -264,8 +264,8 @@ class TestTeamCreate(_TeamToolsTestBase):
         )
         self.assertIsNotNone(session.team_id)
 
-    async def test_rejects_when_session_already_in_team(self) -> None:
-        """A session can lead at most one team."""
+    async def test_repeat_call_is_idempotent_for_the_leader(self) -> None:
+        """Re-issuing TeamCreate keeps the existing team and succeeds."""
         tool = TeamCreate(
             storage=self.storage,
             message_bus=self.bus,
@@ -276,24 +276,10 @@ class TestTeamCreate(_TeamToolsTestBase):
         )
         await tool(name="first", description="d")
         chunk = await tool(name="second", description="d")
-        self.assertDictEqual(
-            chunk.model_dump(),
-            {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": AnyString(),
-                        "id": AnyString(),
-                        "created_at": AnyString(),
-                        "finished_at": None,
-                    },
-                ],
-                "state": "error",
-                "is_last": True,
-                "metadata": {},
-                "id": AnyString(),
-            },
-        )
+        self.assertNotEqual(chunk.state, ToolResultState.ERROR, chunk.content)
+        self.assertIn("already exists", chunk.content[0].text)
+        teams = await self.storage.list_teams(self.user_id)
+        self.assertEqual([t.data.name for t in teams], ["first"])
 
 
 class TestAgentCreate(_TeamToolsTestBase):
@@ -1954,6 +1940,46 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
         self.assertEqual(1, len(inbox))
         self.assertIn("Find the requested records.", inbox[0][1]["hint"])
 
+    async def test_existing_primary_batch_does_not_claim_a_worker_started(
+        self,
+    ):
+        other = _make_agent_record(self.user_id, "Reviewer")
+        other.data.lifecycle_state = "published"
+        other.data.invite_config = (
+            self.monday_agent.data.invite_config.model_copy()
+        )
+        await self.storage.upsert_agent(self.user_id, other)
+        names = [
+            f"{a.data.name}@{a.id[:8]}" for a in (self.monday_agent, other)
+        ]
+        tool = AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent, other],
+        )
+        first = await tool(target=names[0], prompt="Review source records")
+        self.assertNotEqual(first.state, ToolResultState.ERROR)
+        await self.bus.queue_drain(MessageBusKeys.wakeup_queue(), max_count=10)
+        with patch(
+            "agentscope.app._tool._agent_invite.enqueue_run_trigger"
+        ) as wake:
+            result = await tool(
+                target=names[0],
+                prompt="Review updated records",
+                additional_assignments=[
+                    {"target": names[1], "prompt": "Review policy"}
+                ],
+            )
+        self.assertEqual(result.state, ToolResultState.SUCCESS)
+        self.assertEqual(result.metadata["started_targets"], [])
+        self.assertEqual(result.metadata["invited_targets"], names)
+        wake.assert_not_awaited()
+        self.assertIn("Use TeamSay", result.content[0].text)
+
     async def test_batch_keeps_peers_dormant_when_primary_invite_fails(self):
         other = _make_agent_record(self.user_id, "Reviewer")
         other.data.lifecycle_state = "published"
@@ -2349,8 +2375,8 @@ class TestAgentInviteRejections(_AgentInviteTestBase):
         )
         self.assertDictEqual(chunk.model_dump(), self._EXPECTED_ERROR_CHUNK)
 
-    async def test_rejects_duplicate_borrow(self) -> None:
-        """One team, one borrow per agent."""
+    async def test_duplicate_borrow_is_idempotent(self) -> None:
+        """One team, one borrow per agent; re-inviting is a no-op success."""
         tool = self._tool()
         await tool(
             target=f"Monday@{self.monday_agent.id[:8]}",
@@ -2360,7 +2386,10 @@ class TestAgentInviteRejections(_AgentInviteTestBase):
             target=f"Monday@{self.monday_agent.id[:8]}",
             prompt="task 2",
         )
-        self.assertDictEqual(chunk.model_dump(), self._EXPECTED_ERROR_CHUNK)
+        self.assertNotEqual(chunk.state, ToolResultState.ERROR, chunk.content)
+        self.assertIn("already a member", chunk.content[0].text)
+        (team,) = await self.storage.list_teams(self.user_id)
+        self.assertEqual(len(team.data.members), 1)
 
 
 class TestTeamSayInvitedRouting(_AgentInviteTestBase):

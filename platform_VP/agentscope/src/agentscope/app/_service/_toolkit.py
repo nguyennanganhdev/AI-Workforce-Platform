@@ -28,6 +28,7 @@ from .._tool import (
     TeamCreate,
     TeamDelete,
     TeamSay,
+    SharedContextRead,
 )
 from .._types import AgentToolFactory, SubAgentTemplate
 from ..access import ResourceKind
@@ -240,6 +241,9 @@ time or interval"
             )
     elif team_role is not None:
         tools.append(TeamSay(**team_say_kwargs, role="worker"))
+
+    if shared_context_service is not None and (is_leader or team_role is not None):
+        tools.append(SharedContextRead(**team_tool_kwargs))
 
     # A step's turn gets one submit tool: handover until something has
     # been handed over, verdict after.

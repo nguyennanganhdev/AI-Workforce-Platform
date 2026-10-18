@@ -96,6 +96,26 @@ one team at a time.
                     state=ToolResultState.ERROR,
                 )
             if session.team_id is not None:
+                existing = await self._storage.get_team(
+                    self._user_id,
+                    session.team_id,
+                )
+                if existing is not None and existing.session_id == self._session_id:
+                    # Idempotent: the leader re-issuing TeamCreate (e.g. on a
+                    # later turn) keeps the team it already leads.
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    f"Team {existing.id} ({existing.data.name}) "
+                                    "already exists and you are its leader — "
+                                    "nothing was created. Continue with "
+                                    "AgentInvite for new members or TeamSay "
+                                    "to coordinate."
+                                ),
+                            ),
+                        ],
+                    )
                 return ToolChunk(
                     content=[
                         TextBlock(

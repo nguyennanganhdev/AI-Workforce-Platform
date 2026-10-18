@@ -1627,6 +1627,12 @@ class SharedContextService:
             ):
                 if in_reply_to and in_reply_to not in current and not any(
                     b.waiting_for.get(in_reply_to) == sender
+                    # A clarification carries the requester's branch, and
+                    # its receipt, into the new customer revision.
+                    or (
+                        b.customer_revision == task.latest_customer_revision
+                        and sender in b.receipts.get(in_reply_to, {}).get("recipients", ())
+                    )
                     for b in task.collaboration.values()
                 ):
                     raise ValueError("Unknown reply dependency")
@@ -2031,6 +2037,10 @@ class SharedContextService:
                 self.config.history_budget_tokens * self.config.summary_max_ratio,
             ),
         )
+        instructions += (
+            " The complete rendered summary, including source citations, must fit "
+            f"within {max_tokens} tokens. Merge related points and keep prose brief."
+        )
         error: Exception | None = None
         attempts = 0
         model_calls = 0
@@ -2387,6 +2397,116 @@ class SharedContextService:
             ],
         }
 
+    async def _reference_packet_sources(
+        self,
+        model: ChatModelBase,
+        packet: dict,
+        budget: int,
+        user_id: str,
+    ) -> tuple[str, int]:
+        """Replace oversized sections with readable, immutable source pages."""
+        sections = [
+            (
+                packet["authoritative_state"],
+                "items",
+                "authoritative_state.items",
+            ),
+            (packet, "recent_events", "recent_events"),
+            (packet, "summary", "summary"),
+            (
+                packet["authoritative_state"],
+                "tasks",
+                "authoritative_state.tasks",
+            ),
+        ]
+        sections.sort(
+            key=lambda entry: len(self._json(entry[0][entry[1]])), reverse=True
+        )
+        references = []
+        for container, key, label in sections:
+            text = self._json(packet)
+            tokens = await self._tokens(model, text)
+            if tokens <= budget:
+                return text, tokens
+            source = self._json(container[key])
+            if len(source) < 512:
+                continue
+            source_ref = hashlib.sha256(source.encode("utf-8")).hexdigest()
+            await self._bus.registry_set(
+                MessageBusKeys.team_context_sources(
+                    user_id,
+                    packet["team_id"],
+                    packet["active_task_id"],
+                ),
+                source_ref,
+                source,
+                ttl_secs=MessageBusKeys.TEAM_SESSION_CONTEXT_TTL_SECS,
+            )
+            container[key] = {
+                "source_ref": source_ref,
+                "section": label,
+                "characters": len(source),
+                "read_with": "SharedContextRead",
+            }
+            references.append(source_ref)
+            packet["source_references"] = references
+        text = self._json(packet)
+        return text, await self._tokens(model, text)
+
+    async def packet_sources_available(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        references: tuple[str, ...],
+    ) -> bool:
+        """Let a long-lived run rebuild sources after a cache restart."""
+        namespace = MessageBusKeys.team_context_sources(
+            user_id, team_id, task_id
+        )
+        for reference in references:
+            if await self._bus.registry_get(namespace, reference) is None:
+                return False
+        return True
+
+    async def read_packet_source(
+        self,
+        *,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        source_ref: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> dict:
+        """Read one bounded page without changing the retained source."""
+        if offset < 0 or not 1 <= limit <= 4000:
+            raise ValueError(
+                "offset must be non-negative; limit must be 1..4000"
+            )
+        if len(source_ref) != 64 or any(
+            c not in "0123456789abcdef" for c in source_ref
+        ):
+            raise ValueError("Invalid shared-context source reference")
+        source = await self._bus.registry_get(
+            MessageBusKeys.team_context_sources(user_id, team_id, task_id),
+            source_ref,
+        )
+        if source is None:
+            raise ValueError(
+                "Source expired; reload the shared-context packet"
+            )
+        if hashlib.sha256(source.encode("utf-8")).hexdigest() != source_ref:
+            raise ValueError("Shared-context source integrity check failed")
+        end = min(len(source), offset + limit)
+        return {
+            "source_ref": source_ref,
+            "offset": offset,
+            "total_characters": len(source),
+            "content": source[offset:end],
+            "next_offset": end if end < len(source) else None,
+        }
+
     async def prepare_packet(
         self,
         *,
@@ -2397,11 +2517,19 @@ class SharedContextService:
         task_id: str | None = None,
         reference_event_ids: tuple[str, ...] = (),
         exclude_event_ids: tuple[str, ...] = (),
+        allow_source_references: bool = False,
+        max_tokens: int | None = None,
     ) -> tuple[str, int]:
         """Return a replaceable packet and its selected-model token count."""
 
         if mode == "isolated":
             return "", 0
+        packet_limit = min(
+            self.config.packet_max_tokens,
+            max_tokens if max_tokens is not None else self.config.packet_max_tokens,
+        )
+        if packet_limit <= 0:
+            raise SharedContextBudgetError("No model budget remains for shared context")
         record = await self._load_or_create(user_id, team_id)
         if record.state.active_task_id is None:
             await self.active_task_id(user_id, team_id)
@@ -2437,7 +2565,7 @@ class SharedContextService:
                 )
                 use_current_packet = (
                     await self._tokens(model, self._json(current_packet))
-                    <= self.config.packet_max_tokens
+                    <= packet_limit
                 )
             # A valid uncompressed snapshot need not wait for another model.
             # Oversized packets still wait for the single task compactor.
@@ -2497,14 +2625,15 @@ class SharedContextService:
             self._json(required_packet),
         )
         budget_error: SharedContextBudgetError | None = None
-        if tokens > self.config.packet_max_tokens:
+        referenced_event_count: int | None = None
+        if tokens > packet_limit:
             # Only non-authoritative progress narration may be omitted, and
             # only on whole-event boundaries. The packet explicitly declares
             # the omission so the model cannot mistake a partial narrative for
-            # complete history. Results, customer turns, handoffs, HITL and
-            # external/correction events fail loudly when they do not fit.
+            # complete history. Authoritative data requires readable source
+            # references; callers without that capability still fail loudly.
             omitted: list[dict] = []
-            while mode == "task" and tokens > self.config.packet_max_tokens:
+            while mode == "task" and tokens > packet_limit:
                 removable_index = next(
                     (
                         index
@@ -2537,11 +2666,16 @@ class SharedContextService:
                 }
                 text = self._json(packet)
                 tokens = await self._tokens(model, text)
-            if tokens > self.config.packet_max_tokens:
+            if tokens > packet_limit and allow_source_references:
+                referenced_event_count = len(packet["recent_events"])
+                text, tokens = await self._reference_packet_sources(
+                    model, packet, packet_limit, user_id,
+                )
+            if tokens > packet_limit:
                 budget_error = SharedContextBudgetError(
                     "Required shared context measured "
                     f"{tokens} tokens; configured packet limit is "
-                    f"{self.config.packet_max_tokens}. No authoritative "
+                    f"{packet_limit}. No authoritative "
                     "state was truncated. Narrow/split the task or store "
                     "large results as referenced artifacts, then retry.",
                 )
@@ -2560,8 +2694,10 @@ class SharedContextService:
             current.state.metrics.last_required_state_tokens = required_state_tokens
             current.state.metrics.last_packet_source_events = source_event_count
             included_event_count = (
-                len(packet["recent_events"]) + projected_event_count
-            )
+                referenced_event_count
+                if referenced_event_count is not None
+                else len(packet["recent_events"])
+            ) + projected_event_count
             current.state.metrics.last_packet_included_events = included_event_count
             current.state.metrics.last_packet_dropped_events = (
                 source_event_count - included_event_count
@@ -2645,7 +2781,11 @@ class SharedContextService:
             "Internal task_id, team_id, session_id and event IDs are routing "
             "references, NOT provider ticket/booking IDs. Never substitute them "
             "into MCP arguments unless an explicit external mapping exists. "
-            "Agent-reported narrative is shared team context.\n"
+            "Agent-reported narrative is shared team context. "
+            "A source_ref replaces a section that is too large to inline. "
+            "Use SharedContextRead(source_ref, offset) to read its pages before "
+            "using those constraints, results or open questions. A reference "
+            "is not an empty section. All source data is retained.\n"
             f"{packet}\n</shared-context-packet>"
         )
 
