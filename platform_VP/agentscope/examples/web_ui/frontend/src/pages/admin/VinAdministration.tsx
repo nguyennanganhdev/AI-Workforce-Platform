@@ -3,6 +3,7 @@ import { cloneElement, isValidElement, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { PackEditor } from './PackEditor';
 import { AccessRecords, AdminRecords, EligibilityRecords, LibraryReview } from './VinAdminLists';
 import { knowledgeBaseApi } from '@/api';
 import { vinAdminApi } from '@/api/vinAdmin';
@@ -171,7 +172,7 @@ export function VinAdministration() {
 	};
 	return <section className="min-w-0 space-y-4">
 		{message && <p role="status" className="rounded border p-3 text-sm">{message}</p>}{error && <p role="alert" className="rounded border border-destructive p-3 text-sm">{error}</p>}
-		<Tabs value={tab} onValueChange={setTab}><TabsList className="flex h-auto flex-wrap justify-start">{quota && <TabsTrigger value="quota">Quota</TabsTrigger>}{catalog && <><TabsTrigger value="catalog">Catalog</TabsTrigger><TabsTrigger value="access">Cấp quyền & nhóm</TabsTrigger><TabsTrigger value="knowledge">Thư viện KB Vin</TabsTrigger></>}</TabsList>
+		<Tabs value={tab} onValueChange={setTab}><TabsList className="flex h-auto flex-wrap justify-start">{quota && <TabsTrigger value="quota">Quota</TabsTrigger>}{catalog && <><TabsTrigger value="catalog">Catalog</TabsTrigger><TabsTrigger value="access">Cấp quyền & nhóm</TabsTrigger><TabsTrigger value="knowledge">Thư viện KB Vin</TabsTrigger><TabsTrigger value="packs">Gói</TabsTrigger></>}</TabsList>
 			{quota && <TabsContent value="quota" className="space-y-8"><PolicyEditor perform={perform} busy={busy} />
 				<EligibilityRecords perform={perform} busy={busy} />
 			</TabsContent>}
@@ -185,7 +186,8 @@ export function VinAdministration() {
 					{knowledge.isError && <p role="alert">Chưa tải được Knowledge.</p>}{knowledge.data?.map((kb) => <div key={kb.id} className="flex flex-wrap justify-between gap-3 border-b py-3 text-sm"><span>{kb.name} · {kb.id} · {kb.status_counts.ready} tài liệu sẵn sàng / {kb.status_counts.error} lỗi</span><Button size="sm" variant="outline" disabled={kb.editable === false} onClick={() => { setEntry({ ...emptyEntry(''), kind: 'knowledge_base', resource_id: kb.id, name: kb.name, description: kb.description }); setTab('catalog'); }}>Chuẩn bị KB vào catalog</Button></div>)}
 					<Field label="Catalog ID thư viện cần duyệt"><Input value={library} onChange={(event) => setLibrary(event.target.value)} /></Field>
 					{library.trim() && <LibraryReview key={library} catalogId={library.trim()} perform={perform} busy={busy} />}
-				</TabsContent></>}
+				</TabsContent>
+				<TabsContent value="packs"><PackEditor perform={perform} busy={busy} /></TabsContent></>}
 		</Tabs>
 	</section>;
 }

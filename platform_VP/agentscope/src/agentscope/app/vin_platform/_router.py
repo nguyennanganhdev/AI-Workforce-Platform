@@ -11,7 +11,7 @@ from sqlalchemy import select
 from ..auth import AuthPrincipal
 from ..deps import get_current_principal
 from . import _tables as t
-from ._contracts import CapabilityView, CatalogPage, CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent, WorkspaceState
+from ._contracts import CapabilityView, CatalogPage, CatalogEntry, Contract, DomainProvider, Pack, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent, WorkspaceState
 from ._domain import DomainAdapter
 from ._contracts import AdminPage, PolicyView, AdminCatalogView, GrantView, MembershipView, AccountView, LibraryDocumentView, DocumentReview
 
@@ -356,3 +356,52 @@ async def decide(ident: str, body: SourceIntent, who=Depends(caller)):
         raise HTTPException(422, detail="CASE_ID_MISMATCH")
     authority, context = who
     return await DomainAdapter(authority).decide(context, body)
+
+
+@router.get("/me/packs")
+async def my_packs(who=Depends(caller)):
+    from ._packs import list_packs
+    authority, context = who
+    return await list_packs(authority, context)
+
+
+async def _pack_change(request: Request, pack_id: str, installed: bool, who):
+    from .._service._pack_agents import install_templates, withdraw_templates
+    from ._packs import get_pack, set_installed
+    from ._resources import platform_model_config
+    authority, context = who
+    pack, owner_id = await get_pack(authority, context, pack_id)
+    await set_installed(authority, context, pack_id, installed)
+    user_id, storage = context.initiator_user_id, authority.storage
+    if not installed:
+        await withdraw_templates(storage, user_id, pack_id, pack.template_agent_ids)
+        return {"installed": False, "agents": []}
+    agents = await install_templates(storage, request.app.state.workspace_manager,
+        request.app.state.resource_access_service, user_id, pack_id, owner_id, pack.template_agent_ids,
+        await platform_model_config(authority, user_id))
+    return {"installed": True, "agents": agents, "link_provider_id": pack.link_provider_id}
+
+
+@router.post("/me/packs/{pack_id}/install")
+async def install_pack(pack_id: str, request: Request, who=Depends(caller)):
+    return await _pack_change(request, pack_id, True, who)
+
+
+@router.post("/me/packs/{pack_id}/remove")
+async def remove_pack(pack_id: str, request: Request, who=Depends(caller)):
+    return await _pack_change(request, pack_id, False, who)
+
+
+@router.get("/admin/vin/packs")
+async def admin_packs(who=Depends(caller)):
+    from ._packs import list_packs
+    authority, context = who
+    authority.admin(context)
+    return await list_packs(authority, context, include_inactive=True)
+
+
+@router.put("/admin/vin/packs/{pack_id}")
+async def save_admin_pack(pack_id: str, body: Pack, expected_revision: int | None = Query(None, ge=0), who=Depends(caller)):
+    from ._packs import save_pack
+    authority, context = who
+    return {"revision": await save_pack(authority, context, pack_id, body, expected_revision=expected_revision)}

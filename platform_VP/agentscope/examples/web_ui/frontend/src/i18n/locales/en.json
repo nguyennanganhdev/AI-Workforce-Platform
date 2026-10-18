@@ -218,6 +218,7 @@
 		"groupWorkforce": "Workforce",
 		"leader": "Leader",
 		"builder": "Builder",
+		"packs": "Pack library",
 		"agentStudio": "Agent management",
 		"groupOperations": "Operations",
 		"groupCapabilities": "What agents can use",

@@ -7,6 +7,7 @@ import {
 	Hammer,
 	KeyRound,
 	LibraryBig,
+	Package,
 	Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -63,6 +64,7 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	{
 		label: 'shell.groupCapabilities',
 		items: [
+			{ label: 'shell.packs', icon: Package, path: '/packs' },
 			{ label: 'common.credential', icon: KeyRound, path: '/credential' },
 			{ label: 'common.mcp-hub', icon: MCPSvg, path: '/mcp', prefix: true },
 			{ label: 'common.skill-hub', icon: BookText, path: '/skill', prefix: true },

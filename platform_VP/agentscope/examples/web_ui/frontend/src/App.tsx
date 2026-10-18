@@ -84,6 +84,7 @@ const router = createBrowserRouter([{ element: <CapabilityShell />, children: [
 					{ path: '/knowledge/:kbId', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
 					{ path: '/account', lazy: page(() => import('@/pages/account'), 'AccountPage') },
 					{ path: '/connections/*', lazy: page(() => import('@/pages/connections'), 'ConnectionsPage') },
+					{ path: '/packs', lazy: page(() => import('@/pages/packs'), 'PacksPage') },
 				],
 			},
 		],

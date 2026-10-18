@@ -99,7 +99,7 @@ async def test_expand_migration_and_postgres_race(tmp_path):
         await asyncio.to_thread(command.upgrade, cfg, "head")
         await asyncio.to_thread(command.upgrade, cfg, "head")
         async with engine.begin() as db:
-            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0024_vin_admin_revisions"
+            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0025_vin_packs"
             for table_name in ("vin_memberships", "vin_grants"):
                 assert (await db.execute(text("SELECT revision FROM " + table_name))).scalar_one() == 1
             assert (await db.execute(text("SELECT count(*) FROM wf_durable_jobs WHERE id LIKE 'legacy-%'"))).scalar_one() == 2

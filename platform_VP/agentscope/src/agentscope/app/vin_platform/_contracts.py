@@ -97,6 +97,22 @@ class ResourceGrant(Contract):
     expires_at: datetime | None = None
 
 
+class Pack(Contract):
+    """A library pack: catalog resources granted to its group plus sample agents."""
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    catalog_ids: list[str] = Field(default_factory=list, max_length=50)
+    template_agent_ids: list[str] = Field(default_factory=list, max_length=20)
+    link_provider_id: str | None = Field(default=None, max_length=64)
+    active: bool = True
+
+
+class PackView(Pack):
+    id: str
+    revision: int
+    installed: bool = False
+
+
 class DomainProvider(Contract):
     id: str = Field(pattern=r"^[a-z][a-z0-9_-]{1,63}$")
     issuer: str

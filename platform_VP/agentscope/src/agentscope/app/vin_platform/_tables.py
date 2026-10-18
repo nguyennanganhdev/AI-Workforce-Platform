@@ -76,6 +76,9 @@ automation = table("automation", string("id", primary_key=True), string("tenant_
     string("user_id", nullable=False), string("kind", nullable=False), sa.Column("data", sa.JSON, nullable=False),
     sa.Column("revision", sa.Integer, nullable=False), string("claim_token"),
     sa.Column("lease_until", sa.DateTime(timezone=True)))
+packs = table("packs", string("tenant_id", primary_key=True), string("id", primary_key=True),
+    sa.Column("data", sa.JSON, nullable=False), sa.Column("active", sa.Boolean, nullable=False),
+    sa.Column("revision", sa.Integer, nullable=False))
 audit = table("audit", string("id", primary_key=True), string("tenant_id", nullable=False),
     string("actor_id", nullable=False), string("action", nullable=False), string("resource_id", nullable=False),
     sa.Column("data", sa.JSON, nullable=False), sa.Column("created_at", sa.DateTime(timezone=True), nullable=False))
