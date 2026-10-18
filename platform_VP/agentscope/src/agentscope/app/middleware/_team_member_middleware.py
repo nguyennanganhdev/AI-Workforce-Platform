@@ -27,7 +27,7 @@ from ...middleware import MiddlewareBase
 from ...tool import ToolChoice, ToolChunk, ToolResponse
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from .._tool._team_say import STALE_CONTEXT_RESULT
-from ._leader_evidence_middleware import LeaderEvidenceMiddleware
+from ._leader_evidence_middleware import LeaderEvidenceMiddleware, _peer_reply
 
 
 class TeamMemberLoopMiddleware(MiddlewareBase):
@@ -126,9 +126,12 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             )
             yield agent.state.context[-1]
             return
-        if (
-            self._last_tool_call_reports_to_leader(agent)
-            or LeaderEvidenceMiddleware._expected_reports(agent)
+        # A reply owner still owes the customer an answer after it answers a
+        # peer; only its open requests pause it. A peer message injected after
+        # the last tool call must reach the model, or it is never read.
+        if not self._peer_input_after_last_call(agent) and (
+            (self._require_report and self._last_tool_call_reports_to_leader(agent))
+            or LeaderEvidenceMiddleware._expected_reports(agent, outstanding=True)
         ):
             self._paused = True
             agent.state.append_context(
@@ -208,6 +211,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 the registered customer-clarification request. Worker
                 broadcasts and progress-only messages never finish a run.
         """
+        if self._peer_input_after_last_call(agent):
+            return False
+
         for msg in reversed(agent.state.context):
             if (
                 msg.id != agent.state.reply_id
@@ -267,6 +273,21 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             return True
 
         return False
+
+    @staticmethod
+    def _peer_input_after_last_call(agent: "Agent") -> bool:
+        """Whether a peer message reached this reply after its last tool call."""
+
+        arrived = False
+        for msg in agent.state.context:
+            if msg.id != agent.state.reply_id or msg.role != "assistant":
+                continue
+            for block in msg.get_content_blocks():
+                if isinstance(block, ToolCallBlock):
+                    arrived = False
+                elif _peer_reply(block) is not None:
+                    arrived = True
+        return arrived
 
     @staticmethod
     def _is_null_target(value: object) -> bool:

@@ -56,7 +56,7 @@ class CoreLearningIntegrationTests(IsolatedAsyncioTestCase):
         middleware = LeaderEvidenceMiddleware(self.storage, self.shared, "u", "leader-agent", "leader", on_verified_answer=callback)
         middleware._review = AsyncMock(return_value=[])
         middleware._question = AsyncMock(return_value=None)
-        middleware._workers_running = AsyncMock(return_value=False)
+        middleware._collaboration_state = AsyncMock(return_value=(False, False))
         middleware._has_unseen_context = AsyncMock(return_value=False)
         middleware._seal_final_answer = AsyncMock(return_value=True)
         agent = SimpleNamespace(state=AgentState(), name="Leader")

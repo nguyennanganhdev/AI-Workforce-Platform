@@ -523,7 +523,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 							}
 						>
 							<BubbleContent>
-								<ASBlock block={block} />
+								<ASBlock block={block} author={message.name} />
 							</BubbleContent>
 						</Bubble>
 					))}
@@ -548,7 +548,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 					{blocks
 						.filter((block) => block.type === 'data')
 						.map((block, index) => (
-							<ASBlock block={block} key={index} />
+							<ASBlock block={block} author={message.name} key={index} />
 						))}
 				</AttachmentGroup>
 				{message.role === 'user' ? (
@@ -667,6 +667,7 @@ function ThinkingBlockView({ block }: { block: ThinkingBlock }) {
 
 interface ASBlockProps {
 	block: ExtendedContentBlock;
+	author: string;
 }
 
 function BlockDuration({ createdAt, finishedAt }: { createdAt?: string; finishedAt?: string | null }) {
@@ -681,7 +682,7 @@ function BlockDuration({ createdAt, finishedAt }: { createdAt?: string; finished
 	return <span className="ml-2 text-xs tabular-nums">{formatTime(seconds)}</span>;
 }
 
-export function ASBlock({ block, ...props }: ASBlockProps) {
+export function ASBlock({ block, author, ...props }: ASBlockProps) {
 	const { t } = useTranslation();
 	const ticketView = useContext(TicketViewContext);
 
@@ -696,7 +697,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			);
 		}
 		case 'dialog':
-			return <DialogToolCard pair={block.pair} />;
+			return <DialogToolCard pair={block.pair} sender={author} />;
 		case 'data': {
 			const dataType = block.source.media_type.split('/')[0];
 			if (dataType === 'audio') return null;
@@ -763,7 +764,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			const team = teamHintSource(block.source);
 			if (team && typeof block.hint === 'string') {
 				return (
-					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} at={block.created_at} />
+					<TeamMessageCard sender={team.sender} recipient={author} kind={team.kind} text={block.hint} at={block.created_at} />
 				);
 			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
@@ -822,7 +823,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 					</CollapsibleTrigger>
 					<CollapsibleContent className="bg-muted p-2 rounded text-sm">
 						{items.map((item, index) => (
-							<ASBlock block={item} key={index} />
+							<ASBlock block={item} author={author} key={index} />
 						))}
 					</CollapsibleContent>
 				</Collapsible>

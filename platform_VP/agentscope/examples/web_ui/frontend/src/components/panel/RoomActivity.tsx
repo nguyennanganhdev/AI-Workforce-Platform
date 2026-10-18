@@ -43,10 +43,12 @@ function Entry({ entry }: { entry: RoomEntry }) {
 					entry.kind === 'error' && 'bg-destructive/10',
 				)}
 			>
-				<span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-					<span className="truncate font-medium text-foreground">{sender}</span>
-					{to && <span className="truncate">→ {to}</span>}
-					{kind && <span className="shrink-0">· {kind}</span>}
+				<span className="block text-xs text-muted-foreground">
+					<span className="flex items-start gap-2">
+						<span className="min-w-0 flex-1 break-words font-medium text-foreground">{sender}</span>
+						{kind && <span className="shrink-0">{kind}</span>}
+					</span>
+					{to && <span className="mt-0.5 block break-words">→ {to}</span>}
 				</span>
 				<span
 					className={cn(

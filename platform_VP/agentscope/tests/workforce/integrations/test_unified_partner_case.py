@@ -1531,6 +1531,75 @@ class PromptCacheOrderTest(unittest.TestCase):
 
 
 class RoomStepEndTest(unittest.IsolatedAsyncioTestCase):
+    async def test_real_waiter_resumes_case_say_or_parks_without_an_attribute_error(self):
+        from agentscope.agent import ReActConfig
+        from agentscope.app.middleware import LeaderEvidenceMiddleware
+        from agentscope.app.workforce.integrations.unified._case import CaseSay, PartnerCaseMiddleware
+        from agentscope.event import ReplyEndEvent
+        from agentscope.message import ToolCallBlock, ToolResultBlock
+        from agentscope.state import AgentState
+
+        scenarios = (
+            ((1, 0, 1, False), "completed", False, True, True),
+            ((1, 0, 1, False), "running", False, True, True),
+            ((1, 1, 0, False), "running", False, True, True),
+            ((0, 0, 0, False), "running", False, True, False),
+            ((0, 0, 0, False), "review", False, True, True),
+            ((1, 0, 1, False), "completed", True, True, False),
+            ((1, 0, 1, False), "completed", False, False, False),
+        )
+        for evidence, status, consent, team_exists, should_say in scenarios:
+            with self.subTest(evidence=evidence, status=status, consent=consent, team=team_exists):
+                task = SimpleNamespace(latest_customer_revision=1, collaboration={
+                    "worker": SimpleNamespace(customer_revision=1, status=status),
+                })
+                shared = SimpleNamespace(
+                    team_evidence_status=AsyncMock(return_value=evidence),
+                    collaboration_review=AsyncMock(return_value=[] if status == "completed" else ["worker"]),
+                    storage=SimpleNamespace(get_team_shared_context=AsyncMock(return_value=SimpleNamespace(
+                        state=SimpleNamespace(active_task_id="task", tasks={"task": task}),
+                    ))),
+                )
+                storage = SimpleNamespace(get_session=AsyncMock(
+                    return_value=SimpleNamespace(team_id="team-1") if team_exists else None,
+                ))
+                waiter = LeaderEvidenceMiddleware(storage, shared, "u", "leader", "session-1", wait_seconds=0)
+                waiter._pending_consent = AsyncMock(return_value=consent)
+                says = []
+                case = _unsaid_case()
+                case.workflow_id, case.on_say = "workflow", None
+                case.said = AsyncMock(side_effect=lambda: bool(says))
+
+                async def append(workflow_id, kind, text, **kwargs):
+                    self.assertEqual(kind, "say")
+                    says.append({"text": text, **kwargs})
+                    return 1
+
+                case.store = SimpleNamespace(
+                    entries=AsyncMock(side_effect=lambda *args, **kwargs: list(says)),
+                    labelled=AsyncMock(return_value={}), customer_texts=AsyncMock(return_value=[]),
+                    append=append,
+                )
+                middleware = PartnerCaseMiddleware(case, [], {"Worker": {}}, waiter)
+                state = AgentState(session_id="session-1")
+                state.reply_id = "reply-1"
+                state.append_context("Leader", [
+                    ToolCallBlock(id="invite", name="AgentInvite", input='{"target":"Worker"}'),
+                    ToolResultBlock(id="invite", name="AgentInvite", output="invited", state=ToolResultState.SUCCESS),
+                ])
+                agent = SimpleNamespace(name="Leader", state=state, react_config=ReActConfig(max_iters=5))
+
+                async def next_handler(**kwargs):
+                    yield ReplyEndEvent(session_id="session-1", reply_id="reply-1")
+                    if any(message.get_content_blocks("hint") for message in state.context):
+                        result = await CaseSay(case).call(text="Yêu cầu đã được tiếp nhận.")
+                        self.assertEqual(result.state, ToolResultState.SUCCESS, result.content)
+                        yield ReplyEndEvent(session_id="session-1", reply_id="reply-1")
+
+                events = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+                self.assertEqual(len(says), int(should_say))
+                self.assertEqual(len(events), 1)
+
     async def test_after_inviting_the_step_ends_once_and_the_reports_wake_the_leader(self):
         from agentscope.app.workforce.integrations.unified._case import ROOM_WORKING, PartnerCaseMiddleware
         from agentscope.message import AssistantMsg, ToolResultBlock, ToolResultState

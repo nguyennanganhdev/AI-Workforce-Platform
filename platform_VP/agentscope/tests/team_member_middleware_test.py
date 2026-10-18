@@ -16,9 +16,10 @@ from utils import MockModel
 
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
 from agentscope.app._tool._team_say import STALE_CONTEXT_RESULT
-from agentscope.app.middleware import TeamMemberLoopMiddleware
+from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
+from agentscope.app.middleware import InboxMiddleware, TeamMemberLoopMiddleware
 from agentscope.event import ReplyEndEvent, TextBlockDeltaEvent, ToolResultTextDeltaEvent
-from agentscope.message import TextBlock, ToolCallBlock, ToolResultState, UserMsg
+from agentscope.message import HintBlock, TextBlock, ToolCallBlock, ToolResultState, UserMsg
 from agentscope.model import ChatResponse
 from agentscope.permission import (
     PermissionBehavior,
@@ -136,6 +137,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         max_nudges: int = 3,
         extra_tools: list | None = None,
         pending_question=None,
+        extra_middlewares: list | None = None,
     ) -> list:
         """Drive one reply and return the streamed items."""
         toolkit = Toolkit(tools=[self.team_say, *(extra_tools or [])])
@@ -147,6 +149,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             toolkit=toolkit,
             react_config=ReActConfig(max_iters=max_iters),
             middlewares=[
+                *(extra_middlewares or []),
                 TeamMemberLoopMiddleware(
                     leader_name="Leader",
                     max_nudges=max_nudges,
@@ -155,10 +158,52 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             ],
             injection_config=InjectionConfig(inject_runtime_state=False),
         )
+        self.agent = agent
         items = []
         async for item in agent.reply_stream(UserMsg("user", "do it")):
             items.append(item)
         return items
+
+    async def test_peer_reply_requires_a_new_report_to_the_assignment_requester(self):
+        for kind in ("answer", "result", "error", "progress"):
+            with self.subTest(kind=kind):
+                self.model = MockModel()
+                bus = InMemoryMessageBus()
+                test = self
+
+                class _ReplyingPeer(_FakeTeamSay):
+                    async def __call__(self, content, to=None, kind=None):
+                        result = await super().__call__(content, to, kind)
+                        if to == "Peer":
+                            await bus.queue_push(
+                                MessageBusKeys.inbox(test.agent.state.session_id),
+                                hint.model_dump(mode="json"),
+                            )
+                        return result
+
+                hint = HintBlock(
+                    hint="Peer returned the verified options",
+                    source=json.dumps({"label": "team", "sublabel": "Peer", "kind": kind}),
+                )
+                self.team_say = _ReplyingPeer()
+                items = await self._run(
+                    [
+                        _call("TeamSay", to="Peer", kind="question", content="Find options"),
+                        _text("I read the peer response"),
+                        _call("TeamSay", to="Leader", kind="result", content="Verified options"),
+                    ],
+                    extra_middlewares=[InboxMiddleware(bus)],
+                )
+
+                self.assertEqual(self.model.cnt, 1 if kind == "progress" else 3)
+                self.assertEqual(
+                    [call["to"] for call in self.team_say.calls],
+                    ["Peer"] if kind == "progress" else ["Peer", "Leader"],
+                )
+                self.assertEqual(
+                    self._end_events(items)[0].finished_reason,
+                    ReplyFinishedReason.COMPLETED,
+                )
 
     async def test_waiting_for_user_never_calls_model_or_tools(self):
         async def question():

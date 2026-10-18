@@ -1,5 +1,6 @@
 """Coordinate Workforce Leader turns without validating business claims."""
 
+import asyncio
 import json
 import inspect
 import re
@@ -28,6 +29,28 @@ from .._shared_context import SharedContextService
 from ..storage import StorageBase
 
 
+def _peer_reply(block: object) -> tuple[str, str, str | None] | None:
+    """Return ``(sender, kind, in_reply_to)`` of an injected non-progress peer message."""
+
+    if not isinstance(block, HintBlock):
+        return None
+    try:
+        source = json.loads(block.source or "{}")
+    except (TypeError, ValueError):
+        return None
+    if (
+        not isinstance(source, dict)
+        or source.get("label") != "team"
+        or source.get("kind") == "progress"
+    ):
+        return None
+    return (
+        str(source.get("sublabel") or "").strip().casefold(),
+        str(source.get("kind") or ""),
+        source.get("in_reply_to"),
+    )
+
+
 class LeaderEvidenceMiddleware(MiddlewareBase):
     """Keep Leader delegation and finalization event-driven."""
 
@@ -53,10 +76,16 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         self._on_verified_answer = on_verified_answer
 
     @staticmethod
-    def _expected_reports(agent: Agent) -> int:
-        """Count successful worker dispatches in the current reply."""
+    def _expected_reports(agent: Agent, *, outstanding: bool = False) -> int:
+        """Count successful worker dispatches in the current reply.
 
-        targets: set[str] = set()
+        With ``outstanding``, a dispatch whose target has already answered
+        (answer/result/error) in this reply no longer counts. InboxMiddleware injects answers that
+        arrive mid-run into the same reply, and pausing on them would leave
+        them unread with no later wake-up.
+        """
+
+        targets: dict[str, str | None] = {}  # target -> its handoff id
         for message in agent.state.context:
             if message.id != agent.state.reply_id or message.role != "assistant":
                 continue
@@ -67,17 +96,34 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 if isinstance(block, ToolResultBlock)
             }
             for call in blocks:
+                peer = _peer_reply(call) if outstanding else None
+                if peer is not None:
+                    sender, kind, in_reply_to = peer
+                    # A counter-question from the target is not its answer.
+                    if kind not in {"answer", "result", "error"}:
+                        continue
+                    for target, handoff_id in list(targets.items()):
+                        if (in_reply_to and in_reply_to == handoff_id) or target in {
+                            sender,
+                            sender.split("@", 1)[0],
+                        }:
+                            del targets[target]
+                    continue
                 if not isinstance(call, ToolCallBlock):
                     continue
                 result = results.get(call.id)
                 if result is not None and call.name == "AgentInvite":
                     started = result.metadata.get("started_targets")
                     if isinstance(started, list):
-                        targets.update(str(t).strip().casefold() for t in started)
+                        targets.update(
+                            (str(t).strip().casefold(), None) for t in started
+                        )
                         continue
                     actual = result.metadata.get("invited_targets")
                     if isinstance(actual, list):
-                        targets.update(str(t).strip().casefold() for t in actual)
+                        targets.update(
+                            (str(t).strip().casefold(), None) for t in actual
+                        )
                         continue
                 if result is None or result.state != ToolResultState.SUCCESS:
                     continue
@@ -87,7 +133,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     continue
                 if call.name == "AgentInvite":
                     target = str(payload.get("target") or call.id)
-                    targets.add(target.strip().casefold())
+                    targets[target.strip().casefold()] = None
                 elif (
                     call.name == "TeamSay"
                     and payload.get("kind")
@@ -98,8 +144,27 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     and payload.get("resolution") not in {"complete", "stop"}
                 ):
                     target = str(payload.get("to") or call.id)
-                    targets.add(target.strip().casefold())
+                    targets[target.strip().casefold()] = result.metadata.get(
+                        "handoff_id",
+                    )
         return len(targets)
+
+    async def _status(self) -> tuple[bool, int, int, int, bool]:
+        """Read current evidence for the partner's bounded in-turn wait."""
+
+        session = await self._storage.get_session(
+            self._user_id, self._agent_id, self._session_id
+        )
+        if session is None or session.team_id is None:
+            return False, 0, 0, 0, False
+        completed, errors, verified, waiting = (
+            await self._shared_context.team_evidence_status(
+                self._user_id,
+                session.team_id,
+                leader_session_id=self._session_id,
+            )
+        )
+        return True, completed, errors, verified, waiting
 
     async def _review(self) -> list[str]:
         session = await self._storage.get_session(
@@ -121,6 +186,30 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             )
         )
 
+    async def _wait_until_ready(self, expected: int, deadline: float) -> bool:
+        """Wait within the partner turn's shared deadline."""
+
+        # Current branches, not dispatch counts, determine whether work settled.
+        del expected
+        loop = asyncio.get_running_loop()
+        while True:
+            await self._review()
+            team, completed, errors, _verified, waiting = await self._status()
+            if not team:
+                return False
+            running, needs_review = await self._collaboration_state()
+            if (
+                needs_review
+                or waiting
+                or ((completed > 0 or errors > 0) and not running)
+                or await self._pending_consent()
+            ):
+                return True
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return False
+            await asyncio.sleep(min(0.5, remaining))
+
     async def _question(self) -> str | None:
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
@@ -131,35 +220,39 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id
         )
 
-    async def _workers_running(self) -> bool:
-        """Sleep for active work, but allow the Leader to review peer reports."""
+    async def _collaboration_state(self) -> tuple[bool, bool]:
+        """Return active-work and unresolved-review flags for this revision."""
 
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
         )
         if session is None or session.team_id is None:
-            return False
+            return False, False
         record = await self._shared_context.storage.get_team_shared_context(
             self._user_id, session.team_id
         )
         task = record.state.tasks.get(record.state.active_task_id) if record else None
-        return bool(
-            task
-            and any(
-                sid != self._session_id
-                and branch.customer_revision == task.latest_customer_revision
-                and branch.status in {"running", "waiting_peer"}
-                for sid, branch in task.collaboration.items()
-            )
+        if task is None:
+            return False, False
+        branches = [
+            branch
+            for sid, branch in task.collaboration.items()
+            if sid != self._session_id
+            and branch.customer_revision == task.latest_customer_revision
+        ]
+        return (
+            any(branch.status in {"running", "waiting_peer"} for branch in branches),
+            any(branch.status == "review" for branch in branches),
         )
 
     async def on_reasoning(self, agent, input_kwargs, next_handler):
         """Stop this run after delegation; a peer reply starts a fresh run."""
 
         question = await self._question()
-        expected = self._expected_reports(agent)
+        expected = self._expected_reports(agent, outstanding=True)
         await self._review()
-        if expected or question or await self._workers_running():
+        running, needs_review = await self._collaboration_state()
+        if question or (not needs_review and (expected or running)):
             agent.state.append_context(
                 agent.name,
                 [
@@ -397,10 +490,11 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 yield event
                 continue
 
-            expected = self._expected_reports(agent)
+            expected = self._expected_reports(agent, outstanding=True)
             await self._review()
             question = await self._question()
-            if expected or question or await self._workers_running():
+            running, needs_review = await self._collaboration_state()
+            if question or (not needs_review and (expected or running)):
                 # Delegation and specialist-owned clarification are terminal
                 # for this run. The recipient/customer response will wake a
                 # new run with a fresh Shared Context snapshot.

@@ -2484,7 +2484,9 @@ class ChatService:
                         and reply_msg is not None
                         and reply_msg.finished_reason is ReplyFinishedReason.COMPLETED
                         and bool((reply_msg.get_text_content() or "").strip())
-                        and not LeaderEvidenceMiddleware._expected_reports(agent)
+                        and not LeaderEvidenceMiddleware._expected_reports(
+                            agent, outstanding=True,
+                        )
                         and await finish_team_turn(
                             self._message_bus,
                             team.id,

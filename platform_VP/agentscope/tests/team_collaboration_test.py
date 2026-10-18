@@ -950,6 +950,55 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             self.storage.context.state.tasks[self.task].pending_question_ids or None
         )
 
+    async def test_conflict_reaches_leader_while_another_worker_waits(self):
+        from agentscope.agent import Agent, InjectionConfig, ReActConfig
+        from agentscope.app.middleware import InboxMiddleware, LeaderEvidenceMiddleware
+        from agentscope.event import ReplyEndEvent
+        from agentscope.message import ToolCallBlock, UserMsg
+        from agentscope.model import ChatResponse
+        from agentscope.tool import Toolkit
+        from agentscope.types import ReplyFinishedReason
+        from utils import MockModel
+
+        await self.say("worker", to="Peer", kind="question", content="Need verified result")
+        conflict = await self.say(
+            "peer", to="Leader", kind="conflict", content="The inputs disagree; resolve this assignment",
+        )
+        model = MockModel(context_size=20000, mock_chat_responses=[ChatResponse(
+            content=[ToolCallBlock(id="resolve", name="TeamSay", input=json.dumps({
+                "to": "Peer", "kind": "handoff", "resolution": "stop",
+                "content": "Stop this conflicting assignment and release its dependants",
+            }))],
+            is_last=True,
+        )])
+        agent = Agent(
+            name="Leader", system_prompt="Resolve team conflicts.", model=model,
+            toolkit=Toolkit(tools=[self.tool("leader")]),
+            react_config=ReActConfig(max_iters=3),
+            injection_config=InjectionConfig(inject_runtime_state=False),
+            middlewares=[
+                InboxMiddleware(self.bus, shared_context=self.service, user_id="u"),
+                LeaderEvidenceMiddleware(self.storage, self.service, "u", "leader", "leader-session"),
+            ],
+        )
+        agent.state.session_id = "leader-session"
+        events = [event async for event in agent.reply_stream(UserMsg("user", "Review incoming work"))]
+
+        self.assertEqual(model.cnt, 1)
+        self.assertEqual(self.branch("peer").status, "stopped")
+        self.assertEqual(self.branch("worker").status, "running")
+        self.assertEqual(self.branch("worker").waiting_for, {})
+        handoff = next(
+            value for value in self.storage.handoffs.values()
+            if value.handoff_id == conflict.metadata["handoff_id"]
+            and value.recipient_session_id == "leader-session"
+        )
+        self.assertEqual(handoff.delivery_status, "consumed")
+        self.assertEqual(
+            [event.finished_reason for event in events if isinstance(event, ReplyEndEvent)],
+            [ReplyFinishedReason.COMPLETED],
+        )
+
     async def test_conflict_does_not_require_source_references(self):
         accepted = await self.tool("worker")(
             to="Leader",

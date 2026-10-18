@@ -143,18 +143,18 @@ export function DialogCard({
 				'motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1',
 			)}
 		>
-			<div className="mb-1.5 flex min-w-0 items-center gap-2 text-[13px]/[18px]">
+			<div className="mb-1.5 flex min-w-0 items-start gap-2 text-[13px]/[18px]">
 				<Face name={from} />
-				<span className="truncate font-semibold text-foreground">{from}</span>
-				{to && (
-					<>
-						<ArrowRight className="size-3.5 shrink-0 text-muted-foreground" />
-						<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-							{toPerson && <UserRound className="size-3.5 shrink-0" />}
-							<span className="truncate">{to}</span>
-						</span>
-					</>
-				)}
+				<div className="min-w-0 flex-1">
+					<p className="break-words font-semibold text-foreground">{from}</p>
+					{to && (
+						<p className="mt-0.5 flex items-start gap-1.5 text-muted-foreground">
+							<ArrowRight className="mt-0.5 size-3.5 shrink-0" />
+							{toPerson && <UserRound className="mt-0.5 size-3.5 shrink-0" />}
+							<span className="min-w-0 break-words">{to}</span>
+						</p>
+					)}
+				</div>
 				<span className={cn('ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium', tone.pill)}>
 					{labelOf(kind, decision)}
 				</span>
@@ -169,11 +169,13 @@ export function DialogCard({
 /** A message another agent sent into this session (a team hint). */
 export function TeamMessageCard({
 	sender,
+	recipient,
 	kind,
 	text,
 	at,
 }: {
 	sender: string;
+	recipient: string;
 	kind?: string;
 	text: string;
 	at?: string;
@@ -182,7 +184,7 @@ export function TeamMessageCard({
 	const from = cleanName(sender);
 	const calls = room ? memberToolCalls(room.timeline, from, at) : [];
 	return (
-		<DialogCard from={from} to="Leader" kind={kind} footer={<ToolTrace calls={calls} />}>
+		<DialogCard from={from} to={cleanName(recipient)} kind={kind} footer={<ToolTrace calls={calls} />}>
 			<Markdown>{teamMessageText(text)}</Markdown>
 		</DialogCard>
 	);
@@ -194,10 +196,11 @@ function resultNote(pair: ToolCallWithResult): ReactNode {
 	return null;
 }
 
-/** A message the Leader sent: an assignment, a room message or the user reply. */
-export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
+/** An agent's outgoing assignment, room message or user reply. */
+export function DialogToolCard({ pair, sender }: { pair: ToolCallWithResult; sender: string }) {
 	const args = parseArgs(pair.call.input);
 	const name = pair.call.name;
+	const from = cleanName(sender) || 'Agent';
 	if (name === 'AgentInvite') {
 		const assignments = [
 			{ target: args.target, prompt: args.prompt, depends_on: args.depends_on },
@@ -210,7 +213,7 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 					return (
 						<DialogCard
 							key={index}
-							from="Leader"
+							from={from}
 							to={cleanName(String(item.target ?? ''))}
 							kind="assign"
 							note={after.length > 0 && <>Bắt đầu sau khi {after.join(', ')} báo kết quả</>}
@@ -225,7 +228,7 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 	if (name === 'TeamSay') {
 		return (
 			<DialogCard
-				from="Leader"
+				from={from}
 				to={cleanName(String(args.to ?? '')) || 'Cả phòng'}
 				kind={String(args.kind ?? '')}
 				decision={String(args.decision ?? '')}
@@ -239,7 +242,7 @@ export function DialogToolCard({ pair }: { pair: ToolCallWithResult }) {
 	const refused = pair.result?.state === 'error';
 	return (
 		<DialogCard
-			from="Leader"
+			from={from}
 			to="Cư dân"
 			toPerson
 			kind={refused ? 'error' : 'reply'}

@@ -1,12 +1,13 @@
 """Runtime coordination tests for the fixed Workforce Leader."""
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
 from agentscope.agent import ReActConfig
-from agentscope.app.middleware import LeaderEvidenceMiddleware
+from agentscope.app.middleware import LeaderEvidenceMiddleware, TeamMemberLoopMiddleware
 from agentscope.app.middleware._personal_group_middleware import PersonalGroupEvidenceMiddleware
 from agentscope.event import (
     ReplyEndEvent,
@@ -135,6 +136,92 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
                 }
             )
         self.assertEqual(0, LeaderEvidenceMiddleware._expected_reports(agent))
+
+    @staticmethod
+    def _team_say(agent, call_id: str, payload: dict, metadata: dict) -> None:
+        agent.state.append_context(agent.name, [
+            ToolCallBlock(id=call_id, name="TeamSay", input=json.dumps(payload)),
+            ToolResultBlock(
+                id=call_id, name="TeamSay", output="delivered",
+                state=ToolResultState.SUCCESS, metadata=metadata,
+            ),
+        ])
+
+    @staticmethod
+    def _peer_hint(agent, kind: str, sender: str = "Tech@1234") -> None:
+        source = {"label": "team", "sublabel": sender, "kind": kind, "in_reply_to": None}
+        agent.state.append_context(agent.name, [
+            HintBlock(hint=f"<team-message kind={kind}>", source=json.dumps(source)),
+        ])
+
+    async def test_answer_drained_into_asking_reply_reaches_the_model(self):
+        # Live failure: the answer arrived while the asker's run was still
+        # going, InboxMiddleware injected it, then the pause ended the run.
+        agent = self._agent(dispatched=False)
+        self._team_say(
+            agent, "ask-1", {"to": "Tech@1234", "kind": "question", "content": "?"},
+            {"handoff_id": "h1"},
+        )
+        self._peer_hint(agent, "progress")
+        self.assertEqual(1, LeaderEvidenceMiddleware._expected_reports(agent, outstanding=True))
+        self._peer_hint(agent, "answer")
+        self.assertEqual(1, LeaderEvidenceMiddleware._expected_reports(agent))
+        self.assertEqual(0, LeaderEvidenceMiddleware._expected_reports(agent, outstanding=True))
+
+        async def next_handler(**kwargs):
+            del kwargs
+            yield "model-called"
+
+        member = TeamMemberLoopMiddleware(leader_name="Leader")
+        self.assertEqual(
+            ["model-called"],
+            [event async for event in member.on_reasoning(agent, {}, next_handler)],
+        )
+
+    async def test_counter_question_from_target_keeps_the_request_open(self):
+        async def next_handler(**kwargs):
+            del kwargs
+            yield "model-called"
+
+        agent = self._agent(dispatched=False)
+        self._team_say(
+            agent, "ask-1", {"to": "Tech@1234", "kind": "question", "content": "?"},
+            {"handoff_id": "h1"},
+        )
+        self._peer_hint(agent, "question")
+        self.assertEqual(1, LeaderEvidenceMiddleware._expected_reports(agent, outstanding=True))
+        member = TeamMemberLoopMiddleware(leader_name="Leader", require_report=False)
+        # The unread question reaches the model ...
+        self.assertEqual(
+            ["model-called"],
+            [e async for e in member.on_reasoning(agent, {}, next_handler)],
+        )
+        # ... and once answered, the open request pauses the reply owner.
+        self._team_say(
+            agent, "say-1", {"to": "Tech@1234", "kind": "answer", "content": "ok"},
+            {"kind": "answer"},
+        )
+        output = [e async for e in member.on_reasoning(agent, {}, next_handler)]
+        self.assertNotEqual(["model-called"], output)
+
+    async def test_reply_owner_keeps_running_after_answering_a_peer(self):
+        async def next_handler(**kwargs):
+            del kwargs
+            yield "model-called"
+
+        for require_report, called in ((True, False), (False, True)):
+            with self.subTest(require_report=require_report):
+                agent = self._agent(dispatched=False)
+                self._team_say(
+                    agent, "say-1",
+                    {"to": "Coordinator@5678", "kind": "answer", "content": "ok"},
+                    {"kind": "answer"},
+                )
+                member = TeamMemberLoopMiddleware(
+                    leader_name="Leader", require_report=require_report,
+                )
+                output = [e async for e in member.on_reasoning(agent, {}, next_handler)]
+                self.assertEqual(called, output == ["model-called"])
 
     def test_batch_counts_actual_dispatches_even_when_one_invite_fails(self):
         agent = self._agent(dispatched=True)
@@ -298,6 +385,92 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
                     self._agent(dispatched=False), {}, next_handler,
                 )]
                 self.assertEqual(called, should_reason)
+
+    async def test_current_review_overrides_waiting_workers_and_outstanding_dispatch(self):
+        for revision in (0, 1):
+            with self.subTest(review_revision=revision):
+                shared = _SharedContext((1, 0, 1, False))
+                shared.collaboration_review = AsyncMock(return_value=["waiting", "reviewing"])
+                task = SimpleNamespace(latest_customer_revision=1, collaboration={
+                    "waiting": SimpleNamespace(customer_revision=1, status="waiting_peer"),
+                    "reviewing": SimpleNamespace(customer_revision=revision, status="review"),
+                })
+                shared.storage.get_team_shared_context.return_value = SimpleNamespace(
+                    state=SimpleNamespace(active_task_id="task", tasks={"task": task}),
+                )
+                middleware = LeaderEvidenceMiddleware(_Storage(), shared, "u", "leader", "session-1")
+
+                async def next_handler(**kwargs):
+                    yield "model-called"
+
+                output = [event async for event in middleware.on_reasoning(
+                    self._agent(dispatched=True), {}, next_handler,
+                )]
+                self.assertEqual(output == ["model-called"], revision == 1)
+
+    async def test_unresolved_review_is_nudged_before_waiting_for_other_workers(self):
+        shared = _SharedContext((1, 0, 1, False))
+        shared.collaboration_review = AsyncMock(return_value=["waiting", "reviewing"])
+        waiting = SimpleNamespace(customer_revision=1, status="waiting_peer")
+        reviewing = SimpleNamespace(customer_revision=1, status="review")
+        task = SimpleNamespace(latest_customer_revision=1, collaboration={
+            "waiting": waiting, "reviewing": reviewing,
+        })
+        shared.storage.get_team_shared_context.return_value = SimpleNamespace(
+            state=SimpleNamespace(active_task_id="task", tasks={"task": task}),
+        )
+        middleware = LeaderEvidenceMiddleware(_Storage(), shared, "u", "leader", "session-1")
+        agent = self._agent(dispatched=False)
+
+        async def next_handler(**kwargs):
+            for event in _text_round("reply-1", "premature", "Everything is complete."):
+                yield event
+            self.assertTrue(any(message.get_content_blocks("hint") for message in agent.state.context))
+            waiting.status, reviewing.status = "stopped", "completed"
+            shared.collaboration_review.return_value = []
+            for event in _text_round("reply-1", "resolved", "Verified result after resolving the conflict."):
+                yield event
+
+        output = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+        self.assertEqual(
+            "".join(event.delta for event in output if isinstance(event, TextBlockDeltaEvent)),
+            "Verified result after resolving the conflict.",
+        )
+
+    async def test_partner_wait_yields_until_a_report_or_review_arrives(self):
+        for status in ("completed", "review"):
+            with self.subTest(status=status):
+                shared = _SharedContext((0, 0, 0, False))
+                branch = SimpleNamespace(customer_revision=1, status="running")
+                task = SimpleNamespace(latest_customer_revision=1, collaboration={"worker": branch})
+                shared.storage.get_team_shared_context.return_value = SimpleNamespace(
+                    state=SimpleNamespace(active_task_id="task", tasks={"task": task}),
+                )
+                middleware = LeaderEvidenceMiddleware(_Storage(), shared, "u", "leader", "session-1")
+                middleware._pending_consent = AsyncMock(return_value=False)
+
+                async def deliver(delay):
+                    self.assertGreater(delay, 0)
+                    self.assertLessEqual(delay, 0.1)
+                    branch.status = status
+                    if status == "completed":
+                        shared.status = (1, 0, 1, False)
+
+                deadline = asyncio.get_running_loop().time() + 0.1
+                with patch("agentscope.app.middleware._leader_evidence_middleware.asyncio.sleep", side_effect=deliver) as sleep:
+                    self.assertTrue(await middleware._wait_until_ready(1, deadline))
+                sleep.assert_awaited_once()
+
+    async def test_partner_wait_never_restarts_an_expired_shared_deadline(self):
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(), _SharedContext((0, 0, 0, False)), "u", "leader", "session-1", wait_seconds=60,
+        )
+        middleware._pending_consent = AsyncMock(return_value=False)
+        deadline = asyncio.get_running_loop().time() - 1
+        with patch("agentscope.app.middleware._leader_evidence_middleware.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            self.assertFalse(await middleware._wait_until_ready(1, deadline))
+            self.assertFalse(await middleware._wait_until_ready(2, deadline))
+        sleep.assert_not_awaited()
 
     async def test_delegation_ends_without_wait_timeout_placeholder(self):
         middleware = LeaderEvidenceMiddleware(
