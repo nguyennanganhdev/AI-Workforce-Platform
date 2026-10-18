@@ -137,7 +137,8 @@ def test_leader_requires_verified_agent_evidence_for_domain_answers() -> None:
     assert "always require verified evidence" in _LEADER_PROMPT
     assert "Never answer these from pretrained" in _LEADER_PROMPT
     assert "could not be verified" in _LEADER_PROMPT
-    assert "wait for the relevant results" in _LEADER_PROMPT
+    assert "wait for the integrator's plan" in _LEADER_PROMPT
+    assert "Review CONTENT only" in _LEADER_PROMPT
 
 
 def test_builder_outline_keeps_team_capabilities_separate() -> None:

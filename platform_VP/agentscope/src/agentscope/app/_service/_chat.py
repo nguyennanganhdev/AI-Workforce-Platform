@@ -1068,6 +1068,7 @@ class ChatService:
             is_reply_owner = False
             report_target_name: str | None = None
             team_roster_names: list[str] = []
+            team_roster_roles: dict[str, str] = {}
             customer_output_session_id = session_id
             worker_name: str = agent_id
             shared_input_recorded = False
@@ -1339,6 +1340,15 @@ class ChatService:
                             if member.role == "invited":
                                 name += "@" + member.agent_id[:HANDLE_LEN]
                             team_roster_names.append(name)
+                            # What each teammate owns, so a member knows whom to ask.
+                            role = (member_agent.data.invite_config.invite_description
+                                    or member_agent.data.build_description or "").strip()[:140]
+                            tools = [str(tool.get("tool_name") or "") for tool in
+                                     (member_agent.data.spec or {}).get("tools", [])][:8]
+                            team_roster_roles[name] = "; ".join(
+                                part for part in (role, "tools: " + ", ".join(filter(None, tools)) if any(tools) else "")
+                                if part
+                            )
 
                 workspace = await self._workspace_manager.get_workspace(
                     user_id,
@@ -1806,7 +1816,10 @@ class ChatService:
                     attachment += (
                         " Current team roster (use these exact handles in "
                         "TeamSay.to): "
-                        + ", ".join(dict.fromkeys(team_roster_names))
+                        + ", ".join(
+                            f"{name} ({team_roster_roles[name]})" if team_roster_roles.get(name) else name
+                            for name in dict.fromkeys(team_roster_names)
+                        )
                         + ". Ask the responsible peer directly for an internal "
                         "dependency; do not ask the customer to relay it."
                     )
