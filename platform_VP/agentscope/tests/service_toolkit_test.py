@@ -27,6 +27,7 @@ from agentscope.app._manager import (
     SchedulerManager,
 )
 from agentscope.app._service import ResourceAccessService, get_toolkit
+from agentscope.app._shared_context import SharedContextService
 from agentscope.app.access import DenyAllResourceAccessPolicy
 from agentscope.app.storage import (
     AgentData,
@@ -229,6 +230,7 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
                 middlewares=[],
                 resource_access_service=_make_access(storage),
                 team_role=None if leader else "worker",
+                shared_context_service=SharedContextService(storage, _NullBus()),
             )
             names = set(_tool_names(toolkit))
             self.assertTrue(
@@ -243,6 +245,7 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
                 ),
             )
             self.assertIn("TeamSay", names)
+            self.assertIn("SharedContextRead", names)
             manager_tools = {"TeamCreate", "TeamDelete", "AgentInvite"}
             if leader:
                 self.assertTrue({"TeamCreate", "TeamDelete"} <= names)

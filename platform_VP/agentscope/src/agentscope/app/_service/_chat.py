@@ -62,7 +62,7 @@ from .._bus_ops import (
 )
 from .._chat_consent import confirmation_still_pending
 from .._manager import BackgroundTaskManager, SchedulerManager
-from .._shared_context import SharedContextBudgetError, SharedContextService
+from .._shared_context import SharedContextService
 from .._team_turn import (
     finish_team_turn,
     get_team_turn,
@@ -943,7 +943,6 @@ class ChatService:
             shared_context_packet = ""
             shared_context_tokens = 0
             shared_context_attachment = ""
-            shared_context_attachment_tokens = 0
             context_task_id: str | None = None
             customer_input_msgs = (
                 [input_msg]
@@ -1545,6 +1544,7 @@ class ChatService:
                         task_id=context_task_id,
                         reference_event_ids=reference_event_ids,
                         exclude_event_ids=tuple(msg.id for msg in customer_input_msgs),
+                        allow_source_references=True,
                     )
                     packet_revision = await self._shared_context.latest_event_revision(
                         user_id,
@@ -1561,15 +1561,6 @@ class ChatService:
                         shared_context_packet,
                         shared_context_tokens,
                     )
-                    shared_context_attachment_tokens = await model.count_tokens(
-                        [
-                            UserMsg(
-                                name="shared_context_attachment",
-                                content=shared_context_attachment,
-                            ),
-                        ],
-                        None,
-                    )
                     middlewares.append(
                         SharedContextIsolationMiddleware(
                             shared_context_mode,
@@ -1580,6 +1571,8 @@ class ChatService:
                             shared_context_attachment,
                             task_id=context_task_id,
                             membership_storage=self._storage,
+                            allow_source_references=True,
+                            reference_event_ids=reference_event_ids,
                         ),
                     )
 
@@ -1594,6 +1587,7 @@ class ChatService:
                         user_id,
                         None,
                         membership_storage=self._storage,
+                        allow_source_references=True,
                     ))
 
                 fallback_cfg = session_record.config.fallback_chat_model_config
@@ -1711,52 +1705,6 @@ class ChatService:
                 agent_state = session_record.state
                 agent_state.session_id = session_id
                 context_config = agent_record.data.context_config
-                if team is not None:
-                    # Workforce turns must never silently discard old private
-                    # context when summarization fails.
-                    output_reserve_tokens = max(
-                        1,
-                        int(
-                            model.context_size
-                            * self._shared_context.config.output_reserve_ratio,
-                        ),
-                    )
-                    private_prompt_limit = (
-                        model.context_size
-                        - shared_context_attachment_tokens
-                        - output_reserve_tokens
-                        - self._shared_context.config.preflight_margin_tokens
-                    )
-                    if private_prompt_limit <= 0:
-                        raise SharedContextBudgetError(
-                            "Shared context plus the configured output reserve "
-                            "and preflight margin cannot fit this model's "
-                            "context window. Select a larger-context model or "
-                            "split the task."
-                        )
-                    safe_trigger_ratio = min(
-                        context_config.trigger_ratio,
-                        private_prompt_limit / model.context_size,
-                    )
-                    safe_reserve_ratio = min(
-                        context_config.reserve_ratio,
-                        safe_trigger_ratio * 0.5,
-                    )
-                    context_config = context_config.model_copy(
-                        update={
-                            # Trigger private-memory compression early enough
-                            # to leave measured room for the shared packet,
-                            # output reserve and runtime-state variability.
-                            "trigger_ratio": safe_trigger_ratio,
-                            "reserve_ratio": safe_reserve_ratio,
-                            "context_buffer_ratio": min(
-                                context_config.context_buffer_ratio,
-                                max(0.0, safe_trigger_ratio - 0.01),
-                            ),
-                            "compression_fallback_to_truncation": False,
-                            "compression_retry_drop_oldest": False,
-                        },
-                    )
                 agent = self._agent_cls(
                     name=agent_record.data.name,
                     system_prompt=system_prompt,

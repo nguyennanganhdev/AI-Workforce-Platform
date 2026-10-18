@@ -437,10 +437,12 @@ class AgentInvite(_TeamToolBase):
         content = []
         invited_targets = []
         failed_targets = []
+        started_targets = []
         staged_workers: list[tuple[str, str]] = []
         # Build the complete roster first, but start only the primary target.
         # Dormant peers are awakened later by the first relevant TeamSay.
         for index, (name, task) in enumerate(assignments):
+            staged_count = len(staged_workers)
             result = await self._invite_one(
                 name,
                 task,
@@ -453,6 +455,8 @@ class AgentInvite(_TeamToolBase):
                 failed_targets.append(name)
             else:
                 invited_targets.append(name)
+            if len(staged_workers) > staged_count:
+                started_targets.append(name)
         for session_id, agent_id in staged_workers:
             await enqueue_run_trigger(
                 self._message_bus,
@@ -465,9 +469,7 @@ class AgentInvite(_TeamToolBase):
             state=(ToolResultState.ERROR if failed_targets else ToolResultState.SUCCESS),
             metadata={
                 "invited_targets": invited_targets,
-                "started_targets": invited_targets[:1]
-                if assignments and assignments[0][0] in invited_targets
-                else [],
+                "started_targets": started_targets,
                 "failed_targets": failed_targets,
             },
         )
@@ -564,10 +566,18 @@ class AgentInvite(_TeamToolBase):
                 team,
             )
             if any(m.agent_id == invited.id for m in existing_members):
-                return _error(
-                    f"AgentInvite: agent {invited.data.name!r} is "
-                    f"already a member of team "
-                    f"{team.data.name!r}.",
+                # Idempotent: re-inviting a member is a no-op, not a failure.
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                f"AgentInvite: agent {invited.data.name!r} is "
+                                f"already a member of team "
+                                f"{team.data.name!r} — nothing was done. "
+                                "Use TeamSay to give it new instructions."
+                            ),
+                        ),
+                    ],
                 )
 
             # Leader session — needed for chat-model / workspace fallback

@@ -415,6 +415,23 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             expected_event_revision=answer.revision,
         ))
 
+    async def test_handoff_result_after_customer_clarification_keeps_request_id(self):
+        handoff = await self.say(
+            "leader", to="Worker", kind="handoff", content="Find available options",
+        )
+        await self.say(
+            "worker", to="null", kind="requires_user_input",
+            content="Which date should I use?",
+        )
+        await self.service.append_event(
+            user_id="u", team_id="ticket-1", kind="customer_message",
+            content="Tomorrow", event_id="customer-answer",
+        )
+        await self.say(
+            "worker", to="Leader", kind="result", content="Option A is free tomorrow",
+            in_reply_to=handoff.metadata["handoff_id"],
+        )
+
     async def test_fixed_workforce_leader_cannot_ask_customer_question(self):
         self.storage.agents["leader"].data.system_role = "leader"
         result = await self.tool("leader")(
