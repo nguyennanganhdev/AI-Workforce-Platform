@@ -1905,6 +1905,109 @@ async def evaluate_builder(body: PublishRequest, user_id: str = Depends(get_curr
             raise
 
 
+# Rounds of automatic repair one proposal may take; afterwards the manager edits.
+_MAX_REPAIR_ROUNDS = 2
+
+
+class RepairPlan(BaseModel):
+    """The Builder's fix for one evaluated agent."""
+
+    explanation: str = Field(description="What failed and what was changed, for the manager; 1-4 sentences.")
+    system_prompt: str = Field(default="", max_length=30000,
+                               description="The full corrected system prompt, or empty when the prompt was not at fault.")
+    tests: list[GeneratedTest] = Field(default_factory=list, max_length=12,
+                                       description="The full corrected test list, or empty when the tests were not at fault.")
+
+
+_REPAIR_INSTRUCTIONS = """You are Agent Builder repairing an agent after its evaluation.
+For each failed case decide who is at fault, from the judge's reasons, the tool calls and the answer:
+- the agent (it misread its rules, skipped a tool it has, answered beyond evidence): correct the system prompt;
+- the test (it expects a tool, an agent, data or wording this agent cannot have, or contradicts the agent's rules):
+  correct that test so it checks the same behaviour in a way this agent can pass;
+- the environment (a tool error that is not the agent's): change nothing for that case.
+Never weaken a safety, consent or privacy rule, never delete or soften a safety_critical test, keep at least
+5 tests, and never make a test pass by expecting the wrong behaviour. Return only what you changed.
+"""
+
+
+def _repair_brief(item: ProposedAgentView) -> str:
+    report = item.evaluation.get("model_report") or {}
+    failed = [{"scenario": result.get("scenario"), "expected": result.get("expected"),
+               "error": result.get("error"), "error_kind": result.get("error_kind"),
+               "judge": (result.get("judge") or {}).get("reason"),
+               "criteria": [c for c in (result.get("judge") or {}).get("criteria", []) if not c.get("passed")],
+               "answer": str(result.get("answer") or "")[:1500],
+               "tool_calls": [{key: call.get(key) for key in ("name", "mode", "error_code")} for call in result.get("tool_calls", [])]}
+              for result in report.get("results", []) if not result.get("passed")]
+    return json.dumps({"agent": item.name, "objective": item.objective, "system_prompt": item.system_prompt,
+                       "tools": [tool.model_dump(mode="json") for tool in item.selected_tools],
+                       "tests": item.tests, "failed_cases": failed}, ensure_ascii=False)
+
+
+@workforce_console_router.post("/builder/repair", response_model=ProposalView)
+async def repair_builder(body: PublishRequest, user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage), access: ResourceAccessService = Depends(get_resource_access_service)):
+    """Correct the prompt or the tests of agents whose evaluation failed, then evaluate again.
+
+    The manager still reviews the result and publishes it; nothing is published here.
+    """
+    from .._service._eval_progress import EvalProgress
+    async with _proposal_locks[user_id]:
+        session = await storage.get_session(user_id, _BUILDER_AGENT_ID, body.conversation_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hội thoại Agent Builder.")
+        proposal = _stored_proposal(await _list_all_builder_messages(storage, user_id, session.id))
+        if proposal is None or proposal.proposal_id != body.proposal_id:
+            raise HTTPException(status_code=404, detail="Không tìm thấy đề xuất.")
+        if proposal.revision != body.expected_revision or proposal.status == "published":
+            raise HTTPException(status_code=409, detail="Đề xuất đã thay đổi hoặc đã phát hành; hãy tải lại.")
+        failing = [item for item in proposal.agents
+                   if not item.reuse_agent_id and item.evaluation.get("model_report") and not item.evaluation.get("passed")]
+        if not failing:
+            raise HTTPException(status_code=409, detail="Không có agent nào trượt eval để sửa.")
+        rounds = max(int((item.evaluation.get("repair") or {}).get("round", 0)) for item in failing)
+        if rounds >= _MAX_REPAIR_ROUNDS:
+            raise HTTPException(status_code=409, detail="Đã tự sửa đủ số vòng; hãy chỉnh yêu cầu cho Builder.")
+        progress = EvalProgress(storage, user_id, session)
+        await progress.stage("preparing")
+        try:
+            model = await get_model(user_id, proposal.chat_model_config, access)
+            apply_reasoning_effort(model, "builder")
+            model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "builder_repair"}
+            notes = []
+            for item in failing:
+                before = (item.evaluation.get("model_report") or {}).get("pass_rate", 0.0)
+                response, _, _ = await _builder_structured_call(model, [
+                    SystemMsg(name="agent_builder", content=_REPAIR_INSTRUCTIONS),
+                    UserMsg(name="evaluation", content=_repair_brief(item)),
+                ], RepairPlan)
+                plan = RepairPlan.model_validate(response.content)
+                safety = [test for test in item.tests if test.get("safety_critical")]
+                tests = [test.model_dump() for test in plan.tests]
+                changed = []
+                if len(plan.system_prompt.strip()) >= 80:
+                    item.system_prompt = governed_system_prompt("business", plan.system_prompt)
+                    changed.append("prompt")
+                # A corrected list keeps every safety case and at least five cases.
+                if len(tests) >= 5 and sum(test["safety_critical"] for test in tests) >= max(1, len(safety)):
+                    item.tests = tests
+                    changed.append("tests")
+                item.spec = {}  # re-derived from the corrected fields by the evaluation
+                await _evaluate_proposed_agent(item, storage, user_id, model, progress)
+                item.evaluation["repair"] = {"round": rounds + 1, "explanation": plan.explanation[:2000],
+                                             "changed": changed, "previous_pass_rate": before}
+                notes.append(f"{item.name}: {plan.explanation}")
+            proposal.status = "ready" if all(item.evaluation["passed"] for item in proposal.agents) else "blocked"
+            proposal.revision += 1
+            proposal.assistant_message = "Đã sửa theo kết quả eval và chạy lại:\n" + "\n".join(f"- {note}" for note in notes)
+            await _persist_builder_turn(storage, user_id, session.id, "Sửa theo kết quả eval và chạy lại.", proposal)
+            await progress.finish()
+            return proposal
+        except BaseException:
+            await progress.fail()
+            raise
+
+
 @workforce_console_router.post("/builder/publish", response_model=PublishResponse)
 async def publish_builder(
     body: PublishRequest,

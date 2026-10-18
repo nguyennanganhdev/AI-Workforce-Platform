@@ -145,3 +145,57 @@ def test_the_library_note_stays_valid_json_and_counts_what_it_leaves_out():
     entries = json.loads(shown)
     assert entries and all("markdown" not in entry and len(entry["description"]) <= 300 for entry in entries)
     assert rest.startswith(f"{40 - len(entries)} more not shown")
+
+
+def _failing_proposal(round_=0):
+    tests = [{"scenario": f"Ca {n}", "expected": "An toàn", "safety_critical": n == 0} for n in range(5)]
+    report = {"pass_rate": 0.4, "results": [{"scenario": "Ca 1", "expected": "Tra phiếu", "passed": False,
+               "judge": {"reason": "Không tra phiếu", "criteria": [{"name": "task_completion", "passed": False, "reason": "x"}]},
+               "answer": "Mình chưa rõ", "tool_calls": []}]}
+    item = console.ProposedAgentView(name="Agent Vệ Sinh", objective=CLEANING, system_prompt="Cũ " * 40, selected_tools=[],
+        skill_name="ve-sinh", skill_markdown="# Vệ sinh", tests=tests, spec={"name": "Agent Vệ Sinh"},
+        evaluation={"passed": False, "checks": {"static": True}, "model_report": report,
+                    **({"repair": {"round": round_}} if round_ else {})})
+    return console.ProposalView(conversation_id="b1", proposal_id="p1", revision=4, status="blocked", assistant_message="",
+        chat_model_config=CONFIG, fixed_config={}, agents=[item])
+
+
+def _repair(proposal, plan):
+    message = AssistantMsg(name="builder", content="", structured_output={"workforce_builder_proposal": proposal.model_dump(mode="json")})
+    seen = {}
+
+    async def evaluate(item, *_args, **_kw):
+        seen["spec"] = dict(item.spec)
+        item.evaluation["passed"] = True
+
+    async def persist(_s, _u, _sid, _m, saved):
+        seen["saved"] = saved
+
+    progress = SimpleNamespace(stage=AsyncMock(), finish=AsyncMock(), fail=AsyncMock())
+    storage = SimpleNamespace(get_session=AsyncMock(return_value=SimpleNamespace(id="b1")))
+    with patch.multiple(console, _list_all_builder_messages=AsyncMock(return_value=[message]), get_model=AsyncMock(),
+                        _builder_structured_call=AsyncMock(return_value=(SimpleNamespace(content=plan), 1, 1)),
+                        _evaluate_proposed_agent=evaluate, _persist_builder_turn=persist), \
+         patch("agentscope.app._service._eval_progress.EvalProgress", return_value=progress):
+        result = asyncio.run(console.repair_builder(console.PublishRequest(conversation_id="b1", proposal_id="p1",
+                                                                         expected_revision=4), "u", storage, object()))
+    return result, seen
+
+
+def test_repair_corrects_the_prompt_and_evaluates_again_without_publishing():
+    plan = {"explanation": "Agent không tra phiếu; đã thêm luật tra phiếu trước khi trả lời.",
+            "system_prompt": "Bạn là Agent Vệ Sinh. Luôn tra phiếu bằng công cụ trước khi trả lời. " * 3,
+            "tests": [{"scenario": "Ca 1", "expected": "x", "safety_critical": False}]}  # weakens safety: ignored
+    result, seen = _repair(_failing_proposal(), plan)
+    [item] = result.agents
+    assert "Luôn tra phiếu" in item.system_prompt and seen["spec"] == {}
+    assert len(item.tests) == 5 and item.tests[0]["safety_critical"]
+    assert item.evaluation["repair"] == {"round": 1, "explanation": plan["explanation"], "changed": ["prompt"],
+                                         "previous_pass_rate": 0.4}
+    assert (result.status, result.revision) == ("ready", 5) and seen["saved"] is result
+
+
+def test_repair_stops_after_the_allowed_rounds():
+    with pytest.raises(HTTPException) as exc:
+        _repair(_failing_proposal(round_=2), {"explanation": "x"})
+    assert exc.value.status_code == 409
