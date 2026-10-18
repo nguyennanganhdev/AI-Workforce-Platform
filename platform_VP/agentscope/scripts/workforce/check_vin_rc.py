@@ -63,6 +63,8 @@ def main():
     domain_revision = docker('image', 'inspect', '--format', '{{index .Config.Labels "org.opencontainers.image.revision"}}', options.domain_image)
     domain_source = 'vinhome_Recident/services/vinhomes-api/src/vinhomes_api'
     assert not subprocess.check_output(['git', '-C', str(ROOT), 'diff', '--name-only', domain_revision, '--', domain_source]), 'Domain source changed since its image revision'
+    domain_hashes = json.loads(docker('run', '--rm', '--network', 'none', '--entrypoint', 'python', options.domain_image, '-c',
+        "import hashlib,json,vinhomes_api;from pathlib import Path;r=Path(vinhomes_api.__file__).parent;print(json.dumps({p.relative_to(r).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in r.rglob('*') if p.suffix in {'.py','.sql'}}))"))
     # Compare the producer image to committed bytes, independent of this
     # worktree's Windows checkout line endings. Keep N1's checker unchanged.
     with tempfile.TemporaryDirectory(prefix='vin-n2-domain-source-') as directory:
@@ -72,7 +74,12 @@ def main():
             if name.endswith(('.py', '.sql')):
                 target = source / 'src/vinhomes_api' / name.removeprefix(domain_source + '/')
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(subprocess.check_output(['git', '-C', str(ROOT), 'show', domain_revision + ':' + name]))
+                committed = subprocess.check_output(['git', '-C', str(ROOT), 'show', domain_revision + ':' + name])
+                lf = committed.replace(b'\r\n', b'\n')
+                variants = (committed, lf, lf.replace(b'\n', b'\r\n'))
+                matching = next((data for data in variants if hashlib.sha256(data).hexdigest() == domain_hashes.get(name.removeprefix(domain_source + '/'))), None)
+                assert matching is not None, 'Domain image differs from committed source beyond checkout line endings: ' + name
+                target.write_bytes(matching)
         original_service = domain_check.SERVICE
         try:
             domain_check.SERVICE = source
