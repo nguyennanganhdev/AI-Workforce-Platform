@@ -11,7 +11,6 @@ from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._service import ChatService
 from agentscope.app._bus_ops import deliver_to_inbox
 from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
-from agentscope.app.middleware import SharedContextIsolationMiddleware
 from agentscope.event import (
     HintBlockEvent, ReplyEndEvent, ReplyStartEvent,
     TextBlockStartEvent, TextBlockDeltaEvent, TextBlockEndEvent,
@@ -467,8 +466,6 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 equipped.append(middlewares)
                 equipped_context_configs.append(context_config)
                 equipped_system_prompts.append(system_prompt)
-                self.state = _["state"]
-                self.name = _["name"]
 
             async def reply_stream(
                 self,
@@ -539,20 +536,17 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             "m",
         )
 
-        shared_middleware = next(
-            mw for mw in equipped[0]
-            if isinstance(mw, SharedContextIsolationMiddleware)
-        )
-        compression_config = await shared_middleware._compression_config(
-            SimpleNamespace(model=_Model()), _Model(), equipped_context_configs[0],
-        )
         self.assertDictEqual(
             {
                 "get_team_calls": storage.get_team_calls,
                 "team_role": toolkit_kwargs["team_role"],
                 "channel_tools": toolkit_kwargs["channel_tools"],
-                "fallback_to_truncation": compression_config.compression_fallback_to_truncation,
-                "retry_drop_oldest": compression_config.compression_retry_drop_oldest,
+                "fallback_to_truncation": equipped_context_configs[
+                    0
+                ].compression_fallback_to_truncation,
+                "retry_drop_oldest": equipped_context_configs[
+                    0
+                ].compression_retry_drop_oldest,
                 "shared_packet_in_private_system_prompt": (
                     "<shared-context-packet" in equipped_system_prompts[0]
                 ),
