@@ -1385,6 +1385,7 @@ class SharedContextService:
         content: str,
         *,
         task_id: str | None = None,
+        additional_sources: list[EvidenceSource] | None = None,
     ) -> ClaimValidation:
         """Check a Leader reply against current trusted task evidence."""
 
@@ -1395,7 +1396,7 @@ class SharedContextService:
             else None
         )
         if record is None or task is None:
-            return validate_claims(content, ())
+            return validate_claims(content, additional_sources or ())
         current = {
             event.id: event
             for event in record.state.events
@@ -1409,7 +1410,7 @@ class SharedContextService:
             current,
             customer_reply=True,
         )
-        return validate_claims(content, support)
+        return validate_claims(content, [*support, *(additional_sources or ())])
 
     async def unsupported_customer_reply_claims(
         self, user_id: str, team_id: str, content: str,

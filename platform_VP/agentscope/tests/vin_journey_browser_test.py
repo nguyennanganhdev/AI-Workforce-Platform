@@ -297,7 +297,7 @@ def test_customer_leader_staff_photo_final_click_and_revoke(journey, monkeypatch
             journey.model_calls.append("leader")
             if self.turn == 1:
                 return ChatResponse(content=[ToolCallBlock(id="offline-customer-create", name="CustomerService", input=json.dumps(command))], is_last=True)
-            return ChatResponse(content=[TextBlock(text="Please review the service card on Platform.")], is_last=True)
+            return ChatResponse(content=[TextBlock(text="Yêu cầu đã được ghi nhận. Vui lòng xem thẻ dịch vụ trên Platform.")], is_last=True)
 
     async def get_model(*args, **kwargs):
         return ScriptedLeader()
@@ -374,6 +374,8 @@ def test_customer_leader_staff_photo_final_click_and_revoke(journey, monkeypatch
                 from pathlib import Path
                 Path('.artifacts/vin-journey/runtime-debug.json').write_text(json.dumps(journey.client.portal.call(diagnostics), ensure_ascii=False, indent=2), encoding='utf-8')
             assert case_id is not None, "Scripted Leader did not create a real C05 case; see fixture runtime-debug.json"
+            expect(page.get_by_text('Yêu cầu đã được ghi nhận. Vui lòng xem thẻ dịch vụ trên Platform.', exact=True)).to_be_visible()
+            assert journey.model_calls == ['leader', 'leader']
             current = cases()
             domain_case = current["data"]["domain"]
             ticket_id = domain_case["tickets"][0]["id"]

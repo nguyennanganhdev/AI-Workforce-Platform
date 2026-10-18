@@ -105,6 +105,11 @@ async def test_leader_tool_preserves_real_platform_hex_link_id(customer):
     assert result.state.value != "error"
     assert customer.state["created"] == 1
 
+    receipt = result.metadata["customer_service_receipt"]
+    assert (receipt["user_id"], receipt["agent_id"], receipt["session_id"], receipt["operation"]) == ("alice", "leader", "session", "create")
+    assert receipt["cases"][0]["id"] and receipt["cases"][0]["sync_status"] == "applied"
+    assert not any(value in json.dumps(receipt) for value in ("offline-client-secret", "offline-link-token", "description", "ticket_grant"))
+
 
 @pytest.mark.asyncio
 async def test_leader_create_replay_timeline_and_private_session_binding(customer):

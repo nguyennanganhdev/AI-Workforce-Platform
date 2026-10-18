@@ -53,7 +53,17 @@ claim that a chat message has confirmed a quote or completed service."""
                 result = await cases.create_request(*args, link_id=str(params.link_id), apartment_id=str(params.apartment_id),
                     description=params.description.strip(), location=params.location.strip(),
                     category_id=str(params.category_id) if params.category_id else None)
-            return ToolChunk(content=[TextBlock(text=json.dumps(result, ensure_ascii=False, default=str))])
+            metadata = {}
+            if params.operation in {"create", "progress"}:
+                items = [result] if params.operation == "create" else result.get("items", [])
+                fields = ("id", "code", "sync_status", "service_status", "canonical_version", "as_of", "next_action")
+                receipts = [{key: item[key] for key in fields if key in item} for item in items if item.get("id")]
+                if receipts:
+                    metadata["customer_service_receipt"] = {
+                        "user_id": self._user_id, "agent_id": self._agent_id, "session_id": self._session_id,
+                        "operation": params.operation, "cases": receipts,
+                    }
+            return ToolChunk(content=[TextBlock(text=json.dumps(result, ensure_ascii=False, default=str))], metadata=metadata)
         except PlatformError as exc:
             return ToolChunk(content=[TextBlock(text=exc.code)], state=ToolResultState.ERROR)
         except ValueError:
