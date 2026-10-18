@@ -26,6 +26,7 @@ import { ApprovalCard, BookingCard, CompletionCard, QuoteCard } from "./Platform
 import { MAX_PHOTOS, readPhotos } from "../../services/resident-service";
 import type { Draft, Photo, ResidentState } from "../../services/types";
 import { RequestCard } from "../requests/Requests";
+import { RequestProgress } from "./RequestProgress";
 
 type AssistantProps = {
   connected?: boolean;
@@ -110,6 +111,19 @@ export function Assistant({
   // A handed-over request whose result waits for this resident's answer; other chats show nothing new.
   const toConfirm =
     !!requestId && !!active?.confirmClose && state.requests.some((r) => r.id === requestId && r.status === "confirmation");
+  const pinned = requestId ? state.requests.find((r) => r.id === requestId) : undefined;
+  // What the resident has to do next in this chat, shown on the pinned progress.
+  const needsYou = toConfirm
+    ? "xác nhận kết quả sửa chữa"
+    : state.messages.some((m) => m.quote?.status === "pending")
+      ? "xem và trả lời báo giá"
+      : state.messages.some((m) => m.approval?.status === "pending")
+        ? "đồng ý hoặc không với đề xuất"
+        : state.messages.some((m) => m.booking?.status === "pending")
+          ? "xác nhận đặt chỗ"
+          : question && !state.awaitingReply
+            ? "trả lời câu hỏi của Ban quản lý"
+            : undefined;
   return (
     <div className={`assistant-content ${started ? "started" : "assistant-home"}`}>
       {!started && (
@@ -153,6 +167,14 @@ export function Assistant({
       )}
       {started && (
         <>
+          {pinned && (
+            <RequestProgress
+              request={pinned}
+              working={state.turnState?.status === "waiting_platform"}
+              needsYou={needsYou}
+              onOpen={onOpen}
+            />
+          )}
           {!state.messages.length && <div className="chat-intro">
             <span className="assistant-avatar">
               <IconMessageCircle size={21} />

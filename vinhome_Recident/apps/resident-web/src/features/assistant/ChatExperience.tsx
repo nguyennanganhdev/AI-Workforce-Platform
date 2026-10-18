@@ -10,6 +10,7 @@ const labels: Record<ReceptionStage["stage"], string> = {
   status: "Đang xem tiến độ yêu cầu",
   responding: "Đang chuẩn bị phản hồi",
 };
+const PHASES = ["Đọc tin nhắn", "Tra cứu và kiểm tra", "Soạn phản hồi"];
 const seconds = (ms: number) => `${(Math.max(0,ms)/1000).toLocaleString("vi-VN",{maximumFractionDigits:1})} giây`;
 
 export function ProcessingStatus({ turn }: { turn?: TurnState }) {
@@ -18,12 +19,19 @@ export function ProcessingStatus({ turn }: { turn?: TurnState }) {
   const started=turn?.startedAt ? Date.parse(turn.startedAt) : NaN;
   const elapsed=Number.isFinite(started) ? Math.max(0,now-started) : turn?.elapsedMs ?? 0;
   const stage=turn?.steps.at(-1)?.stage;
-  const text=turn?.status === "waiting_platform" ? "Đang chờ phản hồi từ bộ phận xử lý" :
+  const platform=turn?.status === "waiting_platform";
+  const text=platform ? "Ban quản lý đang xử lý yêu cầu của bạn" :
     turn?.status === "queued" ? "Tin nhắn đã gửi, đang chờ trợ lý" : labels[stage ?? "responding"];
-  return <div className="reception-processing">
+  // Reception's own work as three steps: read the message, look things up or check the request, write the reply.
+  const phase=platform ? 3 : turn?.status === "queued" || !stage || stage === "context" ? 0 : stage === "responding" ? 2 : 1;
+  return <div className={`reception-processing ${platform ? "platform" : ""}`}>
     <div role="status"><IconLoader2 className="reception-spinner" size={18} aria-hidden="true" /><span>{text}</span></div>
     <span className="reception-elapsed" aria-hidden="true">{seconds(elapsed)}</span>
-    {elapsed>20000 && <p>Phản hồi đang mất nhiều thời gian hơn. Bạn có thể tiếp tục đọc các tin trước.</p>}
+    {!platform && <ol className="reception-phases" aria-hidden="true">
+      {PHASES.map((label,i) => <li key={label} className={i<phase ? "done" : i===phase ? "current" : ""}><i />{label}</li>)}
+    </ol>}
+    {platform && <p>Lễ tân đã chuyển yêu cầu. Câu trả lời của Ban quản lý sẽ hiện ngay trong cuộc trò chuyện này.</p>}
+    {!platform && elapsed>20000 && <p>Phản hồi đang mất nhiều thời gian hơn. Bạn có thể tiếp tục đọc các tin trước.</p>}
   </div>;
 }
 

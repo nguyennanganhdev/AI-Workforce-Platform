@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { IconMessageQuestion } from "@tabler/icons-react";
+import { CardHead } from "./PlatformCards";
 import { answerText, questionItems } from "../../services/chat-turn";
 
 const QUICK = ["Có", "Không", "Chưa rõ"];
@@ -19,14 +21,14 @@ export function QuestionCard({ question, busy, onAnswer }: {
   const ready = items.length === 1 ? !!answers[0]?.trim() : answers.some((answer) => answer.trim());
   return (
     <form
-      className="question-card"
+      className="question-card confirm-card pending"
       aria-label="Ban quản lý cần bạn xác nhận"
       onSubmit={(event) => {
         event.preventDefault();
         if (ready && !busy) void onAnswer(answerText(items, answers));
       }}
     >
-      <strong>Ban quản lý cần bạn xác nhận</strong>
+      <CardHead icon={<IconMessageQuestion size={18} />} title="Ban quản lý cần bạn xác nhận" pending />
       {lead && <p>{lead}</p>}
       {items.map((item, index) => (
         <div className="question-item" key={item}>
