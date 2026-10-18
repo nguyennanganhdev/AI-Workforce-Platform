@@ -1085,7 +1085,12 @@
 				"name": "工单报告",
 				"prompt": "为物业出报告：按区域汇总工单（进行中、逾期、待住户确认），指出需要关注的工单及原因。"
 			}
-		}
+		},
+		"team": "允许拆分为多个智能体组成的团队",
+		"teamHint": "工作涉及不同专业时由 Builder 决定。",
+		"waiting": "Agent Builder 正在生成草稿，可能需要一到几分钟。",
+		"nothing": "Agent Builder 未能根据此描述创建智能体。",
+		"creating": "生成中…"
 	},
 	"groupChat": {
 		"menuAgent": "创建智能体",

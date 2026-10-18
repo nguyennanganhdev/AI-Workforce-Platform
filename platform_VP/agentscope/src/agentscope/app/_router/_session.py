@@ -30,6 +30,8 @@ from ._schema import (
     TeamMemberView,
     UpdateSessionRequest,
 )
+from ._personal_chat import personal_chat_router
+from ..storage._model._session import PersonalChatConfig
 from ..message_bus import MessageBus, MessageBusKeys
 from .._service import (
     AgentView,
@@ -240,6 +242,8 @@ async def list_sessions(
     sessions = await storage.list_sessions(user_id, agent_id)
     views: list[SessionView] = []
     for session in sessions:
+        if session.state.middle_context.get("management_case_session_id"):
+            continue
         team_detail = None
         if session.team_id:
             team_record = await storage.get_team(user_id, session.team_id)
@@ -384,6 +388,7 @@ async def create_session(
         agent_id=body.agent_id,
         config=SessionConfig(
             workspace_id=resolved_workspace_id,
+            personal_chat=PersonalChatConfig() if body.personal else None,
             chat_model_config=body.chat_model_config,
             sub_agent_chat_model_config=body.sub_agent_chat_model_config,
             fallback_chat_model_config=body.fallback_chat_model_config,
@@ -409,6 +414,7 @@ async def delete_session(
     agent_id: str = Query(description="Agent the session belongs to."),
     user_id: str = Depends(get_current_user_id),
     session_service: SessionService = Depends(get_session_service),
+    storage: StorageBase = Depends(get_storage),
 ) -> None:
     """Permanently delete a session and all its associated state.
 
@@ -428,6 +434,12 @@ async def delete_session(
         `HTTPException`: 404 if the session does not exist or does not belong
             to the authenticated user.
     """
+    existing = await storage.get_session(user_id, agent_id, session_id)
+    if existing is not None and existing.config.personal_chat is not None:
+        if existing.agent_id != agent_id or existing.user_id != user_id:
+            raise HTTPException(404, "Personal conversation not found")
+        if existing.config.personal_chat.kind == "group":
+            raise HTTPException(409, "Delete the personal group through its group endpoint")
     deleted = await session_service.delete_session(
         user_id,
         agent_id,
@@ -985,3 +997,6 @@ async def stream_session_events(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+session_router.include_router(personal_chat_router)

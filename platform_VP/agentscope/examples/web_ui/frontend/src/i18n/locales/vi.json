@@ -1061,7 +1061,7 @@
 	},
 	"quickAgent": {
 		"title": "Tạo agent nhanh với Agent Builder",
-		"description": "Mô tả agent cần làm gì. Agent Builder dựng bản nháp (lời dặn, công cụ, kiến thức); bạn xem lại và phát hành ngay trong Builder.",
+		"description": "Mô tả agent cần làm gì. Agent Builder dựng bản nháp (lời dặn, công cụ, kiến thức, kịch bản kiểm thử); bạn chỉnh và phát hành ở trang Quản lý agent.",
 		"templates": "Bắt đầu từ mẫu",
 		"role": "Agent này làm gì?",
 		"rolePlaceholder": "Ví dụ: tiếp nhận yêu cầu vệ sinh của cư dân, hỏi đủ vị trí và mức độ, rồi giao cho nhân viên vệ sinh đang trực.",
@@ -1084,7 +1084,12 @@
 				"name": "Báo cáo phiếu",
 				"prompt": "Báo cáo cho ban quản lý: tổng hợp tình trạng các phiếu (đang mở, quá hạn, chờ cư dân xác nhận) theo khu, nêu phiếu cần chú ý và lý do."
 			}
-		}
+		},
+		"team": "Cho phép tách thành một đội nhiều agent",
+		"teamHint": "Builder tự quyết khi việc gồm nhiều chuyên môn khác nhau.",
+		"waiting": "Agent Builder đang dựng bản nháp, có thể mất một đến vài phút.",
+		"nothing": "Agent Builder chưa tạo được agent nào từ mô tả này.",
+		"creating": "Đang dựng…"
 	},
 	"groupChat": {
 		"menuAgent": "Tạo agent",

@@ -21,6 +21,7 @@ import type {
 import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
+import { PersonalContextPanel } from '@/components/chat/PersonalContextPanel';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
 import { cleanName } from '@/components/chat/teamDialogText';
@@ -55,6 +56,7 @@ import { liveSessionPresentation } from '@/features/workforce/session/live-adapt
 import { officeFromSession } from '@/features/workforce/session/presentation';
 import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
+import { useGroupConversation } from '@/hooks/useGroupConversation';
 import { useKnowledgeBaseMiddlewareSchema } from '@/hooks/useKnowledgeBaseMiddlewareSchema';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
 import { useMessages } from '@/hooks/useMessages';
@@ -391,7 +393,22 @@ export function ChatViewport({
 	);
 
 	const isTicketView = ticketView || Boolean((view?.session.state.middle_context as Record<string, unknown> | undefined)?.workflow_id);
+	const personalLayout = view?.session.config.personal_chat
+		? panelLayout.map(column => column.filter(panel => panel !== 'team')).filter(column => column.length > 0)
+		: panelLayout;
 	const team = view?.team;
+	const group = view?.session.config.personal_chat?.kind === 'group';
+	const groupRoom = useGroupConversation(group ? sessionId : null, group ? agentId : null, view?.session.config.personal_chat?.members ?? []);
+	const transcript = group ? (() => {
+		const stored = new Map(groupRoom.messages.map(m => [m.id, m]));
+		for (const msg of msgs) {
+			if (stored.has(msg.id)) continue;
+			// Inbox copies of TeamSay are already represented by their durable room events.
+			if (msg.content.every(block => block.type === 'hint')) continue;
+			stored.set(msg.id, msg);
+		}
+		return [...stored.values()].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+	})() : msgs;
 	const completeTeamMention = useCallback(
 		(input: string): string | null => {
 			if (!input.startsWith('@') || input.includes('\n')) return null;
@@ -822,7 +839,8 @@ export function ChatViewport({
 							...(view?.team?.leader_agent ? [view.team.leader_agent] : []),
 							...(view?.team?.members.map((member) => member.agent) ?? []),
 						],
-						messages: msgs,
+						audienceLabel: view?.session.config.personal_chat ? t('personal.you') : undefined,
+						messages: transcript,
 						replyPhase: phase,
 						status: view?.status,
 						awaitingApproval: subagentHitl.length > 0,
@@ -846,6 +864,9 @@ export function ChatViewport({
 								<div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-2 py-1 sm:flex-nowrap sm:py-0">
 									<div className="flex min-w-0 flex-1 basis-full items-center gap-x-1 sm:basis-auto">
 										<SidebarTrigger className="md:hidden" />
+										{view?.session.config.personal_chat && agentId && sessionId && <PersonalContextPanel key={sessionId} agentId={agentId} sessionId={sessionId} agentName={agentName} busy={phase !== 'idle'} />}
+										{group && groupRoom.hasMore && <Button variant="ghost" size="sm" onClick={() => void groupRoom.loadOlder()}>{t('personal.older')}</Button>}
+										{group && groupRoom.error && <span role="status" className="text-xs text-destructive">{t('personal.retryContext')}</span>}
 										{agentId && (
 											<button
 												type="button"
@@ -948,7 +969,7 @@ export function ChatViewport({
 									    team (who is working) and plan (what they are
 									    doing) — then the full list behind the menu. An
 									    open panel's toggle keeps a grey fill. */}
-										<Button
+										{!view?.session.config.personal_chat && <Button
 											variant="ghost"
 											size="icon"
 											aria-label={t('common.team')}
@@ -958,7 +979,7 @@ export function ChatViewport({
 											onClick={() => togglePanel('team')}
 										>
 											<SquareUser className="size-5" />
-										</Button>
+										</Button>}
 										<Button
 											variant="ghost"
 											size="icon"
@@ -1029,32 +1050,34 @@ export function ChatViewport({
 													<Database />
 													{t('panel.knowledge.title')}
 												</DropdownMenuCheckboxItem>
-												<DropdownMenuCheckboxItem
+												{!view?.session.config.personal_chat && <DropdownMenuCheckboxItem
 													checked={isPanelOpen('team')}
 													onCheckedChange={() => togglePanel('team')}
 													onSelect={(e) => e.preventDefault()}
 												>
 													<UsersRound />
 													{t('common.team')}
-												</DropdownMenuCheckboxItem>
+												</DropdownMenuCheckboxItem>}
 											</DropdownMenuContent>
 										</DropdownMenu>
 									</div>
 								</div>
 								<div className="relative flex min-h-0 flex-1 overflow-hidden">
 									<ChatContent
+										personalChat={Boolean(view?.session.config.personal_chat)}
+										groupChat={group}
 										className="w-full"
-										showWorkspace={!isTicketView && !readOnly}
-										composerPlaceholder={isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
+										showWorkspace={!isTicketView && !readOnly && !view?.session.config.personal_chat}
+										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
 										agentName={agentName}
-										msgs={msgs}
+										msgs={transcript}
 										teamChat={isTeamChat}
 										loading={messagesLoading}
 										agentId={agentId}
 										sessionId={sessionId}
 										cwd={view?.session.config.cwd ?? null}
 										onCwdChange={handleCwdChange}
-										git={isTicketView ? null : workspaceStatus?.git ?? null}
+										git={isTicketView || view?.session.config.personal_chat ? null : workspaceStatus?.git ?? null}
 										mentions={mentions}
 										onRefreshGit={refetchWorkspaceStatus}
 										phase={phase}
@@ -1148,10 +1171,10 @@ export function ChatViewport({
 						</ResizablePanel>
 						{/* The side panels push the chat narrower rather than
 					    covering it; a 1px rule separates them. */}
-						{panelLayout.length > 0 && (
+						{personalLayout.length > 0 && (
 							<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 						)}
-						<PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />
+						<PanelDock layout={personalLayout} panels={panels} onClosePanel={closePanel} />
 					</ResizablePanelGroup>
 				</main>
 			</SessionWorkspace>

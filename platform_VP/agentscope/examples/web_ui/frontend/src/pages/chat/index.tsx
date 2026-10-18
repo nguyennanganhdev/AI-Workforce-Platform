@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import {
 	Bot,
 	BotMessageSquare,
@@ -19,11 +20,17 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ChatViewport } from './ChatViewport';
 import { type AgentView, type SessionRecord, type SessionSourceKind } from '@/api';
 import { ApiError } from '@/api/client';
+import { personalChatApi, type PersonalGroup as GroupChat } from '@/api/personal-chat';
+import { GroupAvatar } from '@/components/chat/GroupAvatar';
+import { NewChatMenu } from '@/components/chat/NewChatMenu';
+import { PersonalContextPanel } from '@/components/chat/PersonalContextPanel';
+import { PreviousConversations } from '@/components/chat/PreviousConversations';
 import { SearchPalette } from '@/components/chat/SearchPalette';
 import { sessionTime, sessionTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
+import { GroupChatDialog } from '@/components/dialog/GroupChatDialog';
 import { QuickAgentDialog } from '@/components/dialog/QuickAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
 import { AccountMenu } from '@/components/layout/AccountMenu';
@@ -50,6 +57,7 @@ import {
 import { AudioProvider } from '@/context/AudioContext';
 import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAgents } from '@/hooks/useAgents';
+import { useGroupChats } from '@/hooks/useGroupChats';
 import { useSessions } from '@/hooks/useSessions';
 import { useSettled } from '@/hooks/useSettled';
 import { useTranslation } from '@/i18n/useI18n.ts';
@@ -87,7 +95,7 @@ const SOURCE_ICON: Record<SessionSourceKind, LucideIcon> = {
 
 const newestFirst = (a: string, b: string) => new Date(b).getTime() - new Date(a).getTime();
 
-const ChatPageInner = () => {
+const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => {
 	const navigate = useNavigate();
 	const user = useCurrentUser();
 	const LAST_AGENT_KEY = `chat_last_agent:${user?.id ?? 'anonymous'}`;
@@ -102,10 +110,11 @@ const ChatPageInner = () => {
 		memberId?: string;
 	}>();
 	const { t } = useTranslation();
+	const queryClient = useQueryClient();
 	const { agents, loading: agentsLoading, error: agentsError, refetch: refetchAgents } = useAgents();
 	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const {
-		sessions,
+		sessions: allSessions,
 		loading: sessionsLoading,
 		error: sessionsError,
 		refetch: refetchSessions,
@@ -124,8 +133,19 @@ const ChatPageInner = () => {
 	const [sessionToDelete, setSessionToDelete] = useState<SessionRecord | null>(null);
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [quickAgentOpen, setQuickAgentOpen] = useState(false);
+	const [groupOpen, setGroupOpen] = useState(false);
+	const [groupToDelete, setGroupToDelete] = useState<GroupChat | null>(null);
+	const { data: groupChats = [], error: groupsError, isPending: groupsLoading, refetch: refetchGroups } = useGroupChats();
+	const sessions = allSessions.filter(v => v.session.id === urlSessionId || v.session.config.personal_chat && (
+		v.session.config.personal_chat.kind === 'direct' || v.session.id === urlSessionId
+	));
 
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
+	const previousSessions = allSessions.filter(({ session }) => {
+		const middle = (session.state.middle_context ?? {}) as Record<string, unknown>;
+		return !session.config.personal_chat && session.origin.type === 'user' &&
+			!middle.workflow_id && !middle.management_output_session_id && !middle.management_case_session_id;
+	});
 	// Show a per-origin icon only when sessions actually mix sources —
 	// a uniform list needs no disambiguation.
 	const showSourceIcons = new Set(sessions.map((v) => v.session.origin.type)).size > 1;
@@ -136,13 +156,14 @@ const ChatPageInner = () => {
 	// follows this inner focus. When `urlMemberId` is undefined or
 	// doesn't resolve to a known team member, the inner focus collapses
 	// back to the outer (leader) session.
-	const focusedMember = urlMemberId
+	const activeGroup = groupChats.find((g) => g.sessionId === urlSessionId || g.members.some(member => member.session_id === urlSessionId)) ?? null;
+	const focusedMember = activeGroup ? null : urlMemberId
 		? (currentView?.team?.members.find((m) => m.agent.id === urlMemberId) ?? null)
 		: null;
 	const effectiveAgentId =
-		focusedMember && focusedMember.session_id ? focusedMember.agent.id : (selectedAgent?.id ?? null);
+		activeGroup ? activeGroup.agentId : focusedMember && focusedMember.session_id ? focusedMember.agent.id : (selectedAgent?.id ?? null);
 	const effectiveSessionId =
-		focusedMember && focusedMember.session_id
+		activeGroup ? activeGroup.sessionId : focusedMember && focusedMember.session_id
 			? focusedMember.session_id
 			: currentView
 				? (urlSessionId ?? null)
@@ -212,6 +233,7 @@ const ChatPageInner = () => {
 		const seedConfig = currentView?.session.config ?? sessions[0]?.session.config;
 		const res = await createSession({
 			agent_id: urlAgentId,
+			personal: true,
 			...(seedConfig?.chat_model_config
 				? { chat_model_config: seedConfig.chat_model_config }
 				: {}),
@@ -238,6 +260,13 @@ const ChatPageInner = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [urlAgentId, selectedAgent, sessionsLoading, sessionsError, sessions.length]);
 
+	// The Builder's draft opens in agent management; the list here just refreshes.
+	const handleAgentCreated = async () => {
+		await refetchAgents();
+		onAgentsChanged();
+		setOpenMobile(false);
+	};
+
 	const handleDeleteSession = async (sessionId: string) => {
 		await removeSession(sessionId);
 		// If we just removed the session the URL is pointing at, fall
@@ -253,6 +282,30 @@ const ChatPageInner = () => {
 		await updateSession(renameSession.id, { name });
 	};
 
+	// Show group conversations here; agents remain accessible through search.
+	const agentById = new Map(agents.map((a) => [a.id, a]));
+	const visibleGroups = groupChats
+		.filter((group) => agentById.has(group.agentId))
+		.sort((a, b) => newestFirst(a.createdAt, b.createdAt));
+	/** Leader first, then the members; names from the live agent list. */
+	const groupMembers = (group: GroupChat) =>
+		[group.agentId, ...group.memberIds].map((id) => ({
+			id,
+			name: agentById.get(id)?.data.name ?? id,
+		}));
+
+	const handleGroupCreated = async (agentId: string, sessionId: string) => {
+		// Members may have just been made invitable, and the leader's session
+		// list has to know the new chat before the URL points at it — the
+		// redirect above sends an unknown session back to the last one.
+		await Promise.all([
+			refetchAgents(),
+			queryClient.invalidateQueries({ queryKey: ['sessions'] }),
+			refetchGroups(),
+		]);
+		navigate(`/chat/${agentId}/${sessionId}`);
+		setOpenMobile(false);
+	};
 	const sortedSessions = [...sessions].sort((a, b) =>
 		newestFirst(a.session.created_at, b.session.created_at),
 	);
@@ -375,16 +428,10 @@ const ChatPageInner = () => {
 				<SidebarHeader className="h-12 shrink-0 flex-row items-center justify-between gap-2 py-0 pr-2 pl-4">
 					<Brand />
 					<div className="flex items-center gap-1">
-						<Button
-							id="tour-create-agent"
-							variant="ghost"
-							size="icon"
-							aria-label={t('quickAgent.title')}
-							title={t('quickAgent.title')}
-							onClick={() => setQuickAgentOpen(true)}
-						>
-							<Plus className="size-5" />
-						</Button>
+						<NewChatMenu
+							onCreateAgent={() => setQuickAgentOpen(true)}
+							onCreateGroup={() => setGroupOpen(true)}
+						/>
 						<Button
 							variant="ghost"
 							size="icon"
@@ -396,10 +443,48 @@ const ChatPageInner = () => {
 						</Button>
 					</div>
 				</SidebarHeader>
-				{/* One row per agent: its chat opens where it was left. */}
+				{/* Group conversations, most recent first. */}
 				<SidebarContent className="no-scrollbar gap-0 px-2 pb-2">
-					<p className="mt-3 mb-1 px-3 text-[13px]/[18px] font-medium text-[var(--cue-text-tertiary,var(--muted-foreground))]">
-						{t('chat.agents.label')}
+					<p className="mt-3 mb-1 px-3 text-xs font-medium text-muted-foreground">{t('personal.groups')}</p>
+					{groupsLoading && <p className="px-3 py-2 text-sm text-muted-foreground">{t('common.loading')}</p>}
+					{groupsError && <Button variant="ghost" onClick={() => void refetchGroups()}>{t('personal.retryGroups')}</Button>}
+					{!groupsLoading && !groupsError && visibleGroups.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{t('personal.noGroups')}</p>}
+					{visibleGroups.map((group) => {
+						const active = group.sessionId === urlSessionId;
+						const members = groupMembers(group);
+						return (
+							<ChatRow
+								key={`g:${group.sessionId}`}
+								avatarId={group.agentId}
+								avatar={<GroupAvatar members={members} />}
+								title={group.name}
+								time={sessionTime(group.createdAt)}
+								active={active}
+								status={active ? (currentView?.status ?? 'idle') : 'idle'}
+								icon={<Users className="size-3.5 shrink-0" />}
+								preview={members.map((m) => m.name).join(', ')}
+								onSelect={() => {
+									navigate(`/chat/${group.agentId}/${group.sessionId}`);
+									setOpenMobile(false);
+								}}
+								actions={
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										className="bg-[var(--cue-bg-subtle,var(--accent))] text-muted-foreground"
+										aria-label={t('groupChat.delete')}
+										title={t('groupChat.delete')}
+										onClick={() => setGroupToDelete(group)}
+									>
+										<Trash2 />
+									</Button>
+								}
+							/>
+						);
+					})}
+					{/* One row per agent: its chat opens where it was left. */}
+					<p className="mt-4 mb-1 px-3 text-[13px]/[18px] font-medium text-[var(--cue-text-tertiary,var(--muted-foreground))]">
+						{t('personal.direct')}
 					</p>
 					{agents.map((agent) => (
 						<ChatRow
@@ -407,8 +492,8 @@ const ChatPageInner = () => {
 							avatarId={agent.id}
 							avatarLabel={agent.data.name}
 							title={agent.data.name}
-							active={agent.id === urlAgentId}
-							status={agent.id === urlAgentId ? (currentView?.status ?? 'idle') : 'idle'}
+							active={!activeGroup && agent.id === urlAgentId}
+							status={!activeGroup && agent.id === urlAgentId ? (currentView?.status ?? 'idle') : 'idle'}
 							preview={agent.data.invite_config?.invite_description?.trim() ?? ''}
 							onSelect={() => {
 								navigate(`/chat/${agent.id}`);
@@ -419,17 +504,27 @@ const ChatPageInner = () => {
 				</SidebarContent>
 				{/* The way out of the chat shell: Settings, and the account. */}
 				<SidebarFooter className="gap-0 border-t border-sidebar-border p-2">
+					{selectedAgent && previousSessions.length > 0 && <PreviousConversations key={selectedAgent.id} agentId={selectedAgent.id} sessions={previousSessions.map(v => v.session)} />}
 					<AccountMenu showSettings showTour />
 				</SidebarFooter>
 			</Sidebar>
 			<div className="flex flex-1 min-w-0 flex-col">
+				{activeGroup && <section aria-label={t('personal.selectAgent')} className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-3">
+					<div className="mr-2 min-w-0"><p className="text-sm font-semibold">{activeGroup.name}</p><p className="text-xs text-muted-foreground">{t('personal.selectAgent')}</p></div>
+					{activeGroup.ready === false && <p role="status" className="w-full text-sm text-amber-700 dark:text-amber-400">Nhóm chưa sẵn sàng: {activeGroup.readiness_issues?.join(' ')} Hãy phát hành các agent trước khi gửi yêu cầu.</p>}
+					{activeGroup.members.map(member => <span key={member.session_id} className="flex items-center gap-1 rounded-lg border bg-background px-2 text-xs">
+						<span>{member.name}{member.agent_id === activeGroup.agentId ? ` · ${t('personal.coordinator')}` : ''}</span>
+						<PersonalContextPanel agentId={member.agent_id} sessionId={member.session_id} agentName={member.name} busy={false} />
+					</span>)}
+					{!activeGroup.teamId && <Button size="sm" onClick={async () => { await personalChatApi.activateGroup(activeGroup.sessionId, activeGroup.agentId); await refetchGroups(); await refetchSessions(); }}>{t('personal.activate')}</Button>}
+				</section>}
 				<div className="min-h-0 flex-1"><ChatViewport
 					agentId={effectiveAgentId}
 					sessionId={effectiveSessionId}
 					readOnly={focusedMember !== null}
 					onSessionsChanged={refetchSessions}
 					agentName={focusedMember?.agent?.data.name ?? agentName}
-					headerSlot={sessionSwitcher}
+					headerSlot={activeGroup ? <span className="hidden truncate text-xs text-muted-foreground sm:inline">{t('personal.groupConversation')}</span> : sessionSwitcher}
 					onOpenAgentSettings={
 						!focusedMember && selectedAgent?.editable
 							? () => {
@@ -475,6 +570,39 @@ const ChatPageInner = () => {
 					}
 				}}
 			/>
+			<DeleteDialog
+				open={!!groupToDelete}
+				onOpenChange={(open) => !open && setGroupToDelete(null)}
+				title={t('common.deleteTitle', {
+					entity: t('groupChat.entity'),
+					name: groupToDelete?.name ?? '',
+				})}
+				description={t('common.deleteDescription')}
+				confirmLabel={t('groupChat.delete')}
+				onConfirm={async () => {
+					if (!groupToDelete) return;
+					const { sessionId, agentId } = groupToDelete;
+					await personalChatApi.deleteGroup(sessionId, agentId);
+					await refetchGroups();
+					if (sessionId === urlSessionId) navigate(`/chat/${agentId}`, { replace: true });
+					await refetchSessions();
+				}}
+			/>
+			<GroupChatDialog
+				open={groupOpen}
+				onOpenChange={setGroupOpen}
+				agents={agents}
+				modelConfig={{
+					chat: (currentView ?? sessions[0])?.session.config.chat_model_config,
+					fallback: (currentView ?? sessions[0])?.session.config
+						.fallback_chat_model_config,
+				}}
+				onCreateAgent={() => {
+					setGroupOpen(false);
+					setQuickAgentOpen(true);
+				}}
+				onCreated={handleGroupCreated}
+			/>
 			<SearchPalette
 				open={searchOpen}
 				onOpenChange={setSearchOpen}
@@ -488,7 +616,11 @@ const ChatPageInner = () => {
 					setOpenMobile(false);
 				}}
 			/>
-			<QuickAgentDialog open={quickAgentOpen} onOpenChange={setQuickAgentOpen} />
+			<QuickAgentDialog
+				open={quickAgentOpen}
+				onOpenChange={setQuickAgentOpen}
+				onCreated={handleAgentCreated}
+			/>
 			<ChatTourController
 				sessionsCount={sessions.length}
 				onEnsureSidebarOpen={() => {
@@ -503,8 +635,9 @@ const ChatPageInner = () => {
 export const ChatPage = () => {
 	const navigate = useNavigate();
 	const { t } = useTranslation();
-	const { agents, loading } = useAgents();
+	const { agents, loading, refetch } = useAgents();
 	const [quickAgentOpen, setQuickAgentOpen] = useState(false);
+	const [groupOpen, setGroupOpen] = useState(false);
 
 	// "No agents" only means something once a fetch has actually come back.
 	const settled = useSettled(loading);
@@ -519,6 +652,10 @@ export const ChatPage = () => {
 				<div className="flex h-full flex-col">
 					<header className="flex h-12 shrink-0 items-center justify-between px-4">
 						<Brand />
+						<NewChatMenu
+							onCreateAgent={() => setQuickAgentOpen(true)}
+							onCreateGroup={() => setGroupOpen(true)}
+						/>
 					</header>
 					<Empty className="flex-1 border-none">
 						<EmptyHeader>
@@ -544,7 +681,25 @@ export const ChatPage = () => {
 						<AccountMenu showSettings />
 					</div>
 				</div>
-				<QuickAgentDialog open={quickAgentOpen} onOpenChange={setQuickAgentOpen} />
+				<QuickAgentDialog
+					open={quickAgentOpen}
+					onOpenChange={setQuickAgentOpen}
+					onCreated={async () => {
+						await refetch();
+					}}
+				/>
+				<GroupChatDialog
+					open={groupOpen}
+					onOpenChange={setGroupOpen}
+					agents={agents}
+					onCreateAgent={() => {
+						setGroupOpen(false);
+						setQuickAgentOpen(true);
+					}}
+					onCreated={(agentId, sessionId) => {
+						navigate(`/chat/${agentId}/${sessionId}`);
+					}}
+				/>
 			</>
 		);
 	}
@@ -552,7 +707,7 @@ export const ChatPage = () => {
 	return (
 		<AudioProvider>
 			<SidebarProvider defaultOpen className="h-full min-h-0">
-				<ChatPageInner />
+				<ChatPageInner onAgentsChanged={() => void refetch()} />
 			</SidebarProvider>
 		</AudioProvider>
 	);

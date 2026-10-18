@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from agentscope.agent import ReActConfig
 from agentscope.app.middleware import LeaderEvidenceMiddleware
+from agentscope.app.middleware._personal_group_middleware import PersonalGroupEvidenceMiddleware
 from agentscope.event import (
     ReplyEndEvent,
     TextBlockDeltaEvent,
@@ -15,6 +16,7 @@ from agentscope.event import (
 )
 from agentscope.message import HintBlock, ToolCallBlock, ToolResultBlock, ToolResultState
 from agentscope.state import AgentState
+from agentscope.types import ReplyFinishedReason
 
 
 class _Storage:
@@ -210,6 +212,40 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         self.assertFalse(called)
         self.assertEqual(len(output), 1)
         self.assertIsInstance(output[0].content[-1], HintBlock)
+
+    async def test_personal_group_delivers_only_the_registered_question(self):
+        shared = _SharedContext((0, 0, 0, False))
+        question = "Bạn muốn nhóm kiểm tra khu vực nào?"
+        shared.pending_user_question = AsyncMock(return_value=question)
+        middleware = PersonalGroupEvidenceMiddleware(
+            _Storage(), shared, "u", "leader", "session-1", wait_seconds=0
+        )
+        agent = self._agent(dispatched=False)
+
+        async def next_handler(**kwargs):
+            for event in _text_round("reply-1", "unverified", "Technician arrives in 30 minutes."):
+                yield event
+
+        output = [event async for event in middleware.on_reply(agent, {}, next_handler)]
+        self.assertEqual(question, "".join(e.delta for e in output if isinstance(e, TextBlockDeltaEvent)))
+        self.assertEqual(1, sum(isinstance(e, ReplyEndEvent) for e in output))
+        self.assertNotIn("30 minutes", " ".join(m.get_text_content() or "" for m in agent.state.context))
+
+    async def test_personal_group_does_not_deliver_questions_after_interruption_or_error(self):
+        for reason in (ReplyFinishedReason.INTERRUPTED, ReplyFinishedReason.ERROR):
+            with self.subTest(reason=reason):
+                shared = _SharedContext((0, 0, 0, False))
+                shared.pending_user_question = AsyncMock(return_value="Question for BQL")
+                middleware = PersonalGroupEvidenceMiddleware(
+                    _Storage(), shared, "u", "leader", "session-1", wait_seconds=0
+                )
+
+                async def next_handler(**kwargs):
+                    yield ReplyEndEvent(session_id="session-1", reply_id="reply-1", finished_reason=reason)
+
+                output = [event async for event in middleware.on_reply(self._agent(dispatched=False), {}, next_handler)]
+                self.assertEqual([reason], [e.finished_reason for e in output])
+                shared.pending_user_question.assert_not_awaited()
 
     async def test_dispatched_planner_ends_before_next_model_call(self):
         shared = _SharedContext((0, 0, 0, True))

@@ -62,6 +62,8 @@ from .._bus_ops import (
     publish_session_event,
     register_inbox_consumer,
 )
+from .._personal_chat import personal_prompt, group_prompt, group_root
+from ..middleware._personal_group_middleware import PersonalGroupEvidenceMiddleware
 from .._chat_consent import confirmation_still_pending
 from .._manager import BackgroundTaskManager, SchedulerManager
 from .._shared_context import SharedContextService
@@ -1018,6 +1020,8 @@ class ChatService:
             context_task_id: str | None = None
             partner_case = False
             partner_room = False
+            personal = None
+            personal_root = None
             customer_input_msgs = (
                 [input_msg]
                 if isinstance(input_msg, Msg)
@@ -1075,6 +1079,23 @@ class ChatService:
                     runtime_system_prompt = governed_system_prompt(
                         agent_record.data.system_role, agent_record.data.system_prompt,
                     )
+                personal = session_record.config.personal_chat
+                if personal is not None:
+                    if session_record.user_id != user_id or session_record.agent_id != agent_id:
+                        raise HTTPException(404, "Personal conversation not found")
+                    if personal.kind == "direct" and (session_record.team_id or session_record.origin.type != "user"):
+                        raise ValueError("Personal sessions cannot join operational teams")
+                    runtime_system_prompt = personal_prompt(agent_record.data.system_role, agent_record.data.system_prompt)
+                    if personal.kind == "group":
+                        personal_root = await group_root(self._storage, user_id, session_record)
+                        bound_team = await self._storage.get_team(user_id, session_record.team_id) if session_record.team_id else None
+                        if bound_team is None or bound_team.data.purpose != "platform_group" or bound_team.session_id != personal_root.id:
+                            raise HTTPException(409, "Activate this group before sending team messages")
+                        runtime_system_prompt = group_prompt(
+                            agent_record.data.system_role, agent_record.data.system_prompt,
+                            coordinator=session_id == bound_team.session_id,
+                        )
+                        runtime_system_prompt += "\nRegister a question for BQL using TeamSay(kind=requires_user_input), then end this run."
                 management_output = session_record.state.middle_context.get("management_output_session_id")
                 if management_output:
                     visible = await self._storage.get_session(user_id, "", management_output)
@@ -1165,6 +1186,12 @@ class ChatService:
                                 # Resolve each turn so existing workers follow room changes.
                                 session_record.config.chat_model_config = (
                                     shared_model
+                                )
+                            elif personal is not None and session_record.config.chat_model_config is None:
+                                session_record.config.chat_model_config = leader_session.config.chat_model_config
+                                session_record.config.fallback_chat_model_config = (
+                                    session_record.config.fallback_chat_model_config
+                                    or leader_session.config.fallback_chat_model_config
                                 )
 
                     if team is not None:
@@ -1372,15 +1399,16 @@ class ChatService:
                     key = await extra.get_middleware_key()
                     partner_case |= key in {"partner_case", "management_case"}
                     partner_room |= key in {"partner_case", "partner_case_member", "management_case"}
-                if agent_record.data.system_role == "leader" and not partner_case:
+                if ((agent_record.data.system_role == "leader" and personal is None)
+                    or (personal_root is not None and isinstance(team_ctx, _LeaderContext))) and not partner_case:
                     middlewares.append(
-                        LeaderEvidenceMiddleware(
+                        (PersonalGroupEvidenceMiddleware if personal_root is not None else LeaderEvidenceMiddleware)(
                             self._storage,
                             self._shared_context,
                             user_id,
                             agent_id,
                             session_id,
-                            on_verified_answer=self._learning_hook(user_id, session_record, agent_record),
+                            on_verified_answer=None if personal is not None else self._learning_hook(user_id, session_record, agent_record),
                         ),
                     )
                 # Equip the member middleware for loop control
@@ -1520,6 +1548,14 @@ class ChatService:
                         detail=(f"No model configuration found for agent {agent_id}"),
                     )
                 model = await get_model(user_id, model_cfg, self._access)
+                attribution = {
+                    "user_id": user_id, "agent_id": agent_id, "session_id": session_id,
+                    "team_id": team.id if team else None,
+                    "workflow_id": session_record.state.middle_context.get("workflow_id"),
+                    "purpose": "runtime",
+                }
+                if isinstance(model, ChatModelBase):
+                    model._usage_attributes = attribution
 
                 # Persist customer-visible input before any agent reasons.
                 # Message ids make retries idempotent. Team handoff wakeups
@@ -1682,11 +1718,13 @@ class ChatService:
                             allow_source_references=True,
                             reference_event_ids=reference_event_ids,
                             agent_id=agent_id,
+                            project_private_history=partner_room,
                         ),
                     )
 
                 if team is None and (
-                    agent_record.data.system_role == "leader"
+                    personal is not None
+                    or agent_record.data.system_role == "leader"
                     or agent_record.data.tool_bindings
                     or agent_record.data.spec
                 ):
@@ -1706,6 +1744,8 @@ class ChatService:
                     if fallback_cfg is not None
                     else None
                 )
+                if isinstance(fallback_model, ChatModelBase):
+                    fallback_model._usage_attributes = attribution
 
                 # -------------------------------------------------------------
                 # 5. Assemble the Agent.
@@ -1813,7 +1853,7 @@ class ChatService:
                 memory = ""
                 if (agent_record.data.system_role == "business"
                     and agent_record.data.spec.get("memory_enabled", True)
-                    and shared_context_mode != "isolated" and not partner_room):
+                    and personal is None and shared_context_mode != "isolated" and not partner_room):
                     memory = await self._recalled_memory(user_id, agent_id, team, session_id, customer_input_msgs)
                 # Rebuilt each turn, never appended to durable history; core preflight counts it.
                 system_prompt = runtime_system_prompt + memory + "\n\n" + attachment

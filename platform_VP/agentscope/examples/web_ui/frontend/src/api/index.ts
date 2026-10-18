@@ -32,3 +32,5 @@ export type {
 export type { AreaOption, AuthUser, DomainOption, LoginRequest, RegisterRequest } from './auth';
 
 export * from './studio';
+
+export * from './personal-chat';

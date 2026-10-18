@@ -43,7 +43,72 @@ Kiểm chứng C:
   với 175 method/path backend (gồm router onboarding unified).
 - Đã restart app; `/health` trả 200, mọi component OK, container healthy.
 
-Giai đoạn D: chưa triển khai tại commit C.
+Giai đoạn D:
+
+- Port nguyên module/router personal chat và các component/hook UI mới của
+  develop2. Các session cũ vẫn mở được qua lịch sử hoặc URL. Giữ reply-to,
+  lựa chọn model sub-agent và chế độ chỉ đọc khi xem thành viên team của core.
+- Chat riêng không có công cụ tạo team/mời agent hoặc công cụ workspace tùy ý.
+  Nhóm riêng dùng TeamSay, dispatcher, shared context và cổng kết thúc của
+  core. Hai bridge nhỏ chuyển review của nhóm sang handoff resolution và
+  phát câu hỏi đã đăng ký; không thay TeamTurn hoặc Agent runtime.
+- Báo cáo analysis được đánh dấu chưa xác minh và không trở thành evidence
+  vận hành. Nhóm cần coordinator review; auto-review của team vận hành giữ
+  nguyên. Không học hoặc nhắc ký ức vận hành trong chat riêng/nhóm riêng.
+- Worker nhóm chưa chọn model dùng model của coordinator trong lượt đó.
+  Gắn attribution agent/session/team cho ledger ở model chính và fallback.
+- Console trao đổi với BQL về ticket đối tác qua session riêng; không ghi
+  đè reply owner hoặc dùng lời của BQL để duyệt thay cư dân. Chỉ phòng đối
+  tác dùng projection current-turn + durable packet; lịch sử gốc vẫn lưu.
+  Các snapshot vh_ticket_get mới thay snapshot cũ trong packet, giữ nguyên
+  raw events và trang lịch sử. Không bật fallback cắt lịch sử khi quá budget.
+- Chỉ thêm field JSON, không có migration mới trong D.
+
+Kiểm chứng D:
+
+- 262 test trọng yếu team/context/leader/consent/toolkit/session: đạt. Thêm
+  ba ca bridge (câu hỏi nhóm, ngắt/lỗi, cấm analysis ở team vận hành); cả hai
+  module test liên quan: 30 ca đạt.
+- Personal chat + challenge + session regression: 33 đạt, 1 skip trên
+  Redis/SQLite. Ca runtime đồng thời bị skip ở SQLite đã chạy riêng trên
+  PostgreSQL disposable: đạt, dùng Agent/middleware/dispatcher thật, chỉ
+  thay provider bằng model xác định. Ca này kiểm tra peer exchange, review,
+  synthesis, attribution và worker kế thừa model coordinator.
+- Toàn bộ core: 2.996 ca; 23 failure/82 error/156 skip. So sánh tên từng lỗi
+  với baseline trước C: không có failure/error mới; một failure cũ được sửa.
+- Toàn bộ Workforce: 686 ca chạy, 13 skip, không có failure/error. Đường dẫn
+  fixture đầy đủ loại được 13 lỗi import của baseline; schema artifact đã
+  tái tạo ở C giải quyết hai failure baseline còn lại.
+- 108 hàm pytest của C/D (gồm parametrization): 143 đạt, 6 skip. Dùng
+  `--asyncio-mode=auto` cho async fixture của nguồn; lần chạy ban đầu thiếu
+  cờ này gây 14 lỗi setup và đã được chạy lại đạt. Năm skip là chuẩn bị
+  business sandbox cần monorepo đầy đủ (đã kiểm chứng riêng 5 ca ở C); một
+  skip là runtime SQLite đã kiểm chứng riêng bằng PostgreSQL ở trên.
+- Frontend: TypeScript và build đạt; Node 36 đạt/1 skip. Eslint toàn bộ 13
+  file TypeScript thay đổi của D đạt. Route checker xác nhận 141 lời gọi UI
+  so với 182 method/path backend.
+- Sau khi mọi suite kết thúc, restart app: health 200, mọi component OK,
+  container healthy. Smoke HTTP có xác thực trên stack thật (primary Redis,
+  shared context PostgreSQL): auth/admin, tạo/sửa/đọc draft Studio, tạo nhóm,
+  ghi/đọc context, room, AGENT_NOT_READY cho agent chưa publish, và cấm routing
+  team trong chat riêng legacy đều đạt. Dùng credential placeholder trỏ
+  loopback, không gọi model. Đã dọn tài khoản, credential và tài nguyên thử.
+
+Lệnh kiểm tra backend (trong container `agentscope-dev-dong-app-1`, cwd `/app`):
+
+```sh
+PYTHONPATH=/tmp/testdeps:/app/src:/app/tests python -m unittest discover -s tests -p '*_test.py'
+```
+
+Workforce dùng unittest loader với mọi `tests/workforce/**/test_*.py`, thêm
+`/app/tests/workforce/fixtures` vào PYTHONPATH để nạp `execution_fakes` và
+`async_partners`; các ca pytest được chạy riêng. Các log kiểm chứng đặt tại
+`/tmp/integration-D-*.log` trên host.
+
+Các hàm pytest được chọn từ test tính năng C/D, chạy với
+`python -m pytest -q --asyncio-mode=auto -p no:cacheprovider`; log
+`/tmp/integration-CD-features-final.log`. Smoke stack:
+`/tmp/integration-D-live-smoke.log`. Database PostgreSQL disposable đã xóa.
 
 Giới hạn smoke hiện tại: unified partner đã được kiểm thử bằng HTTP/worker và
 provider giả lập; stack thật đang để `WORKFORCE_PARTNER_API=false`. Chưa chạy

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -499,7 +500,10 @@ class SharedContextService:
 
     @staticmethod
     def _event_dict(event: SharedContextEvent) -> dict:
-        return event.model_dump(mode="json")
+        value = event.model_dump(mode="json")
+        if event.report_type == "verified":
+            value.pop("report_type")
+        return value
 
     @staticmethod
     def _active_items(record: TeamSharedContextRecord) -> list[dict]:
@@ -518,6 +522,7 @@ class SharedContextService:
         """
         projected: list[dict] = []
         seen: dict[str, dict] = {}
+        snapshots: dict[str, tuple[tuple[int, int], dict]] = {}
         for item in items:
             if item["authority"] != "tool_verified" or item["kind"] != "fact":
                 projected.append(item)
@@ -525,7 +530,10 @@ class SharedContextService:
             try:
                 value = json.loads(item["text"])
                 call, result = value["tool_call"], value["tool_result"]
-                if not call["name"].startswith("mcp__") or not isinstance(result, dict):
+                if not isinstance(result, dict) or not (
+                    call["name"].startswith("mcp__")
+                    or result.get("metadata", {}).get("external_evidence")
+                ):
                     raise ValueError("not a runtime MCP result")
                 arguments = json.loads(call["input"])
                 output = result["output"]
@@ -543,11 +551,17 @@ class SharedContextService:
                         # This is lossless for business values and raw evidence
                         # remains immutable in the source event.
                         block_text = compact_block.get("text")
-                        if isinstance(block_text, str) and block_text.strip().startswith(
-                            ("{", "[")
-                        ):
+                        label = None
+                        if isinstance(block_text, str):
+                            match = re.match(r"^(E\d+):\s*(.*)$", block_text, re.DOTALL)
+                            if match:
+                                label, block_text = match.groups()
+                        if isinstance(block_text, str) and block_text.strip().startswith(("{", "[")):
                             try:
-                                normalized_output.append(json.loads(block_text))
+                                parsed = json.loads(block_text)
+                                normalized_output.append(
+                                    {"evidence": label, "value": parsed} if label else parsed,
+                                )
                                 continue
                             except (TypeError, ValueError):
                                 pass
@@ -568,6 +582,39 @@ class SharedContextService:
                 )
             except (ValueError, TypeError, KeyError, AttributeError):
                 projected.append(item)
+                continue
+            # vh_ticket_get is a versioned full snapshot. A newer read replaces
+            # that snapshot, while raw events and all page reads stay durable.
+            snapshot = output.get("value", {}) if isinstance(output, dict) else {}
+            version = snapshot.get("ticket_version")
+            if (
+                call["name"] == "vh_ticket_get"
+                and value["state"] == "success"
+                and isinstance(version, int)
+                and not arguments.get("history_before_seq")
+            ):
+                # Omitted and explicit null cursors both request the full
+                # snapshot; history pages remain separate evidence.
+                snapshot_arguments = {key: value for key, value in arguments.items()
+                                      if key != "history_before_seq" or value is not None}
+                snapshot_key = SharedContextService._json([item["task_id"], snapshot_arguments])
+                sequence = snapshot.get("snapshot_seq")
+                rank = (version, sequence if isinstance(sequence, int) else 0)
+                previous = snapshots.get(snapshot_key)
+                compact = {**item, "text": text, "superseded_source_event_ids": []}
+                if previous:
+                    previous_rank, previous_item = previous
+                    if rank >= previous_rank:
+                        compact["superseded_source_event_ids"] = [
+                            *previous_item.get("superseded_source_event_ids", []),
+                            *previous_item["source_event_ids"],
+                        ]
+                        projected.remove(previous_item)
+                    else:
+                        previous_item["superseded_source_event_ids"].extend(item["source_event_ids"])
+                        continue
+                snapshots[snapshot_key] = (rank, compact)
+                projected.append(compact)
                 continue
             key = SharedContextService._json([item["task_id"], text])
             if key in seen:
@@ -680,6 +727,7 @@ class SharedContextService:
         reference_event_ids: tuple[str, ...] = (),
         delta: ContextDelta | None = None,
         recipient_session_ids: tuple[str, ...] = (),
+        report_type: Literal["verified", "analysis"] = "verified",
     ) -> SharedContextEvent:
         """Idempotently append one shareable event under a team lock."""
 
@@ -734,6 +782,7 @@ class SharedContextService:
                         "hop_count": hop_count,
                         "reference_event_ids": reference_event_ids,
                         "delta": delta.model_dump(mode="json") if delta else None,
+                        **({"report_type": report_type} if report_type != "verified" else {}),
                     },
                 ).encode("utf-8"),
             ).hexdigest()
@@ -812,6 +861,7 @@ class SharedContextService:
                 task_id=selected_task_id,
                 kind=kind,
                 content=content,
+                report_type=report_type,
                 source_message_id=source_message_id,
                 source_agent_id=source_agent_id,
                 source_session_id=source_session_id,
@@ -1327,7 +1377,7 @@ class SharedContextService:
         while changed:
             changed = False
             for event in current.values():
-                if event.id in trusted or event.kind not in {"answer", "result"}:
+                if event.id in trusted or event.kind not in {"answer", "result"} or event.report_type == "analysis":
                     continue
                 same_worker_tool = any(
                     source.kind == "external_event"
@@ -1402,6 +1452,8 @@ class SharedContextService:
                 ]
                 accepted_report = next(iter(reports), None)
                 if accepted_report is not None:
+                    if record.state.purpose == "platform_group":
+                        continue
                     branch.status = "completed"
                     branch.reason = "worker result accepted by runtime"
                     mutated = True
@@ -2384,6 +2436,7 @@ class SharedContextService:
                     retained_items.append(item)
             active_items = retained_items
         active_items = self._compact_tool_facts(active_items)
+        represented_tool_source_ids.update(source_id for item in active_items for source_id in item.get("superseded_source_event_ids", ()))
         superseded_source_ids = {
             source_id
             for item in record.state.items

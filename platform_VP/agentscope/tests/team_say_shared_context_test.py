@@ -192,6 +192,12 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(inbox), 1)
 
+    async def test_operational_team_rejects_unverified_analysis(self):
+        result = await self.tool(content="Proposal only", to="Worker", report_type="analysis")
+        self.assertEqual(result.state, "error")
+        self.assertIsNone(self.storage.context)
+        self.assertEqual({}, self.storage.handoffs)
+
     async def test_system_leader_result_is_not_semantically_validated(
         self,
     ):

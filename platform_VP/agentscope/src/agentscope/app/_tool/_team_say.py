@@ -331,6 +331,7 @@ class TeamSay(_TeamToolBase):
         hop_count: int = 1,
         question_key: str | None = None,
         resolution: Literal["complete", "stop", "verify"] | None = None,
+        report_type: Literal["verified", "analysis"] = "verified",
     ) -> ToolChunk:
         """Deliver the message directly via storage + message bus.
 
@@ -367,6 +368,8 @@ class TeamSay(_TeamToolBase):
             if context_delta is not None:
                 context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
+            if report_type == "analysis" and team.data.purpose != "platform_group":
+                raise ValueError("Analysis reports are only supported in BQL groups")
             shared_context = self._shared_context or SharedContextService(
                 self._storage,
                 self._message_bus,
@@ -424,6 +427,7 @@ class TeamSay(_TeamToolBase):
                 )
             if (
                 self._role == "leader"
+                and team.data.purpose != "platform_group"
                 and leader.agent.data.system_role == "leader"
                 and kind == "requires_user_input"
             ):
@@ -1005,6 +1009,7 @@ class TeamSay(_TeamToolBase):
                     based_on_revision=based_on_revision,
                     reference_event_ids=reference_event_ids,
                     delta=context_delta,
+                    report_type=report_type,
                 )
                 if shared_event.stale:
                     if kind == "requires_user_input":

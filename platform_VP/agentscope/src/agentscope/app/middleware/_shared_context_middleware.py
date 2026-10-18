@@ -36,9 +36,11 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         allow_source_references: bool = False,
         reference_event_ids: tuple[str, ...] = (),
         agent_id: str | None = None,
+        project_private_history: bool = False,
     ) -> None:
         self._mode = mode
         self._agent_id = agent_id
+        self._project_private_history = project_private_history
         self._service = service
         self._user_id = user_id
         self._team_id = team_id
@@ -229,7 +231,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 },
                 deep=True,
             )
-        if self._mode in {"isolated", "references"}:
+        if self._mode in {"isolated", "references"} or self._project_private_history:
             # ``messages[1]`` may be the agent's old private summary and is
             # intentionally excluded. Only the system prompt (which carries a
             # references packet when requested) and this turn's context delta

@@ -154,6 +154,7 @@ optional):
         or bool(agent_record.data.tool_bindings)
         or agent_record.data.execution_mode is not None
         or bool(agent_record.data.spec)
+        or session_record.config.personal_chat is not None
     )
     tools = [] if business_runtime else await workspace.list_tools()
     if not business_runtime:
@@ -202,7 +203,14 @@ time or interval"
         "shared_context_service": shared_context_service,
     }
     team_say_kwargs = {**team_tool_kwargs, "is_reply_owner": is_reply_owner}
-    if is_leader:
+    personal = session_record.config.personal_chat
+    if personal is not None and personal.kind == "group" and session_record.team_id:
+        from .._tool._personal_team_say import PersonalTeamSay
+
+        tools.append(PersonalTeamSay(**team_say_kwargs, role=team_role or "worker"))
+    elif personal is not None:
+        pass
+    elif is_leader:
         tools += [
             TeamCreate(**team_tool_kwargs),
             TeamSay(**team_say_kwargs, role="leader"),
@@ -244,7 +252,7 @@ time or interval"
     elif team_role is not None:
         tools.append(TeamSay(**team_say_kwargs, role="worker"))
 
-    if shared_context_service is not None and (is_leader or team_role is not None):
+    if shared_context_service is not None and (personal is None or personal.kind == "group") and (is_leader or team_role is not None):
         tools.append(SharedContextRead(**team_tool_kwargs))
 
     # A step's turn gets one submit tool: handover until something has
