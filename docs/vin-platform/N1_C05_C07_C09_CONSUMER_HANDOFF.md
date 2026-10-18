@@ -44,7 +44,28 @@ Fixture chạy xuyên Platform–Domain: `vinhome_Recident/services/vinhomes-api
 
 ## C09 — job và execution context
 
-**Bắt buộc upgrade tới `0023_personal_job_constraint` trước mount worker cá nhân.** `0022` một mình chưa đủ; rehearsal đã phát hiện CHECK cũ chỉ nhận scope/provider. Migration mới giữ dữ liệu/job cũ và thêm owner personal riêng; legacy workers bỏ qua personal jobs.
+### Bổ sung phân trang trên 100 job — 18/10
+
+Internal helper: **`await authority.jobs.list_page(context, kind, *, cursor=None, limit=100)`**, trả **`PersonalJobPage(items: list[DurableJob], next_cursor: str | None, has_more: bool)`**. `kind` là schedule-run/channel-event/delivery/publish-batch, limit nguyên 1–100; sai loại/limit trả `INVALID_JOB_KIND`/`INVALID_PAGINATION` (422).
+
+```python
+cursor = None
+while True:
+    page = await authority.jobs.list_page(context, "schedule-run", cursor=cursor, limit=100)
+    for job in page.items:
+        consume(job)  # consumer N2 xử lý/chiếu DTO, không đổi billing hoặc owner
+    if not page.has_more:
+        break
+    cursor = page.next_cursor
+```
+
+Thứ tự tăng ổn định **(created_at, job_id)**; cursor là last returned job ID của trang còn tiếp, không phải offset hay bearer. Trang cuối `has_more=false,next_cursor=null`; không cần request trang rỗng nữa. Mỗi trang kiểm lại current authorization, tenant, personal owner và kind. Cursor sai owner/tenant/kind/không tồn tại/trỏ row đã purge trả `INVALID_JOB_CURSOR` (422): reload từ đầu; không fallback sang job của người khác. Đây là live keyset, không phải snapshot nhiều trang: không backdate created_at, consumer tự dedup theo job_id nếu reload.
+
+**Tương thích:** `await jobs.list(context, kind)` vẫn trả `list[DurableJob]` như cũ, nay đọc hết các trang thay vì cắt thầm ở 100. N2 có thể nhận SHA mà chưa phải đổi mọi caller; lịch sử/list UI nên chuyển sang list_page để tránh nạp toàn bộ. Helper là server-internal; không đưa nguyên payload/lease/internal context trong DurableJob ra UI. N1 không thêm public job endpoint hoặc sửa router/consumer N2.
+
+Fixture chung: `from vin_fixtures import authority, seed_personal_job_history`; `context,jobs = await seed_personal_job_history(authority, count=205)` tạo queue thật và 205 job cá nhân, không model IO. `PersonalJobPage` cùng nested DurableJob có trong DTO schema và OpenAPI components. Python **3.11 Linux, 9 PASS / 0 SKIP / 0 FAIL / 0 ERROR** cho pagination + existing personal job fences/context + C07 contract + shared fixture. Test pagination buộc tất cả created_at trùng nhau: **100 + 100 + 5**, không lặp/mất ID; kiểm compatibility list đủ 205, cross owner/kind/tenant cursor, empty page, limit sai, deleted cursor và revoke giữa các trang. Adapter pagination kiểm trên SQLite trong lượt này; không gọi đó là PostgreSQL concurrency proof. Ruff/diff checks đạt, không dùng key model thật.
+
+Không cần migration mới cho hai bổ sung C07/C09 này. **Bắt buộc upgrade đủ graph hiện tại tới `0024_vin_admin_revisions`; queue cá nhân cần `0023_personal_job_constraint`.** `0022` một mình chưa đủ; rehearsal đã phát hiện CHECK cũ chỉ nhận scope/provider. Migration mới giữ dữ liệu/job cũ và thêm owner personal riêng; legacy workers bỏ qua personal jobs.
 
 Public helper đã commit tại **`f52420d9`**:
 

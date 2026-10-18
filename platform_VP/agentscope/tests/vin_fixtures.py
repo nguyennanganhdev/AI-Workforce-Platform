@@ -73,6 +73,17 @@ async def seed_admin_catalog(authority):
     return {"catalog_id": catalog, "grant_id": grant, "membership_id": membership}
 
 
+async def seed_personal_job_history(authority, *, user_id="alice", kind="schedule-run", count=205):
+    """C09 shared fixture; exercise real personal queue persistence beyond 100."""
+    from agentscope.app.workforce.foundation._tables import durable_jobs
+    async with authority.engine.begin() as db:
+        await db.run_sync(lambda connection: durable_jobs.create(connection, checkfirst=True))
+    context = await authority.context(user_id)
+    jobs = [await authority.jobs.enqueue(context, kind=kind, key=f"fixture-history:{index:04}",
+        payload={"fixture": True, "sequence": index}) for index in range(count)]
+    return context, jobs
+
+
 @pytest_asyncio.fixture
 async def authority(tmp_path):
     engine = create_async_engine("sqlite+aiosqlite:///" + str(tmp_path / "authority.db"))

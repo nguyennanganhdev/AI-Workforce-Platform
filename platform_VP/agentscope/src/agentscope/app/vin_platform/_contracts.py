@@ -5,6 +5,8 @@ from typing import Annotated, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
 
+from ..workforce.foundation.event_delivery import DurableJob
+
 
 CONTRACT_VERSION = "vin-platform-1"
 
@@ -142,6 +144,14 @@ class PlanDecisionPayload(Contract):
     expectedVersion: Annotated[StrictInt, Field(ge=0)]
     decision: Literal["approve", "reject"]
     note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+
+
+class PersonalJobPage(Contract):
+    """Internal C09 consumer page; not a public job/secret DTO."""
+
+    items: list[DurableJob]
+    next_cursor: str | None
+    has_more: bool
 
 
 class CaseEvent(Contract):

@@ -20,7 +20,7 @@ def export():
     openapi = app.openapi()
     # Internal consumer contracts also belong in the shared schema, even when
     # they are nested in the deliberately extensible Domain projection.
-    models = [_contracts.CustomerPlan, _contracts.PlanDecisionPayload]
+    models = [_contracts.CustomerPlan, _contracts.PlanDecisionPayload, _contracts.PersonalJobPage]
     _, definitions = models_json_schema([(model, "validation") for model in models],
         ref_template="#/components/schemas/{model}")
     openapi.setdefault("components", {}).setdefault("schemas", {}).update(definitions["$defs"])
