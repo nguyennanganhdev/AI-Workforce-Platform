@@ -1,0 +1,41 @@
+.agent-map-scene canvas { touch-action: none; cursor: grab; }
+.agent-map-scene[data-dragging] canvas { cursor: grabbing; }
+
+.agent-map-label {
+	pointer-events: auto;
+	width: 178px;
+	padding: 9px 11px 8px;
+	border: 1px solid #dfe7eb;
+	border-radius: 12px;
+	background: #fffffff5;
+	box-shadow: 0 3px 12px #243b5310, 0 1px 2px #243b5308;
+	color: #263747;
+	font-family: inherit;
+	text-align: left;
+	white-space: normal;
+	cursor: pointer;
+	transition: border-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+}
+.agent-map-label:hover { border-color: #99bbb5; box-shadow: 0 4px 15px #243b531a; }
+.agent-map-label:focus-visible { outline: 2px solid #168478; outline-offset: 3px; }
+.agent-map-label[data-selected] { border-color: #168478; box-shadow: 0 0 0 2px #16847820, 0 4px 14px #243b5314; }
+.agent-map-label[data-leader] { border-top: 3px solid #168478; }
+.agent-map-label[data-dim] { opacity: 0.5; }
+.agent-map-label[data-dim]:hover, .agent-map-label[data-dim]:focus-visible { opacity: 1; }
+.agent-map-label-identity { display: flex; align-items: center; gap: 7px; }
+.agent-map-label-identity .agent-sprite { border-radius: 7px; animation: none; }
+.agent-map-label-name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; line-height: 16px; font-weight: 650; overflow-wrap: anywhere; }
+.agent-map-label-status { display: block; margin-top: 5px; color: #596e7b; font-size: 11px; line-height: 15px; }
+.agent-map-label[data-leader] .agent-map-label-status { color: #18756a; }
+
+.agent-map-scene[data-theme='dark'] .agent-map-label { background: #1a2936f5; border-color: #384c5b; color: #edf3f6; box-shadow: 0 3px 12px #07121e40; }
+.agent-map-scene[data-theme='dark'] .agent-map-label-status { color: #b2c4ce; }
+.agent-map-scene[data-theme='dark'] .agent-map-label[data-leader] { border-top-color: #5bb5a8; }
+.agent-map-scene[data-theme='dark'] .agent-map-label[data-leader] .agent-map-label-status { color: #86cfc3; }
+.agent-map-scene[data-theme='dark'] .agent-map-label[data-selected] { border-color: #5bb5a8; }
+
+.agent-map-label[data-compact] { width: 120px; padding: 7px 9px; border-radius: 9px; }
+.agent-map-label[data-compact] .agent-sprite, .agent-map-label[data-compact] .agent-map-label-status { display: none; }
+.agent-map-label[data-compact] .agent-map-label-name { width: 100%; font-size: 11px; line-height: 14px; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) { .agent-map-label { transition: none; } }

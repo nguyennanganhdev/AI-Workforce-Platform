@@ -1,4 +1,4 @@
-import { Ellipsis, MessageSquare, Pencil, RotateCcw, Trash2, X } from 'lucide-react';
+import { ArrowUpRight, Ellipsis, Focus, GitBranch, Info, MessageSquare, Pencil, RotateCcw, Search, SlidersHorizontal, Trash2, Users, X } from 'lucide-react';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,16 +9,25 @@ import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAgentMapData } from '@/hooks/useStudioAgents';
 import { cn } from '@/lib/utils';
-import type { MapLink } from '@/pages/agents/AgentMap3D';
+import type { MapAgent, MapLink } from '@/pages/agents/AgentMap3D';
+
+import './map-workspace.css';
 
 
 const AgentMap3D = lazy(() => import('@/pages/agents/AgentMap3D'));
@@ -52,12 +61,109 @@ export function AgentRowActions({ agent, onRemove }: { agent: AgentSummary; onRe
  * both from the same cache. Selecting in one selects in the other; removing
  * an agent removes its node.
  */
+
+function AgentRoster({
+	agents, nodes, selectedId, onSelect, onRemove,
+}: {
+	agents: AgentSummary[];
+	nodes: MapAgent[];
+	selectedId: string | null;
+	onSelect: (id: string) => void;
+	onRemove: (agent: AgentSummary) => void;
+}) {
+	const [query, setQuery] = useState('');
+	const [state, setState] = useState('all');
+	const byId = new Map(nodes.map((node) => [node.id, node]));
+	const leader = nodes.find((node) => node.role === 'leader');
+	const needle = query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/đ/g, 'd').trim();
+	const visible = agents.filter((agent) => {
+		const name = agent.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/đ/g, 'd');
+		return name.includes(needle) && (state === 'all' || agent.lifecycle_state === state);
+	});
+	return (
+		<div className="flex h-full min-h-0 flex-col">
+			<div className="space-y-3 px-4 pt-4 pb-3">
+				<div className="flex items-center justify-between">
+					<h2 className="text-sm font-semibold">Đội ngũ agent</h2>
+					<span className="text-xs tabular-nums text-muted-foreground">{agents.length} agent</span>
+				</div>
+				<div className="flex gap-2">
+					<div className="relative min-w-0 flex-1">
+						<Search aria-hidden="true" className="pointer-events-none absolute top-3 left-3 size-4 text-muted-foreground" />
+						<Input aria-label="Tìm agent" placeholder="Tìm agent..." value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 pl-9" />
+					</div>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button variant="outline" size="icon" className="relative size-10 shrink-0" aria-label="Lọc trạng thái agent">
+								<SlidersHorizontal />
+								{state !== 'all' && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />}
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end">
+							<DropdownMenuLabel>Trạng thái</DropdownMenuLabel>
+							<DropdownMenuRadioGroup value={state} onValueChange={setState}>
+								<DropdownMenuRadioItem value="all">Tất cả agent</DropdownMenuRadioItem>
+								<DropdownMenuRadioItem value="published">Đang phát hành</DropdownMenuRadioItem>
+								<DropdownMenuRadioItem value="draft">Bản nháp</DropdownMenuRadioItem>
+								<DropdownMenuRadioItem value="withdrawn">Đã ngừng</DropdownMenuRadioItem>
+							</DropdownMenuRadioGroup>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+			</div>
+			{leader && (
+				<div className="mx-3 mb-3 border-b border-border/70 pb-3">
+					<button type="button" onClick={() => onSelect(leader.id)} aria-pressed={selectedId === leader.id} className={cn('map-roster-button map-roster-leader w-full', selectedId === leader.id && 'is-selected')}>
+						<ClayAvatar id={leader.id} label="Leader" size={42} />
+						<span className="min-w-0 flex-1 text-left">
+							<span className="block text-sm font-semibold">Leader</span>
+							<span className="block text-xs text-muted-foreground">Điều phối công việc</span>
+						</span>
+						<GitBranch aria-hidden="true" className="size-4 text-muted-foreground" />
+					</button>
+				</div>
+			)}
+			<ul aria-label="Danh sách agent" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-3">
+				{visible.map((agent) => {
+					const node = byId.get(agent.agent_id);
+					return (
+						<li key={agent.agent_id} className={cn('map-roster-row group', selectedId === agent.agent_id && 'is-selected')}>
+							<button type="button" onClick={() => onSelect(agent.agent_id)} aria-pressed={selectedId === agent.agent_id} className="map-roster-button min-w-0 flex-1">
+								<ClayAvatar id={agent.agent_id} label={agent.name} size={40} className={cn(agent.lifecycle_state !== 'published' && 'opacity-70 grayscale')} />
+								<span className="min-w-0 flex-1 text-left">
+									<span className="map-roster-name">{agent.name}</span>
+									<span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] leading-4 text-muted-foreground">
+										<span className={cn('map-state-mark', agent.lifecycle_state === 'published' && 'is-published')} aria-hidden="true" />
+										{STATUS[agent.lifecycle_state].label}
+										<span aria-hidden="true">·</span><span className="tabular-nums">{node?.tickets ?? 0} phiếu</span>
+									</span>
+								</span>
+							</button>
+							<AgentRowActions agent={agent} onRemove={onRemove} />
+						</li>
+					);
+				})}
+				{visible.length === 0 && (
+					<li className="px-3 py-8 text-center text-sm text-muted-foreground">
+						Không tìm thấy agent phù hợp.
+						<Button variant="link" className="mt-2 w-full" onClick={() => { setQuery(''); setState('all'); }}>Xóa bộ lọc</Button>
+					</li>
+				)}
+			</ul>
+			<p className="border-t border-border/70 px-4 py-3 text-xs leading-5 text-muted-foreground">Chọn agent để xem thông tin và các kết nối trên sơ đồ.</p>
+		</div>
+	);
+}
+
 export function AgentMapView({ agents, onRemove }: { agents: AgentSummary[]; onRemove: (agent: AgentSummary) => void }) {
 	const navigate = useNavigate();
-	const isMobile = useIsMobile();
 	const { activity, links, cost } = useAgentMapData();
 	const [selected, setSelected] = useState<string | null>(null);
 	const [reset, setReset] = useState(0);
+	const [home, setHome] = useState(0);
+	const [showLabels, setShowLabels] = useState(true);
+	const [showPeers, setShowPeers] = useState(true);
+	const [rosterOpen, setRosterOpen] = useState(false);
 	const [unavailable, setUnavailable] = useState(false);
 	const nodes = useMemo(() => mapAgents(agents, activity, cost), [agents, activity, cost]);
 	const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -66,127 +172,115 @@ export function AgentMapView({ agents, onRemove }: { agents: AgentSummary[]; onR
 		[links],
 	);
 	const chosen = selected ? byId.get(selected) : undefined;
-	const partners = selected ? mapLinks.filter((link) => link.source === selected || link.target === selected) : [];
-
+	const partners = chosen ? mapLinks.filter((link) => link.source === chosen.id || link.target === chosen.id) : [];
+	const published = agents.filter((agent) => agent.lifecycle_state === 'published').length;
+	const selectAgent = (id: string) => { setSelected(id); setRosterOpen(false); };
+	const roster = <AgentRoster agents={agents} nodes={nodes} selectedId={selected} onSelect={selectAgent} onRemove={onRemove} />;
 	return (
-		<div className="flex size-full min-h-0">
-			<aside className="flex w-72 shrink-0 flex-col border-r border-border/70 max-md:w-full">
-				<p className="px-4 pt-3 pb-2 text-xs text-muted-foreground">{agents.length} agent · chọn để xem trên sơ đồ, nhấp đúp để mở</p>
-				<ul className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-					{agents.map((agent) => {
-						const node = byId.get(agent.agent_id);
-						return (
-							<li key={agent.agent_id}>
-								<div
-									role="button"
-									tabIndex={0}
-									aria-pressed={selected === agent.agent_id}
-									onClick={() => setSelected(agent.agent_id === selected ? null : agent.agent_id)}
-									onDoubleClick={() => navigate(`/workforce/agents/${agent.agent_id}`)}
-									onKeyDown={(event) => {
-										if (event.key === 'Enter') setSelected(agent.agent_id);
-									}}
-									className={cn(
-										'group flex items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-muted',
-										selected === agent.agent_id && 'bg-amber-50 ring-1 ring-amber-300 dark:bg-amber-950/30',
-									)}
-								>
-									<ClayAvatar
-										id={agent.agent_id}
-										label={agent.name}
-										size={34}
-										className={cn(agent.lifecycle_state !== 'published' && 'opacity-60 grayscale')}
-									/>
-									<div className="min-w-0 flex-1">
-										<p className="truncate text-[13px]/[18px] font-medium">{agent.name}</p>
-										<p className="truncate text-[11px] text-muted-foreground tabular-nums">
-											{STATUS[agent.lifecycle_state].label} · {node?.tickets ?? 0} phiếu · {usd(node?.costUsd)}
-										</p>
-									</div>
-									{node?.live && <span className="size-2 shrink-0 rounded-full bg-emerald-500" title="Đang xử lý" />}
-									<AgentRowActions agent={agent} onRemove={onRemove} />
-								</div>
-							</li>
-						);
-					})}
-				</ul>
+		<div className="agent-map-workspace flex size-full min-h-0">
+			<aside aria-label="Đội ngũ agent" className="map-roster hidden h-full w-64 shrink-0 border-r border-border/70 bg-background md:block xl:w-72">
+				{roster}
 			</aside>
-			{!isMobile && (
-				<div className="relative min-w-0 flex-1 bg-gradient-to-b from-[var(--cue-bg-subtle,var(--muted))]/40 to-background">
+			<section aria-label="Sơ đồ phối hợp agent" className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+				<div className="map-scene-toolbar">
+					<div className="min-w-0">
+						<h2 className="text-sm font-semibold">Sơ đồ phối hợp</h2>
+						<p className="mt-1 text-xs text-muted-foreground"><span className="tabular-nums">{published}</span> đã phát hành <span className="px-1" aria-hidden="true">·</span> <span className="tabular-nums">{mapLinks.length}</span> kết nối</p>
+					</div>
+					<div className="flex shrink-0 items-center gap-1">
+						<Tooltip>
+							<TooltipTrigger asChild><Button variant="ghost" size="icon" className="hidden size-10 sm:inline-flex" aria-label="Hướng dẫn sơ đồ"><Info /></Button></TooltipTrigger>
+							<TooltipContent className="max-w-64 leading-5">Chọn agent để xem kết nối. Kéo nhân vật để sắp xếp, kéo nền để xoay, cuộn để thu phóng. Khi chọn nhãn, dùng phím mũi tên để di chuyển.</TooltipContent>
+						</Tooltip>
+						<Sheet open={rosterOpen} onOpenChange={setRosterOpen}>
+							<SheetTrigger asChild>
+								<Button variant="outline" size="sm" className="h-10 md:hidden"><Users /> Agent</Button>
+							</SheetTrigger>
+							<SheetContent side="left" className="agent-map-workspace w-[min(340px,92vw)]! gap-0 p-0">
+								<SheetHeader className="sr-only">
+									<SheetTitle>Đội ngũ agent</SheetTitle>
+									<SheetDescription>Tìm và chọn agent để xem trong sơ đồ.</SheetDescription>
+								</SheetHeader>
+								<div className="min-h-0 flex-1 pt-10">{roster}</div>
+							</SheetContent>
+						</Sheet>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button variant="ghost" size="icon" className="size-10" aria-label="Căn giữa sơ đồ" disabled={unavailable} onClick={() => setHome((value) => value + 1)}><Focus /></Button>
+							</TooltipTrigger>
+							<TooltipContent>Căn giữa sơ đồ</TooltipContent>
+						</Tooltip>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="h-10" aria-label="Tùy chọn sơ đồ"><SlidersHorizontal /><span className="hidden sm:inline">Hiển thị</span></Button></DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-56">
+								<DropdownMenuLabel>Hiển thị trên sơ đồ</DropdownMenuLabel>
+								<DropdownMenuCheckboxItem checked={showLabels} onCheckedChange={setShowLabels}>Tên và trạng thái agent</DropdownMenuCheckboxItem>
+								<DropdownMenuCheckboxItem checked={showPeers} onCheckedChange={setShowPeers}>Liên kết phối hợp</DropdownMenuCheckboxItem>
+								<DropdownMenuSeparator />
+								<DropdownMenuItem disabled={unavailable} onSelect={() => setReset((value) => value + 1)}><RotateCcw /> Sắp xếp lại sơ đồ</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+				</div>
+				<div className="map-scene relative min-h-0 flex-1">
 					{unavailable ? (
-						<p className="p-6 text-sm text-muted-foreground">
-							Trình duyệt chưa hỗ trợ 3D (WebGL). Danh sách bên trái vẫn đầy đủ các agent.
-						</p>
+						<div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+							<GitBranch className="size-8 text-muted-foreground" aria-hidden="true" />
+							<h3 className="text-sm font-medium">Sơ đồ 3D chưa khả dụng</h3>
+							<p className="max-w-sm text-sm leading-6 text-muted-foreground">Bạn vẫn có thể chọn agent từ danh sách hoặc chuyển sang chế độ Danh sách để quản lý.</p>
+							<Button variant="outline" onClick={() => navigate('/workforce/agents?view=list')}>Mở danh sách agent <ArrowUpRight /></Button>
+						</div>
 					) : (
-						<Suspense fallback={<Skeleton className="m-4 h-[calc(100%-2rem)]" />}>
-							<AgentMap3D
-								agents={nodes}
-								links={mapLinks}
-								selectedId={selected}
-								onSelect={setSelected}
-								onOpen={(id) => {
-									if (byId.get(id)?.role === 'business') navigate(`/workforce/agents/${id}`);
-								}}
-								layoutKey="awp.agent-map.layout.v1"
-								resetSignal={reset}
-								onUnavailable={() => setUnavailable(true)}
-							/>
+						<Suspense fallback={<div className="flex h-full items-center justify-center"><Skeleton className="h-64 w-3/4 rounded-2xl" /></div>}>
+							<AgentMap3D agents={nodes} links={mapLinks} selectedId={chosen?.id ?? null} onSelect={setSelected}
+								onOpen={(id) => navigate(byId.get(id)?.role === 'leader' ? '/workforce/leader' : `/workforce/agents/${id}`)}
+								layoutKey="awp.agent-map.layout.v2" resetSignal={reset} homeSignal={home}
+								showLabels={showLabels} showPeerLinks={showPeers} onUnavailable={() => setUnavailable(true)} />
 						</Suspense>
 					)}
-					<div className="pointer-events-none absolute inset-x-3 top-3 flex flex-wrap items-start justify-between gap-2">
-						<div className="pointer-events-auto rounded-xl border border-border/70 bg-background/90 px-3 py-2 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
-							<p className="font-medium text-foreground">Kéo agent để sắp xếp · kéo nền để xoay · cuộn để phóng to</p>
-							<p className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-								<span><i className="mr-1 inline-block h-0.5 w-4 bg-indigo-500 align-middle" />Leader giao việc</span>
-								<span><i className="mr-1 inline-block h-0.5 w-4 bg-purple-500 align-middle" />Agent phối hợp cùng phiếu</span>
-								<span><i className="mr-1 inline-block w-4 border-t border-dashed border-slate-400 align-middle" />Chưa có phiếu</span>
-							</p>
-						</div>
-						<Button variant="outline" size="sm" className="pointer-events-auto bg-background/90" onClick={() => setReset((value) => value + 1)}>
-							<RotateCcw /> Sắp xếp lại
-						</Button>
-					</div>
 					{chosen && (
-						<div className="absolute right-3 bottom-3 w-72 rounded-2xl border border-border/70 bg-background/95 p-3 text-sm shadow-lg backdrop-blur">
-							<div className="flex items-center justify-between gap-2">
-								<p className="truncate font-semibold">{chosen.name}</p>
-								<Button variant="ghost" size="icon-sm" aria-label="Đóng" onClick={() => setSelected(null)}>
-									<X />
-								</Button>
-							</div>
-							<p className="mt-1 text-xs text-muted-foreground tabular-nums">
-								{chosen.tickets} phiếu · chi phí {usd(chosen.costUsd)} · 30 ngày
-							</p>
-							{partners.length > 0 ? (
-								<ul className="mt-2 space-y-1 text-xs">
-									{partners.slice(0, 6).map((link) => {
-										const other = byId.get(link.source === chosen.id ? link.target : link.source);
-										const verb = link.kind === 'peer' ? 'Phối hợp với ' : chosen.role === 'leader' ? 'Giao cho ' : 'Nhận việc từ ';
-										return (
-											<li key={`${link.source}-${link.target}-${link.kind}`} className="flex justify-between gap-2">
-												<span className="truncate">{verb}{other?.name ?? 'agent đã gỡ'}</span>
-												<span className="shrink-0 tabular-nums text-muted-foreground">{link.tickets} phiếu</span>
-											</li>
-										);
-									})}
-								</ul>
-							) : (
-								<p className="mt-2 text-xs text-muted-foreground">Chưa phối hợp trong phiếu nào 30 ngày qua.</p>
-							)}
-							{chosen.role === 'business' && (
-								<div className="mt-3 flex gap-2">
-									<Button size="sm" onClick={() => navigate(`/workforce/agents/${chosen.id}`)}>
-										<Pencil /> Mở agent
-									</Button>
-									<Button size="sm" variant="outline" onClick={() => navigate(`/chat/${chosen.id}`)}>
-										<MessageSquare /> Trò chuyện
-									</Button>
+						<section aria-label={`Thông tin ${chosen.name}`} className="map-agent-inspector absolute right-4 bottom-14 left-4 z-10 max-h-[65%] overflow-y-auto rounded-xl border border-border bg-background p-4 shadow-lg sm:left-auto sm:w-80">
+							<div className="flex items-start gap-3">
+								<ClayAvatar id={chosen.id} label={chosen.name} size={44} />
+								<div className="min-w-0 flex-1">
+									<h3 className="text-sm leading-5 font-semibold">{chosen.name}</h3>
+									<p className="mt-1 text-xs text-muted-foreground">{chosen.role === 'leader' ? 'Điều phối công việc' : STATUS[chosen.state].label}</p>
 								</div>
-							)}
-						</div>
+								<Button variant="ghost" size="icon" className="-mt-1 -mr-1 size-9 shrink-0" aria-label="Đóng thông tin agent" onClick={() => setSelected(null)}><X /></Button>
+							</div>
+							<dl className="my-4 grid grid-cols-2 divide-x divide-border rounded-lg bg-muted/50 py-3">
+								<div className="px-3"><dt className="text-xs text-muted-foreground">Phiếu · 30 ngày</dt><dd className="mt-1 text-base font-semibold tabular-nums">{chosen.tickets}</dd></div>
+								<div className="px-3"><dt className="text-xs text-muted-foreground">Chi phí đã ghi nhận</dt><dd className="mt-1 text-base font-semibold tabular-nums">{usd(chosen.costUsd)}</dd></div>
+							</dl>
+							<p className="mb-2 text-xs font-medium">Kết nối công việc</p>
+							{partners.length ? (
+								<ul className="space-y-2.5">
+									{partners.slice(0, 5).map((link) => {
+										const other = byId.get(link.source === chosen.id ? link.target : link.source);
+										const verb = link.kind === 'peer' ? 'Phối hợp' : link.source === chosen.id ? 'Giao việc' : 'Nhận việc';
+										return <li key={`${link.source}-${link.target}-${link.kind}`} className="flex items-center justify-between gap-3 text-xs">
+											<div className="min-w-0"><span className="text-muted-foreground">{verb} · </span><span>{other?.name ?? 'Agent đã gỡ'}</span></div>
+											<span className="shrink-0 text-muted-foreground tabular-nums">{link.tickets} phiếu</span>
+										</li>;
+									})}
+									{partners.length > 5 && <li className="text-xs text-muted-foreground">Và {partners.length - 5} kết nối khác.</li>}
+								</ul>
+							) : <p className="text-xs leading-5 text-muted-foreground">Chưa ghi nhận kết nối công việc trong 30 ngày qua.</p>}
+							<div className="mt-4 flex gap-2 border-t border-border/70 pt-3">
+								<Button size="sm" className="h-10 flex-1" onClick={() => navigate(chosen.role === 'leader' ? '/workforce/leader' : `/workforce/agents/${chosen.id}`)}><ArrowUpRight />{chosen.role === 'leader' ? 'Mở Leader' : 'Mở agent'}</Button>
+								{chosen.role === 'business' && <Button size="sm" variant="outline" className="h-10 flex-1" onClick={() => navigate(`/chat/${chosen.id}`)}><MessageSquare />Trò chuyện</Button>}
+							</div>
+						</section>
 					)}
+					<div className="map-scene-footer absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-background/95 px-4 py-3 text-[11px] text-muted-foreground">
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Chú giải kết nối">
+							<span className="flex items-center gap-1.5"><i className="map-link-key" aria-hidden="true" />Leader giao việc</span>
+							{showPeers && <span className="flex items-center gap-1.5"><i className="map-link-key is-peer" aria-hidden="true" />Agent phối hợp</span>}
+						</div>
+						<span className="hidden items-center gap-1.5 sm:flex"><Info className="size-3.5" aria-hidden="true" />Lịch sử phối hợp · 30 ngày</span>
+					</div>
 				</div>
-			)}
+			</section>
 		</div>
 	);
 }

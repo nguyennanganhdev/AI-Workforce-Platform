@@ -6,6 +6,7 @@ import {
 	LayoutTemplate,
 	List,
 	Plus,
+	SlidersHorizontal,
 	Sparkles,
 	Workflow,
 } from 'lucide-react';
@@ -30,6 +31,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
@@ -195,7 +197,7 @@ export function AgentManagementPage() {
 	const [params, setParams] = useSearchParams();
 	const view = params.get('view') === 'list' ? 'list' : 'map';
 	const client = useQueryClient();
-	const { data: agents, isError } = useStudioAgents();
+	const { data: agents, isError, refetch } = useStudioAgents();
 	const [creating, setCreating] = useState(false);
 	const [removing, setRemoving] = useState<AgentSummary | null>(null);
 
@@ -206,14 +208,17 @@ export function AgentManagementPage() {
 	return (
 		<div className="flex size-full">
 			<main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-				<div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-3 pb-3">
-					<div>
-						<h1 className="text-[17px]/6 font-semibold">Quản lý agent</h1>
-						<p className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
-							Sơ đồ và danh sách đồng bộ với nhau; mọi thay đổi agent được kiểm thử và lưu thành phiên bản.
+				<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 lg:px-5">
+					<div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+						<div>
+						<h1 className="text-xl/7 font-semibold tracking-tight">Quản lý agent</h1>
+						<p className="mt-0.5 hidden text-[13px]/[18px] text-muted-foreground sm:block">
+							Xem đội ngũ, theo dõi phối hợp và quản lý từng agent.
 						</p>
+						</div>
+						<Button className="h-11 shrink-0 md:hidden" onClick={() => setCreating(true)}><Plus />Tạo agent</Button>
 					</div>
-					<div className="flex flex-wrap items-center gap-2">
+					<div className="flex w-full flex-wrap items-center justify-between gap-2 md:justify-start lg:w-auto">
 						<Tabs value={view} onValueChange={(next) => setParams(next === 'list' ? { view: 'list' } : {}, { replace: true })}>
 							<TabsList>
 								{VIEWS.map(({ key, label, icon: Icon }) => (
@@ -223,16 +228,27 @@ export function AgentManagementPage() {
 								))}
 							</TabsList>
 						</Tabs>
-						<ActivityDialog />
-						<PartnerRoutesDialog />
-						<Button onClick={() => setCreating(true)}>
+						<div className="hidden items-center gap-2 md:flex"><ActivityDialog /><PartnerRoutesDialog /></div>
+						<Popover>
+							<PopoverTrigger asChild><Button variant="outline" className="h-11 md:hidden"><SlidersHorizontal />Tác vụ</Button></PopoverTrigger>
+							<PopoverContent align="end" className="w-auto gap-2 [&_button]:min-h-11"><ActivityDialog /><PartnerRoutesDialog /></PopoverContent>
+						</Popover>
+						<Button className="hidden md:inline-flex" onClick={() => setCreating(true)}>
 							<Plus /> Tạo agent
 						</Button>
 					</div>
 				</div>
 				<Separator />
 				<div className="min-h-0 flex-1">
-					{agents === undefined ? (
+					{isError && agents === undefined ? (
+						<Empty className="h-full border-none">
+							<EmptyHeader>
+								<EmptyTitle>Chưa tải được đội ngũ agent</EmptyTitle>
+								<EmptyDescription>Kiểm tra kết nối rồi thử tải lại danh sách.</EmptyDescription>
+							</EmptyHeader>
+							<Button variant="outline" onClick={() => void refetch()}>Thử lại</Button>
+						</Empty>
+					) : agents === undefined ? (
 						<div className="flex flex-col gap-2 p-4" aria-busy="true">
 							{[0, 1, 2, 3].map((row) => (
 								<Skeleton key={row} className="h-14 w-full" />

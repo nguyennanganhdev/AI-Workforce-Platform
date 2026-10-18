@@ -1,0 +1,53 @@
+.agent-map-workspace {
+	--map-accent: #187d87;
+	--map-accent-soft: #edf7f7;
+	--map-scene-bg: #f8fafb;
+}
+
+.dark .agent-map-workspace:not(.cue-theme *) {
+	--map-accent: #6fc7ce;
+	--map-accent-soft: #173235;
+	--map-scene-bg: #171c21;
+}
+
+.map-scene { background: var(--map-scene-bg); }
+.map-scene-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--border);
+	background: var(--background);
+}
+.map-roster-row { display: flex; align-items: center; border: 1px solid transparent; border-radius: 10px; padding-right: 4px; }
+.map-roster-row:hover { background: var(--muted); }
+.map-roster-button {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 72px;
+	padding: 12px 8px;
+	border-radius: 9px;
+	cursor: pointer;
+}
+.map-roster-button:focus-visible { outline: 2px solid var(--map-accent); outline-offset: 2px; }
+.map-roster-row.is-selected, .map-roster-leader.is-selected { background: var(--map-accent-soft); border-color: color-mix(in srgb, var(--map-accent) 40%, transparent); }
+.map-roster-leader { min-height: 68px; border: 1px solid transparent; padding: 10px; }
+.map-roster-leader:hover { background: var(--muted); }
+.map-roster-name { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 13px; line-height: 18px; font-weight: 550; }
+.map-state-mark { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
+.map-state-mark.is-published { background: var(--map-accent); }
+.map-link-key { width: 18px; border-top: 2px solid var(--map-accent); }
+.map-link-key.is-peer { border-top: 2px dashed var(--muted-foreground); }
+
+@media (max-width: 639px) {
+	.map-scene-toolbar { padding: 12px; }
+	.map-scene-toolbar button, .map-roster-row > button, .map-agent-inspector button { min-width: 44px; min-height: 44px; }
+	.map-agent-inspector { max-height: 62%; }
+	.map-scene-footer { padding: 10px 12px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.map-roster-row, .map-roster-leader { transition: background-color 150ms ease, border-color 150ms ease; }
+}
