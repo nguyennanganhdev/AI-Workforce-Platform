@@ -17,8 +17,9 @@ def test_luna_policy_overrides_every_purpose_without_expensive_fallback(monkeypa
         model="gpt-5.5", parameters={"max_tokens": 32000, "reasoning_effort": "high", "temperature": 0.7})
     selected = runtime_model_config(original)
     assert selected.model == "gpt-6-luna"
-    assert selected.parameters["max_tokens"] == 4096
-    assert selected.parameters["reasoning_effort"] == "none"
+    assert selected.parameters["max_tokens"] == 16384
+    # Reasoning stays on (agent effort); get_model drops it on Chat Completions.
+    assert selected.parameters["reasoning_effort"] == "low"
     assert selected.parameters["thinking_enable"] is True
     assert "temperature" not in selected.parameters
     assert original.model == "gpt-5.5"
@@ -228,6 +229,8 @@ async def test_luna_tool_call_wire_format_with_local_transport_only(monkeypatch)
         response=await model(messages=[UserMsg(name='worker',content='Ask peer')],tools=[{
             'type':'function','function':{'name':'TeamSay','description':'Internal coordination','parameters':{'type':'object','properties':{}}}}])
     assert requests[0]['model']=='gpt-6-luna'
+    # The policy asks for reasoning; Chat Completions with tools sends none.
+    assert config.parameters['reasoning_effort']=='low'
     assert requests[0]['reasoning_effort']=='none'
-    assert requests[0]['max_completion_tokens']==4096
+    assert requests[0]['max_completion_tokens']==16384
     assert response.content[0].name=='TeamSay'

@@ -30,6 +30,7 @@ from ...model import ChatModelBase
 from ...model._call_observer import usage_purpose
 from .._agent_spec import AgentSpec, spec_hash
 from .._service import ResourceAccessService, get_model
+from .._service._model import apply_reasoning_effort
 from .._service._publish_gate import (
     publication_blocker,
     publish_blocker,
@@ -1478,6 +1479,7 @@ async def _prepare_builder(
     knowledge, skills = await _library(storage, user_id)
     library = _library_note(knowledge, skills)
     model = await get_model(user_id, body.chat_model_config, access)
+    apply_reasoning_effort(model, "builder")
     model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "builder"}
     transcript = await _prepare_builder_memory(
         model=model,

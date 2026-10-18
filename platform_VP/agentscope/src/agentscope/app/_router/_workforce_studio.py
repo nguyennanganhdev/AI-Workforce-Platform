@@ -18,6 +18,7 @@ from .._agent_memory import AgentMemoryService
 from .._agent_spec import AgentSpec, diff_specs, render_prompt, spec_hash
 from .._agent_templates import TEMPLATES, template_list
 from .._service import ResourceAccessService, get_model
+from .._service._model import apply_reasoning_effort
 from .._service._agent_eval import run_spec_tests
 from .._service._agent_studio import (
     CompositionPlan,
@@ -233,10 +234,9 @@ async def _models(
     strong = os.getenv("WORKFORCE_LEADER_MODEL_NAME", "").strip()
     strong_config = config.model_copy(update={"model": strong}) if strong else config
     working = strong_config if spec is not None and spec.model_tier == "strong" else config
-    return (
-        await get_model(user_id, working, access),
-        await get_model(user_id, strong_config, access),
-    )
+    copilot = await get_model(user_id, strong_config, access)
+    apply_reasoning_effort(copilot, "builder")
+    return await get_model(user_id, working, access), copilot
 
 
 async def _create_record(
@@ -416,7 +416,8 @@ async def model_call_evidence(since: str, until: str, offset: int = Query(defaul
         raise HTTPException(422, "Use an ordered, timezone-aware since/until window") from exc
     start, end = start.astimezone(UTC), end.astimezone(UTC)
     rows = await storage.list_model_calls(user_id, since=start.isoformat(), until=end.isoformat(), offset=offset, limit=limit + 1)
-    return {"calls": rows[:limit], "next_offset": offset + limit if len(rows) > limit else None,
+    from .._model_ledger import costed
+    return {"calls": costed(rows[:limit]), "next_offset": offset + limit if len(rows) > limit else None,
             "since": start.isoformat(), "until": end.isoformat(), "before_ledger_unknown": True}
 
 

@@ -76,6 +76,13 @@ def priced(call: dict) -> dict:
     return call
 
 
+def costed(calls: list[dict]) -> list[dict]:
+    """Calls recorded before their price was in the catalog, priced from the
+    catalog version effective at the call's start; recorded snapshots stay."""
+    return [priced(call) if call.get("price") is None and not call.get("cost_complete") and call.get("status") != "started" else call
+            for call in calls]
+
+
 def attach_ledger(model, storage, user_id: str, *, provider: str, url: str):
     async def sink(record):
         if record.get("user_id") != user_id:
@@ -121,7 +128,7 @@ def aggregate(calls: list[dict]) -> dict:
 
 async def observability(storage, user_id: str, days: int = 30) -> dict:
     since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
-    calls = await storage.list_model_calls(user_id, since=since, limit=20001)
+    calls = costed(await storage.list_model_calls(user_id, since=since, limit=20001))
     truncated = len(calls) > 20000
     calls = calls[:20000]
     groups, purposes = defaultdict(list), defaultdict(list)

@@ -366,6 +366,11 @@ async def run_spec_tests(
     with its hand-over and its own grant, and the sandbox MCP's tools run for real.
     """
 
+    from ._model import with_reasoning_effort
+
+    # The agent is tested at its runtime effort; the judge reasons more.
+    model = with_reasoning_effort(model, "agent")
+    judge_model = with_reasoning_effort(judge_model, "judge") if judge_model is not None else None
     schemas = tool_schemas(spec, discovered)
     if simulated_tool_schemas is None:
         simulated_tool_schemas = collaboration_fixture_schemas()
