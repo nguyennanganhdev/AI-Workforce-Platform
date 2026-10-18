@@ -859,6 +859,370 @@
       "title": "SourceIntent",
       "type": "object"
     },
+    "CustomerPlan": {
+      "additionalProperties": false,
+      "description": "C07 resident-visible plan, distinct from work-order approvals.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "management_pending",
+            "resident_pending",
+            "approved",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 0,
+          "title": "Version",
+          "type": "integer"
+        },
+        "estimatedAmount": {
+          "title": "Estimatedamount",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "canDecide": {
+          "title": "Candecide",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "version",
+        "estimatedAmount",
+        "steps",
+        "canDecide"
+      ],
+      "title": "CustomerPlan",
+      "type": "object"
+    },
+    "PlanDecisionPayload": {
+      "additionalProperties": false,
+      "description": "SourceIntent.payload for action=plan-decision; version is the plan's.",
+      "properties": {
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "expectedVersion": {
+          "minimum": 0,
+          "title": "Expectedversion",
+          "type": "integer"
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "note": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id",
+        "expectedVersion",
+        "decision",
+        "note"
+      ],
+      "title": "PlanDecisionPayload",
+      "type": "object"
+    },
+    "PersonalJobPage": {
+      "$defs": {
+        "DurableJob": {
+          "additionalProperties": false,
+          "properties": {
+            "job_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Job Id",
+              "type": "string"
+            },
+            "owner_kind": {
+              "$ref": "#/$defs/JobOwnerKind"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Scope"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "provider_integration_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Provider Integration Id"
+            },
+            "personal_user_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Personal User Id"
+            },
+            "job_type": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Job Type",
+              "type": "string"
+            },
+            "payload": {
+              "additionalProperties": true,
+              "title": "Payload",
+              "type": "object"
+            },
+            "idempotency_key": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Idempotency Key",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/JobStatus",
+              "default": "pending"
+            },
+            "attempt": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Attempt",
+              "type": "integer"
+            },
+            "max_attempts": {
+              "default": 5,
+              "minimum": 1,
+              "title": "Max Attempts",
+              "type": "integer"
+            },
+            "not_before": {
+              "format": "date-time",
+              "title": "Not Before",
+              "type": "string"
+            },
+            "lease_owner": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Lease Owner"
+            },
+            "lease_expires_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Lease Expires At"
+            },
+            "fencing_token": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Fencing Token",
+              "type": "integer"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "job_id",
+            "owner_kind",
+            "tenant_id",
+            "job_type",
+            "payload",
+            "idempotency_key",
+            "not_before",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "DurableJob",
+          "type": "object"
+        },
+        "JobOwnerKind": {
+          "enum": [
+            "scope",
+            "provider",
+            "personal"
+          ],
+          "title": "JobOwnerKind",
+          "type": "string"
+        },
+        "JobStatus": {
+          "enum": [
+            "pending",
+            "leased",
+            "succeeded",
+            "failed"
+          ],
+          "title": "JobStatus",
+          "type": "string"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Internal C09 consumer page; not a public job/secret DTO.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/DurableJob"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "PersonalJobPage",
+      "type": "object"
+    },
     "CaseEvent": {
       "additionalProperties": false,
       "properties": {

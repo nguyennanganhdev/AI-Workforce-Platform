@@ -7,14 +7,14 @@ or Redis config store is created here. A delivery retry reuses its saved body.
 from datetime import timedelta
 from uuid import NAMESPACE_URL, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..workforce.foundation._database import SqlAlchemyUnitOfWork
 from ..workforce.foundation._job_repository import SqlDurableJobRepository
 from ..workforce.foundation._tables import durable_jobs
 from ..workforce.foundation.event_delivery import DurableJob, JobOwnerKind
-from ._contracts import PlatformError
+from ._contracts import PersonalJobPage, PlatformError
 from ._service import now
 
 
@@ -89,10 +89,41 @@ class PersonalJobs:
     async def fail(self, job, worker_id, code, *, retry_after=30):
         return await self.repository.fail(job.job_id, worker_id, job.fencing_token, {"code": code}, now(), now() + timedelta(seconds=retry_after))
 
-    async def list(self, context, kind):
+    async def list_page(self, context, kind, *, cursor=None, limit=100):
+        """Keyset pagination scoped to the current tenant, owner and kind.
+
+        The cursor is the last returned job ID, not an authorization token.
+        Deleting that row invalidates the cursor; consumers must reload.
+        """
+        if kind not in {"schedule-run", "channel-event", "delivery", "publish-batch"}:
+            raise PlatformError("INVALID_JOB_KIND", 422)
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise PlatformError("INVALID_PAGINATION", 422)
+        if cursor is not None and (not isinstance(cursor, str) or not 1 <= len(cursor) <= 255):
+            raise PlatformError("INVALID_JOB_CURSOR", 422)
+        owner = and_(durable_jobs.c.owner_kind == "personal", durable_jobs.c.tenant_id == context.tenant_id,
+            durable_jobs.c.personal_user_id == context.initiator_user_id, durable_jobs.c.job_type == kind)
         async with self.authority.engine.begin() as db:
             await self.authority.assert_active(db, context, require_eligible=False)
-            rows = (await db.execute(select(durable_jobs).where(durable_jobs.c.owner_kind == "personal",
-                durable_jobs.c.tenant_id == context.tenant_id, durable_jobs.c.personal_user_id == context.initiator_user_id,
-                durable_jobs.c.job_type == kind).order_by(durable_jobs.c.created_at).limit(100))).mappings().all()
-        return [self.repository._model(row) for row in rows]
+            query = select(durable_jobs).where(owner)
+            if cursor is not None:
+                marker = (await db.execute(select(durable_jobs.c.created_at, durable_jobs.c.id).where(
+                    owner, durable_jobs.c.id == cursor))).mappings().first()
+                if marker is None:
+                    raise PlatformError("INVALID_JOB_CURSOR", 422)
+                query = query.where(or_(durable_jobs.c.created_at > marker["created_at"],
+                    and_(durable_jobs.c.created_at == marker["created_at"], durable_jobs.c.id > marker["id"])))
+            rows = (await db.execute(query.order_by(durable_jobs.c.created_at, durable_jobs.c.id).limit(limit + 1))).mappings().all()
+        has_more = len(rows) > limit
+        return PersonalJobPage(items=[self.repository._model(row) for row in rows[:limit]],
+            next_cursor=rows[limit - 1]["id"] if has_more else None, has_more=has_more)
+
+    async def list(self, context, kind):
+        """Compatibility reader: exhaust pages instead of silently truncating."""
+        items, cursor = [], None
+        while True:
+            page = await self.list_page(context, kind, cursor=cursor)
+            items.extend(page.items)
+            if not page.has_more:
+                return items
+            cursor = page.next_cursor

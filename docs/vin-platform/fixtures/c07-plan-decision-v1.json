@@ -1,0 +1,26 @@
+{
+  "canonical_version": 17,
+  "plans": [
+    {
+      "id": "7abbd236-0ef7-4a58-a982-4d1a4a7b25a4",
+      "title": "Thay gioăng và kiểm tra vòi nước",
+      "status": "resident_pending",
+      "version": 3,
+      "estimatedAmount": "120000.00",
+      "steps": ["Thay gioăng", "Kiểm tra rò rỉ"],
+      "canDecide": true
+    }
+  ],
+  "intent": {
+    "case_id": "fixture-platform-case",
+    "action": "plan-decision",
+    "expected_version": 17,
+    "payload": {
+      "plan_id": "7abbd236-0ef7-4a58-a982-4d1a4a7b25a4",
+      "expectedVersion": 3,
+      "decision": "approve",
+      "note": "Tôi đồng ý phương án này."
+    },
+    "idempotency_key": "fixture-plan-choice-0001"
+  }
+}
