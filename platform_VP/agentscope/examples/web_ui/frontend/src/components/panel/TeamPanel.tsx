@@ -9,6 +9,7 @@ import {
 	LoaderCircle,
 	MessageSquareMore,
 	Radio,
+	Settings2,
 	UsersRound,
 	Wrench,
 } from 'lucide-react';
@@ -18,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	useTeamActivity,
 	type TeamActivityItem,
@@ -164,6 +166,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 		sessionId: string | null,
 		disabled: boolean,
 		onClick: () => void,
+		editable: boolean,
 	) => {
 		const runtime: TeamMemberRuntime = sessionId
 			? (runtimeBySession[sessionId] ?? {
@@ -182,20 +185,20 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 				};
 		const isActive = currentSessionId === sessionId;
 		return (
-			<li key={key}>
+			<li key={key} className="flex items-center">
 				<Button
 					variant="ghost"
 					disabled={disabled}
 					onClick={onClick}
 					className={cn(
-						'h-auto w-full items-start justify-start gap-2 rounded-xl px-2 py-2 text-left font-normal',
+						'h-auto min-w-0 flex-1 items-start justify-start gap-2 rounded-xl px-2 py-2 text-left font-normal',
 						isActive && 'bg-accent text-accent-foreground',
 					)}
 				>
-					<span className="mt-0.5 shrink-0">{icon}</span>
+					<span className="mt-0.5 shrink-0"><ClayAvatar id={key} label={label} size={32} /></span>
 					<span className="min-w-0 flex-1">
 						<span className="flex items-center gap-2">
-							<span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
+							{icon}<span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
 							<span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
 								<span
 									className={cn(
@@ -213,6 +216,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 						</span>
 					</span>
 				</Button>
+				{editable && <Button variant="ghost" size="icon-sm" aria-label={`${t('agentManagement.configure')}: ${label}`} onClick={() => navigate(`/workforce/agents/${key}?edit=1`)}><Settings2 className="size-3.5" /></Button>}
 			</li>
 		);
 	};
@@ -225,6 +229,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 			leaderSessionId,
 			false,
 			goToLeader,
+			leader.editable,
 		);
 
 	const renderMember = (member: TeamMemberInfo) =>
@@ -235,6 +240,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 			member.session_id,
 			member.session_id === null,
 			() => goToMember(member.agent.id),
+			member.agent.editable,
 		);
 
 	return (

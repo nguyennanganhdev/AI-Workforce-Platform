@@ -1,25 +1,26 @@
-import { format, isToday } from 'date-fns';
 import {
 	BotMessageSquare,
 	Cable,
 	CalendarClock,
 	Ellipsis,
-	type LucideIcon,
-	MessageSquareDashed,
 	Pencil,
 	Plus,
 	Settings2,
 	Trash2,
 	Users,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
-import type { SessionRecord, SessionSourceKind } from '@/api';
+import type { SessionRecord } from '@/api';
+import { sessionTime, useSessionPreview } from '@/components/chat/session-row-utils';
+import { ChatRow } from '@/components/chat/SessionRow';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
+import { AccountMenu } from '@/components/layout/AccountMenu';
+import { Brand } from '@/components/layout/Brand';
 import { AgentSelect } from '@/components/select/AgentSelect';
 import { ChatTourController } from '@/components/tour/ChatTourController';
 import { Button } from '@/components/ui/button';
@@ -30,23 +31,10 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-	Empty,
-	EmptyHeader,
-	EmptyTitle,
-	EmptyDescription,
-	EmptyMedia,
-} from '@/components/ui/empty';
-import {
 	Sidebar,
 	SidebarContent,
-	SidebarGroup,
-	SidebarGroupContent,
-	SidebarGroupLabel,
-	SidebarMenu,
-	SidebarMenuAction,
-	SidebarMenuBadge,
-	SidebarMenuButton,
-	SidebarMenuItem,
+	SidebarFooter,
+	SidebarHeader,
 	SidebarProvider,
 	useSidebar,
 } from '@/components/ui/sidebar';
@@ -76,17 +64,16 @@ import { useTranslation } from '@/i18n/useI18n.ts';
  *
  * @returns The chat page JSX.
  */
-// Icon per session origin, shown only when a sidebar mixes sources.
-const SOURCE_ICON: Record<SessionSourceKind, LucideIcon> = {
+/** localStorage keys holding the last (agent, session) the user viewed. */
+const LAST_AGENT_KEY = 'chat_last_agent';
+const LAST_SESSION_KEY = 'chat_last_session';
+
+const SOURCE_ICON = {
 	user: BotMessageSquare,
 	schedule: CalendarClock,
 	channel: Cable,
 	team: Users,
 };
-
-/** localStorage keys holding the last (agent, session) the user viewed. */
-const LAST_AGENT_KEY = 'chat_last_agent';
-const LAST_SESSION_KEY = 'chat_last_session';
 
 const ChatPageInner = () => {
 	const navigate = useNavigate();
@@ -100,6 +87,7 @@ const ChatPageInner = () => {
 		memberId?: string;
 	}>();
 	const { t } = useTranslation();
+	const sessionPreview = useSessionPreview();
 	const { agents, refetch: refetchAgents, remove: removeAgent } = useAgents();
 	const {
 		sessions,
@@ -119,9 +107,7 @@ const ChatPageInner = () => {
 
 	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
-	// Show a per-origin icon only when sessions actually mix sources —
-	// a uniform list needs no disambiguation.
-	const showSourceIcons = new Set(sessions.map((v) => v.session.origin.type)).size > 1;
+	const showSourceIcons = new Set(sessions.map((view) => view.session.origin.type)).size > 1;
 
 	// "Inner focus" — when the URL carries a third `:memberId` segment
 	// the user is drilling into a team member's chat. The main sidebar
@@ -228,283 +214,134 @@ const ChatPageInner = () => {
 		await updateSession(renameSession.id, { name });
 	};
 
-	const todaySessions = sessions.filter((sess) => isToday(new Date(sess.session.created_at)));
-	const earlierSessions = sessions.filter((sess) => !isToday(new Date(sess.session.created_at)));
-
 	return (
-		<div className="flex h-full w-full p-2 gap-2">
-			{/*
-			 * Desktop stays `collapsible="none"` so the session list sits in
-			 * normal flow beside the app rail (AppSidebar). Mobile switches to
-			 * `offcanvas`, which makes shadcn's Sidebar render its Sheet overlay
-			 * (the drawer we want) — instead of the desktop `fixed left-0`
-			 * container, which would otherwise cover the app rail.
-			 */}
-			<Sidebar collapsible={isMobile ? 'offcanvas' : 'none'} className="rounded-[22px]">
-				{/* Scrolling moves down to the session list below, so the
-				    agent picker and the new-session button stay put. */}
-				<SidebarContent className="my-2 overflow-hidden">
-					<SidebarGroup className="px-2 py-0">
-						<SidebarGroupLabel>{t('common.agent')}</SidebarGroupLabel>
-						<SidebarGroupContent className="flex items-center">
-							<AgentSelect
-								className="flex-1 min-w-0"
-								agents={agents}
-								value={urlAgentId ?? null}
-								onChange={(id) => navigate(`/chat/${id}`)}
-								variant="ghost"
-								size="default"
+		<div className="flex h-full w-full min-h-0">
+			<Sidebar
+				collapsible={isMobile ? 'offcanvas' : 'none'}
+				className="cue-column w-80 shrink-0 border-r border-sidebar-border bg-sidebar"
+			>
+				<SidebarHeader className="gap-3 px-3 py-4">
+					<Brand />
+					<div className="flex items-center gap-1">
+						<AgentSelect
+							className="min-w-0 flex-1"
+							agents={agents}
+							value={urlAgentId ?? null}
+							onChange={(id) => navigate(`/chat/${id}`)}
+							variant="ghost"
+							size="default"
+						/>
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="icon"
+									aria-label={t('agent-menu.settings')}
+									disabled={!selectedAgent?.editable}
+								>
+									<Ellipsis />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent className="w-auto">
+								<DropdownMenuItem onClick={() => setEditOpen(true)}>
+									<Settings2 />
+									{t('agent-menu.settings')}
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() => navigate(`/workforce/agents/${urlAgentId}`)}
+								>
+									<Settings2 />
+									{t('shell.agentStudio')}
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() => setDeleteOpen(true)}
+									variant="destructive"
+								>
+									<Trash2 />
+									{t('agent-menu.delete')}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+					<Button
+						id="tour-create-session"
+						variant="outline"
+						disabled={!urlAgentId}
+						onClick={handleCreateSession}
+					>
+						<Plus />
+						{t('chat.newSession')}
+					</Button>
+				</SidebarHeader>
+				<SidebarContent className="no-scrollbar px-2">
+					{sessions.length === 0 && (
+						<p className="px-3 py-6 text-center text-sm text-muted-foreground">
+							{t('chat.session.emptyTitle')}
+						</p>
+					)}
+					{sessions.map((view) => {
+						const SourceIcon = SOURCE_ICON[view.session.origin.type];
+						return (
+							<ChatRow
+								key={view.session.id}
+								avatarId={urlAgentId ?? ''}
+								avatarLabel={selectedAgent?.data.name}
+								title={view.session.config.name || view.session.id}
+								time={sessionTime(view.session.updated_at)}
+								preview={sessionPreview(view, selectedAgent?.data.name ?? '')}
+								status={view.status}
+								icon={showSourceIcons && <SourceIcon className="size-3 shrink-0" />}
+								active={urlSessionId === view.session.id}
+								onSelect={() => {
+									navigate(`/chat/${urlAgentId}/${view.session.id}`);
+									setOpenMobile(false);
+								}}
+								actions={
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												aria-label={t('chat.session.label')}
+											>
+												<Ellipsis />
+											</Button>
+										</DropdownMenuTrigger>
+										<DropdownMenuContent
+											className="w-auto"
+											side="right"
+											align="start"
+										>
+											<DropdownMenuItem
+												onClick={() => {
+													setRenameSession(view.session);
+													setRenameOpen(true);
+												}}
+											>
+												<Pencil />
+												{t('session-menu.rename')}
+											</DropdownMenuItem>
+											<DropdownMenuItem
+												variant="destructive"
+												onClick={() => requestDeleteSession(view.session)}
+											>
+												<Trash2 />
+												{t('session-menu.delete')}
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								}
 							/>
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button
-										className="shrink-0 text-muted-foreground"
-										variant="ghost"
-										size="icon"
-										disabled={!urlAgentId || !selectedAgent?.editable}
-									>
-										<Ellipsis />
-									</Button>
-								</DropdownMenuTrigger>
-								{/* w-auto: the default pins the menu to the
-								    trigger's width, which is a 32px icon button. */}
-								<DropdownMenuContent className="w-auto">
-									<DropdownMenuItem onClick={() => setEditOpen(true)}>
-										<Settings2 />
-										{t('agent-menu.settings')}
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										onClick={() => setDeleteOpen(true)}
-										variant="destructive"
-									>
-										<Trash2 />
-										{t('agent-menu.delete')}
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</SidebarGroupContent>
-					</SidebarGroup>
-					<SidebarGroup className="mt-5 min-h-0 flex-1 px-2 py-0">
-						<SidebarGroupLabel className="justify-between">
-							{t('chat.session.label')}
-							<span className="text-[10px] text-text-data font-mono">
-								{sessions.length}
-							</span>
-						</SidebarGroupLabel>
-						<SidebarGroupContent className="flex min-h-0 flex-1 flex-col">
-							<SidebarGroup>
-								<SidebarMenu className="mb-2">
-									<Button id="tour-create-session" onClick={handleCreateSession}>
-										<Plus />
-										{t('chat.newSession')}
-									</Button>
-								</SidebarMenu>
-							</SidebarGroup>
-
-							<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
-								{sessions.length === 0 ? (
-									<Empty className="border-none py-4 min-h-50">
-										<EmptyHeader>
-											<EmptyMedia variant="icon">
-												<MessageSquareDashed />
-											</EmptyMedia>
-											<EmptyTitle>{t('chat.session.emptyTitle')}</EmptyTitle>
-											<EmptyDescription>
-												{urlAgentId
-													? t('chat.session.emptyHasAgent')
-													: t('chat.session.emptyNoAgent')}
-											</EmptyDescription>
-										</EmptyHeader>
-									</Empty>
-								) : (
-									<>
-										<SidebarGroup>
-											<SidebarGroupLabel>
-												{t('chat.session.today')}
-											</SidebarGroupLabel>
-											<SidebarGroupContent>
-												<SidebarMenu>
-													{todaySessions.map((view) => {
-														const session = view.session;
-														const SourceIcon =
-															SOURCE_ICON[session.origin.type] ??
-															BotMessageSquare;
-														return (
-															<SidebarMenuItem key={session.id}>
-																{/* Wider right gutter than the stock
-															    pr-8: the badge holds a mono timestamp. */}
-																<SidebarMenuButton
-																	className="text-muted-foreground hover:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-16"
-																	isActive={
-																		urlSessionId === session.id
-																	}
-																	onClick={() => {
-																		navigate(
-																			`/chat/${urlAgentId}/${session.id}`,
-																		);
-																		setOpenMobile(false);
-																	}}
-																>
-																	{showSourceIcons && (
-																		<SourceIcon />
-																	)}
-																	<span className="truncate">
-																		{session.config.name ||
-																			session.id}
-																	</span>
-																</SidebarMenuButton>
-																{/* Badge and action are mutually exclusive.
-															    Keyboard focus reveals the action, plain
-															    focus-within does not — otherwise clicking
-															    the row would pin it open. */}
-																<SidebarMenuBadge className="max-md:hidden group-hover/menu-item:hidden group-has-focus-visible/menu-item:hidden group-has-data-[state=open]/menu-item:hidden text-text-tertiary! font-mono">
-																	{format(
-																		new Date(
-																			view.session.created_at,
-																		),
-																		'HH:mm',
-																	)}
-																</SidebarMenuBadge>
-																<DropdownMenu>
-																	<DropdownMenuTrigger asChild>
-																		<SidebarMenuAction className="md:opacity-0 group-hover/menu-item:opacity-100 group-has-focus-visible/menu-item:opacity-100 aria-expanded:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground">
-																			<Ellipsis />
-																		</SidebarMenuAction>
-																	</DropdownMenuTrigger>
-																	<DropdownMenuContent
-																		className="w-auto"
-																		side="right"
-																		align="start"
-																	>
-																		<DropdownMenuItem
-																			onClick={() => {
-																				setRenameSession(
-																					session,
-																				);
-																				setRenameOpen(true);
-																			}}
-																		>
-																			<Pencil />
-																			{t(
-																				'session-menu.rename',
-																			)}
-																		</DropdownMenuItem>
-																		<DropdownMenuItem
-																			variant="destructive"
-																			onClick={() =>
-																				requestDeleteSession(
-																					session,
-																				)
-																			}
-																		>
-																			<Trash2 />
-																			{t(
-																				'session-menu.delete',
-																			)}
-																		</DropdownMenuItem>
-																	</DropdownMenuContent>
-																</DropdownMenu>
-															</SidebarMenuItem>
-														);
-													})}
-												</SidebarMenu>
-											</SidebarGroupContent>
-										</SidebarGroup>
-										<SidebarGroup>
-											<SidebarGroupLabel>
-												{t('chat.session.earlier')}
-											</SidebarGroupLabel>
-											<SidebarGroupContent>
-												<SidebarMenu>
-													{earlierSessions.map((view) => {
-														const session = view.session;
-														const SourceIcon =
-															SOURCE_ICON[session.origin.type] ??
-															BotMessageSquare;
-														return (
-															<SidebarMenuItem key={session.id}>
-																<SidebarMenuButton
-																	className="text-muted-foreground hover:text-foreground group-has-data-[sidebar=menu-action]/menu-item:pr-16"
-																	isActive={
-																		urlSessionId === session.id
-																	}
-																	onClick={() => {
-																		navigate(
-																			`/chat/${urlAgentId}/${session.id}`,
-																		);
-																		setOpenMobile(false);
-																	}}
-																>
-																	{showSourceIcons && (
-																		<SourceIcon />
-																	)}
-																	<span className="truncate">
-																		{session.config.name ||
-																			session.id}
-																	</span>
-																</SidebarMenuButton>
-																<SidebarMenuBadge className="max-md:hidden group-hover/menu-item:hidden group-has-focus-visible/menu-item:hidden group-has-data-[state=open]/menu-item:hidden text-text-tertiary! font-mono">
-																	{format(
-																		new Date(
-																			view.session.created_at,
-																		),
-																		'MMM dd',
-																	)}
-																</SidebarMenuBadge>
-																<DropdownMenu>
-																	<DropdownMenuTrigger asChild>
-																		<SidebarMenuAction className="md:opacity-0 group-hover/menu-item:opacity-100 group-has-focus-visible/menu-item:opacity-100 aria-expanded:opacity-100 peer-data-active/menu-button:text-sidebar-accent-foreground">
-																			<Ellipsis />
-																		</SidebarMenuAction>
-																	</DropdownMenuTrigger>
-																	<DropdownMenuContent
-																		className="w-auto"
-																		side="right"
-																		align="start"
-																	>
-																		<DropdownMenuItem
-																			onClick={() => {
-																				setRenameSession(
-																					session,
-																				);
-																				setRenameOpen(true);
-																			}}
-																		>
-																			<Pencil />
-																			{t(
-																				'session-menu.rename',
-																			)}
-																		</DropdownMenuItem>
-																		<DropdownMenuItem
-																			variant="destructive"
-																			onClick={() =>
-																				requestDeleteSession(
-																					session,
-																				)
-																			}
-																		>
-																			<Trash2 />
-																			{t(
-																				'session-menu.delete',
-																			)}
-																		</DropdownMenuItem>
-																	</DropdownMenuContent>
-																</DropdownMenu>
-															</SidebarMenuItem>
-														);
-													})}
-												</SidebarMenu>
-											</SidebarGroupContent>
-										</SidebarGroup>
-									</>
-								)}
-							</div>
-						</SidebarGroupContent>
-					</SidebarGroup>
+						);
+					})}
 				</SidebarContent>
+				<SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+					<AccountMenu showSettings showTour />
+				</SidebarFooter>
 			</Sidebar>
-			<div className="flex flex-1 min-w-0">
+			<div className="flex min-w-0 flex-1">
 				<ChatViewport
+					key={`${effectiveAgentId}:${effectiveSessionId}`}
 					agentId={effectiveAgentId}
 					sessionId={effectiveSessionId}
 					readOnly={focusedMember !== null}
@@ -572,7 +409,11 @@ const ChatPageInner = () => {
 
 export const ChatPage = () => (
 	<AudioProvider>
-		<SidebarProvider defaultOpen>
+		<SidebarProvider
+			className="h-full min-h-0"
+			defaultOpen
+			style={{ '--sidebar-width': '20rem' } as CSSProperties}
+		>
 			<ChatPageInner />
 		</SidebarProvider>
 	</AudioProvider>

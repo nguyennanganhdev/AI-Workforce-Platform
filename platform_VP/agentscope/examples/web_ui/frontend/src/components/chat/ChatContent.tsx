@@ -18,6 +18,7 @@ import { FlipCard } from '@/components/chat/FlipCard.tsx';
 import { TextInput } from '@/components/chat/TextInput.tsx';
 import { WorkingDirectoryDialog } from '@/components/dialog/WorkingDirectoryDialog';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert.tsx';
+import { ClayPortrait } from '@/components/ui/clay-portrait';
 import { Marker, MarkerContent } from '@/components/ui/marker';
 import {
 	MessageScroller,
@@ -178,13 +179,10 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 		});
 	}, [msgs, sessionId]);
 
-	// On an empty session the prompt and the input centre together, so every box
-	// down to the message list shrinks to its content instead of filling.
 	return (
 		<div
 			className={cn(
-				'flex flex-col h-full w-full items-center gap-4',
-				isEmpty && 'justify-center',
+				'flex h-full w-full flex-col gap-3 px-3 pb-3',
 				className,
 			)}
 		>
@@ -193,9 +191,10 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					{showSpinner ? <Spinner className="size-5 text-muted-foreground" /> : null}
 				</div>
 			) : isEmpty ? (
-				<span className="text-center text-4xl font-light tracking-[-0.035em] text-foreground mb-2">
+				<div className="flex flex-1 flex-col items-center justify-center gap-4 text-center text-2xl font-medium text-foreground">
+					<ClayPortrait which="leader" size={96} />
 					{t('chat.greeting')}
-				</span>
+				</div>
 			) : (
 				<MessageScrollerProvider autoScroll={true} defaultScrollPosition={'end'}>
 					<MessageScroller>
@@ -312,7 +311,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				    edges parallel — a plain rectangle here would show the
 				    pill's corners cutting into it. */}
 					<TextInput
-						className="min-w-full max-w-full w-full rounded-[32px] bg-muted p-1"
+						className="min-w-full max-w-full w-full rounded-3xl border border-border bg-background p-1 shadow-[var(--cue-shadow-composer)]"
 						onSend={handleSend}
 						disabled={disabled}
 						autoComplete={autoComplete}

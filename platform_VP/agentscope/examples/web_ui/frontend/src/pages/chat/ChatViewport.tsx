@@ -7,9 +7,11 @@ import {
 	ListTodo,
 	PanelRight,
 	ShieldCheck,
+	Settings2,
 	UsersRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import type {
 	ChatModelConfig,
@@ -36,6 +38,7 @@ import { LlmSelect } from '@/components/select/LlmSelect';
 import { PermissionModeSelect } from '@/components/select/PermissionModeSelect.tsx';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
@@ -47,7 +50,9 @@ import {
 	ResizablePanel,
 	ResizablePanelGroup,
 } from '@/components/ui/resizable.tsx';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
 import { useKnowledgeBaseMiddlewareSchema } from '@/hooks/useKnowledgeBaseMiddlewareSchema';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
@@ -58,6 +63,7 @@ import { useWorkspaceStatus } from '@/hooks/useWorkspaceStatus';
 import { useTranslation } from '@/i18n/useI18n';
 
 interface ChatViewportProps {
+	agentName?: string;
 	/**
 	 * The agent that owns the session being viewed. May be the
 	 * user-facing leader agent or — when drilled into a team member
@@ -171,12 +177,20 @@ function closePanelInLayout(layout: PanelKey[][], key: PanelKey): PanelKey[][] {
  * @returns The right-side main JSX of the chat page.
  */
 export function ChatViewport({
+	agentName,
 	agentId,
 	sessionId,
 	readOnly = false,
 	onSessionsChanged,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
+	const navigate = useNavigate();
+	const isMobile = useIsMobile();
+	const activeSession = useRef<string | null>(null);
+	useEffect(() => {
+		activeSession.current = `${agentId}:${sessionId}`;
+		return () => { activeSession.current = null; };
+	}, [agentId, sessionId]);
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
 	const { groups } = useAvailableModels();
 
@@ -256,6 +270,7 @@ export function ChatViewport({
 	);
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
 	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
+	const inspectingMember = readOnly || (!!view?.team && !isTeamChat);
 
 	const {
 		msgs,
@@ -338,19 +353,21 @@ export function ChatViewport({
 	 */
 	const patchConfig = useCallback(
 		async (body: UpdateSessionRequest, apply: () => void) => {
-			if (readOnly || !sessionId || !agentId) return;
+			if (readOnly || configPending || !view || view.status === 'running' || !sessionId || !agentId) return;
+			const target = `${agentId}:${sessionId}`;
 			setConfigPending(true);
 			try {
 				await sessionApi.update(sessionId, agentId, body);
+				if (activeSession.current !== target) return;
 				apply();
 				await refetchSessions();
 			} catch {
 				// Toast already shown; local state deliberately untouched.
 			} finally {
-				setConfigPending(false);
+				if (activeSession.current === target) setConfigPending(false);
 			}
 		},
-		[readOnly, sessionId, agentId, refetchSessions],
+		[readOnly, configPending, view, sessionId, agentId, refetchSessions],
 	);
 
 	const handleKnowledgeConfigChange = useCallback(
@@ -545,11 +562,13 @@ export function ChatViewport({
 	// before `view` repopulates — and an immediate send would post to
 	// a session whose backend config doesn't actually have that model.
 	useEffect(() => {
+		setConfigPending(false);
 		setSelectedModel(null);
+		setSelectedSubAgentModel(null);
 		setSelectedFallbackModel(null);
 		setSelectedTTSModel(null);
 		setSelectedKnowledgeConfig(null);
-	}, [sessionId]);
+	}, [agentId, sessionId]);
 
 	const selectedModelCard = useMemo(() => {
 		if (!selectedModel) return null;
@@ -560,33 +579,7 @@ export function ChatViewport({
 			if (card) return card;
 		}
 		return null;
-	}, [groups, selectedModel?.type, selectedModel?.model]);
-
-	/**
-	 * Pick the first model the available-models endpoint surfaces, used
-	 * as a sensible default when the current session has no model
-	 * configured yet.
-	 *
-	 * @returns The first available `ChatModelConfig`, or `null` when
-	 *   no credentials / models are configured.
-	 */
-	const getFirstAvailableModel = (): ChatModelConfig | null => {
-		const firstType = Object.keys(groups)[0];
-		if (!firstType) return null;
-		const items = groups[firstType];
-		if (!items || items.length === 0) return null;
-		const firstItem = items[0];
-		const firstModel = (firstItem.models as { name?: string; id?: string }[])[0];
-		if (!firstModel) return null;
-		const modelName = firstModel.name ?? firstModel.id ?? null;
-		if (!modelName) return null;
-		return {
-			type: firstType,
-			credential_id: firstItem.credential.id,
-			model: modelName,
-			parameters: {},
-		};
-	};
+	}, [groups, selectedModel]);
 
 	// Seed tasks + permission from the session snapshot ONCE per
 	// session, then leave them to the CustomEvent(name="state_updated")
@@ -614,50 +607,15 @@ export function ChatViewport({
 		setPermissionContext((state?.permission_context as PermissionContext) ?? null);
 	}, [view]);
 
-	// Sync selectedModel + selectedFallbackModel from the session
-	// record. If the session has no model configured yet, auto-pick
-	// the first available one and persist it back so subsequent
-	// reasoning has a model to call.
-	//
-	// Important: skip while `view` is still loading. Otherwise the
-	// in-flight window between "agentId changed" and "useSessions
-	// returned the new list" looks like "session has no model" and
-	// we would racily auto-select + persist the first available
-	// model, clobbering whatever the user had configured.
+	// Only show saved settings; a missing model requires an explicit selection.
 	useEffect(() => {
 		if (!view) return;
-		const sessionModel = view.session.config.chat_model_config;
+		setSelectedModel(view.session.config.chat_model_config ?? null);
 		setSelectedSubAgentModel(view.session.config.sub_agent_chat_model_config ?? null);
-
-		if (sessionModel) {
-			setSelectedModel(sessionModel);
-		} else if (!readOnly) {
-			const firstModel = getFirstAvailableModel();
-			if (firstModel) {
-				setSelectedModel(firstModel);
-				if (sessionId && agentId) {
-					// `silent` because the user did not ask for this write —
-					// surfacing a toast for a revoked credential or a network
-					// blip they never triggered is pure noise.
-					sessionApi
-						.update(
-							sessionId,
-							agentId,
-							{ chat_model_config: firstModel },
-							{ silent: true },
-						)
-						.then(() => refetchSessions())
-						.catch(() => {});
-				}
-			} else {
-				setSelectedModel(null);
-			}
-		}
-
 		setSelectedFallbackModel(view.session.config.fallback_chat_model_config ?? null);
 		setSelectedTTSModel(view.session.config.tts_model_config ?? null);
 		setSelectedKnowledgeConfig(view.session.config.knowledge_config ?? null);
-	}, [view, groups, sessionId, agentId, readOnly]);
+	}, [view]);
 
 	// Sync selectedPermissionMode when the session changes. Same
 	// loading-window guard as above — don't reset the displayed mode
@@ -682,7 +640,6 @@ export function ChatViewport({
 	};
 
 	const handleSubAgentLlmChange = async (config: ChatModelConfig | null) => {
-		if (!config) return;
 		await patchConfig(
 			{ sub_agent_chat_model_config: config },
 			() => setSelectedSubAgentModel(config),
@@ -759,13 +716,16 @@ export function ChatViewport({
 			<main className="flex size-full">
 				<ResizablePanelGroup orientation="horizontal">
 					<ResizablePanel
-						className="flex flex-1 rounded-[22px] bg-card shadow-panel"
-						minSize="24rem"
+						className="flex min-w-0 flex-1 bg-card"
+						minSize={isMobile ? "0%" : "24rem"}
 					>
-						<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden p-2">
-							<div className="flex flex-row flex-wrap gap-x-2 gap-y-1 justify-between">
+						<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden">
+							<div className="flex flex-row flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b px-3 py-2">
 								<div className="flex min-w-0 flex-row items-center gap-x-1">
 									<SidebarTrigger className="md:hidden" />
+									{agentId && <ClayAvatar id={agentId} label={agentName ?? view?.team?.leader_agent?.data.name} size={28} />}
+									{agentName && <span className="text-sm font-medium">{agentName}</span>}
+									{agentId && <Button variant="ghost" size="icon-sm" aria-label={t('agentManagement.configure')} onClick={() => navigate(`/workforce/agents/${agentId}?edit=1`)}><Settings2 className="size-4" /></Button>}
 									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Chat chung của team</Badge>}
 									{/* The open session, named opposite its own
 									    settings. The sidebar is the only other
@@ -795,34 +755,37 @@ export function ChatViewport({
 								{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
 								<div className="flex min-w-0 max-w-full flex-row flex-wrap items-center gap-x-1">
-									{!readOnly && (
+									{!inspectingMember && (
 										<div className="flex items-center gap-1">
-											<span className="text-xs text-muted-foreground">Sub-agent</span>
+											<span className="text-xs text-muted-foreground">{t('agentManagement.subagentModel')}</span>
 											<LlmSelect
 												id="tour-llm-select"
-												aria-label="Model chung cho tất cả sub-agent"
+												aria-label={t('agentManagement.subagentModel')}
 												variant="ghost"
 												className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
 												value={selectedSubAgentModel}
+												allowClear
+												placeholder={t('agentManagement.inheritModel')}
+												clearLabel={t('agentManagement.inheritModel')}
 												onChange={handleSubAgentLlmChange}
 												onAddCredential={() => setCredentialOpen(true)}
 												refetchTrigger={credentialRefetchTrigger}
-												disabled={configPending || !view}
+												disabled={configPending || !view || view.status === 'running'}
 											/>
 										</div>
 									)}
 									<div className="flex items-center gap-1">
-										<span className="text-xs text-muted-foreground">{readOnly ? 'Model' : 'Điều phối'}</span>
+										<span className="text-xs text-muted-foreground">{inspectingMember ? 'Model' : t('agentManagement.coordinatorModel')}</span>
 										<LlmSelect
 											id="coordinator-llm-select"
-											aria-label={readOnly ? 'Model của sub-agent' : 'Model riêng cho agent điều phối'}
+											aria-label={inspectingMember ? 'Model của sub-agent' : t('agentManagement.coordinatorModel')}
 											variant="ghost"
 											className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
 											value={selectedModel}
 											onChange={handleLlmChange}
 											onAddCredential={() => setCredentialOpen(true)}
 											refetchTrigger={credentialRefetchTrigger}
-											disabled={readOnly || configPending}
+											disabled={inspectingMember || configPending || !view || view.status === 'running'}
 										/>
 									</div>
 									<ModelParametersPopover
@@ -833,7 +796,7 @@ export function ChatViewport({
 										onFallbackChange={handleFallbackChange}
 										selectedTTSModel={selectedTTSModel}
 										onTTSChange={handleTTSChange}
-										disabled={readOnly || configPending}
+										disabled={inspectingMember || configPending || !view || view.status === 'running'}
 									/>
 									<PermissionModeSelect
 										id="tour-permission-mode"
@@ -849,6 +812,7 @@ export function ChatViewport({
 												variant="ghost"
 												size="sm"
 												className="gap-1 px-2"
+												aria-label={t('agentManagement.panels')}
 											>
 												<PanelRight />
 												<ChevronDown className="size-3 text-muted-foreground" />
@@ -907,7 +871,7 @@ export function ChatViewport({
 									</DropdownMenu>
 								</div>
 							</div>
-							<div className="flex flex-1 justify-center min-h-0 overflow-hidden relative [--chat-content-w:48rem]">
+							<div className="flex flex-1 justify-center min-h-0 overflow-hidden relative [--chat-content-w:100%]">
 								<ChatContent
 									className={'max-w-[var(--chat-content-w)] w-full'}
 									msgs={msgs}
@@ -1006,12 +970,18 @@ export function ChatViewport({
 							</div>
 						</div>
 					</ResizablePanel>
-					{panelLayout.length > 0 && (
+					{!isMobile && panelLayout.length > 0 && (
 						<ResizableHandle withHandle className="bg-transparent w-1.5" />
 					)}
-					<PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />
+					{!isMobile && <PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />}
 				</ResizablePanelGroup>
 			</main>
+			{isMobile && <Sheet open={panelLayout.length > 0} onOpenChange={(open) => { if (!open) setPanelLayout([]); }}>
+				<SheetContent className="flex w-full max-w-full flex-col overflow-y-auto">
+					<SheetHeader><SheetTitle>{t('common.settings')}</SheetTitle><SheetDescription className="sr-only">{t('common.settings')}</SheetDescription></SheetHeader>
+					{panelLayout.flat().map((key) => <section key={key} className="flex min-h-48 flex-col border-t p-3"><div className="mb-2 flex items-center justify-between gap-2"><h2 className="font-medium">{panels[key].title}</h2>{panels[key].actions}</div>{panels[key].content}</section>)}
+				</SheetContent>
+			</Sheet>}
 			<CreateCredentialDialog
 				open={credentialOpen}
 				onOpenChange={setCredentialOpen}

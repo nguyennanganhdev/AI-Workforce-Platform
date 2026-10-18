@@ -18,7 +18,7 @@ import {
 	Wrench,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { agentApi, workforceApi } from '@/api';
@@ -224,6 +224,7 @@ function AgentProposalCard({
 }
 
 export function AgentBuilderPage() {
+	const navigate = useNavigate();
 	const { knowledgeBases, loading: knowledgeBasesLoading } = useKnowledgeBases();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [message, setMessage] = useState('');
@@ -378,8 +379,8 @@ export function AgentBuilderPage() {
 
 	return (
 		<>
-			<div className="grid size-full min-h-0 gap-2 p-2 xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-				<aside className="flex min-h-0 flex-col overflow-hidden rounded-[22px] bg-card p-2 shadow-panel">
+			<div className="grid size-full min-h-0 overflow-y-auto xl:overflow-hidden xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+				<aside className="flex min-h-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar p-2">
 					<div className="flex items-center justify-between px-2 py-3">
 						<div>
 							<h2 className="text-sm font-medium">Hội thoại Builder</h2>
@@ -472,14 +473,14 @@ export function AgentBuilderPage() {
 						)}
 					</div>
 				</aside>
-				<main className="flex min-h-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
-					<header className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-5">
+				<main className="flex min-h-0 flex-col overflow-hidden bg-card">
+					<header className="flex flex-wrap items-center justify-between gap-4 border-b px-4 py-4">
 						<div className="flex items-center gap-3">
-							<div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+							<div className="flex size-10 items-center justify-center rounded-xl bg-muted text-foreground">
 								<Hammer className="size-5" />
 							</div>
 							<div>
-								<h1 className="text-xl font-medium tracking-tight">
+								<h1 className="text-lg font-semibold tracking-tight">
 									Agent Builder
 								</h1>
 								<p className="text-sm text-muted-foreground">
@@ -726,10 +727,10 @@ export function AgentBuilderPage() {
 					</div>
 				</main>
 
-				<aside className="min-h-0 overflow-y-auto rounded-[22px] bg-card p-4 shadow-panel">
+				<aside className="min-h-0 overflow-y-auto border-l border-border bg-card p-4">
 					<div className="mb-4 flex items-center justify-between">
 						<div>
-							<h2 className="font-medium">Agent trong platform</h2>
+							<button type="button" className="font-medium hover:underline" onClick={() => navigate('/workforce/agents')}>Agent trong platform</button>
 							<p className="text-xs text-muted-foreground">
 								Leader chỉ thấy agent đang phát hành
 							</p>

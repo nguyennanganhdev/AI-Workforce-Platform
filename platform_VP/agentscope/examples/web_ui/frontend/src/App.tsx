@@ -10,9 +10,11 @@ import { authApi } from '@/api';
 import type { AuthUser } from '@/api';
 import { AUTH_EXPIRED_EVENT } from '@/api/client';
 import { RouteError } from '@/components/error/RouteError';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { ChatLayout } from '@/components/layout/ChatLayout';
+import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { buildChatTour } from '@/components/tour/chatTourSteps';
 import { TourCard } from '@/components/tour/TourCard';
+import { CurrentUserProvider } from '@/context/CurrentUserContext';
 import { UploadProvider } from '@/context/UploadContext';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
@@ -22,28 +24,32 @@ import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
 import { KnowledgePage } from '@/pages/knowledge';
 import { SchedulePage } from '@/pages/schedule';
+import { AgentManagementPage } from '@/pages/workforce/agents';
 import { AgentBuilderPage } from '@/pages/workforce/builder';
 import { LeaderPage } from '@/pages/workforce/leader';
 
 const router = createBrowserRouter([
 	{
-		element: <AppLayout />,
+		element: <ChatLayout />,
+		errorElement: <RouteError />,
+		children: [{ path: '/chat/:agentId?/:sessionId?/:memberId?', element: <ChatPage /> }],
+	},
+	{
+		element: <SettingsLayout />,
 		errorElement: <RouteError />,
 		children: [
 			{
 				// Content-level boundary: a crash in a page replaces only
-				// the Outlet area, so AppLayout (the icon rail / nav) stays
+				// the Outlet area, so SettingsLayout (the icon rail / nav) stays
 				// usable. The parent route keeps its own errorElement as a
-				// last-resort catch-all for AppLayout/AppSidebar crashes.
+				// last-resort catch-all for SettingsLayout/SettingsSidebar crashes.
 				errorElement: <RouteError />,
 				children: [
 					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
 					{ path: '/workforce/leader', element: <LeaderPage /> },
 					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
-					{
-						path: '/chat/:agentId?/:sessionId?/:memberId?',
-						element: <ChatPage />,
-					},
+					{ path: '/workforce/agents/:agentId?', element: <AgentManagementPage /> },
+					{ path: '/settings', element: <Navigate to="/workforce/agents" replace /> },
 					{ path: '/schedule', element: <SchedulePage /> },
 					{ path: '/channel', element: <ChannelPage /> },
 					{ path: '/credential', element: <CredentialPage /> },
@@ -58,6 +64,7 @@ const router = createBrowserRouter([
 		],
 	},
 	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
+	...['/login', '/register', '/auth'].map((path) => ({ path, element: <Navigate to="/" replace /> })),
 ]);
 
 function App() {
@@ -65,7 +72,7 @@ function App() {
 	const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'anonymous'>(
 		'checking',
 	);
-	const [, setCurrentUser] = useState<AuthUser | null>(null);
+	const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 	const tours = useMemo(() => [buildChatTour(t)], [t]);
 
 	useEffect(() => {
@@ -118,9 +125,11 @@ function App() {
 					shadowOpacity="0.6"
 					cardTransition={{ type: 'spring', duration: 0.4 }}
 				>
-					<UploadProvider>
-						<RouterProvider router={router} />
-					</UploadProvider>
+					<CurrentUserProvider value={currentUser}>
+						<UploadProvider>
+							<RouterProvider router={router} />
+						</UploadProvider>
+					</CurrentUserProvider>
 					<Toaster richColors position="top-right" />
 				</Onborda>
 			</OnbordaProvider>

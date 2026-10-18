@@ -41,6 +41,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Bubble, BubbleContent } from '@/components/ui/bubble.tsx';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -478,7 +479,8 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
 				{!isUser && message.name && (
-					<div className="px-2 pt-2 text-sm font-medium text-muted-foreground" data-agent-name={message.name}>
+					<div className="mb-2 flex items-center gap-2 px-2 pt-2 text-sm font-medium text-muted-foreground" data-agent-name={message.name}>
+						<ClayAvatar id={String(message.metadata?.team_agent_id ?? message.name)} label={message.name} size={28} />
 						{message.name}
 					</div>
 				)}
@@ -494,7 +496,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 				{blocks
 					.filter((block) => block.type !== 'data')
 					.map((block, index) => (
-						<Bubble key={index} variant={isUser ? 'muted' : 'ghost'}>
+						<Bubble key={index} variant={isUser ? 'question' : block.type === 'text' && block.text ? 'agent' : 'ghost'}>
 							<BubbleContent>
 								<ASBlock block={block} />
 							</BubbleContent>

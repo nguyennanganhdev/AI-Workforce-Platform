@@ -42,6 +42,7 @@ async function builderWith(deleteAgent) {
         },
       };
       if (id === 'react-router-dom') return {
+		useNavigate: () => () => {},
         useSearchParams: () => [new URLSearchParams(), () => {}],
       };
       if (id === '@/hooks/useKnowledgeBases') return {

@@ -12,9 +12,9 @@ import { useTranslation } from 'react-i18next';
 
 import { workforceApi } from '@/api';
 import type { AgentToolSettings, AgentView, ContextConfig, InviteConfig, ReActConfig } from '@/api';
+import { defaultAgentFormValues } from '@/components/form/agent-form-utils';
 import {
 	AgentFormFields,
-	defaultAgentFormValues,
 	type AgentFormValues,
 	type AgentSection,
 } from '@/components/form/AgentFormFields';
@@ -22,6 +22,7 @@ import type { SchemaFormValue } from '@/components/form/SchemaForm';
 import { Alert, AlertDescription } from '@/components/ui/alert.tsx';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
 	Dialog,
@@ -57,6 +58,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	const [openMcps, setOpenMcps] = useState<Set<string>>(new Set());
 	const [toolsLoading, setToolsLoading] = useState(false);
 	const builderManaged = agent.data.execution_mode != null;
+	const governedPrompt = agent.data.system_role === 'leader';
 
 	useEffect(() => {
 		if (!open || !schema) {
@@ -122,11 +124,12 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	};
 
 	const handleSubmit = async () => {
-		if (!values) return;
+		if (!values || !agent.editable || submitting || (builderManaged && (!toolSettings || toolsLoading))) return;
 		const name = (values.identity.name as string | undefined)?.trim();
 		if (!name) return;
 		setErrorMsg('');
 		setSubmitting(true);
+		let resourcesSaved = false;
 		try {
 			if (builderManaged && toolSettings) {
 				await workforceApi.updateAgentTools(
@@ -134,12 +137,13 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 					[...selectedToolIds],
 					[...selectedKnowledgeBaseIds],
 				);
+				resourcesSaved = true;
 			}
 			await update(
 				agent.id,
 				{
 					name,
-					system_prompt: values.identity.system_prompt as string | undefined,
+					...(!governedPrompt && { system_prompt: values.identity.system_prompt as string | undefined }),
 					context_config: values.context_config as unknown as ContextConfig,
 					react_config: values.react_config as unknown as ReActConfig,
 					invite_config: values.invite_config as unknown as InviteConfig,
@@ -149,7 +153,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 			onOpenChange(false);
 			onUpdated?.();
 		} catch (e) {
-			setErrorMsg(formatApiErrorForAlert(e));
+			setErrorMsg([resourcesSaved && t('agentManagement.resourcesSaved'), formatApiErrorForAlert(e)].filter(Boolean).join('\n'));
 		} finally {
 			setSubmitting(false);
 		}
@@ -161,15 +165,16 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="!w-[680px] !max-w-[calc(100vw-2rem)]">
-				<DialogHeader>
+				<DialogHeader className="flex-row items-center gap-3 pr-8">
+					<ClayAvatar id={agent.id} label={agent.data.name} size={44} />
 					<DialogTitle>{t('dialog-agent-edit.title')}</DialogTitle>
 					<DialogDescription className="sr-only">
 						{t('dialog-agent-edit.description')}
 					</DialogDescription>
 				</DialogHeader>
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4">
+				<fieldset disabled={!agent.editable || submitting} className="no-scrollbar -mx-4 max-h-[65vh] min-w-0 overflow-y-auto px-4">
 					{schema && values ? (
-						<AgentFormFields schema={schema} values={values} onChange={handleChange} />
+						<AgentFormFields schema={schema} values={values} onChange={handleChange} governedPrompt={governedPrompt} />
 					) : (
 						<p className="text-muted-foreground text-sm">{t('common.loading')}</p>
 					)}
@@ -341,7 +346,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 							)}
 						</section>
 					)}
-				</div>
+				</fieldset>
 				{errorMsg && (
 					<Alert variant="destructive">
 						<CircleAlert />
@@ -361,7 +366,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 					</Button>
 					<Button
 						onClick={handleSubmit}
-						disabled={!nameValid || submitting || !schema || !values || !toolsReady}
+						disabled={!agent.editable || !nameValid || submitting || !schema || !values || !toolsReady}
 					>
 						{submitting ? (
 							<Loader2 className="size-3.5 animate-spin" />
