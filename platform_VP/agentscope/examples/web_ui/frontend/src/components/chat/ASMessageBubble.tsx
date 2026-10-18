@@ -19,14 +19,17 @@ import {
 	FileText,
 	FileVideo2,
 	Loader2,
-	Reply,
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useContext, useEffect, useRef, useState } from 'react';
 
+import { TicketViewContext } from './team-roster';
+import { DialogToolCard, HandoverCard, TeamMessageCard, TicketCard } from './TeamDialog';
+import { DIALOG_TOOLS, parseHandover, teamHintSource, teamMessageText, toolLabel } from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
-import { countDiffStats, DiffStats, getResultDiff } from './tool-renderers/_shared';
+import { DiffStats } from './tool-renderers/_shared';
+import { countDiffStats, getResultDiff } from './tool-renderers/_shared-utils';
 import type { TFunction, ToolCallWithResult } from './tool-renderers/types';
 import { Markdown } from '@/components/markdown';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -47,7 +50,7 @@ import {
 	CollapsibleTrigger,
 } from '@/components/ui/collapsible.tsx';
 import { Message, MessageFooter, MessageContent } from '@/components/ui/message';
-import { useAudioBlock, useReplayController } from '@/context/AudioContext';
+import { useAudioBlock, useReplayController } from '@/context/audio-context';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 import { copyToClipboard, formatNumber, formatTime } from '@/utils/common';
@@ -66,7 +69,13 @@ interface ToolCallGroupBlock {
 	finished_at?: string;
 }
 
-type ExtendedContentBlock = ContentBlock | ToolCallGroupBlock;
+/** A tool call that is a message to someone (see `DIALOG_TOOLS`), shown as a card. */
+interface DialogBlock {
+	type: 'dialog';
+	pair: ToolCallWithResult;
+}
+
+type ExtendedContentBlock = ContentBlock | ToolCallGroupBlock | DialogBlock;
 
 /**
  * Pair every tool_call with its tool_result (by id) and collect *consecutive*
@@ -114,7 +123,10 @@ function groupToolCalls(content: ContentBlock[]): ExtendedContentBlock[] {
 			result.push(item.block);
 		} else {
 			const entry = callMap.get(item.id);
-			if (entry) current.push(entry);
+			if (entry && DIALOG_TOOLS.has(entry.call.name)) {
+				flush();
+				result.push({ type: 'dialog', pair: entry });
+			} else if (entry) current.push(entry);
 		}
 	}
 	flush();
@@ -391,7 +403,6 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
-	onReplyTo?: (agentId: string, name: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -417,13 +428,17 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
+function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
+	const ticketView = useContext(TicketViewContext);
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
+	// A partner handover reads as the card reception confirmed (see the
+	// route's ticket_input); the lines the Leader reads stay in the message.
+	const ticket = isUser
+		? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
+		: undefined;
 
-	// A terminal reason is authoritative even for legacy rows that were
-	// persisted before their finished_at timestamp was repaired.
-	const isRunning = !message.finished_at && !message.finished_reason;
+	const isRunning = !message.finished_at;
 	const hasUsage =
 		!!message.usage &&
 		((message.usage.input_tokens ?? 0) > 0 || (message.usage.output_tokens ?? 0) > 0);
@@ -452,49 +467,47 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 		.filter((b): b is TextBlock => b.type === 'text')
 		.map((b) => b.text)
 		.join('\n\n');
-	const teamAgentId = message.metadata?.team_agent_id;
-	const communications = message.content.flatMap((block) => {
-		if (block.type !== 'tool_call' || block.name !== 'TeamSay') return [];
-		try {
-			const payload = JSON.parse(block.input) as { to?: string | null; kind?: string; content?: string };
-			if (!payload.content || plainText.includes(payload.content.trim())) return [];
-			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
-			return [{ id: block.id, ...payload, failed: result?.state === 'error' }];
-		} catch {
-			return [];
-		}
-	});
 
 	const startMs = new Date(message.created_at).getTime();
-	const terminalTime =
-		message.finished_at ??
-		[...message.content].reverse().find((block) => block.finished_at)?.finished_at ??
-		message.created_at;
-	const endMs = isRunning ? now : new Date(terminalTime).getTime();
+	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
+	const visibleBlocks = blocks.filter((block) => {
+		if (block.type === 'data' || (ticket?.request && block.type === 'text')) return false;
+		if (!ticketView) return true;
+		if (block.type === 'hint' && block.source) {
+			try {
+				if (JSON.parse(block.source).sublabel === 'Runtime State') return false;
+			} catch { /* Plain hint labels remain visible. */ }
+		}
+		if (block.type === 'text' && /^(Đã gửi (tin cho người dùng|cho người dùng)|Đã giao việc cho phòng, chờ báo cáo)\.?$/.test(block.text.trim())) return false;
+		return true;
+	});
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
-				{!isUser && message.name && (
-					<div className="px-2 pt-2 text-sm font-medium text-muted-foreground" data-agent-name={message.name}>
-						{message.name}
-					</div>
-				)}
-				{communications.map((communication) => (
-					<div key={communication.id} className="mx-2 my-2 rounded-xl border border-border px-3 py-2">
-						<div className="mb-1 text-xs text-muted-foreground">
-							→ {communication.to && !['null', 'none'].includes(communication.to) ? communication.to.split('@')[0] : 'Khách hàng'}
-							{communication.failed ? ' · Gửi thất bại' : ''}
-						</div>
-						<Markdown>{communication.content}</Markdown>
-					</div>
-				))}
-				{blocks
-					.filter((block) => block.type !== 'data')
+				{message.metadata?.group_event && <p className="mb-1 text-xs text-muted-foreground">{message.name}{message.metadata.group_to ? ` → ${String(message.metadata.group_to)}` : ''} · {t(`personal.kind_${String(message.metadata.group_kind)}`)}{message.metadata.group_analysis ? ` · ${t('personal.analysis')}` : ''}</p>}
+				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
+				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
+				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
+				{visibleBlocks
 					.map((block, index) => (
-						<Bubble key={index} variant={isUser ? 'muted' : 'ghost'}>
+						// Only the agent's prose gets a bubble. Thinking, hints and
+						// tool runs stay bare one-line disclosures — bubbling each
+						// would bury the answer under its own working. An empty text
+						// block (a reply that has not streamed a token yet) stays
+						// bare too, so no hollow bubble flashes.
+						<Bubble
+							key={index}
+							variant={
+								isUser
+									? 'question'
+									: block.type === 'text' && block.text
+										? 'agent'
+										: 'ghost'
+							}
+						>
 							<BubbleContent>
 								<ASBlock block={block} />
 							</BubbleContent>
@@ -508,7 +521,9 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 						<TriangleAlert />
 						<AlertTitle>{t('messageBubble.error.title')}</AlertTitle>
 						<AlertDescription>
-							{t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
+							{ticketView ? (String(message.error?.type) === 'context_budget'
+								? 'Lượt trước bị gián đoạn do hội thoại quá dài. Dữ liệu phiếu vẫn được lưu; hãy tiếp tục trao đổi.'
+								: 'Lượt xử lý chưa hoàn tất. Vui lòng kiểm tra trạng thái phiếu và thử lại.') : t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
 								defaultValue:
 									message.error?.message ?? t('messageBubble.error.unknown'),
 							})}
@@ -532,6 +547,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 					<MessageFooter className="gap-1 font-mono">
 						<Badge
 							variant="secondary"
+							className={message.metadata?.group_event ? 'hidden' : undefined}
 							aria-label={isRunning ? t('messageBubble.running') : undefined}
 						>
 							{isRunning ? (
@@ -557,11 +573,6 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
-						{onReplyTo && typeof teamAgentId === 'string' && (
-							<Button variant="ghost" size="xs" onClick={() => onReplyTo(teamAgentId, message.name)} aria-label={`Trả lời ${message.name}`}>
-								<Reply className="size-3" /> Trả lời
-							</Button>
-						)}
 					</MessageFooter>
 				)}
 			</MessageContent>
@@ -635,16 +646,34 @@ interface ASBlockProps {
 	block: ExtendedContentBlock;
 }
 
+function BlockDuration({ createdAt, finishedAt }: { createdAt?: string; finishedAt?: string | null }) {
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		if (!createdAt || finishedAt) return;
+		const timer = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(timer);
+	}, [createdAt, finishedAt]);
+	if (!createdAt) return null;
+	const seconds = Math.max(0, ((finishedAt ? new Date(finishedAt).getTime() : now) - new Date(createdAt).getTime()) / 1000);
+	return <span className="ml-2 text-xs tabular-nums">{formatTime(seconds)}</span>;
+}
+
 export function ASBlock({ block, ...props }: ASBlockProps) {
 	const { t } = useTranslation();
+	const ticketView = useContext(TicketViewContext);
 
 	switch (block.type) {
-		case 'text':
+		case 'text': {
+			const handover = block.finished_at ? parseHandover(block.text) : null;
+			if (handover) return <HandoverCard {...handover} />;
 			return (
 				<Markdown animated isAnimating={!block.finished_at} {...props}>
-					{block.text}
+					{ticketView ? teamMessageText(block.text) : block.text}
 				</Markdown>
 			);
+		}
+		case 'dialog':
+			return <DialogToolCard pair={block.pair} />;
 		case 'data': {
 			const dataType = block.source.media_type.split('/')[0];
 			if (dataType === 'audio') return null;
@@ -707,6 +736,13 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 		case 'thinking':
 			return <ThinkingBlockView block={block} />;
 		case 'hint': {
+			// Another agent's message in the room: a conversation card.
+			const team = teamHintSource(block.source);
+			if (team && typeof block.hint === 'string') {
+				return (
+					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} at={block.created_at} />
+				);
+			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;
 			let hintSublabel: string | null = null;
@@ -757,6 +793,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 							)}
 						>
 							<span>{hintLabel + (hintSublabel ? ` - ${hintSublabel}` : '')}</span>
+							<BlockDuration createdAt={block.created_at} finishedAt={block.finished_at} />
 							<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
 						</div>
 					</CollapsibleTrigger>
@@ -769,6 +806,10 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			);
 		}
 		case 'tool_call_group': {
+			if (ticketView) return <div className="space-y-1 text-xs text-muted-foreground">{block.calls.map(({ call, result }) => {
+				const end = result?.finished_at ?? call.finished_at;
+				return <p key={call.id}>{toolLabel(call.name)} · {result?.state === 'error' ? 'Chưa thực hiện được' : result?.state === 'success' ? 'Đã có kết quả' : result?.state === 'denied' ? 'Không được phép' : result?.state === 'interrupted' ? 'Đã dừng' : 'Đang xử lý…'}<BlockDuration createdAt={call.created_at} finishedAt={end} /></p>;
+			})}</div>;
 			const { title, insertions, deletions } = summarizeToolGroup(block.calls, t);
 			const hasRunningCall = block.calls.some(
 				(c) => !c.result || c.result.state === 'running',

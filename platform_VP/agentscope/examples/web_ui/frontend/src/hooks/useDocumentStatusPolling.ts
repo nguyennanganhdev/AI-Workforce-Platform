@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { knowledgeBaseApi } from '@/api';
 import type { KnowledgeDocumentView } from '@/api';
-import { useUploadContext } from '@/context/UploadContext';
+import { useUploadContext } from '@/context/upload-context';
 
 const POLL_INTERVAL_MS = 1500;
 

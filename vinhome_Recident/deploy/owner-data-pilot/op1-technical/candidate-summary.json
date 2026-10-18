@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "csv_files": 10,
+  "personal_records": 0,
+  "owner_approved": false,
+  "database_written": false,
+  "operational_activation": false,
+  "candidate_rows": {
+    "operators": 0,
+    "zones": 1,
+    "buildings": 1,
+    "units": 0,
+    "coverage": 1,
+    "residents": 0,
+    "staff": 0,
+    "shifts": 0,
+    "services": 3,
+    "sops": 6
+  },
+  "missing_items": 108,
+  "operational_ready": false,
+  "source_catalog_sha256": "270a7c9e02458df3adbd6723e0d7e36f4f242b7f392b26c2cac755a9f0a682db",
+  "source_catalog_hash_encoding": "UTF-8 with LF line endings"
+}

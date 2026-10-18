@@ -83,21 +83,12 @@ export const sessionApi = {
 			agent_id: agentId,
 		}),
 
-	messages: (
-		sessionId: string,
-		agentId: string,
-		params?: { before?: string; limit?: number },
-		options?: { signal?: AbortSignal; silent?: boolean },
-	) =>
-		client.get<MessagesResponse>(
-			`/sessions/${sessionId}/messages`,
-			{
-				agent_id: agentId,
-				...(params?.before != null && { before: params.before }),
-				...(params?.limit != null && { limit: String(params.limit) }),
-			},
-			{ ...options, timeoutMs: 10_000 },
-		),
+	messages: (sessionId: string, agentId: string, params?: { before?: string; limit?: number }) =>
+		client.get<MessagesResponse>(`/sessions/${sessionId}/messages`, {
+			agent_id: agentId,
+			...(params?.before != null && { before: params.before }),
+			...(params?.limit != null && { limit: String(params.limit) }),
+		}),
 
 	/**
 	 * Subscribe to a session's live event stream via SSE.

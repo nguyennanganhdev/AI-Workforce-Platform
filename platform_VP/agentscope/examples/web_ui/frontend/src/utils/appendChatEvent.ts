@@ -1,5 +1,5 @@
 import type { AgentEvent } from '@agentscope-ai/agentscope/event';
-import { appendEvent, AssistantMsg } from '@agentscope-ai/agentscope/message';
+import { appendEvent } from '@agentscope-ai/agentscope/message';
 import type { Msg } from '@agentscope-ai/agentscope/message';
 
 /** Reconcile replayed text with persisted history instead of appending it twice. */
@@ -20,27 +20,4 @@ export function appendChatEvent(message: Msg, event: AgentEvent): void {
 		}
 	}
 	appendEvent(message, event);
-}
-
-/** Team streams interleave replies; always update the event's own message. */
-export function mergeChatEvent(messages: Msg[], event: AgentEvent): Msg[] {
-	if (!('reply_id' in event)) return messages;
-	const existing = messages.find((message) => message.id === event.reply_id);
-	if (event.type === 'REPLY_START') {
-		const metadata = { ...existing?.metadata, ...event.metadata } as Msg['metadata'];
-		if (existing) {
-			return messages.map((message) => message === existing ? { ...existing, metadata } : message);
-		}
-		return [...messages, AssistantMsg({
-			id: event.reply_id,
-			name: event.name,
-			content: [],
-			created_at: event.created_at,
-			metadata,
-		})];
-	}
-	if (!existing) return messages;
-	const updated = { ...existing, content: [...existing.content] };
-	appendChatEvent(updated, event);
-	return messages.map((message) => message === existing ? updated : message);
 }

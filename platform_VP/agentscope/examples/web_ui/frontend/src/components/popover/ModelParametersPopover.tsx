@@ -1,5 +1,5 @@
 import { Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import type {
 	ChatModelConfig,
@@ -71,7 +71,7 @@ function resolveType(prop: ParameterProperty): ResolvedType {
 		if (variant.type && variant.type !== 'null') {
 			return {
 				type: variant.type,
-				enumValues: prop.enum ?? variant.enum ?? null,
+				enumValues: variant.enum ?? prop.enum ?? null,
 			};
 		}
 	}
@@ -120,7 +120,7 @@ function BooleanField({ id, label, prop, value, onChange }: FieldProps) {
 function EnumField({ id, label, required, prop, value, onChange }: FieldProps) {
 	const enumValues = resolveType(prop).enumValues ?? [];
 	// TODO: experiment with using prop.description as placeholder text
-	const displayValue = String(value ?? prop.default ?? '');
+	const displayValue = value !== undefined && value !== null ? String(value) : '';
 
 	return (
 		<>
@@ -258,7 +258,10 @@ export function ModelParametersPopover({
 	onTTSChange,
 	disabled: locked = false,
 }: Props) {
-	const [values, setValues] = useState<Record<string, unknown>>({});
+	const [values, setValues] = useState<Record<string, unknown>>(
+		selectedModel?.parameters ?? {},
+	);
+	const [valuesModel, setValuesModel] = useState(selectedModel?.model);
 	const { t } = useTranslation();
 	const { groups } = useAvailableModels();
 	const { groups: ttsGroups } = useAvailableTTSModels();
@@ -268,9 +271,10 @@ export function ModelParametersPopover({
 	const required = schema?.required ?? [];
 	const entries = Object.entries(properties);
 
-	useEffect(() => {
+	if (selectedModel?.model !== valuesModel) {
+		setValuesModel(selectedModel?.model);
 		setValues(selectedModel?.parameters ?? {});
-	}, [selectedModel?.model]);
+	}
 
 	const handleChange = useCallback(
 		(key: string, value: unknown) => {

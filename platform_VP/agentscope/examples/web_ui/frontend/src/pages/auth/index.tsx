@@ -1,10 +1,11 @@
 import { CircleAlert, Loader2, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { AuthShowcase } from './AuthShowcase';
 import { authApi } from '@/api';
 import type { AreaOption, AuthUser, DomainOption } from '@/api';
 import { ApiError, getBaseUrl } from '@/api/client';
-import AgentScope from '@/assets/images/agentscope_mono.svg?react';
+import { BRAND_NAME, BrandMark } from '@/components/layout/Brand';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
 
@@ -27,8 +29,9 @@ interface Props {
 type Mode = 'login' | 'register';
 
 export function AuthPage({ onAuthenticated }: Props) {
+	useCueTheme();
 	const { t } = useTranslation();
-	const [mode, setMode] = useState<Mode>('login');
+	const [mode, setMode] = useState<Mode>(() => window.location.pathname === '/register' ? 'register' : 'login');
 	const [identity, setIdentity] = useState('');
 	const [email, setEmail] = useState('');
 	const [username, setUsername] = useState('');
@@ -101,22 +104,40 @@ export function AuthPage({ onAuthenticated }: Props) {
 		setSubmitting(true);
 		setErrorMessage('');
 		try {
-			const user =
-				mode === 'login'
-					? await authApi.login({ identity: identity.trim(), password })
-					: await authApi.registerAndLogin({
-							email: email.trim(),
-							username: username.trim(),
-							password,
-							domain_id: domainId,
-							area_id: areaId,
-						});
+			if (mode !== 'login') {
+				const registered = await authApi.register({
+					email: email.trim(),
+					username: username.trim(),
+					password,
+					domain_id: domainId,
+					area_id: areaId,
+				});
+				if (registered.status === 'pending') {
+					// A BQL account waits for the platform or domain admin.
+					setMode('login');
+					setIdentity(username.trim());
+					setPassword('');
+					setErrorMessage('Đã gửi đăng ký. Tài khoản BQL của khu này đang chờ quản trị duyệt; bạn đăng nhập được sau khi được duyệt.');
+					return;
+				}
+			}
+			const user = await authApi.login({
+				identity: mode === 'login' ? identity.trim() : username.trim(),
+				password,
+			});
 			onAuthenticated(user);
 		} catch (error) {
-			if (error instanceof ApiError && error.status === 503) {
+			if (error instanceof ApiError && error.status === 403) {
+				setErrorMessage('Tài khoản đang chờ quản trị duyệt. Vui lòng thử lại sau khi được duyệt.');
+			} else if (error instanceof ApiError && error.status === 409 && mode !== 'login') {
+				setErrorMessage('Không đăng ký được: email/tên đăng nhập đã có, hoặc khu này đã có tài khoản BQL (mỗi khu một tài khoản).');
+			} else if (error instanceof ApiError && error.status === 503) {
 				setErrorMessage(t('auth.authenticationDisabled'));
 			} else {
-				setErrorMessage(formatApiErrorForAlert(error));
+				const message = formatApiErrorForAlert(error);
+				const errorKeys: Record<string, string> = {"invalid credentials":"invalidCredentials","invalid email address":"invalidEmail","username must be 3-64 lowercase letters, numbers, ., _, or -":"invalidUsername","password must be 12-1024 bytes":"invalidPassword","email or username already exists":"alreadyExists","domain_id and area_id are required":"scopeRequired","area does not belong to the selected domain":"invalidArea"};
+				const key = errorKeys[message];
+				setErrorMessage(key ? t('auth.errors.' + key) : message);
 			}
 		} finally {
 			setSubmitting(false);
@@ -125,39 +146,36 @@ export function AuthPage({ onAuthenticated }: Props) {
 
 	return (
 		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-10">
-			<div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.12),transparent_30%)]" />
-			<div className="relative grid w-full max-w-4xl gap-8 lg:grid-cols-[1fr_420px] lg:items-center">
-				<div className="hidden space-y-5 lg:block">
-					<div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
-						<AgentScope className="size-7" />
+			<div className="relative grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_400px] lg:items-center lg:gap-14">
+				<div className="hidden space-y-6 lg:block">
+					<div className="flex items-center gap-3">
+						<BrandMark className="size-10" />
+						<p className="text-[15px]/5 font-semibold">{t('auth.brand')}</p>
 					</div>
-					<div className="space-y-3">
-						<p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
-							AgentScope Platform
-						</p>
-						<h1 className="max-w-xl text-4xl font-semibold tracking-tight">
+					<div className="space-y-2">
+						<h1 className="max-w-xl text-[30px]/[38px] font-semibold tracking-tight">
 							{t('auth.heroTitle')}
 						</h1>
-						<p className="max-w-lg text-base leading-7 text-muted-foreground">
+						<p className="max-w-lg text-[15px]/[22px] text-muted-foreground">
 							{t('auth.heroDescription')}
 						</p>
 					</div>
+					{/* What the platform does, played out by its own agents. */}
+					<AuthShowcase />
 					<div className="flex items-center gap-2 text-sm text-muted-foreground">
-						<ShieldCheck className="size-4 text-primary" />
+						<ShieldCheck className="size-4 text-[var(--cue-success,currentColor)]" />
 						{t('auth.securityHint')}
 					</div>
 				</div>
 
-				<Card className="border-border/70 bg-background/95 shadow-xl backdrop-blur">
+				<Card className="rounded-3xl border border-[var(--cue-border,var(--border))] bg-background p-2 shadow-[var(--cue-shadow-float,none)] ring-0">
 					<CardHeader className="space-y-4">
 						<div className="flex items-center gap-3 lg:hidden">
-							<div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-								<AgentScope className="size-5" />
-							</div>
-							<span className="font-semibold">AgentScope</span>
+							<BrandMark className="size-9" />
+							<span className="font-semibold">{BRAND_NAME}</span>
 						</div>
 						<div>
-							<CardTitle>
+							<CardTitle className="text-[17px]/6 font-semibold">
 								{mode === 'login' ? t('auth.loginTitle') : t('auth.registerTitle')}
 							</CardTitle>
 							<CardDescription className="mt-1.5">
@@ -166,19 +184,21 @@ export function AuthPage({ onAuthenticated }: Props) {
 									: t('auth.registerDescription')}
 							</CardDescription>
 						</div>
-						<div className="grid grid-cols-2 rounded-lg bg-muted p-1">
+						<div className="grid grid-cols-2 rounded-full bg-[var(--cue-bg-subtle,var(--muted))] p-1">
 							<Button
 								type="button"
-								variant={mode === 'login' ? 'default' : 'ghost'}
+								variant={mode === 'login' ? 'outline' : 'ghost'}
 								size="sm"
+								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
 								onClick={() => switchMode('login')}
 							>
 								{t('auth.login')}
 							</Button>
 							<Button
 								type="button"
-								variant={mode === 'register' ? 'default' : 'ghost'}
+								variant={mode === 'register' ? 'outline' : 'ghost'}
 								size="sm"
+								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
 								onClick={() => switchMode('register')}
 							>
 								{t('auth.register')}
@@ -231,6 +251,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 												}
 												required
 											/>
+										<FieldDescription>{t('auth.usernameHint')}</FieldDescription>
 										</Field>
 									</>
 								)}
@@ -314,6 +335,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 
 								<Button
 									type="submit"
+									size="lg"
 									className="w-full"
 									disabled={
 										submitting ||

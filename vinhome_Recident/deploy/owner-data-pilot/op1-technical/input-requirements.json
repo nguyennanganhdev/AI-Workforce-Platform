@@ -1,0 +1,214 @@
+{
+  "purpose": "Collection requirements only; not operational records or owner approval",
+  "scope": "OP1 / one zone / one building / technical",
+  "basis": "vinhomes_api.owner_bundle schema v2 and the current missing-data.csv",
+  "missing_items": 108,
+  "approval_or_effective_fields": 36,
+  "policy_or_assignment_fields": 67,
+  "empty_datasets": 5,
+  "shared_review_fields": {
+    "approved_by": "Actual authorized data owner or delegate; do not replace with the software administrator or a generated name.",
+    "approved_at": "Actual approval timestamp with timezone, not in the future.",
+    "effective_from": "Actual effective timestamp with timezone, not in the future; a historical construction acceptance date does not establish a current service policy."
+  },
+  "missing_field_requirements": {
+    "owner_records": "Provide the complete authorized dataset with the exact CSV header; an empty dataset is not one missing person or document.",
+    "operator_code": "Use the same confirmed operator identifier in operators, geography, coverage, staff and services; a developer's public corporate identity does not establish current operating responsibility.",
+    "current_address": "Owner-confirmed current administrative address for the selected zone/building; do not infer it from the 2020 or 2022 documents.",
+    "platform_route_id": "Route identifier agreed with the actual Platform endpoint for this scope and technical category; a proposed or sandbox route is not a live route.",
+    "route_revision": "Positive integer matching the revision agreed by both backends.",
+    "eligibility": "Confirmed eligible requesters, asset types, private/common areas and access requirements; residency authorization must remain enforced by Domain.",
+    "fee_policy": "Owner selects free, fixed or quote. Free requires fee_amount=0; fixed requires a finite nonnegative amount; quote requires an empty amount and an approved quotation before chargeable work.",
+    "fee_unit": "Confirmed billing unit such as job or hour; do not choose a billing model from a marketing article.",
+    "vat_policy": "Owner-confirmed treatment of VAT in the applicable quote or published tariff; do not generate a tax rate or claim tax inclusion without evidence.",
+    "operating_hours": "Confirmed service calendar, timezone, holidays and emergency coverage; a recruitment schedule is not a staff roster or service opening time.",
+    "warranty_policy": "Correct property/device scope, provider, start/end evidence, exclusions and contact; a commercial-unit template does not establish residential warranty rights.",
+    "booking_policy": "Confirmed appointment, access consent, lead time and availability rules; an appointment must not be promised before actual acceptance.",
+    "cancellation_policy": "Confirmed cancellation/rebooking rules and any fees, including who can authorize them.",
+    "contact_reference": "Reference to the confirmed operating contact/team, not a recruiting or sales contact and not a generated telephone number.",
+    "priority": "Owner-approved classification: low, normal, high or critical. The classification needs a matching escalation and handling policy.",
+    "response_minutes": "Owner-approved positive integer in elapsed minutes; must not exceed resolution_minutes. An authored proposal is not an agreed SLA.",
+    "resolution_minutes": "Owner-approved positive integer in elapsed minutes, at least response_minutes; define the event that starts/stops the clock before activation.",
+    "safety_policy": "Approved SOP for the exact incident and qualified role, access/stop-work conditions and emergency handling. Public handover specifications are not repair instructions.",
+    "escalation_policy": "Confirmed trigger, recipient, fallback and authority for safety, unavailable staff, delays and unresolved incidents; do not add Domain BQL ticket approval."
+  },
+  "datasets_to_supply": {
+    "operators": {
+      "source": "Operating appointment/contract and authorized contact register",
+      "required_fields": [
+        "site_code",
+        "operator_code",
+        "legal_name",
+        "contact_reference"
+      ],
+      "minimum_rows": 1
+    },
+    "zones": {
+      "source": "Confirmed zone master and current administrative address",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "name",
+        "operator_code",
+        "current_address"
+      ],
+      "minimum_rows": 1
+    },
+    "buildings": {
+      "source": "Confirmed building master and operator scope; public technical aliases can support reconciliation",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "name",
+        "operator_code",
+        "current_address"
+      ],
+      "minimum_rows": 1
+    },
+    "units": {
+      "source": "Authorized unit/lot master; do not generate unit numbers from floor counts",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "unit_code",
+        "asset_type",
+        "operator_code"
+      ],
+      "minimum_rows": 1
+    },
+    "coverage": {
+      "source": "Confirmed operating scope and Platform routing contract",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "operator_code",
+        "category_code",
+        "platform_route_id",
+        "route_revision"
+      ],
+      "minimum_rows": 1
+    },
+    "residents": {
+      "source": "Authorized verified residency extract; no passwords or identity-document images",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "unit_code",
+        "account_code",
+        "name",
+        "email",
+        "relation",
+        "valid_from",
+        "valid_until",
+        "verification_reference"
+      ],
+      "minimum_rows": 1,
+      "allowed_relations": [
+        "owner",
+        "tenant",
+        "household"
+      ]
+    },
+    "staff": {
+      "source": "Authorized roster, qualification, assignment, capacity and backup register",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "employee_code",
+        "name",
+        "email",
+        "operator_code",
+        "category_code",
+        "max_concurrent_jobs",
+        "backup_employee_code"
+      ],
+      "minimum_rows": 2,
+      "constraint": "Primary and backup are distinct employees with matching operator, scope and specialty. Resident and staff logins must be distinct in this pilot."
+    },
+    "shifts": {
+      "source": "Approved real shift schedule with timezone and backup coverage",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "employee_code",
+        "starts_at",
+        "ends_at"
+      ],
+      "minimum_rows": 2,
+      "constraint": "Each employee has a valid shift; backup covers the primary shift; one employee cannot have overlapping shifts."
+    },
+    "services": {
+      "source": "Approved service catalog, eligibility, tariff/quote rules, schedule and warranty/booking/cancellation policies",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "service_code",
+        "title",
+        "category_code",
+        "operator_code",
+        "eligibility",
+        "fee_policy",
+        "fee_amount",
+        "currency",
+        "fee_unit",
+        "vat_policy",
+        "operating_hours",
+        "warranty_policy",
+        "booking_policy",
+        "cancellation_policy",
+        "contact_reference"
+      ],
+      "minimum_rows": 1,
+      "current_candidate_target_rows": 3,
+      "currency": "VND"
+    },
+    "sops": {
+      "source": "Approved resident/staff SOPs for each service, including safety, escalation and acceptance/SLA definitions",
+      "required_fields": [
+        "site_code",
+        "zone_code",
+        "building_code",
+        "sop_code",
+        "service_code",
+        "title",
+        "audience",
+        "request_kind",
+        "priority",
+        "response_minutes",
+        "resolution_minutes",
+        "clock_policy",
+        "intake_requirements",
+        "safety_policy",
+        "escalation_policy",
+        "evidence_requirements",
+        "acceptance_criteria",
+        "approval_policy",
+        "steps"
+      ],
+      "minimum_rows_per_service": 2,
+      "current_candidate_target_rows": 6,
+      "audiences": [
+        "resident",
+        "staff"
+      ],
+      "clock_policy": "elapsed",
+      "approval_policy": "resident_quote_and_completion"
+    }
+  },
+  "handoff_rules": {
+    "all_rows": "Exact CSV schema plus document_reference, approved_by, approved_at, effective_from and effective_until; source evidence must match the manifest SHA-256.",
+    "privacy": "Owner files stay private outside Git; Platform receives ticket context and scoped MCP access, not bulk residency/identity files.",
+    "synthetic": "Requires explicit synthetic_test labeling and an isolated owner_pilot_test database; never replace production records or impersonate operator approval.",
+    "activation": "Validation/staging does not activate master data, accounts, staff, routing or knowledge; publication and real integration require separate verification."
+  },
+  "additional_runtime_prerequisites": {
+    "verified_contact_directory": "Before publishing real resident accounts, provide an authorized contact directory linked by account_code, verified contact number and verification evidence/effective dates. The current CSV v2 does not carry a phone field; do not infer a real phone or generate a Vietnamese subscriber number. Sandbox materialization uses a clearly synthetic NANPA contact fixture only."
+  }
+}

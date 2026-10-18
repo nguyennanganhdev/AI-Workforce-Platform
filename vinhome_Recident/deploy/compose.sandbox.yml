@@ -1,0 +1,155 @@
+# Separate local synthetic environment. Never combine with production compose.yml.
+name: vinhomes-domain-sandbox
+
+x-api-env: &api-env
+  DATABASE_URL: postgresql+asyncpg://sandbox_runtime:${SANDBOX_RUNTIME_PASSWORD:?required}@postgres:5432/${SANDBOX_DATABASE:?required}
+  VINHOMES_API_DATABASE_URL: postgresql+asyncpg://sandbox_runtime:${SANDBOX_RUNTIME_PASSWORD:?required}@postgres:5432/${SANDBOX_DATABASE:?required}
+  VINHOMES_API_TENANT_ID: 11111111-1111-5111-a111-111111111111
+  VINHOMES_API_PASSWORD_AUTH: '1'
+  VINHOMES_API_SESSION_NAMESPACE: local_business_sandbox
+  VINHOMES_PUBLIC_URL: http://host.docker.internal:8087
+  VINHOMES_API_VOLUME_FILE_STORAGE: '1'
+  VINHOMES_API_RESIDENT_SIGNING_KEY: ${SANDBOX_SIGNING_KEY:?required}
+  VINHOMES_API_ALLOWED_ORIGINS: http://localhost:8087,http://127.0.0.1:8087
+  VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: http://localhost:8087,http://127.0.0.1:8087
+  VINHOMES_API_MCP_ALLOWED_HOSTS: host.docker.internal:8087,api:8000
+  VINHOMES_API_PLATFORM_MCP_TOKEN: ${SANDBOX_MCP_TOKEN:?required}
+  # Synthetic agent-eval tickets; refused anyway unless the database carries the sandbox marker.
+  VINHOMES_API_EVAL_FIXTURES: enabled
+  VINHOMES_API_CONFIG_ENCRYPTION_KEY: ${SANDBOX_CONFIG_ENCRYPTION_KEY:?required}
+  VINHOMES_PLATFORM_ALLOWED_HOSTS: host.docker.internal,awp-develop2-app
+  VINHOMES_TRAVEL_MOCK_ENABLED: '1'
+  VINHOMES_API_SECURE_COOKIES: '0'
+  VINHOMES_API_PLATFORM_URL: ''
+  VINHOMES_API_RECEPTION_URL: ${SANDBOX_RECEPTION_URL:-}
+  VINHOMES_API_RECEPTION_SERVICE_TOKEN: ${SANDBOX_RECEPTION_TOKEN:?required}
+  RECEPTION_DELEGATION_KEY: ${SANDBOX_DELEGATION_KEY:?required}
+  VINHOMES_API_EMBEDDING_API_KEY: ''
+  VINHOMES_API_S3_ENDPOINT: ''
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sandbox_owner
+      POSTGRES_PASSWORD: ${SANDBOX_OWNER_PASSWORD:?required}
+      POSTGRES_DB: postgres
+    ports: ['127.0.0.1:5567:5432']
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    labels: {vinhomes.data_mode: synthetic_test}
+    healthcheck:
+      test: ['CMD','pg_isready','-U','sandbox_owner','-d','postgres']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  init:
+    image: vinhomes-domain-api:${SANDBOX_IMAGE_TAG:?required}
+    build: {context: ../services/vinhomes-api}
+    user: '0:0'
+    # Keeps the seeder's loopback-only safety boundary intact inside Docker.
+    network_mode: service:postgres
+    depends_on: {postgres: {condition: service_healthy}}
+    environment:
+      DATABASE_URL: postgresql://sandbox_owner:${SANDBOX_OWNER_PASSWORD}@127.0.0.1:5432/${SANDBOX_DATABASE}
+      SANDBOX_RUNTIME_PASSWORD: ${SANDBOX_RUNTIME_PASSWORD}
+      SANDBOX_PRIVATE_DIR: /sandbox
+      VINHOMES_API_EMBEDDING_API_KEY: ''
+    volumes: [private-data:/sandbox]
+    command: ['python','-m','vinhomes_api.sandbox_initialize']
+    restart: 'no'
+  api:
+    image: vinhomes-domain-api:${SANDBOX_IMAGE_TAG}
+    depends_on: {init: {condition: service_completed_successfully}}
+    restart: unless-stopped
+    environment: *api-env
+    ports: ['127.0.0.1:8098:8000']
+    volumes: [files:/var/lib/vinhomes/files]
+    healthcheck:
+      test: ['CMD','python','-c','import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/ready",timeout=5)']
+      interval: 10s
+      timeout: 6s
+      retries: 10
+  scheduler:
+    image: vinhomes-domain-api:${SANDBOX_IMAGE_TAG}
+    depends_on: {api: {condition: service_healthy}}
+    restart: unless-stopped
+    environment: *api-env
+    volumes: [files:/var/lib/vinhomes/files]
+    command: ['sh','-ec','while true; do python -m vinhomes_api.jobs sweep; sleep 30; done']
+  platform-sync:
+    image: vinhomes-domain-api:${SANDBOX_IMAGE_TAG}
+    depends_on: {api: {condition: service_healthy}}
+    restart: unless-stopped
+    environment: *api-env
+    volumes: [files:/var/lib/vinhomes/files:ro]
+    extra_hosts: ['host.docker.internal:host-gateway']
+    command: ['python','-m','vinhomes_api.platform_sync']
+  reception:
+    profiles: ['reception']
+    image: vinhomes-domain-reception:${SANDBOX_IMAGE_TAG}
+    build: {context: ../agents/reception}
+    restart: unless-stopped
+    depends_on: {api: {condition: service_healthy}}
+    environment:
+      RECEPTION_BACKEND_URL: http://api:8000
+      RECEPTION_KNOWLEDGE_URL: http://api:8000
+      RECEPTION_SERVICE_TOKEN: ${SANDBOX_RECEPTION_TOKEN}
+      RECEPTION_MODEL: ${SANDBOX_RECEPTION_MODEL:-gpt-5.4-mini}
+      RECEPTION_AGENT: ${SANDBOX_RECEPTION_AGENT:-loop}
+      OPENAI_API_KEY: ${SANDBOX_OPENAI_API_KEY:-}
+      RECEPTION_MODEL_PROVIDER: ${SANDBOX_MODEL_PROVIDER:-}
+      RECEPTION_MODEL_API_KEY: ${SANDBOX_MODEL_API_KEY:-}
+      RECEPTION_MODEL_BASE_URL: ${SANDBOX_MODEL_BASE_URL:-}
+      RECEPTION_STATE_PATH: /var/lib/reception/reception.sqlite3
+    volumes: [reception-state:/var/lib/reception]
+    healthcheck:
+      test: ['CMD','python','-c','import urllib.request; urllib.request.urlopen("http://127.0.0.1:4202/health",timeout=5)']
+      interval: 10s
+      timeout: 6s
+      retries: 10
+  resident:
+    image: vinhomes-domain-resident:${SANDBOX_IMAGE_TAG}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args: {APP: resident-web}
+    restart: unless-stopped
+    depends_on: {api: {condition: service_healthy}}
+    environment: {VINHOMES_API_URL: 'http://api:8000'}
+    healthcheck:
+      test: ['CMD','wget','-q','-O','/dev/null','http://127.0.0.1:3011/']
+      interval: 10s
+      retries: 5
+  operations:
+    image: vinhomes-domain-operations:${SANDBOX_IMAGE_TAG}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args: {APP: staff-web}
+    restart: unless-stopped
+    depends_on: {api: {condition: service_healthy}}
+    environment: {VINHOMES_API_URL: 'http://api:8000'}
+    healthcheck:
+      test: ['CMD','wget','-q','-O','/dev/null','http://127.0.0.1:3020/operations/login']
+      interval: 10s
+      retries: 5
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    environment: {VINHOMES_API_URL: 'http://api:8000'}
+    depends_on:
+      resident: {condition: service_healthy}
+      operations: {condition: service_healthy}
+    volumes: ['./nginx/gateway.conf.template:/etc/nginx/templates/default.conf.template:ro']
+    ports: ['127.0.0.1:8087:8080']
+    healthcheck:
+      test: ['CMD','wget','-q','-O','/dev/null','http://127.0.0.1:8080/']
+      interval: 10s
+      retries: 5
+
+volumes:
+  postgres-data:
+  private-data:
+  files:
+  reception-state:

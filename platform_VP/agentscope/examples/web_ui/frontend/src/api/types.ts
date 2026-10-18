@@ -50,9 +50,7 @@ export interface AgentData {
 	system_role?: 'business' | 'leader';
 	lifecycle_state?: 'draft' | 'published' | 'withdrawn';
 	build_description?: string;
-	execution_mode?: 'context_only' | 'tool_backed' | null;
 	tool_bindings?: Array<{
-		id?: string;
 		mcp_id: string;
 		mcp_name: string;
 		tool_name: string;
@@ -140,11 +138,17 @@ export type SessionOrigin =
 export type SessionSourceKind = SessionOrigin['type'];
 
 export interface SessionConfig {
+	personal_chat?: {
+		kind: 'direct' | 'group';
+		root_session_id: string | null;
+		members: { agent_id: string; session_id: string; name: string }[];
+		goal: string;
+		context_mode: 'shared' | 'isolated';
+	} | null;
 	name: string;
 	/** Who owns `name` — see the backend's `SessionNaming`. */
 	naming: { auto: boolean };
 	chat_model_config: ChatModelConfig;
-	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/** Fallback model used when the primary model fails. */
 	fallback_chat_model_config: ChatModelConfig | null;
 	/** TTS model configuration. null means TTS is not enabled. */
@@ -180,9 +184,9 @@ export interface SessionRecord extends RecordBase {
 
 export interface CreateSessionRequest {
 	agent_id: string;
+	personal?: boolean;
 	workspace_id?: string;
 	chat_model_config?: ChatModelConfig | null;
-	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/** Optional fallback model. Omit (or pass null) for no fallback. */
 	fallback_chat_model_config?: ChatModelConfig | null;
 	/** Optional TTS model. Omit (or pass null) for no TTS. */
@@ -202,7 +206,6 @@ export interface InterruptSessionResponse {
 export interface UpdateSessionRequest {
 	name?: string;
 	chat_model_config?: ChatModelConfig;
-	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/**
 	 * New fallback model. PATCH semantics:
 	 *   - omit the field → leave unchanged
@@ -316,6 +319,7 @@ export interface WorkspaceStatus {
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
 export interface TeamData {
+	purpose?: 'operational' | 'platform_group';
 	name: string;
 	description: string;
 	/** Worker agent ids belonging to the team. */
@@ -734,6 +738,8 @@ export interface DirectInstallMCPRequest {
  * re-fetched from the hub when the skill reaches a workspace.
  */
 export interface SkillView {
+	review_status?: 'candidate' | 'approved' | 'revoked';
+	archive_cached?: boolean;
 	id: string;
 	/** Unique per user — the handle a workspace refers to it by. */
 	name: string;
@@ -781,6 +787,12 @@ export interface ScheduleData {
 	permission_mode: PermissionMode;
 	source: ScheduleSource;
 	source_session_id: string;
+	once?: boolean;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
+	last_fired_at?: string | null;
+	last_session_id?: string;
+	last_error?: string;
 }
 
 export interface ScheduleRecord extends RecordBase {
@@ -799,6 +811,10 @@ export interface CreateScheduleRequest {
 	enabled?: boolean;
 	stateful?: boolean;
 	permission_mode?: PermissionMode;
+	once?: boolean;
+	ended_at?: string | null;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
 }
 
 export interface CreateScheduleResponse {
@@ -908,6 +924,7 @@ export interface ListChunkersResponse {
  * :class:`agentscope.app._service.KnowledgeBaseView`.
  */
 export interface KnowledgeBaseView {
+	retrieval_mode?: 'vector' | 'lexical';
 	id: string;
 	name: string;
 	description: string;

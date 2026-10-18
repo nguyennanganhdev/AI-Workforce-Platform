@@ -1,15 +1,6 @@
 import * as React from 'react';
 
-import type {
-	AgentView,
-	ChannelBinding,
-	ChannelRecord,
-	ChannelTypeSchema,
-	ChatModelConfig,
-	CreateChannelRequest,
-	PermissionMode,
-	UpdateChannelRequest,
-} from '@/api';
+import type { AgentView, ChannelBinding, ChannelTypeSchema, ChatModelConfig, PermissionMode } from '@/api';
 import { ModelParametersPopover } from '@/components/popover/ModelParametersPopover';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { PermissionModeSelect } from '@/components/select/PermissionModeSelect';
@@ -42,80 +33,6 @@ export interface ChannelFormValue {
 	chatModelConfig: ChatModelConfig | null;
 	fallbackChatModelConfig: ChatModelConfig | null;
 	permissionMode: PermissionMode;
-}
-
-export function defaultChannelForm(agentId = ''): ChannelFormValue {
-	return {
-		channelType: 'feishu',
-		name: '',
-		credentialMode: 'form',
-		credentialBindingId: '',
-		credentials: {},
-		platformConfig: {},
-		bindings: [
-			{
-				match_key: 'chat_id',
-				match_value: '*',
-				agent_id: agentId,
-				session_scope: 'per_chat',
-			},
-		],
-		chatModelConfig: null,
-		fallbackChatModelConfig: null,
-		permissionMode: 'default' as PermissionMode,
-	};
-}
-
-export function channelFormFromRecord(record: ChannelRecord): ChannelFormValue {
-	return {
-		channelType: record.channel_type,
-		name: record.name ?? '',
-		credentialMode: 'form',
-		credentialBindingId: '',
-		credentials: {},
-		platformConfig: record.platform_config ?? {},
-		bindings: record.routing.bindings,
-		chatModelConfig: record.session.chat_model_config,
-		fallbackChatModelConfig: record.session.fallback_chat_model_config ?? null,
-		permissionMode: record.session.permission_mode,
-	};
-}
-
-function sessionSettings(v: ChannelFormValue) {
-	return {
-		session: {
-			chat_model_config: v.chatModelConfig as ChatModelConfig,
-			fallback_chat_model_config: v.fallbackChatModelConfig,
-			permission_mode: v.permissionMode,
-		},
-	};
-}
-
-export function toCreateRequest(v: ChannelFormValue): CreateChannelRequest {
-	// A completed binding replaces the fields; the server takes the
-	// credentials from it so they never travel through the browser.
-	const credentials =
-		v.credentialMode === 'binding'
-			? { credential_binding_id: v.credentialBindingId }
-			: { credentials: v.credentials };
-	return {
-		channel_type: v.channelType,
-		name: v.name.trim() || null,
-		...credentials,
-		platform_config: v.platformConfig,
-		routing: { bindings: v.bindings },
-		enabled: true,
-		...sessionSettings(v),
-	};
-}
-
-export function toUpdateRequest(v: ChannelFormValue): UpdateChannelRequest {
-	return {
-		name: v.name.trim() || null,
-		platform_config: v.platformConfig,
-		routing: { bindings: v.bindings },
-		...sessionSettings(v),
-	};
 }
 
 interface Props {
@@ -209,7 +126,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 			if (card) return card;
 		}
 		return null;
-	}, [groups, value.chatModelConfig?.type, value.chatModelConfig?.model]);
+	}, [groups, value.chatModelConfig]);
 
 	return (
 		<FieldGroup className="[&>[data-orientation=horizontal]>:last-child]:w-48">
@@ -372,6 +289,18 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 									})
 								}
 							/>
+						) : field.type === 'array' ? (
+							<Input
+								className="h-8 w-48 text-sm"
+								placeholder="ID, cách nhau bằng dấu phẩy"
+								value={((value.platformConfig[field.key] ?? field.default ?? []) as string[]).join(', ')}
+								onChange={(e) =>
+									set('platformConfig', {
+										...value.platformConfig,
+										[field.key]: e.target.value.split(/[\s,]+/).filter(Boolean),
+									})
+								}
+							/>
 						) : (
 							<Input
 								className="h-8 w-48 text-sm"
@@ -391,15 +320,4 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 			))}
 		</FieldGroup>
 	);
-}
-
-export function isChannelFormValid(v: ChannelFormValue, mode: 'create' | 'edit'): boolean {
-	if (!v.name.trim()) return false;
-	if (!v.chatModelConfig) return false;
-	if (v.bindings.length === 0) return false;
-	if (v.bindings.some((b) => !b.agent_id)) return false;
-	if (mode === 'create' && !v.channelType) return false;
-	// An unfinished binding has no credentials to create the channel with.
-	if (mode === 'create' && v.credentialMode === 'binding' && !v.credentialBindingId) return false;
-	return true;
 }

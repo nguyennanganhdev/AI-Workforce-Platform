@@ -1,0 +1,18 @@
+{
+  "source_archive": "mock_travel_booking_mcp.zip",
+  "archive_sha256": "9fc26d45f57f72a8fd356798da7759a789cba70762a09de0678f8dcd90d595a1",
+  "mode": "mock",
+  "excluded": [
+    ".env",
+    ".venv",
+    "caches",
+    "standalone MCP server",
+    "calculator",
+    "phone-based booking list exposed as MCP"
+  ],
+  "files": {
+    "__init__.py": "27565f0258051a7180831aea4e1ac7d0b7740c387ceb5026f59fda8e95e3c520",
+    "data.py": "f1fb148f435b0dab7464d72a3e88db63861d13692b1a9045f78dbdde3a6be525",
+    "service.py": "a51090e21f2d40f8d68da64fa824c2b942d526e2f21d96c9f8d086aaaf1541ed"
+  }
+}
