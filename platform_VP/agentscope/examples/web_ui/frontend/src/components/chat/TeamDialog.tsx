@@ -1,10 +1,9 @@
-import { ArrowRight, ChevronRight, Inbox, UserRound, Wrench } from 'lucide-react';
+import { ArrowRight, Inbox, UserRound } from 'lucide-react';
 import { type ReactNode, useContext, useLayoutEffect, useRef, useState } from 'react';
 
-import { RoomContext, TicketViewContext, memberToolCalls, useAgentId } from './team-roster';
-import { KIND_LABEL, cleanName, teamMessageText, toolLabel } from './teamDialogText';
+import { TicketViewContext, useAgentId } from './team-roster';
+import { KIND_LABEL, cleanName, teamMessageText } from './teamDialogText';
 import type { ToolCallWithResult } from './tool-renderers/types';
-import type { RoomEntry } from '@/api';
 import { Markdown } from '@/components/markdown';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
@@ -17,7 +16,7 @@ import { cn } from '@/lib/utils';
 /**
  * How agents talk to each other (and to the end user) in a ticket, shown as
  * a conversation instead of raw tool calls and runtime headers: who wrote to
- * whom, what kind of message it is, its text, and the tools behind a report.
+ * whom, what kind of message it is, and its text.
  */
 
 function parseArgs(input: string | undefined): Record<string, unknown> {
@@ -86,34 +85,6 @@ function Face({ name }: { name: string }) {
 	return <ClayAvatar id={useAgentId(name)} label={name} size={28} />;
 }
 
-/** The tool calls behind a report: a count, then each call with its arguments. */
-function ToolTrace({ calls }: { calls: RoomEntry[] }) {
-	if (calls.length === 0) return null;
-	const names = [...new Set(calls.map((call) => toolLabel(call.text.split(/\s/, 1)[0])))];
-	return (
-		<Collapsible className="mt-2.5 border-t border-dashed border-border/80 pt-2">
-			<CollapsibleTrigger className="group flex w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-				<Wrench className="size-3.5 shrink-0" />
-				<span className="shrink-0">Đã gọi {calls.length} công cụ</span>
-				<span className="min-w-0 flex-1 truncate text-left font-mono">{names.join(' · ')}</span>
-				<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
-			</CollapsibleTrigger>
-			<CollapsibleContent>
-				<ol className="mt-2 flex flex-col gap-1">
-					{calls.map((call, index) => {
-						const tool = toolLabel(call.text.split(' ')[0]);
-						return (
-							<li key={index} className="rounded-lg bg-muted/60 px-2.5 py-1.5 font-mono text-xs">
-								<span className="font-semibold">{tool}</span>
-							</li>
-						);
-					})}
-				</ol>
-			</CollapsibleContent>
-		</Collapsible>
-	);
-}
-
 export function DialogCard({
 	from,
 	to,
@@ -171,18 +142,14 @@ export function TeamMessageCard({
 	sender,
 	kind,
 	text,
-	at,
 }: {
 	sender: string;
 	kind?: string;
 	text: string;
-	at?: string;
 }) {
-	const room = useContext(RoomContext);
 	const from = cleanName(sender);
-	const calls = room ? memberToolCalls(room.timeline, from, at) : [];
 	return (
-		<DialogCard from={from} to="Leader" kind={kind} footer={<ToolTrace calls={calls} />}>
+		<DialogCard from={from} to="Leader" kind={kind}>
 			<Markdown>{teamMessageText(text)}</Markdown>
 		</DialogCard>
 	);

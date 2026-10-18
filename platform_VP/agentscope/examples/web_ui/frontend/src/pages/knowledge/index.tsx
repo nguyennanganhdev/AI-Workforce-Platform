@@ -11,7 +11,6 @@ import { DeleteDialog } from '@/components/dialog/DeleteDialog.tsx';
 import { EditKnowledgeBaseDialog } from '@/components/dialog/EditKnowledgeBaseDialog.tsx';
 import { KnowledgeSearchDrawer } from '@/components/drawer/KnowledgeSearchDrawer.tsx';
 import { KnowledgeDocumentsPanel } from '@/components/knowledge/KnowledgeDocumentsPanel.tsx';
-import { CreateReferenceBase, ReferenceDocuments } from '@/components/knowledge/ReferenceTools';
 import { Badge } from '@/components/ui/badge.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import {
@@ -98,7 +97,7 @@ function DetailPanel({ knowledgeBase, onTest }: DetailPanelProps) {
 			<div className="min-h-0 flex-1 overflow-y-auto p-[20px_18px_24px]">
 				<div className="flex flex-col gap-y-6">
 					<ConfigCard knowledgeBase={knowledgeBase} />
-					{knowledgeBase.retrieval_mode === 'lexical' ? <ReferenceDocuments knowledgeBaseId={knowledgeBase.id} /> : <KnowledgeDocumentsPanel knowledgeBaseId={knowledgeBase.id} />}
+					<KnowledgeDocumentsPanel knowledgeBaseId={knowledgeBase.id} />
 				</div>
 			</div>
 		</div>
@@ -230,7 +229,6 @@ export const KnowledgePage = () => {
 		<div className="flex size-full p-2 gap-2">
 			<Sidebar collapsible="none" className="cue-column border-r border-sidebar-border">
 				<SidebarHeader className={'flex flex-col p-[20px_18px_14px] gap-y-1'}>
-					<CreateReferenceBase onCreated={async id => { await refetch(); navigate(`/knowledge/${id}`); }} />
 					<div className="text-[17px]/6 font-semibold text-foreground">
 						{t('common.knowledge')}
 					</div>

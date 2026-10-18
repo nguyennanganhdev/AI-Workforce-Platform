@@ -38,8 +38,7 @@ import {
 	type HumanData,
 	type SupervisorData,
 } from './graph-model';
-import { studioApi } from '@/api';
-import type { AgentActivity, AgentView } from '@/api';
+import type { AgentView } from '@/api';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { useTranslation } from '@/i18n/useI18n';
@@ -47,8 +46,6 @@ import { cn } from '@/lib/utils';
 import '@xyflow/react/dist/style.css';
 import './agent-graph.css';
 
-const ACTIVITY_REFRESH_MS = 30_000;
-const QUALITY_DAYS = 30;
 
 /** Ports stay invisible: edges meet the card's edge, there is nothing to drag. */
 const PORT = '!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent';
@@ -489,32 +486,6 @@ function Inspector({
 					</Button>
 				</header>
 
-				{data.kind === 'agent' && (
-					<dl className="grid grid-cols-3 gap-2 text-center">
-						{[
-							[t('agents.graph.inspectorSessions'), data.metrics.tickets],
-							[t('agents.graph.inspectorRunning'), data.metrics.replies],
-							[
-								t('agents.graph.inspectorResponse'),
-								data.metrics.lastAt
-									? new Date(data.metrics.lastAt).toLocaleDateString('vi-VN')
-									: '-',
-							],
-						].map(([label, value]) => (
-							<div
-								key={label}
-								className="rounded-xl bg-[var(--cue-bg-subtle,#f4f4f4)] px-1 py-2.5"
-							>
-								<dd className="text-[18px]/[24px] font-semibold tabular-nums">
-									{value}
-								</dd>
-								<dt className="text-[12px]/[16px] text-muted-foreground">
-									{label}
-								</dt>
-							</div>
-						))}
-					</dl>
-				)}
 
 				{agent && (
 					<p className="text-[12px]/[16px] text-muted-foreground">
@@ -573,32 +544,12 @@ export function AgentGraph({
 	const [hoverId, setHoverId] = useState<string | null>(null);
 	const [fullscreen, setFullscreen] = useState(false);
 
-	const [activity, setActivity] = useState<Map<string, AgentActivity>>(new Map());
-	const [now, setNow] = useState(() => Date.now());
-	const [ticketsMonth, setTicketsMonth] = useState<number | null>(null);
-	useEffect(() => {
-		let active = true;
-		const load = () =>
-			Promise.all([studioApi.activity(), studioApi.quality(QUALITY_DAYS)])
-				.then(([rows, quality]) => {
-					if (!active) return;
-					setActivity(new Map(rows.map((row) => [row.agent_id, row])));
-					setTicketsMonth(quality.tickets);
-					setNow(Date.now());
-				})
-				.catch(() => undefined);
-		load();
-		const timer = setInterval(load, ACTIVITY_REFRESH_MS);
-		return () => {
-			active = false;
-			clearInterval(timer);
-		};
-	}, []);
-
 	const model = useMemo(() => {
 		const { agents: graphAgents } = toGraphAgents(agents);
-		return { ...buildGraph(graphAgents, t, activity, now), count: graphAgents.length };
-	}, [agents, t, activity, now]);
+		// The core keeps no per-agent activity report, so the map shows structure only.
+		// With no activity, `now` is never read.
+		return { ...buildGraph(graphAgents, t, new Map(), 0), count: graphAgents.length };
+	}, [agents, t]);
 
 	// Hovering (or, failing that, selecting) a node puts the focus on it: its
 	// own edges and neighbours stay, everything else steps back.
@@ -683,15 +634,6 @@ export function AgentGraph({
 					<div className={cn(FLOAT, 'flex h-8 items-center px-1 text-[12px]/4')}>
 						<span className="px-3">
 							{t('agents.graph.agentCount', { count: model.count })}
-						</span>
-						<span className="h-3.5 w-px bg-[var(--cue-border,#e8e8e8)]" />
-						<span className="flex items-center gap-2 px-3">
-							{model.leaderLive && (
-								<span className="ag-ping relative size-1.5 rounded-full bg-[var(--cue-success,#34c759)]" />
-							)}
-							{ticketsMonth === null
-								? t('agents.graph.idle')
-								: t('agents.graph.running', { count: ticketsMonth, days: QUALITY_DAYS })}
 						</span>
 					</div>
 				</Panel>

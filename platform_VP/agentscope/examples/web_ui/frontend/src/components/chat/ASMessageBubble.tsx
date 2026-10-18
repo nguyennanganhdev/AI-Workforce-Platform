@@ -19,6 +19,7 @@ import {
 	FileText,
 	FileVideo2,
 	Loader2,
+	Reply,
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
@@ -26,7 +27,7 @@ import { memo, useContext, useEffect, useRef, useState } from 'react';
 
 import { TicketViewContext } from './team-roster';
 import { DialogToolCard, HandoverCard, TeamMessageCard, TicketCard } from './TeamDialog';
-import { DIALOG_TOOLS, parseHandover, teamHintSource, teamMessageText, toolLabel } from './teamDialogText';
+import { DIALOG_TOOLS, cleanName, parseHandover, teamHintSource, teamMessageText, toolLabel } from './teamDialogText';
 import { renderToolCall } from './tool-renderers';
 import { DiffStats } from './tool-renderers/_shared';
 import { countDiffStats, getResultDiff } from './tool-renderers/_shared-utils';
@@ -403,6 +404,8 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
+	/** Team chat: answer this agent directly (sends `target_agent_id`). */
+	onReplyTo?: (agentId: string, name: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -428,7 +431,7 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
+function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	const ticketView = useContext(TicketViewContext);
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
@@ -438,7 +441,9 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
 		: undefined;
 
-	const isRunning = !message.finished_at;
+	// A terminal reason is authoritative even for legacy rows that were
+	// persisted before their finished_at timestamp was repaired.
+	const isRunning = !message.finished_at && !message.finished_reason;
 	const hasUsage =
 		!!message.usage &&
 		((message.usage.input_tokens ?? 0) > 0 || (message.usage.output_tokens ?? 0) > 0);
@@ -469,9 +474,14 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		.join('\n\n');
 
 	const startMs = new Date(message.created_at).getTime();
-	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
+	const terminalTime =
+		message.finished_at ??
+		[...message.content].reverse().find((block) => block.finished_at)?.finished_at ??
+		message.created_at;
+	const endMs = isRunning ? now : new Date(terminalTime).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
+	const teamAgentId = message.metadata?.team_agent_id;
 	const visibleBlocks = blocks.filter((block) => {
 		if (block.type === 'data' || (ticket?.request && block.type === 'text')) return false;
 		if (!ticketView) return true;
@@ -487,7 +497,11 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
-				{message.metadata?.group_event && <p className="mb-1 text-xs text-muted-foreground">{message.name}{message.metadata.group_to ? ` → ${String(message.metadata.group_to)}` : ''} · {t(`personal.kind_${String(message.metadata.group_kind)}`)}{message.metadata.group_analysis ? ` · ${t('personal.analysis')}` : ''}</p>}
+				{onReplyTo && !isUser && message.name && (
+					<p className="mb-1 text-xs font-medium text-muted-foreground" data-agent-name={message.name}>
+						{cleanName(message.name)}
+					</p>
+				)}
 				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
 				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
 				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
@@ -547,7 +561,6 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 					<MessageFooter className="gap-1 font-mono">
 						<Badge
 							variant="secondary"
-							className={message.metadata?.group_event ? 'hidden' : undefined}
 							aria-label={isRunning ? t('messageBubble.running') : undefined}
 						>
 							{isRunning ? (
@@ -573,6 +586,16 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
+						{onReplyTo && typeof teamAgentId === 'string' && (
+							<Button
+								variant="ghost"
+								size="xs"
+								onClick={() => onReplyTo(teamAgentId, message.name)}
+								aria-label={`Trả lời ${cleanName(message.name)}`}
+							>
+								<Reply className="size-3" /> Trả lời
+							</Button>
+						)}
 					</MessageFooter>
 				)}
 			</MessageContent>
@@ -740,7 +763,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			const team = teamHintSource(block.source);
 			if (team && typeof block.hint === 'string') {
 				return (
-					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} at={block.created_at} />
+					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} />
 				);
 			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').

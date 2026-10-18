@@ -1066,13 +1066,8 @@
 		"templates": "从模板开始",
 		"role": "这个智能体做什么？",
 		"rolePlaceholder": "例如：接收住户的保洁请求，问清位置和程度，再分派给值班保洁员。",
-		"team": "允许拆分为多个智能体组成的团队",
-		"teamHint": "工作涉及不同专业时由 Builder 决定。",
-		"waiting": "Agent Builder 正在生成草稿，可能需要一到几分钟。",
-		"nothing": "Agent Builder 未能根据此描述创建智能体。",
 		"advanced": "打开 Agent Builder",
 		"create": "用 Builder 生成",
-		"creating": "生成中…",
 		"presets": {
 			"reception": {
 				"name": "前台",

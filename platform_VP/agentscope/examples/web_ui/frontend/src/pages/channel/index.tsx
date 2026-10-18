@@ -133,7 +133,7 @@ function ChannelTypeCard({ type, onPick }: { type: ChannelTypeSchema; onPick: ()
 export function ChannelPage() {
 	const { t } = useTranslation();
 	const { channels, loading, refetch, enable, disable, remove } = useChannels();
-	const { runnable: agents } = useAgents();
+	const { agents } = useAgents();
 	const [types, setTypes] = React.useState<ChannelTypeSchema[]>([]);
 	const [createType, setCreateType] = React.useState<string | null>(null);
 	const [editTarget, setEditTarget] = React.useState<ChannelRecord | null>(null);

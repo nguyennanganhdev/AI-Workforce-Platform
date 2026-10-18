@@ -1064,17 +1064,12 @@
 	},
 	"quickAgent": {
 		"title": "Quick agent with the Agent Builder",
-		"description": "Describe what the agent should do. The Agent Builder drafts it (instructions, tools, knowledge, test cases); you adjust and publish it in agent management.",
+		"description": "Describe what the agent should do. The Agent Builder drafts it (instructions, tools, knowledge); you review and publish it in the Builder.",
 		"templates": "Start from a template",
 		"role": "What does this agent do?",
 		"rolePlaceholder": "E.g. take residents' cleaning requests, ask for the place and how bad it is, then assign the cleaner on duty.",
-		"team": "Allow splitting into a team of agents",
-		"teamHint": "The Builder decides when the work needs different specialities.",
-		"waiting": "The Agent Builder is drafting; this can take a minute or more.",
-		"nothing": "The Agent Builder made no agent from this description.",
 		"advanced": "Open the Agent Builder",
 		"create": "Build it",
-		"creating": "Building…",
 		"presets": {
 			"reception": {
 				"name": "Reception",

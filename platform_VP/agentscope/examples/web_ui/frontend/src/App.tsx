@@ -17,7 +17,6 @@ import { CurrentUserProvider } from '@/context/CurrentUserContext';
 import { UploadProvider } from '@/context/UploadContext';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
-import { AdminPage } from '@/pages/admin';
 import { AuthPage } from '@/pages/auth';
 
 /**
@@ -132,23 +131,6 @@ function PlatformApp() {
 						void router.navigate('/chat');
 						setCurrentUser(user);
 						setAuthStatus('authenticated');
-					}}
-				/>
-				<Toaster richColors position="top-right" />
-			</>
-		);
-	}
-
-	if (currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
-		// Administrators manage accounts, domains and areas; agents and tickets belong to BQL accounts.
-		return (
-			<>
-				<AdminPage
-					user={currentUser}
-					onLogout={async () => {
-						await authApi.logout();
-						setCurrentUser(null);
-						setAuthStatus('anonymous');
 					}}
 				/>
 				<Toaster richColors position="top-right" />

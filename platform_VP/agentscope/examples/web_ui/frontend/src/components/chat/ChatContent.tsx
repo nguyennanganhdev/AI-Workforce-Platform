@@ -6,7 +6,7 @@ import {
 	type TextBlock,
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
-import { GitBranch, TriangleAlert } from 'lucide-react';
+import { GitBranch, TriangleAlert, X } from 'lucide-react';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
@@ -17,6 +17,7 @@ import { ChoiceCard } from '@/components/chat/ChoiceCard';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
 import { FlipCard } from '@/components/chat/FlipCard.tsx';
 import { TicketViewContext } from '@/components/chat/team-roster';
+import { cleanName } from '@/components/chat/teamDialogText';
 import { type MentionOption, TextInput } from '@/components/chat/TextInput.tsx';
 import { WorkingDirectoryDialog } from '@/components/dialog/WorkingDirectoryDialog';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert.tsx';
@@ -64,8 +65,12 @@ function markerStamp(at: Date, previous: Date, language: string): string {
 }
 
 interface ChatContentProps {
-	personalChat?: boolean;
-	groupChat?: boolean;
+	/**
+	 * The team's shared chat (the Leader's session): replies from several
+	 * agents interleave, inbox copies and thinking stay hidden, and a reply
+	 * can be addressed to one agent.
+	 */
+	teamChat?: boolean;
 	composerPlaceholder?: string;
 	showWorkspace?: boolean;
 	msgs: Msg[];
@@ -82,7 +87,7 @@ interface ChatContentProps {
 	 */
 	phase: ReplyPhase;
 	disabled: boolean;
-	onSend: (content: ContentBlock[]) => void;
+	onSend: (content: ContentBlock[], targetAgentId?: string) => void;
 	onUserConfirm: (
 		toolCall: ToolCallBlock,
 		confirm: boolean,
@@ -124,8 +129,7 @@ interface ChatContentProps {
 }
 
 const ChatContentComponent: React.FC<ChatContentProps> = ({
-	personalChat = false,
-	groupChat = false,
+	teamChat = false,
 	msgs,
 	composerPlaceholder,
 	showWorkspace = true,
@@ -151,6 +155,31 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const ticketView = useContext(TicketViewContext);
+	const visibleMsgs = useMemo(
+		() =>
+			teamChat
+				? msgs.flatMap((message) => {
+						if (message.role !== 'assistant') return [message];
+						const content = message.content.filter(
+							(block) => block.type !== 'hint' && block.type !== 'thinking',
+						);
+						if (
+							content.length === 0 &&
+							message.finished_reason &&
+							message.finished_reason !== ReplyFinishedReason.ERROR
+						)
+							return [];
+						return [{ ...message, content }];
+					})
+				: msgs,
+		[msgs, teamChat],
+	);
+	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
+	useEffect(() => setReplyTarget(null), [sessionId]);
+	const handleSend = (content: ContentBlock[]) => {
+		onSend(content, replyTarget?.agentId);
+		setReplyTarget(null);
+	};
 	// Only a session that finished loading with nothing in it is empty.
 	// Treating "no messages yet" as empty would flash the greeting over
 	// every session that does have history.
@@ -208,16 +237,6 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				<div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
 					Session này chưa nhận ticket nào.
 				</div>
-			) : isEmpty && personalChat ? (
-				<div className="flex min-h-0 flex-1 flex-col items-start justify-center gap-5 overflow-y-auto px-6 py-8 sm:px-10">
-					<div className="max-w-xl space-y-2">
-						<h1 className="text-xl font-semibold tracking-tight">{t('personal.greeting', { agent: agentName ?? 'Agent' })}</h1>
-						<p className="text-sm leading-relaxed text-muted-foreground">{t(groupChat ? 'personal.groupIntro' : 'personal.intro')}</p>
-					</div>
-					<div className="flex max-w-xl flex-col items-start gap-2">
-						{['capabilities', 'boundaries', 'plan'].map(key => <Button key={key} variant="outline" className="h-auto min-h-11 max-w-full justify-start whitespace-normal py-2 text-left text-sm" disabled={disabled} onClick={() => sendText(t(`personal.${key}`))}>{t(`personal.${key}`)}</Button>)}
-					</div>
-				</div>
 			) : isEmpty ? (
 				// Cue's onboarding: the agent speaks first — a personal greeting,
 				// then a few things it can do as a choice card. Picking one sends
@@ -244,8 +263,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					<MessageScroller>
 						<MessageScrollerViewport>
 							<MessageScrollerContent className="px-4 pt-2 pb-4">
-								{msgs.map((message, index) => {
-									const previous = msgs[index - 1];
+								{visibleMsgs.map((message, index) => {
+									const previous = visibleMsgs[index - 1];
 									const at = new Date(message.created_at);
 									const previousAt = previous
 										? new Date(previous.finished_at ?? previous.created_at)
@@ -269,6 +288,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 											<ASMessageBubble
 												message={message}
 												onUserConfirm={onUserConfirm}
+												onReplyTo={
+													teamChat
+														? (targetAgentId, name) =>
+																setReplyTarget({ agentId: targetAgentId, name })
+														: undefined
+												}
 											/>
 										</MessageScrollerItem>
 									);
@@ -321,6 +346,19 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 
 			{loading ? null : (
 				<div className="relative w-full px-4 pb-4">
+					{replyTarget && (
+						<div className="mb-2 flex items-center justify-between rounded-xl bg-muted px-3 py-2 text-sm">
+							<span>Trả lời {cleanName(replyTarget.name)}</span>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								aria-label="Hủy trả lời agent"
+								onClick={() => setReplyTarget(null)}
+							>
+								<X />
+							</Button>
+						</div>
+					)}
 					{/* In flow, not overlaid: the transcript shrinks to make room, so the
 					    card never hides the message it answers. */}
 					<FlipCard
@@ -352,7 +390,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 								? t('chat.messagePlaceholder', { name: agentName })
 								: undefined)
 						}
-						onSend={onSend}
+						onSend={handleSend}
 						disabled={disabled}
 						autoComplete={autoComplete}
 						mentions={mentions}

@@ -173,7 +173,7 @@ export const client = {
 	get: <T>(
 		path: string,
 		params?: Record<string, string>,
-		options?: { silent?: boolean; baseUrl?: string; timeoutMs?: number },
+		options?: { silent?: boolean; baseUrl?: string; timeoutMs?: number; signal?: AbortSignal },
 	) => request<T>(path, { method: 'GET', params, ...options }),
 	post: <T>(
 		path: string,

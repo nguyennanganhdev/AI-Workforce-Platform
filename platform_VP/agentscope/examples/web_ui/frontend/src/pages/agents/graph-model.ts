@@ -1,6 +1,15 @@
 import type { Edge, Node } from '@xyflow/react';
 
-import type { AgentActivity, AgentView } from '@/api';
+import type { AgentView } from '@/api';
+
+/** One agent's activity, when a report of it is available (the core has none yet). */
+export type AgentActivity = {
+	agent_id: string;
+	role: string;
+	tickets: number;
+	replies: number;
+	last_at: string | null;
+};
 
 /** An agent as the graph draws it. */
 export type GraphAgent = {
