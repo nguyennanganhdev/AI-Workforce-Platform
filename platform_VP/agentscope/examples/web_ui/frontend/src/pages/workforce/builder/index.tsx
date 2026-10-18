@@ -13,11 +13,11 @@ import {
 	Power,
 	PowerOff,
 	Send,
-	Sparkles,
+	Settings2,
 	Trash2,
 	Wrench,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -33,6 +33,7 @@ import type {
 } from '@/api';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { Markdown } from '@/components/markdown';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +47,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Message, MessageContent } from '@/components/ui/message';
+import { Message, MessageAvatar, MessageContent } from '@/components/ui/message';
 import { Progress } from '@/components/ui/progress';
 import {
 	SidebarGroup,
@@ -60,6 +61,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
+import { useAgents } from '@/hooks/useAgents';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
 
 function prefersVietnamese(text: string) {
@@ -68,6 +70,87 @@ function prefersVietnamese(text: string) {
 		/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/i.test(normalized) ||
 		['tôi', 'bạn', 'hãy', 'muốn', 'không'].filter((word) => normalized.includes(word)).length >=
 			2
+	);
+}
+
+function PlannedAgentCard({
+	agent,
+}: {
+	agent: BuilderProposal['planned_agents'][number];
+}) {
+	return (
+		<Card className="border-border/70 shadow-none">
+			<CardHeader className="pb-3">
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<CardTitle className="flex flex-wrap items-center gap-2 text-base">
+							<Bot className="size-4 shrink-0 text-primary" />
+							{agent.name}
+						</CardTitle>
+						<p className="mt-2 text-sm leading-5 text-muted-foreground">
+							{agent.objective}
+						</p>
+					</div>
+					{agent.reuse_agent_name && (
+						<Badge variant="destructive" className="shrink-0">
+							Có thể tái sử dụng
+						</Badge>
+					)}
+				</div>
+			</CardHeader>
+			<CardContent className="grid gap-4 pt-0 sm:grid-cols-2">
+				<section>
+					<div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+						<Wrench className="size-3.5" /> Tool đề xuất
+					</div>
+					{agent.suggested_tools.length > 0 ? (
+						<div className="space-y-1.5">
+							{agent.suggested_tools.map((tool) => (
+								<div
+									key={tool.id}
+									className="w-fit max-w-full break-all rounded-md bg-secondary px-2 py-1 font-mono text-[10px] font-medium text-secondary-foreground"
+									title={tool.description || tool.tool_name}
+								>
+									{tool.mcp_name} / {tool.tool_name}
+								</div>
+							))}
+						</div>
+					) : (
+						<p className="text-xs text-muted-foreground">Không cần tool riêng.</p>
+					)}
+				</section>
+				<section>
+					<div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+						<Database className="size-3.5" /> Knowledge Base đề xuất
+					</div>
+					{agent.suggested_knowledge_bases.length > 0 ? (
+						<div className="space-y-1.5">
+							{agent.suggested_knowledge_bases.map((knowledge) => (
+								<div
+									key={knowledge.id}
+									className="w-fit max-w-full break-words rounded-md border px-2 py-1 text-[10px] font-medium"
+									title={knowledge.description || knowledge.name}
+								>
+									{knowledge.name}
+								</div>
+							))}
+						</div>
+					) : (
+						<p className="text-xs text-muted-foreground">Không đề xuất Knowledge Base.</p>
+					)}
+				</section>
+				{agent.reuse_agent_name && (
+					<div className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-xs text-red-700 sm:col-span-2 dark:text-red-400">
+						<CircleAlert className="mt-0.5 size-4 shrink-0" />
+						<span>
+							Có thể tái sử dụng agent đã phát hành{' '}
+							<strong>{agent.reuse_agent_name}</strong>. Builder sẽ không tạo lại agent
+							này khi sinh cấu hình.
+						</span>
+					</div>
+				)}
+			</CardContent>
+		</Card>
 	);
 }
 
@@ -218,6 +301,11 @@ function AgentProposalCard({
 
 export function AgentBuilderPage() {
 	const { knowledgeBases, loading: knowledgeBasesLoading } = useKnowledgeBases();
+	const {
+		agents: agentViews,
+		refetch: refetchAgentViews,
+		remove: removeAgent,
+	} = useAgents();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [message, setMessage] = useState('');
 	const [conversationId, setConversationId] = useState<string | null>(() =>
@@ -237,6 +325,11 @@ export function AgentBuilderPage() {
 	const [deleteConversationOpen, setDeleteConversationOpen] = useState(false);
 	const [conversationToDelete, setConversationToDelete] =
 		useState<BuilderConversationSummary | null>(null);
+	const [agentToEditId, setAgentToEditId] = useState<string | null>(null);
+	const [agentToDelete, setAgentToDelete] = useState<WorkforceAgent | null>(null);
+	const [deleteAgentOpen, setDeleteAgentOpen] = useState(false);
+	const conversationEndRef = useRef<HTMLDivElement | null>(null);
+	const agentToEdit = agentViews.find((agent) => agent.id === agentToEditId) ?? null;
 
 	const loadAgents = useCallback(async () => {
 		setAgents(await workforceApi.listAgents());
@@ -275,6 +368,10 @@ export function AgentBuilderPage() {
 		// The first load owns restoration; later navigation uses openConversation.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
+
+	useEffect(() => {
+		conversationEndRef.current?.scrollIntoView({ block: 'end' });
+	}, [conversation, working]);
 
 	const newConversation = () => {
 		setConversationId(null);
@@ -372,7 +469,7 @@ export function AgentBuilderPage() {
 			);
 			setProposal({ ...proposal, status: 'published' });
 			await refreshConversation(proposal.conversation_id);
-			await loadAgents();
+			await Promise.all([loadAgents(), refetchAgentViews()]);
 			toast.success(`Đã sẵn sàng ${result.agents.length} agent trong platform.`);
 		} finally {
 			setWorking(false);
@@ -383,6 +480,18 @@ export function AgentBuilderPage() {
 		const next = agent.lifecycle_state === 'published' ? 'draft' : 'published';
 		await workforceApi.setLifecycle(agent.agent_id, next);
 		await loadAgents();
+		toast.success(
+			next === 'published'
+				? `Đã phát hành lại ${agent.name}.`
+				: `Đã ngừng phát hành ${agent.name}.`,
+		);
+	};
+
+	const deleteAgent = async (agent: WorkforceAgent) => {
+		await removeAgent(agent.agent_id);
+		await loadAgents();
+		if (agentToEditId === agent.agent_id) setAgentToEditId(null);
+		toast.success(`Đã xóa ${agent.name}.`);
 	};
 
 	const conversationGroups = [
@@ -541,178 +650,98 @@ export function AgentBuilderPage() {
 							</div>
 						</div>
 					</header>
-					<div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-						<div className="mx-auto max-w-5xl space-y-5">
-							<div className="rounded-xl border bg-background p-4">
-								{conversation.length > 0 && (
-									<div className="mb-5 max-h-80 space-y-5 overflow-y-auto border-b pb-5">
-										{conversation.map((item, index) => (
-											<Message
-												key={`${item.role}:${index}`}
-												align={item.role === 'user' ? 'end' : 'start'}
-											>
-												<MessageContent>
-													<Bubble
-														variant={
-															item.role === 'user' ? 'muted' : 'ghost'
-														}
-													>
-														<BubbleContent>
-															<Markdown>{item.text}</Markdown>
-														</BubbleContent>
-													</Bubble>
-												</MessageContent>
-											</Message>
-										))}
+					<div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+						<div className="mx-auto max-w-4xl space-y-6">
+							{conversation.length === 0 ? (
+								<div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
+									<div className="mb-4 flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+										<MessageSquare className="size-5" />
 									</div>
-								)}
-								<div className="flex items-start gap-3">
-									<Sparkles className="mt-1 size-4 text-primary" />
-									<div className="flex-1">
-										<p className="text-sm font-medium">
-											Bạn cần agent làm nghiệp vụ gì?
-										</p>
-										<Textarea
-											value={message}
-											onChange={(event) => setMessage(event.target.value)}
-											placeholder="Ví dụ: Tạo agent tìm khách sạn, kiểm tra phòng trống và đề xuất theo ngân sách..."
-											className="mt-3 min-h-28 resize-y bg-background"
-											disabled={working}
-										/>
-										<div className="mt-3 flex justify-end">
-											<Button
-												onClick={() => void prepare()}
-												disabled={
-													working || !message.trim() || !selectedModel
-												}
-											>
-												{working ? <Spinner /> : <Send />}
-												Gửi cho Builder
-											</Button>
-										</div>
-										{!selectedModel && (
-											<p className="mt-2 text-right text-xs text-amber-700">
-												Hãy chọn model trước khi gửi yêu cầu cho Builder.
-											</p>
-										)}
-									</div>
+									<p className="font-medium">Bắt đầu với một yêu cầu rõ ràng</p>
+									<p className="mt-1 max-w-md text-sm text-muted-foreground">
+										Mô tả công việc, dữ liệu cần dùng và kết quả bạn muốn agent tạo ra.
+									</p>
 								</div>
-							</div>
-
-							{proposal && (
-								<>
-									<div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3">
-										<div>
-											<p className="text-sm font-medium">
-												{proposal.assistant_message}
-											</p>
-											{proposal.clarification_question && (
-												<p className="mt-1 text-sm text-amber-700">
-													{proposal.clarification_question}
+							) : (
+								conversation.map((item, index) => (
+									<Message
+										key={`${item.role}:${index}`}
+										align={item.role === 'user' ? 'end' : 'start'}
+									>
+										{item.role === 'builder' && (
+											<MessageAvatar className="self-start bg-primary text-primary-foreground">
+												<Hammer className="size-4" />
+											</MessageAvatar>
+										)}
+										<MessageContent>
+											{item.role === 'builder' && (
+												<p className="px-1 text-xs font-medium text-muted-foreground">
+													Agent Builder
 												</p>
 											)}
-											<p className="mt-1 text-xs text-muted-foreground">
-												Runtime:{' '}
-												<span className="font-mono">
-													{proposal.chat_model_config.model}
-												</span>
-												{' · Builder: '}
-												<span className="font-mono">
-													{proposal.builder_chat_model_config?.model ??
-														proposal.chat_model_config.model}
-												</span>
-												{' · '}
-												{proposal.fixed_config.runtime_note}
-											</p>
-											{buildProgress && (
-												<div className="mt-3 max-w-md">
-													<p className="font-mono text-xs text-primary">
-														{buildProgress.stage} {buildProgress.completed}/
-														{buildProgress.total}
-													</p>
-													<Progress
-														value={
-															(buildProgress.completed / buildProgress.total) *
-															100
-														}
-														className="mt-1.5 h-1.5"
-													/>
-												</div>
-											)}
+											<Bubble variant={item.role === 'user' ? 'default' : 'secondary'}>
+												<BubbleContent className="px-4 py-3">
+													<Markdown>{item.text}</Markdown>
+												</BubbleContent>
+											</Bubble>
+										</MessageContent>
+									</Message>
+								))
+							)}
+							<div ref={conversationEndRef} />
+
+							{proposal && proposal.planned_agents.length > 0 && (
+								<section className="space-y-4 border-t pt-6">
+									<div>
+										<div className="flex items-center justify-between gap-3">
+											<h2 className="font-medium">Đề xuất phân công</h2>
+											<Badge variant="secondary">
+												{proposal.planned_agents.length} agent
+											</Badge>
 										</div>
-										{proposal.status === 'ready' && (
-											<Button onClick={publish} disabled={working}>
-												<CheckCircle2 /> Phát hành
-											</Button>
-										)}
-										{proposal.status === 'needs_input' &&
-											proposal.planned_agents.length > 0 && (
-												<Button
-													onClick={() => void confirmOutline()}
-													disabled={working}
-												>
-													{working ? <Spinner /> : <CheckCircle2 />} Chốt định hướng và sinh cấu
-													hình
-												</Button>
-											)}
-										{proposal.status === 'published' && (
-											<Badge>Đã phát hành</Badge>
-										)}
-										{proposal.status === 'blocked' && (
-											<Badge variant="destructive">Bị chặn</Badge>
-										)}
+										<p className="mt-1 text-sm text-muted-foreground">
+											Kiểm tra agent, tool, Knowledge Base và khả năng tái sử dụng
+											trước khi sinh cấu hình.
+										</p>
 									</div>
-									{proposal.planned_agents.length > 0 && (
-										<div className="grid gap-3 md:grid-cols-2">
-											{proposal.planned_agents.map((agent) => (
-												<div
-													key={agent.name}
-													className="rounded-xl border bg-background p-4"
-												>
-													<div className="flex items-center gap-2">
-														<Bot className="size-4 text-primary" />
-														<p className="font-medium">{agent.name}</p>
-														{agent.reuse_agent_id && (
-													<Badge variant="destructive">Có thể tái sử dụng</Badge>
-														)}
-													</div>
-													<p className="mt-2 text-sm text-muted-foreground">
-														{agent.objective}
-													</p>
-													{agent.reuse_agent_name && (
-												<p className="mt-3 rounded-md border border-red-500/40 bg-red-500/5 p-2 text-xs text-red-700 dark:text-red-400">
-													Có thể tái sử dụng <strong>{agent.reuse_agent_name}</strong>.
-													 Khi chốt phương án, Builder sẽ bỏ qua agent này và chỉ
-													 sinh cấu hình cho các agent mới.
-														</p>
-													)}
-													<div className="mt-3 flex flex-wrap gap-1.5">
-														{agent.suggested_tools.map((tool) => (
-															<Badge
-																key={tool.id}
-																variant="secondary"
-																className="font-mono text-[10px]"
-															>
-																{tool.tool_name}
-															</Badge>
-														))}
-														{agent.suggested_knowledge_bases.map(
-															(knowledge) => (
-																<Badge
-																	key={knowledge.id}
-																	variant="outline"
-																	className="text-[10px]"
-																>
-																	<Database className="size-3" />{' '}
-																	{knowledge.name}
-																</Badge>
-															),
-														)}
-													</div>
-												</div>
-											))}
-										</div>
-									)}
+									<div className="grid gap-3 md:grid-cols-2">
+										{proposal.planned_agents.map((agent) => (
+											<PlannedAgentCard key={agent.name} agent={agent} />
+										))}
+									</div>
+								</section>
+							)}
+
+							{proposal?.status === 'needs_input' &&
+								proposal.planned_agents.length > 0 && (
+									<div className="flex justify-center py-2">
+										<Button
+											onClick={() => void confirmOutline()}
+											disabled={working}
+										>
+											{working ? <Spinner /> : <CheckCircle2 />}
+											{working && buildProgress
+												? `${buildProgress.stage} ${buildProgress.completed}/${buildProgress.total}`
+												: 'Chốt định hướng và sinh cấu hình'}
+										</Button>
+									</div>
+								)}
+							{proposal?.status === 'ready' && (
+								<div className="flex justify-center py-2">
+									<Button onClick={publish} disabled={working}>
+										{working ? <Spinner /> : <CheckCircle2 />} Phát hành
+									</Button>
+								</div>
+							)}
+
+							{proposal && proposal.agents.length > 0 && (
+								<section className="space-y-4 border-t pt-6">
+									<div>
+										<h2 className="font-medium">Cấu hình đã sinh</h2>
+										<p className="mt-1 text-sm text-muted-foreground">
+											Xem prompt, skill, tool và Knowledge Base trước khi phát hành.
+										</p>
+									</div>
 									{proposal.agents.map((agent, agentIndex) => (
 										<AgentProposalCard
 											key={`${agent.name}:${agent.skill_name}`}
@@ -747,7 +776,49 @@ export function AgentBuilderPage() {
 											}
 										/>
 									))}
-								</>
+								</section>
+							)}
+						</div>
+					</div>
+					<div className="border-t bg-card px-6 py-4">
+						<div className="mx-auto max-w-4xl">
+							<div className="flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
+								<Textarea
+									value={message}
+									onChange={(event) => setMessage(event.target.value)}
+									onKeyDown={(event) => {
+										if (
+											event.key === 'Enter' &&
+											!event.shiftKey &&
+											!event.nativeEvent.isComposing &&
+											!working &&
+											message.trim() &&
+											selectedModel
+										) {
+											event.preventDefault();
+											void prepare();
+										}
+									}}
+									placeholder="Nhắn cho Agent Builder..."
+									className="max-h-40 min-h-12 resize-none border-0 bg-transparent px-3 py-3 shadow-none focus-visible:ring-0 dark:bg-transparent"
+									disabled={working}
+									rows={1}
+								/>
+								<Button
+									size="icon"
+									className="size-10 shrink-0 rounded-full"
+									onClick={() => void prepare()}
+									disabled={working || !message.trim() || !selectedModel}
+									aria-label="Gửi cho Agent Builder"
+									title="Gửi"
+								>
+									{working ? <Spinner /> : <Send />}
+								</Button>
+							</div>
+							{!selectedModel && (
+								<p className="mt-2 px-2 text-xs text-amber-700">
+									Hãy chọn model trước khi gửi yêu cầu cho Builder.
+								</p>
 							)}
 						</div>
 					</div>
@@ -758,7 +829,7 @@ export function AgentBuilderPage() {
 						<div>
 							<h2 className="font-medium">Agent trong platform</h2>
 							<p className="text-xs text-muted-foreground">
-								Leader chỉ thấy agent đang phát hành
+								Chỉ agent đang phát hành xuất hiện trong Chat
 							</p>
 						</div>
 						<Badge variant="secondary">{agents.length}</Badge>
@@ -773,17 +844,55 @@ export function AgentBuilderPage() {
 											{agent.objective}
 										</p>
 									</div>
-									<Button
-										size="icon-sm"
-										variant="ghost"
-										onClick={() => toggleLifecycle(agent)}
-									>
-										{agent.lifecycle_state === 'published' ? (
-											<Power />
-										) : (
-											<PowerOff />
-										)}
-									</Button>
+									<div className="flex shrink-0 items-center">
+										<Button
+											size="icon-sm"
+											variant="ghost"
+											onClick={() => setAgentToEditId(agent.agent_id)}
+											disabled={
+												!agentViews.find((item) => item.id === agent.agent_id)
+													?.editable
+											}
+											aria-label={`Cài đặt ${agent.name}`}
+											title="Cài đặt"
+										>
+											<Settings2 />
+										</Button>
+										<Button
+											size="icon-sm"
+											variant="ghost"
+											onClick={() => void toggleLifecycle(agent)}
+											aria-label={
+												agent.lifecycle_state === 'published'
+													? `Ngừng phát hành ${agent.name}`
+													: `Phát hành lại ${agent.name}`
+											}
+											title={
+												agent.lifecycle_state === 'published'
+													? 'Ngừng phát hành'
+													: 'Phát hành lại'
+											}
+										>
+											{agent.lifecycle_state === 'published' ? (
+												<Power />
+											) : (
+												<PowerOff />
+											)}
+										</Button>
+										<Button
+											size="icon-sm"
+											variant="ghost"
+											className="text-destructive hover:text-destructive"
+											onClick={() => {
+												setAgentToDelete(agent);
+												setDeleteAgentOpen(true);
+											}}
+											aria-label={`Xóa ${agent.name}`}
+											title="Xóa"
+										>
+											<Trash2 />
+										</Button>
+									</div>
 								</div>
 								<div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
 									<span>
@@ -793,7 +902,7 @@ export function AgentBuilderPage() {
 										<ChevronRight className="size-3" />
 										{agent.lifecycle_state === 'published'
 											? 'Đang phát hành'
-											: 'Bản nháp'}
+											: 'Đã ngừng phát hành'}
 									</span>
 								</div>
 							</div>
@@ -806,6 +915,29 @@ export function AgentBuilderPage() {
 					</div>
 				</aside>
 			</div>
+			{agentToEdit && (
+				<EditAgentDialog
+					open
+					onOpenChange={(open) => {
+						if (!open) setAgentToEditId(null);
+					}}
+					agent={agentToEdit}
+					onUpdated={() => {
+						void loadAgents();
+						void refetchAgentViews();
+					}}
+				/>
+			)}
+			<DeleteDialog
+				open={deleteAgentOpen}
+				onOpenChange={setDeleteAgentOpen}
+				title={`Xóa agent “${agentToDelete?.name ?? ''}”?`}
+				description="Agent và toàn bộ session liên quan sẽ bị xóa vĩnh viễn."
+				confirmLabel="Xóa agent"
+				onConfirm={async () => {
+					if (agentToDelete) await deleteAgent(agentToDelete);
+				}}
+			/>
 			<DeleteDialog
 				open={deleteConversationOpen}
 				onOpenChange={setDeleteConversationOpen}

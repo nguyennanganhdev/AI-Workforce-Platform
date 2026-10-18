@@ -6,12 +6,10 @@ import {
 	type TextBlock,
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
-import { GitBranch, TriangleAlert, X } from 'lucide-react';
+import { TriangleAlert, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
-import { DiffStats } from './tool-renderers/_shared';
-import type { GitStatus } from '@/api';
 import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
 import { FlipCard } from '@/components/chat/FlipCard.tsx';
@@ -106,10 +104,6 @@ interface ChatContentProps {
 	cwd: string | null;
 	/** Persists a new working directory. */
 	onCwdChange: (cwd: string | null) => void | Promise<void>;
-	/** Git state of {@link cwd}; `null` hides the branch badge entirely. */
-	git?: GitStatus | null;
-	/** Re-reads the git state, since nothing polls for it. */
-	onRefreshGit?: () => void | Promise<void>;
 }
 
 const ChatContentComponent: React.FC<ChatContentProps> = ({
@@ -130,8 +124,6 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	sessionId,
 	cwd,
 	onCwdChange,
-	git,
-	onRefreshGit,
 }) => {
 	const { t, i18n } = useTranslation();
 	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
@@ -326,39 +318,6 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 									value={cwd}
 									onChange={onCwdChange}
 								/>
-								{git && (
-									<Button
-										className="font-mono"
-										variant="secondary"
-										size="sm"
-										onClick={() => void onRefreshGit?.()}
-										title={t('workdir.gitTooltip', {
-											staged: git.staged,
-											unstaged: git.unstaged,
-											untracked: git.untracked,
-										})}
-									>
-										<GitBranch />
-										{/* A detached HEAD has no branch to name, so
-										    fall back to the commit it sits on. The
-										    server sends no git at all when it has
-										    neither. */}
-										{git.branch ?? git.head?.slice(0, 7)}
-										{git.ahead !== null && git.ahead > 0 && (
-											<span className="text-xs">↑{git.ahead}</span>
-										)}
-										{git.behind !== null && git.behind > 0 && (
-											<span className="text-xs">↓{git.behind}</span>
-										)}
-										{/* Renders nothing when both are zero, so a
-										    clean tree shows just the branch. */}
-										<DiffStats
-											className="text-xs font-mono"
-											insertions={git.insertions}
-											deletions={git.deletions}
-										/>
-									</Button>
-								)}
 							</div>
 						}
 					/>

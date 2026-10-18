@@ -12,7 +12,7 @@ import {
 	Trash2,
 	Users,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
@@ -101,7 +101,16 @@ const ChatPageInner = () => {
 		memberId?: string;
 	}>();
 	const { t } = useTranslation();
-	const { agents, refetch: refetchAgents, remove: removeAgent } = useAgents();
+	const {
+		agents,
+		loading: agentsLoading,
+		refetch: refetchAgents,
+		remove: removeAgent,
+	} = useAgents();
+	const publishedAgents = useMemo(
+		() => agents.filter((agent) => agent.data.lifecycle_state === 'published'),
+		[agents],
+	);
 	const {
 		sessions,
 		refetch: refetchSessions,
@@ -118,7 +127,7 @@ const ChatPageInner = () => {
 	const [deleteSessionOpen, setDeleteSessionOpen] = useState(false);
 	const [sessionToDelete, setSessionToDelete] = useState<SessionRecord | null>(null);
 
-	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
+	const selectedAgent = publishedAgents.find((a) => a.id === urlAgentId) ?? null;
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
 	// Show a per-origin icon only when sessions actually mix sources —
 	// a uniform list needs no disambiguation.
@@ -151,15 +160,17 @@ const ChatPageInner = () => {
 		localStorage.setItem(LAST_SESSION_KEY, urlSessionId);
 	}, [urlAgentId, urlSessionId]);
 
-	// Redirect: URL is missing an agent → reopen the last one viewed,
-	// falling back to the first, and rewrite the URL in-place (replace
-	// so we don't pollute history).
+	// Open only published agents. This also moves an old direct URL away
+	// from an agent that has since been unpublished.
 	useEffect(() => {
-		if (urlAgentId || agents.length === 0) return;
+		if (agentsLoading) return;
+		if (urlAgentId && publishedAgents.some((agent) => agent.id === urlAgentId)) return;
 		const remembered = localStorage.getItem(LAST_AGENT_KEY);
-		const agent = agents.find((a) => a.id === remembered) ?? agents[0];
-		navigate(`/chat/${agent.id}`, { replace: true });
-	}, [agents, urlAgentId, navigate]);
+		const agent =
+			publishedAgents.find((item) => item.id === remembered) ?? publishedAgents[0];
+		if (agent) navigate(`/chat/${agent.id}`, { replace: true });
+		else if (urlAgentId) navigate('/chat', { replace: true });
+	}, [agentsLoading, navigate, publishedAgents, urlAgentId]);
 
 	// Redirect: URL has an agent but no session, or its sessionId no
 	// longer exists for this agent → reopen the last session viewed
@@ -247,7 +258,7 @@ const ChatPageInner = () => {
 						<SidebarGroupContent className="flex items-center">
 							<AgentSelect
 								className="flex-1 min-w-0"
-								agents={agents}
+								agents={publishedAgents}
 								value={urlAgentId ?? null}
 								onChange={(id) => navigate(`/chat/${id}`)}
 								variant="ghost"

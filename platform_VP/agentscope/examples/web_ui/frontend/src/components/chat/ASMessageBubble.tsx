@@ -9,8 +9,6 @@ import type {
 	ToolResultBlock,
 } from '@agentscope-ai/agentscope/message';
 import {
-	ArrowDown,
-	ArrowUp,
 	Check,
 	CheckCircle,
 	ChevronRight,
@@ -50,7 +48,7 @@ import { Message, MessageFooter, MessageContent } from '@/components/ui/message'
 import { useAudioBlock, useReplayController } from '@/context/AudioContext';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
-import { copyToClipboard, formatNumber, formatTime } from '@/utils/common';
+import { copyToClipboard, formatTime } from '@/utils/common';
 import 'streamdown/styles.css';
 
 /**
@@ -196,7 +194,7 @@ function AudioWave({ isPlaying = true, className }: { isPlaying?: boolean; class
 }
 
 /**
- * Inline audio control rendered *inside* the time/usage Badge so the play
+ * Inline audio control rendered *inside* the status Badge so the play
  * icon visually merges into the same chip rather than floating as its own
  * pill.
  */
@@ -406,13 +404,11 @@ interface MessageBubbleProps {
  * Running state is derived from `message.finished_at`: a missing or null
  * `finished_at` means the agent is still producing this reply. The bottom
  * status row shows a single left-aligned badge laid out as
- * `[state-icon] [duration] [↑in ↓out]`:
+ * `[state-icon] [duration]`:
  *   - State icon: spinning `Loader2` while running, static `CheckCircle`
  *     once finished.
  *   - Duration is `now - created_at` while running (ticking each second),
  *     `finished_at - created_at` once complete.
- *   - Token counts only appear once `usage` is populated with non-zero
- *     values — typically after the message finishes.
  *
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
@@ -424,9 +420,6 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	// A terminal reason is authoritative even for legacy rows that were
 	// persisted before their finished_at timestamp was repaired.
 	const isRunning = !message.finished_at && !message.finished_reason;
-	const hasUsage =
-		!!message.usage &&
-		((message.usage.input_tokens ?? 0) > 0 || (message.usage.output_tokens ?? 0) > 0);
 
 	// Tick once per second while running so the elapsed time updates live.
 	const [now, setNow] = useState(() => Date.now());
@@ -546,18 +539,6 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 								<CheckCircle data-icon="inline-start" />
 							)}
 							<span className="tabular-nums tracking-tighter">{elapsedText}</span>
-							{hasUsage && (
-								<>
-									<ArrowUp data-icon="inline-start" className="ml-1" />
-									<span className="tabular-nums">
-										{formatNumber(message.usage?.input_tokens ?? 0)}
-									</span>
-									<ArrowDown data-icon="inline-start" className="ml-1" />
-									<span className="tabular-nums">
-										{formatNumber(message.usage?.output_tokens ?? 0)}
-									</span>
-								</>
-							)}
 							{audioBlocks.map((block) => (
 								<AudioInlineControl key={block.id} block={block} />
 							))}

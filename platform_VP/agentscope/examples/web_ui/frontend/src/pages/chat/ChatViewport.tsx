@@ -59,7 +59,6 @@ import { useMessages } from '@/hooks/useMessages';
 import { useSessions } from '@/hooks/useSessions';
 import { useTeamActivity, type TeamActivityParticipant } from '@/hooks/useTeamActivity';
 import { useWorkspace } from '@/hooks/useWorkspace.ts';
-import { useWorkspaceStatus } from '@/hooks/useWorkspaceStatus';
 import { useTranslation } from '@/i18n/useI18n';
 
 interface ChatViewportProps {
@@ -436,23 +435,6 @@ export function ChatViewport({
 		},
 		[view],
 	);
-
-	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
-		readOnly ? null : agentId,
-		readOnly ? null : sessionId,
-		view?.session.config.cwd ?? null,
-	);
-
-	// A finished reply is the one moment the agent may have changed the
-	// working tree, and it is why nothing polls for git status. Watching
-	// `phase` rather than the REPLY_END event also covers the interrupt
-	// timeout, which reaches idle without one.
-	const prevPhaseRef = useRef(phase);
-	useEffect(() => {
-		const wasRunning = prevPhaseRef.current !== 'idle';
-		prevPhaseRef.current = phase;
-		if (wasRunning && phase === 'idle') void refetchWorkspaceStatus();
-	}, [phase, refetchWorkspaceStatus]);
 
 	// Build the panel descriptors with live data. Rebuilt on every
 	// data change so the dock always renders the latest state — the
@@ -974,21 +956,12 @@ export function ChatViewport({
 									sessionId={sessionId}
 									cwd={view?.session.config.cwd ?? null}
 									onCwdChange={handleCwdChange}
-									git={workspaceStatus?.git ?? null}
-									onRefreshGit={refetchWorkspaceStatus}
 									phase={phase}
 									disabled={readOnly || selectedModel === null}
 									onSend={send}
 									autoComplete={completeTeamMention}
 									onUserConfirm={onUserConfirm}
 									onInterrupt={interrupt}
-									// cwd={
-									// 	{cwd: view?.session.config.cwd, git: {
-									// 		branch: 'main',
-									// 		deletion: 0,
-									// 		addition: 0,
-									// 	}}
-									// }
 									footerSlot={
 										subagentHitl.length > 0 ? (
 											<SubagentHitlCard
