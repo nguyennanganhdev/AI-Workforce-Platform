@@ -15,6 +15,7 @@ import tarfile
 import unicodedata
 from collections import defaultdict
 from collections.abc import AsyncIterator
+from time import perf_counter
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -1084,9 +1085,9 @@ async def _jev_resources(
                     key = f"{kind}_{index}_{requirement_index}_{resource_index}"
                     questions[key] = BinaryQuestion(
                         instructions=(
-                            f"Does `{catalog}[{resource_index}]` "
+                            f'Does `{catalog}["{resource_index}"]` '
                             f"({resource.tool_name if kind == 'tool' else resource.name!r}) directly supply this specific "
-                            f"requirement of `agents[{index}]` ({agent.name!r}): {requirement!r}? "
+                            f'requirement of `agents["{index}"]` ({agent.name!r}): {requirement!r}? '
                             "Judge the described capability and returned information, not merely "
                             "whether the resource is generally relevant to the agent. A resource "
                             "may satisfy multiple requirements. Required arguments may come from "
@@ -1113,11 +1114,80 @@ async def _jev_resources(
         # Bound the combined question context without dropping any candidates.
         items = list(questions.items())
         answers = {}
-        for offset in range(0, len(items), 64):
-            response = await classifier(
-                state=state, questions=dict(items[offset : offset + 64])
-            )
-            answers.update(response.content)
+        semaphore = asyncio.Semaphore(4)
+        batch_count = (len(items) + 63) // 64
+
+        async def classify_batch(
+            batch_number: int,
+            batch_items: list[tuple[str, BinaryQuestion]],
+        ) -> None:
+            async with semaphore:
+                references = {
+                    "agents": set(), "tools": set(), "knowledge_bases": set(),
+                }
+                for key, _ in batch_items:
+                    kind, agent_index, _, resource_index = key.split("_")
+                    references["agents"].add(agent_index)
+                    catalog = "tools" if kind == "tool" else "knowledge_bases"
+                    references[catalog].add(resource_index)
+                # Keep original index keys so filtering preserves question references.
+                batch_state = {
+                    "request": transcript,
+                    **{
+                        catalog: {
+                            index: state[catalog][int(index)]
+                            for index in sorted(indices, key=int)
+                        }
+                        for catalog, indices in references.items()
+                    },
+                }
+                batch_questions = dict(batch_items)
+                input_bytes = len(
+                    json.dumps(
+                        {
+                            "state": batch_state,
+                            "questions": {
+                                key: question.model_dump()
+                                for key, question in batch_items
+                            },
+                        },
+                        ensure_ascii=False,
+                    ).encode("utf-8"),
+                )
+                started = perf_counter()
+                batch_status = "cancelled"
+                logger.info(
+                    "Builder Jev batch started: batch=%s/%s "
+                    "questions=%s input_bytes=%s",
+                    batch_number, batch_count,
+                    len(batch_questions), input_bytes,
+                )
+                try:
+                    response = await classifier(
+                        state=batch_state, questions=batch_questions,
+                    )
+                    answers.update({
+                        key: response.content[key] for key in batch_questions
+                    })
+                    batch_status = "completed"
+                except Exception as exc:
+                    batch_status = f"error:{type(exc).__name__}"
+                    raise
+                finally:
+                    logger.info(
+                        "Builder Jev batch finished: batch=%s/%s "
+                        "status=%s elapsed_ms=%.0f",
+                        batch_number, batch_count, batch_status,
+                        (perf_counter() - started) * 1000,
+                    )
+
+        async with asyncio.TaskGroup() as group:
+            for offset in range(0, len(items), 64):
+                group.create_task(
+                    classify_batch(
+                        offset // 64 + 1, items[offset : offset + 64],
+                    ),
+                )
         logger.info("Builder Jev selection response received")
         for key in questions:
             answer = answers[key]

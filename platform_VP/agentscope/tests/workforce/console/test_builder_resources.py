@@ -1,5 +1,6 @@
 """Builder selects resources once, then generates only approved instructions."""
 
+import asyncio
 import json
 from copy import deepcopy
 from types import SimpleNamespace
@@ -218,13 +219,35 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         classifier = _Classifier(probabilities={
             "tool_0_0_0": 0.8, "tool_1_0_0": 0.05, "tool_3_7_0": 0.95,
         })
+        active = peak = 0
+        four_started = asyncio.Event()
+        later_completed = asyncio.Event()
+        completed = []
 
         async def classify(*, state, questions):
+            nonlocal active, peak
             if len(questions) > 64:
                 raise ValueError("max_tokens_exceeded")
-            return await classifier(state=state, questions=questions)
+            first_key = next(iter(questions))
+            active += 1
+            peak = max(peak, active)
+            if active == 4:
+                four_started.set()
+            try:
+                await asyncio.wait_for(four_started.wait(), 1)
+                if first_key == "tool_0_0_0":
+                    await later_completed.wait()
+                response = await classifier(state=state, questions=questions)
+                completed.append(first_key)
+                later_completed.set()
+                return response
+            finally:
+                active -= 1
 
         selected = await console._jev_resources(classify, outline, "Building incidents", tools, [])
+        self.assertEqual(peak, 4)
+        self.assertEqual(active, 0)
+        self.assertNotEqual(completed[0], "tool_0_0_0")
         console._validate_resource_selection(selected, tools, [])
         keys = [key for _, questions in classifier.calls for key in questions]
         self.assertEqual(len(keys), 1024)
@@ -235,6 +258,115 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertNotIn("tool: Operation 0", selected.agents[0].missing_resources)
         self.assertEqual(selected.agents[0].peer_dependencies, ["Specialist 3: Operation 0"])
         self.assertIn("tool: Operation 1", selected.agents[0].missing_resources)
+
+    async def test_batch_payload_contains_only_referenced_agents_tools_and_kbs(self):
+        tools = [TOOLS[0].model_copy(update={
+            "id": f"travel:{index}", "tool_name": f"operation_{index}",
+        }) for index in range(70)]
+        kbs = [KBS[0].model_copy(update={"id": f"policy_{index}"}) for index in range(3)]
+        outline = OUTLINE.model_copy(deep=True)
+        outline.agents[0].tool_requirements = ["Search hotel rooms"]
+        classifier = _Classifier(probabilities={
+            "tool_0_0_0": 0.95, "tool_1_0_0": 0.95,
+            "knowledge_1_0_2": 0.799,
+        })
+        with self.assertLogs(console.logger, level="INFO") as logs:
+            selected = await console._jev_resources(classifier, outline, "Plan trip", tools, kbs)
+        console._validate_resource_selection(selected, tools, kbs)
+        expected_keys = {
+            f"{kind}_{agent}_0_{resource}"
+            for agent in range(2)
+            for kind, resources in (("tool", tools), ("knowledge", kbs))
+            for resource in range(len(resources))
+        }
+        full_state = {
+            "request": "Plan trip",
+            "agents": [agent.model_dump(exclude={
+                "suggested_tool_ids", "suggested_knowledge_base_ids",
+                "missing_resources",
+            }) for agent in outline.agents],
+            "tools": [tool.model_dump() for tool in tools],
+            "knowledge_bases": [kb.model_dump() for kb in kbs],
+        }
+        full_state_bytes = len(json.dumps(full_state).encode("utf-8"))
+        keys = []
+        for state, questions in classifier.calls:
+            self.assertEqual(state["request"], "Plan trip")
+            self.assertLess(len(json.dumps(state).encode("utf-8")), full_state_bytes)
+            refs = {"agents": set(), "tools": set(), "knowledge_bases": set()}
+            for key, question in questions.items():
+                kind, agent, _, resource = key.split("_")
+                catalog = "tools" if kind == "tool" else "knowledge_bases"
+                refs["agents"].add(agent)
+                refs[catalog].add(resource)
+                original = (tools if kind == "tool" else kbs)[int(resource)]
+                self.assertEqual(state[catalog][resource], original.model_dump())
+                self.assertEqual(state["agents"][agent]["name"], outline.agents[int(agent)].name)
+                self.assertIn(f'`{catalog}["{resource}"]`', question.instructions)
+                self.assertIn(f'`agents["{agent}"]`', question.instructions)
+            for catalog, indices in refs.items():
+                self.assertEqual(set(state[catalog]), indices)
+            self.assertLess(len(state["tools"]), len(tools))
+            keys.extend(questions)
+        self.assertEqual(set(keys), expected_keys)
+        self.assertEqual(len(keys), len(expected_keys))
+        self.assertEqual(selected.agents[0].suggested_tool_ids, [tools[0].id])
+        self.assertEqual(selected.agents[1].suggested_tool_ids, [])
+        self.assertEqual(selected.agents[1].peer_dependencies, ["Planner: Search hotel rooms"])
+        self.assertEqual(selected.agents[0].suggested_knowledge_base_ids, [kb.id for kb in kbs])
+        self.assertEqual(selected.agents[1].suggested_knowledge_base_ids, [kb.id for kb in kbs[:2]])
+        output = "\n".join(logs.output)
+        self.assertIn("batch=3/3", output)
+        for field in ("input_bytes=", "elapsed_ms=", "status=completed"):
+            self.assertIn(field, output)
+        self.assertNotIn("Plan trip", output)
+
+    async def test_batch_failure_or_deadline_cancels_requests_before_llm_fallback(self):
+        tools = [TOOLS[0].model_copy(update={"id": f"travel:{index}"}) for index in range(300)]
+        outline = console.BuilderOutline(agents=[OUTLINE.agents[1].model_copy(deep=True)])
+        timeout = asyncio.timeout
+        for failure in (True, False):
+            with self.subTest(failure=failure):
+                active = 0
+                four_started = asyncio.Event()
+                cancelled = []
+
+                async def classify(*, state, questions):
+                    nonlocal active
+                    active += 1
+                    if active == 4:
+                        four_started.set()
+                    try:
+                        await four_started.wait()
+                        if failure and "tool_0_0_0" in questions:
+                            raise TimeoutError("batch failure")
+                        await asyncio.Future()
+                    except asyncio.CancelledError:
+                        cancelled.append(next(iter(questions)))
+                        raise
+                    finally:
+                        active -= 1
+
+                async def close():
+                    self.assertEqual(active, 0)
+
+                classifier = AsyncMock(side_effect=classify)
+                classifier.client.aclose = AsyncMock(side_effect=close)
+                with (
+                    patch.object(console, "_builder_classifier", AsyncMock(return_value=classifier)),
+                    patch.object(console.asyncio, "timeout", side_effect=lambda _: timeout(0.1)),
+                    self.assertLogs(console.logger, level="INFO") as logs,
+                ):
+                    _, source = await console._select_builder_resources(
+                        outline, "Plan trip", tools, [], _Model(outline.model_dump()), object(), "user",
+                    )
+                self.assertEqual(source, "llm")
+                self.assertGreaterEqual(len(cancelled), 3)
+                self.assertEqual(active, 0)
+                classifier.client.aclose.assert_awaited_once()
+                output = "\n".join(logs.output)
+                self.assertIn("status=cancelled", output)
+                self.assertIn("status=error:TimeoutError" if failure else "error=TimeoutError", output)
 
     async def test_one_pass_matches_each_requirement_without_reverification(self):
         outline = OUTLINE.model_copy(deep=True)
@@ -247,7 +379,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertEqual(selected.agents[1].suggested_tool_ids, [TOOLS[0].id])
         self.assertEqual(selected.agents[1].missing_resources, [])
         state, questions = classifier.calls[0]
-        self.assertEqual(state["tools"], [tool.model_dump() for tool in TOOLS])
+        self.assertEqual(state["tools"], {str(index): tool.model_dump() for index, tool in enumerate(TOOLS)})
         self.assertIn("Inspect room prices", questions["tool_1_1_0"].instructions)
         self.assertIn("'search'", questions["tool_1_1_0"].instructions)
         self.assertIn("another service/subject", questions["tool_1_1_0"].criteria.false)
