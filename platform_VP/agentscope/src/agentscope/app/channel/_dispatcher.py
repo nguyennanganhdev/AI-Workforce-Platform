@@ -137,8 +137,14 @@ class ChannelLifecycleDispatcher:
                 credentials=record.credentials,
                 config=record.platform_config,
             )
+            channel.bind_message_bus(self._bus)
+            from ._text import TextChannel
+
+            async def receive(event):
+                await self._gateway.process(event, raise_errors=True)
+
             task = asyncio.create_task(
-                channel.start_listening(self._gateway.process),
+                channel.start_listening(receive if isinstance(channel, TextChannel) else self._gateway.process),
                 name=f"channel-listener:{record.id}",
             )
             self._instances[record.id] = ChannelInstance(

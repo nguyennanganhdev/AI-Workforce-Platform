@@ -889,7 +889,7 @@
 			"retry": "Try again"
 		},
 		"title": "Channels",
-		"subtitle": "Connect external platforms like Feishu and Discord so agents work in group chats",
+		"subtitle": "Connect Telegram, Zalo OA and Discord so agents can receive and reply to messages",
 		"status": "Status",
 		"connected": "Connected",
 		"enable": "Enable",
@@ -902,7 +902,7 @@
 		"rules": "{{count}} rules",
 		"empty": {
 			"title": "No channels",
-			"description": "Create a channel to connect your agent to external platforms like Feishu, DingTalk, etc."
+			"description": "Create a Telegram, Zalo OA or Discord channel to start receiving messages."
 		},
 		"create": {
 			"title": "Create Channel",

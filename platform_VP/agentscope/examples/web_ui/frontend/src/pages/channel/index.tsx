@@ -23,6 +23,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useAgents } from '@/hooks/useAgents';
 import { useChannels } from '@/hooks/useChannels';
 import { useTranslation } from '@/i18n/useI18n';
@@ -131,6 +132,7 @@ function ChannelTypeCard({ type, onPick }: { type: ChannelTypeSchema; onPick: ()
 }
 
 export function ChannelPage() {
+	const isMobile = useIsMobile();
 	const { t } = useTranslation();
 	const { channels, loading, refetch, enable, disable, remove } = useChannels();
 	const { runnable: agents } = useAgents();
@@ -193,11 +195,20 @@ export function ChannelPage() {
 		`${typeOf(ch.channel_type)?.display_name ?? ch.channel_type} · ${ch.id.slice(0, 8)}`;
 	// Derived from the live list so an edited/deleted selection stays in sync.
 	const selected = channels.find((c) => c.id === selectedId) ?? null;
+	const detail = selected && <ChannelDetailPanel
+		channel={selected}
+		type={typeOf(selected.channel_type)}
+		status={statuses[selected.id]}
+		agentName={agentName}
+		onEdit={() => setEditTarget(selected)}
+		onDelete={() => setDeleteTarget(selected)}
+		onClose={() => setSelectedId(null)}
+	/>;
 
 	return (
 		<div className="flex size-full">
-			<ResizablePanelGroup orientation="horizontal">
-				<ResizablePanel minSize="24rem">
+			{isMobile && selected ? <div className="min-w-0 flex-1">{detail}</div> : <ResizablePanelGroup orientation="horizontal">
+				<ResizablePanel minSize={isMobile ? '0' : '24rem'}>
 					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
 						<div className="px-4 pt-3 pb-3">
 							<div className="text-[17px]/6 font-semibold">{t('channel.title')}</div>
@@ -281,23 +292,15 @@ export function ChannelPage() {
 						</div>
 					</main>
 				</ResizablePanel>
-				{selected && (
+				{selected && !isMobile && (
 					<>
 						<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 						<ResizablePanel defaultSize="26rem" minSize="22rem">
-							<ChannelDetailPanel
-								channel={selected}
-								type={typeOf(selected.channel_type)}
-								status={statuses[selected.id]}
-								agentName={agentName}
-								onEdit={() => setEditTarget(selected)}
-								onDelete={() => setDeleteTarget(selected)}
-								onClose={() => setSelectedId(null)}
-							/>
+							{detail}
 						</ResizablePanel>
 					</>
 				)}
-			</ResizablePanelGroup>
+			</ResizablePanelGroup>}
 
 			<CreateChannelDialog
 				open={createType !== null}

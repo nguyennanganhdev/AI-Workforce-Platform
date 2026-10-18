@@ -68,7 +68,7 @@ export function EditChannelDialog({ channel, open, onOpenChange, onUpdated }: Pr
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[560px] !max-w-[560px]">
+			<DialogContent className="w-[calc(100%-2rem)] max-w-[560px]">
 				<DialogHeader>
 					<DialogTitle>{t('channel.edit.title')}</DialogTitle>
 					<DialogDescription>{t('channel.edit.description')}</DialogDescription>

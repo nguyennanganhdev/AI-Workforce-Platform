@@ -887,7 +887,7 @@
 			"retry": "重新生成"
 		},
 		"title": "频道",
-		"subtitle": "接入飞书、Discord 等外部平台，让智能体在群聊里工作",
+		"subtitle": "接入 Telegram、Zalo OA 和 Discord，让智能体接收并回复消息",
 		"status": "状态",
 		"connected": "已连接",
 		"enable": "启用",
@@ -900,7 +900,7 @@
 		"rules": "{{count}} 条规则",
 		"empty": {
 			"title": "暂无频道",
-			"description": "创建一个频道，将智能体连接到飞书、钉钉等外部平台。"
+			"description": "创建 Telegram、Zalo OA 或 Discord 频道以开始接收消息。"
 		},
 		"create": {
 			"title": "创建频道",

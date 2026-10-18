@@ -23,6 +23,18 @@ class MessageBusKeys:  # pylint: disable=too-many-public-methods
     business key, so the public-method count is expected to be high.
     """
 
+    @staticmethod
+    def channel_approval(channel_id: str, token: str) -> str:
+        return f"agentscope:channel:approval:{channel_id}:{token}"
+
+    @staticmethod
+    def channel_poll_cursor(channel_id: str) -> str:
+        return f"agentscope:channel:poll:{channel_id}"
+
+    @staticmethod
+    def channel_webhook(channel_id: str, message_id: str) -> str:
+        return f"agentscope:channel:webhook:{channel_id}:{message_id}"
+
     # ------------------------------------------------------------------
     # Run-trigger queue — the discriminator carried by each entry on the
     # shared trigger queue, telling the dispatcher how to spawn the run.
