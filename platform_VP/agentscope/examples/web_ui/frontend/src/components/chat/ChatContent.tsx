@@ -168,13 +168,15 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	const toConfirmedToolCalls = useMemo(() => {
 		if (msgs.length === 0) return [];
 
-		return msgs.filter((message) => message.role === 'assistant').flatMap((message) => {
+		return msgs.filter((message) => message.role === 'assistant' &&
+			// Mirrored member requests use the subagent card and its routing.
+			(!message.metadata?.team_session_id || message.metadata.team_session_id === sessionId)).flatMap((message) => {
 			const resolved = new Set(getContentBlocks(message, 'tool_result').map((result) => result.id));
 			return getContentBlocks(message, 'tool_call')
 				.filter((tc) => tc.state === 'asking' && !resolved.has(tc.id))
 				.map((tc) => ({ replyId: message.id, toolCall: tc }));
 		});
-	}, [msgs]);
+	}, [msgs, sessionId]);
 
 	// On an empty session the prompt and the input centre together, so every box
 	// down to the message list shrinks to its content instead of filling.

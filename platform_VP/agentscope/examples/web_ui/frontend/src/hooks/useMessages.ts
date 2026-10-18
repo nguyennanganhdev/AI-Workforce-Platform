@@ -153,6 +153,7 @@ export function useMessages(
 	const msgsRef = useRef<Msg[]>([]);
 	const currentReplyRef = useRef<Msg | null>(null);
 	const runningRepliesRef = useRef(new Set<string>());
+	const answeredConfirmationsRef = useRef(new Map<string, UserConfirmResultEvent>());
 	const abortRef = useRef<AbortController | null>(null);
 	const rafRef = useRef<number | null>(null);
 	// Timer that reverts ``interrupting`` back to ``idle`` if the
@@ -198,9 +199,12 @@ export function useMessages(
 					// refresh) its card on this leader view. Dedup by
 					// (worker_session_id, reply_id).
 					const e = custom.value as unknown as SubagentHitlEntry;
+					const tool_calls = (e.event.tool_calls ?? []).filter(
+						(tc) => !answeredConfirmationsRef.current.has(`${e.reply_id}:${tc.id}`),
+					);
 					setSubagentHitl((prev) => [
 						...prev.filter((x) => hitlKey(x) !== hitlKey(e)),
-						e,
+						...(tool_calls.length > 0 ? [{ ...e, event: { ...e.event, tool_calls } }] : []),
 					]);
 				} else if (custom.name === 'subagent_user_confirm_result') {
 					// The member resolved (or its run ended); clear the card.
@@ -208,6 +212,23 @@ export function useMessages(
 					setSubagentHitl((prev) => prev.filter((x) => hitlKey(x) !== hitlKey(v)));
 				}
 				return;
+			}
+			if (event.type === EventType.USER_CONFIRM_RESULT) {
+				for (const result of event.confirm_results) {
+					answeredConfirmationsRef.current.set(`${event.reply_id}:${result.tool_call.id}`, event);
+				}
+				setSubagentHitl((prev) => prev.flatMap((entry) => {
+					const tool_calls = (entry.event.tool_calls ?? []).filter(
+						(tc) => !answeredConfirmationsRef.current.has(`${entry.reply_id}:${tc.id}`),
+					);
+					return tool_calls.length > 0 ? [{ ...entry, event: { ...entry.event, tool_calls } }] : [];
+				}));
+			}
+			if (event.type === EventType.REQUIRE_USER_CONFIRM) {
+				const replyId = event.reply_id;
+				event = { ...event, tool_calls: event.tool_calls.filter(
+					(tc) => !answeredConfirmationsRef.current.has(`${replyId}:${tc.id}`),
+				) };
 			}
 			if (event.type === EventType.REPLY_START && !msgsRef.current.some((message) => message.id === event.reply_id)) {
 				audioManager?.stopAllPlayback();
@@ -268,6 +289,7 @@ export function useMessages(
 		msgsRef.current = [];
 		currentReplyRef.current = null;
 		runningRepliesRef.current.clear();
+		answeredConfirmationsRef.current.clear();
 		setMsgs([]);
 		setError(null);
 		clearInterruptTimer();
@@ -320,6 +342,10 @@ export function useMessages(
 						}
 					} else {
 						msgsRef.current = messages;
+					}
+					// Polling can return the parked snapshot before an accepted decision runs.
+					for (const decision of answeredConfirmationsRef.current.values()) {
+						msgsRef.current = mergeChatEvent(msgsRef.current, decision);
 					}
 					// If a reply is in flight (running on a worker) OR the
 					// tail msg is parked on a pending tool_call (awaiting
@@ -472,6 +498,7 @@ export function useMessages(
 			rules?: ToolCallBlock['suggested_rules'],
 		) => {
 			if (!agentId || !sessionId) return;
+			if (answeredConfirmationsRef.current.has(`${replyId}:${toolCall.id}`)) return;
 
 			// Restore the ref so continuation events (no REPLY_START)
 			// have a target.
@@ -493,12 +520,14 @@ export function useMessages(
 					session_id: sessionId,
 					input: event,
 				});
+				// Apply accepted decisions locally before the queued worker resumes.
+				processEvent(event);
 			} catch (e) {
 				setError(e as Error);
 				throw e;
 			}
 		},
-		[agentId, sessionId],
+		[agentId, sessionId, processEvent],
 	);
 
 	/** Abort the current SSE connection. */
@@ -565,49 +594,9 @@ export function useMessages(
 			confirm: boolean,
 			rules?: ToolCallBlock['suggested_rules'],
 		) => {
-			if (!agentId || !sessionId) return;
-
-			const event: UserConfirmResultEvent = {
-				type: EventType.USER_CONFIRM_RESULT,
-				id: crypto.randomUUID(),
-				created_at: new Date().toISOString(),
-				reply_id: entry.reply_id, // worker's reply_id; backend maps it
-				confirm_results: [
-					{ confirmed: confirm, tool_call: toolCall, rules: rules ?? null },
-				],
-			};
-
-			try {
-				// Post to the leader front door — backend routes to the
-				// worker session (§3.6). Do NOT address the worker here.
-				await chatApi.trigger({
-					agent_id: agentId,
-					session_id: sessionId,
-					input: event,
-				});
-			} catch (e) {
-				setError(e as Error);
-				// Rethrow so the card can re-enable itself and be retried.
-				throw e;
-			}
-
-			// Drop only the call just answered — an entry can carry several
-			// pending tool calls, and clearing the whole entry would take the
-			// unanswered siblings' cards down with it. The backend's clear
-			// event removes whatever is left.
-			setSubagentHitl((prev) =>
-				prev.flatMap((x) => {
-					if (hitlKey(x) !== hitlKey(entry)) return [x];
-					const remaining = (x.event.tool_calls ?? []).filter(
-						(tc) => tc.id !== toolCall.id,
-					);
-					return remaining.length > 0
-						? [{ ...x, event: { ...x.event, tool_calls: remaining } }]
-						: [];
-				}),
-			);
+			await onUserConfirm(toolCall, confirm, entry.reply_id, rules);
 		},
-		[agentId, sessionId],
+		[onUserConfirm],
 	);
 
 	const currentKey = agentId !== null && sessionId !== null ? `${agentId}:${sessionId}` : null;
