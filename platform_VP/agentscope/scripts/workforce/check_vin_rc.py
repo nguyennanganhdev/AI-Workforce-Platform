@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -60,7 +61,24 @@ def main():
     image_ids = {kind: docker('image', 'inspect', '--format', '{{.Id}}', name)
         for kind, name in (('app', options.app_image), ('web', options.web_image), ('domain', options.domain_image))}
     domain_revision = docker('image', 'inspect', '--format', '{{index .Config.Labels "org.opencontainers.image.revision"}}', options.domain_image)
-    domain_check.check(output / 'domain-package', options.domain_image, source_revision=domain_revision)
+    domain_source = 'vinhome_Recident/services/vinhomes-api/src/vinhomes_api'
+    assert not subprocess.check_output(['git', '-C', str(ROOT), 'diff', '--name-only', domain_revision, '--', domain_source]), 'Domain source changed since its image revision'
+    # Compare the producer image to committed bytes, independent of this
+    # worktree's Windows checkout line endings. Keep N1's checker unchanged.
+    with tempfile.TemporaryDirectory(prefix='vin-n2-domain-source-') as directory:
+        source = Path(directory)
+        names = subprocess.check_output(['git', '-C', str(ROOT), 'ls-tree', '-r', '--name-only', domain_revision, domain_source], text=True).splitlines()
+        for name in names:
+            if name.endswith(('.py', '.sql')):
+                target = source / 'src/vinhomes_api' / name.removeprefix(domain_source + '/')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(subprocess.check_output(['git', '-C', str(ROOT), 'show', domain_revision + ':' + name]))
+        original_service = domain_check.SERVICE
+        try:
+            domain_check.SERVICE = source
+            domain_check.check(output / 'domain-package', options.domain_image, source_revision=domain_revision)
+        finally:
+            domain_check.SERVICE = original_service
     revision = docker('image', 'inspect', '--format', '{{index .Config.Labels "org.opencontainers.image.revision"}}', options.app_image)
     assert len(revision) == 40 and revision == docker('image', 'inspect', '--format',
         '{{index .Config.Labels "org.opencontainers.image.revision"}}', options.web_image), 'Image revisions differ/missing'
