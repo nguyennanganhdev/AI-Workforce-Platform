@@ -30,6 +30,7 @@ Ngày 18/10/2026. Source delivery; chưa phát hành production. Không dùng ke
 | Platform | `WORKFORCE_PLATFORM_OPENAI_API_KEY` | Chỉ server hydrate alias; không gọi provider trong test, không seed vào user |
 | Platform | catalog/model/policy | Admin cấp đúng environment, role/group/user/pool; thiếu policy/grant thì deny |
 | Domain | `VINHOMES_CUSTOMER_PLATFORM_ENABLED` | Mặc định tắt, độc lập luồng legacy/staff |
+| Domain | `VINHOMES_CHATBOT_COHORT_CUTOVER_ENABLED`, `VINHOMES_CHATBOT_PLATFORM_COHORTS` | Mặc định false/[]; compose truyền vào api/platform-sync. Không bật M2 cùng lúc bật liên kết; chỉ cutover sau cohort sign-off |
 | Domain | registered client + issuer/redirect | Operator provision; secret hash, exact redirect, HTTPS hoặc loopback test |
 | Sandbox | `VINHOMES_API_EVAL_FIXTURES=enabled` + DB marker | Cần cả hai và synthetic linked subject; không bật/reset production |
 | Người 2 | `VITE_VIN_EXPERIENCE_ENABLED` | Giữ cùng UI; N1 không đổi frontend/deploy file lane Người 2 |
@@ -42,6 +43,7 @@ Rollback bằng feature flags/candidate image tương thích, giữ bảng/ledge
 
 ## Bằng chứng hiện có và gate còn mở
 
+- Kiểm gói Domain không đọc deployment.env: từ `vinhome_Recident/services/vinhomes-api`, chạy `python tests/vin_domain_rc_check.py --output <ignored-dir> [--image <candidate-tag>]`. Config chỉ dùng fixture giả, không start service; khi có image thì kiểm production CMD, non-root UID, pip check, hash Python/SQL khớp source và loại trừ .env/secret/artifact files. Image phải có OCI revision label bằng HEAD đang kiểm. Đây là package proof, không thay browser/RLS/business UAT.
 - Đã chạy migration từ DB PostgreSQL trống lên head hai lần, kiểm quota race/settle/revoke/session thật; CAS credential + batch agent activation SQL/Redis qua fake Redis.
 - Shared auth fixture dùng DDL production 0007/0008. Integration Domain dùng runtime role hạn chế và RLS; không dùng model key thật.
 - Python 3.11 Linux đã chạy authority/consumer/runtime bằng fixture; số PASS/SKIP thật ghi ở N1 handoff. N1/N2 đã merge vào dev_Chien local e7b80da6 và N1 rebase lên đó.

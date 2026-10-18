@@ -46,6 +46,21 @@ Fixture chạy xuyên Platform–Domain: `vinhome_Recident/services/vinhomes-api
 
 ### Bổ sung phân trang trên 100 job — 18/10
 
+R05 bổ sung theo yêu cầu nghiệm thu N2:
+
+```python
+page = await authority.jobs.list_page(context, "schedule-run", source_id=schedule_id, cursor=cursor)
+job = await authority.jobs.get(context, "schedule-run", job_id, source_id=schedule_id)
+deliveries = await authority.jobs.list_page(context, "delivery", source_id=channel_id, run_id=job.job_id)
+batch = await authority.jobs.get(context, "publish-batch", job_id, source_id=conversation_id)
+```
+
+`source_id` được lọc **trong SQL trước LIMIT**, theo field server cố định: schedule-run→body.schedule_id, channel-event/delivery→body.channel_id, publish-batch→body.conversation_id. `run_id` chỉ dành delivery, match literal prefix `delivery:<run_id>:` với wildcard escape; không gọi lại model. Hai filter là keyword optional của cả list_page/list/get. Đổi filter giữa các trang làm cursor không thuộc selection bị 422. Consumer không gửi tenant/owner để query.
+
+`get` query thẳng ID + tenant + owner + kind + filters, không quét list và không có cap 100; sai phạm vi/không tồn tại trả `JOB_NOT_FOUND` (404), ID/filter không hợp lệ trả 422. Trước trả job repair, kiểm current context eligible và `context_for(job)` kiểm saved revision/workspace/environment; revoke/restore không làm job cũ tự được chạy lại. History list vẫn đọc được bởi owner hiện hành dù job đã mất quyền thực thi. Lookup không claim job, không thay lease/fencing và không thay việc worker recheck context ngay trước IO.
+
+Test R05: **15 PASS / 0 SKIP / 0 FAIL / 0 ERROR** trên Python 3.11 Linux (3 ca lookup/filter × SQLite/PostgreSQL + 9 regression trước). PG nâng schema thật tới 0024 trên DB disposable, kiểm 125 job nguồn B nằm sau 125 job nguồn A và owner khác, 100+25 theo nguồn B, ID cuối đọc trực tiếp, wrong-filter cursor, restore/revoke và wildcard prefix. Đây là PG dialect/persistence proof; không gọi nó là test concurrency hoặc whole browser acceptance. Fixture `seed_personal_job_history(...,source_ids=[...],count=...)` dùng được cho N2; không cần migration mới.
+
 Internal helper: **`await authority.jobs.list_page(context, kind, *, cursor=None, limit=100)`**, trả **`PersonalJobPage(items: list[DurableJob], next_cursor: str | None, has_more: bool)`**. `kind` là schedule-run/channel-event/delivery/publish-batch, limit nguyên 1–100; sai loại/limit trả `INVALID_JOB_KIND`/`INVALID_PAGINATION` (422).
 
 ```python

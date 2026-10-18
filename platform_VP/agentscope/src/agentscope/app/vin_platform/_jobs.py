@@ -89,26 +89,56 @@ class PersonalJobs:
     async def fail(self, job, worker_id, code, *, retry_after=30):
         return await self.repository.fail(job.job_id, worker_id, job.fencing_token, {"code": code}, now(), now() + timedelta(seconds=retry_after))
 
-    async def list_page(self, context, kind, *, cursor=None, limit=100):
+    @staticmethod
+    def _selection(context, kind, source_id=None, run_id=None):
+        fields = {"schedule-run": "schedule_id", "channel-event": "channel_id",
+            "delivery": "channel_id", "publish-batch": "conversation_id"}
+        if kind not in fields:
+            raise PlatformError("INVALID_JOB_KIND", 422)
+        for value in (source_id, run_id):
+            if value is not None and (not isinstance(value, str) or not 1 <= len(value) <= 255):
+                raise PlatformError("INVALID_JOB_FILTER", 422)
+        if run_id is not None and kind != "delivery":
+            raise PlatformError("INVALID_JOB_FILTER", 422)
+        selection = and_(durable_jobs.c.owner_kind == "personal", durable_jobs.c.tenant_id == context.tenant_id,
+            durable_jobs.c.personal_user_id == context.initiator_user_id, durable_jobs.c.job_type == kind)
+        if source_id is not None:
+            selection = and_(selection, durable_jobs.c.payload["body"][fields[kind]].as_string() == source_id)
+        if run_id is not None:
+            selection = and_(selection, durable_jobs.c.idempotency_key.startswith("delivery:" + run_id + ":", autoescape=True))
+        return selection
+
+    async def get(self, context, kind, job_id, *, source_id=None, run_id=None):
+        """Direct lookup for repair; revalidate the saved execution authority."""
+        if not isinstance(job_id, str) or not 1 <= len(job_id) <= 255:
+            raise PlatformError("INVALID_JOB_ID", 422)
+        selection = self._selection(context, kind, source_id, run_id)
+        async with self.authority.engine.begin() as db:
+            await self.authority.assert_active(db, context)
+            row = (await db.execute(select(durable_jobs).where(selection, durable_jobs.c.id == job_id))).mappings().first()
+        if row is None:
+            raise PlatformError("JOB_NOT_FOUND", 404)
+        job = self.repository._model(row)
+        await self.context_for(job)
+        return job
+
+    async def list_page(self, context, kind, *, cursor=None, limit=100, source_id=None, run_id=None):
         """Keyset pagination scoped to the current tenant, owner and kind.
 
         The cursor is the last returned job ID, not an authorization token.
         Deleting that row invalidates the cursor; consumers must reload.
         """
-        if kind not in {"schedule-run", "channel-event", "delivery", "publish-batch"}:
-            raise PlatformError("INVALID_JOB_KIND", 422)
+        selection = self._selection(context, kind, source_id, run_id)
         if type(limit) is not int or not 1 <= limit <= 100:
             raise PlatformError("INVALID_PAGINATION", 422)
         if cursor is not None and (not isinstance(cursor, str) or not 1 <= len(cursor) <= 255):
             raise PlatformError("INVALID_JOB_CURSOR", 422)
-        owner = and_(durable_jobs.c.owner_kind == "personal", durable_jobs.c.tenant_id == context.tenant_id,
-            durable_jobs.c.personal_user_id == context.initiator_user_id, durable_jobs.c.job_type == kind)
         async with self.authority.engine.begin() as db:
             await self.authority.assert_active(db, context, require_eligible=False)
-            query = select(durable_jobs).where(owner)
+            query = select(durable_jobs).where(selection)
             if cursor is not None:
                 marker = (await db.execute(select(durable_jobs.c.created_at, durable_jobs.c.id).where(
-                    owner, durable_jobs.c.id == cursor))).mappings().first()
+                    selection, durable_jobs.c.id == cursor))).mappings().first()
                 if marker is None:
                     raise PlatformError("INVALID_JOB_CURSOR", 422)
                 query = query.where(or_(durable_jobs.c.created_at > marker["created_at"],
@@ -118,11 +148,11 @@ class PersonalJobs:
         return PersonalJobPage(items=[self.repository._model(row) for row in rows[:limit]],
             next_cursor=rows[limit - 1]["id"] if has_more else None, has_more=has_more)
 
-    async def list(self, context, kind):
+    async def list(self, context, kind, *, source_id=None, run_id=None):
         """Compatibility reader: exhaust pages instead of silently truncating."""
         items, cursor = [], None
         while True:
-            page = await self.list_page(context, kind, cursor=cursor)
+            page = await self.list_page(context, kind, cursor=cursor, source_id=source_id, run_id=run_id)
             items.extend(page.items)
             if not page.has_more:
                 return items
