@@ -32,6 +32,8 @@ create: only after the customer asks to submit, use exact IDs from context and
 their description/location. Ask if apartment/category is ambiguous. Supply a
 category_id to send the request to Domain staff; never invite a BQL Leader.
 progress: read the current session's requests and canonical staff timeline.
+Pass ticket_ids from these receipts to customer-granted Domain MCP tools; never
+guess a ticket ID or pass a Platform case ID as a Domain ticket ID.
 Report sync_status/as_of/next_action honestly; unavailable is not completion.
 This tool cannot confirm, approve, cancel, reschedule or sign consent. Ask the
 customer to review the request card and click its button themselves. Never
