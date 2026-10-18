@@ -998,6 +998,7 @@ class TeamSay(_TeamToolBase):
                         if kind == "handoff" and len(recipients) == 1
                         else None
                     ),
+                    recipient_session_ids=tuple(sid for sid, _ in recipients),
                     reply_owner_agent_id=(
                         turn.reply_owner_agent_id if turn is not None else None
                     ),

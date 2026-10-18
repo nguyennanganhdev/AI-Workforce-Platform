@@ -22,7 +22,7 @@ import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
-import { TeamRosterContext, TicketViewContext } from '@/components/chat/team-roster';
+import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
 import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
@@ -440,6 +440,9 @@ export function ChatViewport({
 			]),
 		[team],
 	);
+	// The room's log (members' reports and tool calls), shared by cards and panel.
+	const room = useRoom(team?.team.session_id ?? null);
+
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
 		readOnly ? null : agentId,
 		readOnly ? null : sessionId,
@@ -831,6 +834,7 @@ export function ChatViewport({
 	return (
 		<TicketViewContext.Provider value={isTicketView}>
 		<TeamRosterContext.Provider value={roster}>
+		<RoomContext.Provider value={room}>
 			<SessionWorkspace snapshot={office}>
 				<main className="flex size-full">
 					<ResizablePanelGroup orientation="horizontal">
@@ -1156,6 +1160,7 @@ export function ChatViewport({
 				onOpenChange={setCredentialOpen}
 				onCreated={() => setCredentialRefetchTrigger((n) => n + 1)}
 			/>
+		</RoomContext.Provider>
 		</TeamRosterContext.Provider>
 		</TicketViewContext.Provider>
 	);

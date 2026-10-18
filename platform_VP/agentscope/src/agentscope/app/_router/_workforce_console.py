@@ -17,7 +17,8 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.json_schema import SkipJsonSchema
 
@@ -34,6 +35,7 @@ from ...classifier import (
 from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
+from ...model._call_observer import usage_purpose
 from .._service import ResourceAccessService, get_model
 from .._workforce_policy import (
     WORKFORCE_LEADER_PROMPT,
@@ -43,6 +45,7 @@ from ..access import ResourceKind
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
+    get_shared_context_storage,
     get_storage,
     get_workspace_manager,
 )
@@ -666,6 +669,7 @@ def _ensure_attraction_outline_coverage(
     return outline.model_copy(update={"agents": agents})
 
 
+@usage_purpose("builder")
 async def _builder_structured_call(
     model: ChatModelBase,
     messages: list[Msg],
@@ -3167,4 +3171,242 @@ async def create_leader_ticket(
         agent_id=leader.id,
         session_id=session.id,
         name=session.config.name,
+    )
+
+
+# ---------------------------------------------------------------- room view
+
+_HANDLE = re.compile(r"@[0-9a-f]{6,}$")
+_ROOM_TEXT = 1500
+_REPORT_KINDS = {
+    "result", "answer", "question", "progress", "error", "conflict",
+    "requires_user_input", "user_input_proposal",
+}
+
+
+def _display(name: str) -> str:
+    """An agent's name without the room handle (``KyThuat@7d00a7e0``)."""
+    return _HANDLE.sub("", name or "").strip()
+
+
+class RoomParticipant(BaseModel):
+    agent_id: str
+    name: str
+    model: str = ""
+    calls: int = 0
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+    status: str = ""
+    goal: str = ""
+    waiting_for: list[str] = []
+    blocker: str = ""
+
+
+class RoomEntry(BaseModel):
+    at: str
+    kind: str
+    """assign | result | question | answer | progress | error | tool |
+    partner_event | customer | reply"""
+    sender: str
+    to: str = ""
+    text: str
+    after: list[str] = []
+
+
+class RoomView(BaseModel):
+    revision: int = 0
+    participants: list[RoomParticipant]
+    timeline: list[RoomEntry]
+    tracked_work: list[dict] = Field(default_factory=list)
+    packet_tokens: int = 0
+    peak_packet_tokens: int = 0
+    packet_budget: int = 0
+
+
+def _room_tool_line(content: str) -> str:
+    """One line for a tool result in the room: the call, not the payload."""
+    try:
+        value = json.loads(content)
+        call = value["tool_call"]
+        return f"{call['name'].split('__')[-1]} {call.get('input') or ''}"[:200]
+    except (ValueError, KeyError, TypeError):
+        return content.split("\n", 1)[0][:200]
+
+
+@workforce_console_router.get("/sessions/{session_id}/room", response_model=RoomView)
+async def session_room(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    shared_storage: StorageBase = Depends(get_shared_context_storage),
+) -> RoomView:
+    """The team's room as people read it: who handed what to whom, who
+    reported what, and what each agent spent on this ticket.
+
+    Assignments are the Leader's ``handoff`` events; a member's status and
+    what it waits for come from its collaboration branch of the active task.
+    """
+
+    from .._shared_context import SharedContextConfig
+    from ..storage._utils import _ensure_team_members
+
+    session = await storage.get_session(user_id, "", session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not session.team_id:
+        return RoomView(participants=[], timeline=[])
+    record = await shared_storage.get_team_shared_context(user_id, session.team_id)
+    team = await storage.get_team(user_id, session.team_id)
+    if record is None or team is None:
+        return RoomView(participants=[], timeline=[])
+    state = record.state
+    leader_session = await storage.get_session(user_id, "", team.session_id)
+    leader_agent = (
+        await storage.get_agent(user_id, leader_session.agent_id) if leader_session else None
+    )
+    leader = leader_agent.data.name if leader_agent else "Leader"
+    names: dict[str, str] = {}
+    by_session: dict[str, str] = {team.session_id: leader}
+    if leader_agent:
+        names[leader_agent.id] = leader
+    for member in await _ensure_team_members(storage, user_id, team):
+        agent = await storage.get_agent(member.owner_id, member.agent_id)
+        name = _display(agent.data.name) if agent else member.agent_id
+        names[member.agent_id] = name
+        if member.session_id:
+            by_session[member.session_id] = name
+    for agent_id, usage in state.metrics.provider_usage.items():
+        names.setdefault(agent_id, _display(usage.agent_name))
+
+    timeline: list[RoomEntry] = []
+    goals: dict[str, str] = {}
+    tracked_work: dict[str, dict] = {}
+    for event in state.events:
+        if event.stale:
+            continue
+        sender = names.get(event.source_agent_id or "", "") or by_session.get(event.source_session_id or "", "")
+        at = event.created_at.isoformat()
+        to = ", ".join(
+            name for name in (by_session.get(sid, "") for sid in event.recipient_session_ids) if name
+        )
+        if event.kind == "customer_message":
+            timeline.append(RoomEntry(at=at, kind="customer", sender="Người dùng", to=leader,
+                                      text=event.content[:_ROOM_TEXT]))
+        elif event.kind == "customer_reply":
+            timeline.append(RoomEntry(at=at, kind="reply", sender=leader, to="Người dùng",
+                                      text=event.content[:_ROOM_TEXT]))
+        elif event.kind == "handoff":
+            for sid in event.recipient_session_ids:
+                goals[sid] = event.content[:_ROOM_TEXT]
+            timeline.append(RoomEntry(at=at, kind="assign", sender=sender or leader, to=to,
+                                      text=event.content[:_ROOM_TEXT]))
+        elif event.kind == "external_event":
+            if event.id.startswith("provider:") and "\n" in event.content:
+                try:
+                    payload = json.loads(event.content.split("\n", 1)[1])
+                    work = payload.get("tracked_work") if isinstance(payload, dict) else None
+                    if isinstance(work, dict) and work.get("operation_id"):
+                        tracked_work[work["operation_id"]] = work
+                except (ValueError, TypeError):
+                    pass  # Older progress messages have no structured tracking data.
+            if event.source_session_id == team.session_id or event.id.startswith("provider:"):
+                timeline.append(RoomEntry(at=at, kind="partner_event", sender="Hệ thống đối tác",
+                                          text=event.content[:_ROOM_TEXT]))
+            else:
+                timeline.append(RoomEntry(at=at, kind="tool", sender=sender,
+                                          text=_room_tool_line(event.content)))
+        elif event.kind in _REPORT_KINDS:
+            timeline.append(RoomEntry(
+                at=at,
+                kind=event.kind,
+                sender=sender,
+                to=to or (leader if sender != leader else ""),
+                text=event.content[:_ROOM_TEXT],
+            ))
+    timeline.sort(key=lambda entry: entry.at)
+
+    participants = [
+        RoomParticipant(
+            agent_id=agent_id,
+            name=names.get(agent_id) or _display(usage.agent_name),
+            model=usage.model,
+            calls=usage.calls,
+            input_tokens=usage.input_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+            output_tokens=usage.output_tokens,
+        )
+        for agent_id, usage in state.metrics.provider_usage.items()
+    ]
+    task = state.tasks.get(state.active_task_id) if state.active_task_id else None
+    if task:
+        members_by_session = {
+            member.session_id: member.agent_id
+            for member in await _ensure_team_members(storage, user_id, team)
+            if member.session_id
+        }
+        for sid, branch in task.collaboration.items():
+            agent_id = members_by_session.get(sid)
+            if agent_id is None:
+                continue
+            participant = next((p for p in participants if p.agent_id == agent_id), None)
+            if participant is None:
+                participant = RoomParticipant(agent_id=agent_id, name=names.get(agent_id, agent_id))
+                participants.append(participant)
+            participant.status = branch.status
+            participant.goal = goals.get(sid, "")
+            participant.waiting_for = [by_session.get(wait, wait) for wait in branch.waiting_for.values()]
+            participant.blocker = branch.reason if branch.status in {"stopped", "waiting_peer"} else ""
+    return RoomView(
+        revision=state.revision,
+        participants=participants,
+        timeline=timeline,
+        tracked_work=list(tracked_work.values()),
+        packet_tokens=state.metrics.last_packet_tokens,
+        peak_packet_tokens=state.metrics.peak_packet_tokens,
+        packet_budget=SharedContextConfig.from_env().packet_max_tokens,
+    )
+
+
+_ROOM_POLL_SECONDS = 1.0
+_ROOM_HEARTBEAT_SECONDS = 15.0
+
+
+@workforce_console_router.get("/sessions/{session_id}/room/stream")
+async def stream_room(
+    session_id: str,
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    shared_storage: StorageBase = Depends(get_shared_context_storage),
+) -> StreamingResponse:
+    """The room as server-sent events: a snapshot now and on every change."""
+
+    # Owner-scoped lookup before opening the stream.
+    if await storage.get_session(user_id, "", session_id) is None:
+        raise HTTPException(404, "Session not found")
+
+    async def frames() -> AsyncIterator[str]:
+        # ponytail: re-reads the record each second; subscribe to a
+        # team-context change signal if many rooms are watched at once.
+        last: str | None = None
+        quiet = 0.0
+        while not await request.is_disconnected():
+            if await storage.get_session(user_id, "", session_id) is None:
+                return
+            room = await session_room(session_id, user_id, storage, shared_storage)
+            body = room.model_dump_json()
+            if body != last:
+                last, quiet = body, 0.0
+                yield f"id: {room.revision}\nevent: room\ndata: {body}\n\n"
+            elif quiet >= _ROOM_HEARTBEAT_SECONDS:
+                quiet = 0.0
+                yield ": heartbeat\n\n"
+            await asyncio.sleep(_ROOM_POLL_SECONDS)
+            quiet += _ROOM_POLL_SECONDS
+
+    return StreamingResponse(
+        frames(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -316,6 +316,7 @@ export interface WorkspaceStatus {
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
 export interface TeamData {
+	purpose?: 'operational' | 'platform_group';
 	name: string;
 	description: string;
 	/** Worker agent ids belonging to the team. */

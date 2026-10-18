@@ -1504,3 +1504,12 @@ class StorageBase(ABC):
             `list[KnowledgeDocumentRecord]`:
                 Orphan ``pending`` documents to redispatch.
         """
+
+    async def record_model_call(self, user_id: str, record: dict) -> None:
+        """Persist a started/final projection; terminal evidence is immutable."""
+        raise NotImplementedError
+
+    async def list_model_calls(self, user_id: str, *, since: str, limit: int = 1000,
+                               offset: int = 0, until: str | None = None) -> list[dict]:
+        """Owner-scoped call evidence, in stable ascending start/id order."""
+        raise NotImplementedError

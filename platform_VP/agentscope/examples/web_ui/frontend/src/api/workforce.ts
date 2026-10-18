@@ -108,6 +108,40 @@ export interface AgentToolSettings {
 	}>;
 }
 
+/** A ticket's room as people read it (GET /workforce/console/sessions/{id}/room). */
+export interface RoomEntry {
+	at: string;
+	kind: string;
+	sender: string;
+	to: string;
+	text: string;
+	after: string[];
+}
+
+export interface RoomParticipant {
+	agent_id: string;
+	name: string;
+	model: string;
+	calls: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	output_tokens: number;
+	status: string;
+	goal: string;
+	waiting_for: string[];
+	blocker: string;
+}
+
+export interface RoomView {
+	revision: number;
+	participants: RoomParticipant[];
+	timeline: RoomEntry[];
+	tracked_work: Array<{ operation_id: string; external_job_id: string | null; owner_agent_id: string | null; status: string; terminal: boolean }>;
+	packet_tokens: number;
+	peak_packet_tokens: number;
+	packet_budget: number;
+}
+
 export interface LeaderSession {
 	agent_id: string;
 	session_id: string;
@@ -182,4 +216,25 @@ export const workforceApi = {
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
 	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
+	room: (sessionId: string) =>
+		client.get<RoomView>(`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room`),
+	streamRoom: async function* (sessionId: string, signal: AbortSignal): AsyncGenerator<RoomView> {
+		const response = await client.stream(`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room/stream`, { method: 'GET', signal });
+		const reader = response.body!.getReader();
+		const decoder = new TextDecoder();
+		let buffer = '';
+		try {
+			while (!signal.aborted) {
+				const { done, value } = await reader.read();
+				if (done) return;
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+				for (const line of lines) if (line.startsWith('data: ')) yield JSON.parse(line.slice(6)) as RoomView;
+			}
+		} finally {
+			await reader.cancel().catch(() => {});
+			reader.releaseLock();
+		}
+	},
 };

@@ -2432,3 +2432,44 @@ class AsyncSQLAlchemyStorage(StorageBase):
                 .all()
             )
         return [_to_record(r, KnowledgeDocumentRecord) for r in rows]
+
+    async def record_model_call(self, user_id: str, record: dict) -> None:
+        from sqlalchemy import select, update
+        from sqlalchemy.exc import IntegrityError
+        from ._tables import ModelCallRow
+        if record.get("user_id") != user_id:
+            raise ValueError("Ledger owner mismatch")
+        async with self._session() as sess:
+            current = (await sess.execute(select(ModelCallRow).where(
+                ModelCallRow.user_id == user_id, ModelCallRow.id == record["id"]))).scalar_one_or_none()
+            if current and current.status != "started":
+                if current.payload != record:
+                    raise ValueError("Terminal model-call evidence is immutable")
+                return
+            if current:
+                if any(current.payload.get(k) != record.get(k) for k in ("id", "user_id", "started_at", "model")):
+                    raise ValueError("Model-call identity changed")
+                changed = await sess.execute(update(ModelCallRow).where(
+                    ModelCallRow.user_id == user_id, ModelCallRow.id == record["id"],
+                    ModelCallRow.status == "started").values(status=record["status"], payload=record))
+                if changed.rowcount != 1:
+                    raise ValueError("Concurrent terminal ledger update")
+            else:
+                sess.add(ModelCallRow(user_id=user_id, id=record["id"], started_at=record["started_at"],
+                                     status=record["status"], payload=record))
+            try:
+                await sess.commit()
+            except IntegrityError:
+                await sess.rollback()
+                raise ValueError("Concurrent model call identity") from None
+
+    async def list_model_calls(self, user_id: str, *, since: str, limit: int = 1000,
+                               offset: int = 0, until: str | None = None) -> list[dict]:
+        from sqlalchemy import select
+        from ._tables import ModelCallRow
+        query = select(ModelCallRow.payload).where(ModelCallRow.user_id == user_id, ModelCallRow.started_at >= since)
+        if until is not None:
+            query = query.where(ModelCallRow.started_at <= until)
+        async with self._session() as sess:
+            return list((await sess.execute(query.order_by(ModelCallRow.started_at, ModelCallRow.id)
+                        .offset(offset).limit(limit))).scalars().all())

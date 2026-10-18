@@ -2723,3 +2723,37 @@ class RedisStorage(StorageBase):
             if record.created_at < threshold:
                 records.append(record)
         return records
+
+    async def record_model_call(self, user_id: str, record: dict) -> None:
+        import json
+        if record.get("user_id") != user_id:
+            raise ValueError("Ledger owner mismatch")
+        key = f"agentscope:user:{user_id}:model_calls"
+        async with self._client.pipeline(transaction=True) as pipe:
+            for _ in range(20):
+                try:
+                    await pipe.watch(key)
+                    raw = await pipe.hget(key, record["id"])
+                    current = json.loads(raw) if raw else None
+                    if current and current["status"] != "started":
+                        await pipe.unwatch()
+                        if current != record:
+                            raise ValueError("Terminal model-call evidence is immutable")
+                        return
+                    if current and any(current.get(k) != record.get(k) for k in ("id", "user_id", "started_at", "model")):
+                        raise ValueError("Model-call identity changed")
+                    pipe.multi()
+                    pipe.hset(key, record["id"], json.dumps(record))
+                    await pipe.execute()
+                    return
+                except _watch_error():
+                    continue
+        raise RuntimeError("Model ledger contention")
+
+    async def list_model_calls(self, user_id: str, *, since: str, limit: int = 1000,
+                               offset: int = 0, until: str | None = None) -> list[dict]:
+        import json
+        rows = [json.loads(raw) for raw in await self._client.hvals(f"agentscope:user:{user_id}:model_calls")]
+        rows = [row for row in rows if row["user_id"] == user_id and row["started_at"] >= since
+                and (until is None or row["started_at"] <= until)]
+        return sorted(rows, key=lambda row: (row["started_at"], row["id"]))[offset:offset + limit]

@@ -20,10 +20,12 @@ from .._logging import logger
 from .._utils._common import _generate_id
 from ..message import Msg, SystemMsg, UserMsg
 from ..model import ChatModelBase
+from ..model._call_observer import usage_purpose
 from .message_bus import MessageBus, MessageBusKeys
 from .storage import (
     ContextDelta,
     ContextMode,
+    ProviderUsage,
     SharedContextEvent,
     SharedContextItem,
     SharedContextSummary,
@@ -258,6 +260,49 @@ class SharedContextService:
         """Persistence shared by UI chat and Workforce adapters."""
 
         return self._storage
+
+    async def record_provider_usage(
+        self,
+        *,
+        user_id: str,
+        team_id: str,
+        agent_id: str,
+        agent_name: str,
+        model: str,
+        usage: object | None,
+    ) -> None:
+        """Accumulate the provider's own usage block for one model call.
+
+        ``usage`` is a :class:`~agentscope.model.ChatUsage` or ``None`` when
+        the provider/gateway did not report usage; the call is still counted
+        so a missing usage block is visible instead of silently zero.
+        """
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            entry = record.state.metrics.provider_usage.setdefault(
+                agent_id,
+                ProviderUsage(),
+            )
+            entry.agent_name = agent_name[:255]
+            entry.model = model[:255] if not entry.model or entry.model == model[:255] else "mixed (legacy aggregate)"
+            per_model = record.state.metrics.provider_usage_by_model.setdefault(
+                json.dumps([agent_id, model], ensure_ascii=False), ProviderUsage(agent_name=agent_name[:255], model=model[:255]))
+            for item in (entry, per_model):
+                item.calls += 1
+                if usage is None:
+                    continue
+                item.calls_with_usage += 1
+                item.input_tokens += max(0, int(getattr(usage, "input_tokens", 0)))
+                item.cached_input_tokens += max(
+                    0,
+                    int(getattr(usage, "cache_input_tokens", 0) or 0),
+                )
+                item.output_tokens += max(0, int(getattr(usage, "output_tokens", 0)))
+            await self._commit_mutation(user_id, record)
 
     async def _commit_mutation(
         self,
@@ -633,6 +678,7 @@ class SharedContextService:
         reply_owner_agent_id: str | None = None,
         reference_event_ids: tuple[str, ...] = (),
         delta: ContextDelta | None = None,
+        recipient_session_ids: tuple[str, ...] = (),
     ) -> SharedContextEvent:
         """Idempotently append one shareable event under a team lock."""
 
@@ -777,6 +823,7 @@ class SharedContextService:
                 hop_count=hop_count,
                 reference_event_ids=reference_event_ids,
                 payload_hash=payload_hash,
+                recipient_session_ids=recipient_session_ids,
             )
             record.state.events.append(event)
 
@@ -1955,6 +2002,7 @@ class SharedContextService:
         old = [event for event in events if event.id not in recent_ids]
         return old, recent
 
+    @usage_purpose("shared_summary")
     async def _summarize(
         self,
         model: ChatModelBase,

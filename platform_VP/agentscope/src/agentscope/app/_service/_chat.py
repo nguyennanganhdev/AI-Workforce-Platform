@@ -49,6 +49,7 @@ from ...message import (
 )
 from ...middleware import RAGMiddleware, TTSMiddleware
 from ...model import ChatModelBase
+from ...model._call_observer import usage_purpose
 from ...permission import AdditionalWorkingDirectory
 from ...rag import KnowledgeBase
 from ...sop import SOPPhase
@@ -388,6 +389,7 @@ class ChatService:
                 str(e),
             )
 
+    @usage_purpose("session_title")
     async def _auto_name_session(
         self,
         user_id: str,
@@ -1574,6 +1576,7 @@ class ChatService:
                             membership_storage=self._storage,
                             allow_source_references=True,
                             reference_event_ids=reference_event_ids,
+                            agent_id=agent_id,
                         ),
                     )
 

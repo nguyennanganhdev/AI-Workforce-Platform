@@ -87,4 +87,11 @@ async def get_model(
             config.model,
         )
 
-    return model
+    from .._model_ledger import attach_ledger
+    if not hasattr(access, "_storage"):
+        return model
+    return attach_ledger(model, access._storage, user_id,
+        provider=str(credential_record.data.get("type") or type(credential).__name__),
+        url=str(getattr(credential, "base_url", None) or
+                ("https://api.openai.com/v1" if "openai" in type(credential).__name__.lower() else
+                 "unknown://" + type(credential).__name__.lower())))

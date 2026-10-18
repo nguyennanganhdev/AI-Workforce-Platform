@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The unified agent class in AgentScope library."""
+from ..model._call_observer import usage_purpose
 import asyncio
 import collections
 import json
@@ -487,6 +488,7 @@ class Agent:
             state=ToolResultState.SUCCESS,
         )
 
+    @usage_purpose("private_summary")
     async def _compress_context_impl(
         self,
         context_config: ContextConfig | None = None,

@@ -15,6 +15,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from ._model_response import StructuredResponse, ChatResponse, FinishedReason
 from ._model_card import ModelCard
 from ._utils import _StreamAccumulator
+from ._call_observer import observed_call
 from .._logging import logger
 from .._utils._common import _json_loads_with_repair
 from ..credential import CredentialBase
@@ -209,7 +210,7 @@ class ChatModelBase:
         for attempt in range(self.max_retries + 1):
             # The accumulated chat response
             try:
-                res = await self._call_api(
+                res = await observed_call(self, self._call_api,
                     self.model,
                     messages=messages,
                     tools=tools,
@@ -663,7 +664,7 @@ class ChatModelBase:
                 UserMsg(name="user", content=[TextBlock(text=instruction)]),
             )
 
-        res = await self._call_api(
+        res = await observed_call(self, self._call_api,
             model_name=model_name,
             messages=copied_messages,
             tools=[

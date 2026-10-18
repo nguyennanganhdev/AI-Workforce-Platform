@@ -30,6 +30,7 @@ from ._router import (
     sop_router,
     tts_model_router,
     workforce_console_router,
+    workforce_insights_router,
     workspace_router,
 )
 from ._types import AgentMiddlewareFactory, AgentToolFactory, SubAgentTemplate
@@ -454,6 +455,7 @@ def create_app(
         embedding_model_router,
         channel_router,
         workforce_console_router,
+        workforce_insights_router,
     ):
         app.include_router(router)
 

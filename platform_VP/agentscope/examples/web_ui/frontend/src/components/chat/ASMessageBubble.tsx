@@ -763,7 +763,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			const team = teamHintSource(block.source);
 			if (team && typeof block.hint === 'string') {
 				return (
-					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} />
+					<TeamMessageCard sender={team.sender} kind={team.kind} text={block.hint} at={block.created_at} />
 				);
 			}
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
