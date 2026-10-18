@@ -717,6 +717,9 @@ LANGUAGE AND VOICE:
         if reply_language == "vi"
         else "\nThe required language for this build is English."
     )
+    from .._service._agent_eval import PASSABLE_TESTS
+
+    instructions += "\n" + PASSABLE_TESTS
     instructions += _sandbox_test_note()
     try:
         async with asyncio.timeout(_builder_timeout()):
