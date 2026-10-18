@@ -1836,7 +1836,10 @@ class SharedContextService:
             reason = branch.reason if branch.status == "stopped" else ""
             if branch.measured_tokens > self.config.collaboration_max_tokens:
                 reason = "measured token limit exceeded"
-            if branch.model_calls > self.config.collaboration_max_model_calls:
+            if (
+                branch.model_calls - branch.paging_model_calls
+                > self.config.collaboration_max_model_calls
+            ):
                 reason = "model call limit exceeded"
             if branch.active_seconds >= self.config.collaboration_max_active_seconds:
                 reason = "active execution time limit exceeded"
@@ -1851,6 +1854,63 @@ class SharedContextService:
                 self.config.collaboration_max_active_seconds - branch.active_seconds,
                 task.latest_customer_revision,
             )
+
+    async def credit_source_read(
+        self,
+        user_id: str,
+        team_id: str,
+        session_id: str,
+        *,
+        task_id: str,
+        customer_revision: int,
+        paging_call_id: str,
+        source_reads: list[dict],
+    ) -> bool:
+        """Refund one work round only for successful, advancing source reads."""
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            task = record.state.tasks[task_id]
+            if task.latest_customer_revision != customer_revision:
+                raise SharedContextConcurrencyError(
+                    "Customer requirement changed during execution"
+                )
+            branch = self._branch(task, session_id)
+            if branch.status == "stopped":
+                raise CollaborationStoppedError(branch.reason)
+            credited = False
+            for read in sorted(
+                source_reads, key=lambda read: (read["section"], read["offset"])
+            ):
+                section = read["section"]
+                offset, pages = branch.source_read_progress.get(section, (0, 0))
+                end = read["end"]
+                if read["offset"] <= offset < end:
+                    # Packet refreshes cannot refund the same source page twice.
+                    complete_pages = (
+                        (end + 1999) // 2000
+                        if end == read["total_characters"]
+                        else end // 2000
+                    )
+                    if (
+                        complete_pages > pages
+                        and not credited
+                        and paging_call_id not in branch.paging_call_ids
+                        and branch.paging_model_calls < branch.model_calls
+                    ):
+                        credited = True
+                        branch.paging_model_calls += 1
+                        branch.paging_call_ids = (
+                            *branch.paging_call_ids, paging_call_id,
+                        )
+                    branch.source_read_progress[section] = (
+                        end,
+                        max(pages, complete_pages) if credited else pages,
+                    )
+            await self._commit_mutation(user_id, record)
+            return credited
 
     async def pending_user_question(self, user_id: str, team_id: str) -> str | None:
         record = await self._storage.get_team_shared_context(user_id, team_id)
@@ -2369,6 +2429,8 @@ class SharedContextService:
                 branch.pop("evidence_rejections", None)
                 branch.pop("receipts", None)
                 branch.pop("signatures", None)
+                branch.pop("paging_call_ids", None)
+                branch.pop("source_read_progress", None)
         selected_event_ids = {event.id for event in events}
         active_items = [
             item
@@ -2512,6 +2574,23 @@ class SharedContextService:
         user_id: str,
     ) -> tuple[str, int]:
         """Replace oversized sections with readable, immutable source pages."""
+        packet["coordination"] = [
+            {
+                "task_id": task["id"],
+                "objective_preview": task["objective"][:256],
+                "status": task["status"],
+                "reply_owner_agent_id": task["reply_owner_agent_id"],
+                "pending_question_ids": task["pending_question_ids"],
+                "collaboration": {
+                    session_id: {
+                        "status": branch["status"],
+                        "waiting_for": branch["waiting_for"],
+                    }
+                    for session_id, branch in task["collaboration"].items()
+                },
+            }
+            for task in packet["authoritative_state"]["tasks"]
+        ]
         sections = [
             (
                 packet["authoritative_state"],
@@ -2892,7 +2971,12 @@ class SharedContextService:
             "A source_ref replaces a section that is too large to inline. "
             "Use SharedContextRead(source_ref, offset) to read its pages before "
             "using those constraints, results or open questions. A reference "
-            "is not an empty section. All source data is retained.\n"
+            "is not an empty section. All source data is retained. "
+            "coordination stays inline so you can follow open dependencies while "
+            "reading. Its objective_preview is abbreviated; read the task source "
+            "for full requirements. Retained snapshots may be older than this "
+            "packet; prefer newer requirements and results. Reading sources does "
+            "not replace necessary TeamSay questions, answers or final reports.\n"
             f"{packet}\n</shared-context-packet>"
         )
 

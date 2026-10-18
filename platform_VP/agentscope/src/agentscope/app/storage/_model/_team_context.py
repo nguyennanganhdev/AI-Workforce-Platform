@@ -166,6 +166,10 @@ class CollaborationBranch(BaseModel):
     """
     exchanges: int = 0
     model_calls: int = 0
+    paging_model_calls: int = 0
+    paging_call_ids: tuple[str, ...] = ()
+    source_read_progress: dict[str, tuple[int, int]] = Field(default_factory=dict)
+    """Per section: contiguous characters read and pages already credited."""
     measured_tokens: int = 0
     active_seconds: float = 0
     verifications: int = 0
