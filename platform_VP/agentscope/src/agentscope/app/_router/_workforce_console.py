@@ -105,6 +105,12 @@ class BuilderTool(BaseModel):
     mcp_name: str
     tool_name: str
     description: str = ""
+    # What the Builder needs to pick a tool and write tests it can pass.
+    parameters: list[str] = Field(default_factory=list)
+    """Parameter names; a required one ends with '*'."""
+    access: Literal["read", "write", "unknown"] = "unknown"
+    ticket_scoped: bool = False
+    """Reads or changes the one ticket handed over to the agent."""
 
 
 class GeneratedTest(BaseModel):
@@ -209,14 +215,23 @@ class PrepareRequest(BaseModel):
     chat_model_config: ChatModelConfig
     conversation_id: str | None = None
     confirm_outline: bool = False
+    decisions: dict[str, Literal["create", "update", "reuse"]] = Field(default_factory=dict, max_length=20)
+    """Per planned agent name with a similar existing agent: update that
+    agent, reuse it unchanged, or still create a new one."""
 
 
+class SimilarAgentView(BaseModel):
+    agent_id: str
+    name: str
+    score: float
+    published: bool = False
 
 
 class PlannedAgentView(BaseModel):
     name: str
     objective: str
     suggested_tools: list[BuilderTool] = Field(default_factory=list)
+    similar: SimilarAgentView | None = None
 
 
 class ProposedAgentView(BaseModel):
@@ -234,6 +249,9 @@ class ProposedAgentView(BaseModel):
     """Frozen AgentSpec that was actually evaluated; never regenerated at publish."""
     reuse_agent_id: str | None = None
     reuse_agent_name: str | None = None
+    update_agent_id: str | None = None
+    """Published as a new version of this existing agent instead of a new one."""
+    update_agent_name: str | None = None
 
 
 class ProposalView(BaseModel):
@@ -260,6 +278,7 @@ class PublishedAgent(BaseModel):
     session_id: str | None = None
     name: str
     reused: bool = False
+    updated: bool = False
 
 
 class PublishResponse(BaseModel):
@@ -394,6 +413,41 @@ def _similarity(left: str, right: str) -> float:
     return len(a & b) / len(a | b)
 
 
+# From this overlap an existing agent is shown as doing the same job; the
+# manager then chooses to update it, reuse it or still create a new one.
+_SIMILAR_AGENT_SCORE = 0.4
+
+
+def _pairs(value: str) -> set[tuple[str, str]]:
+    """Word pairs: Vietnamese words are one or two syllables, so pairs of
+    syllables compare meaning far better than single syllables."""
+    words = re.findall(r"\w+", unicodedata.normalize("NFC", value).casefold(), flags=re.UNICODE)
+    return set(zip(words, words[1:]))
+
+
+def _agent_tool_ids(record: AgentRecord) -> set[str]:
+    tools = (record.data.spec or {}).get("tools") or []
+    return {str(tool.get("tool_id")) for tool in tools if tool.get("tool_id")}
+
+
+def _similar_agent(objective: str, tool_ids: set[str], existing: list[AgentRecord]) -> "SimilarAgentView | None":
+    """The existing business agent whose job or tools overlap most with a planned one."""
+    best: SimilarAgentView | None = None
+    mine = _pairs(objective)
+    for record in existing:
+        theirs = _pairs(" ".join(filter(None, (record.data.build_description,
+                                                (record.data.spec or {}).get("description"),
+                                                (record.data.spec or {}).get("goal")))))
+        text = len(mine & theirs) / len(mine | theirs) if mine and theirs else 0.0
+        held = _agent_tool_ids(record)
+        tools = len(tool_ids & held) / len(tool_ids | held) if tool_ids & held else 0.0
+        score = round(max(text, tools), 2)
+        if score >= _SIMILAR_AGENT_SCORE and (best is None or score > best.score):
+            best = SimilarAgentView(agent_id=record.id, name=record.data.name, score=score,
+                                    published=record.data.lifecycle_state == "published")
+    return best
+
+
 def _claim_exclusive_tool_ids(
     requested: list[str],
     available: set[str],
@@ -494,6 +548,9 @@ async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
             tool_name = str(tool.get("name") or "").strip()
             if not tool_name:
                 continue
+            schema = tool.get("input_schema") or {}
+            required = set(schema.get("required") or [])
+            properties = list((schema.get("properties") or {}))
             catalog.append(
                 BuilderTool(
                     id=f"{record.id}:{tool_name}",
@@ -501,6 +558,9 @@ async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
                     mcp_name=record.client.name,
                     tool_name=tool_name,
                     description=str(tool.get("description") or ""),
+                    parameters=[name + ("*" if name in required else "") for name in properties][:20],
+                    access="read" if tool.get("read_only") is True else "write" if tool.get("read_only") is False else "unknown",
+                    ticket_scoped="ticket_id" in properties,
                 ),
             )
     return catalog
@@ -1171,6 +1231,11 @@ async def _record_builder_prompt_measurement(
     )
 
 
+async def _business_agents(storage: StorageBase, user_id: str) -> list[AgentRecord]:
+    return [record for record in await storage.list_agents(user_id)
+            if record.source == "user" and record.data.system_role == "business"]
+
+
 def _stored_proposal(messages: list[Msg]) -> ProposalView | None:
     for message in reversed(messages):
         payload = message.structured_output or {}
@@ -1391,10 +1456,25 @@ def _library_note(knowledge: dict[str, dict], skills: dict[str, dict]) -> str:
 
     return (
         "\nRegistered knowledge bases (attach by kb_id):\n"
-        + json.dumps(list(knowledge.values()), ensure_ascii=False)[:6000]
+        + _compact_json(list(knowledge.values()), ("kb_id", "name", "description"))
         + "\nLibrary skills (reuse by skill_id):\n"
-        + json.dumps(list(skills.values()), ensure_ascii=False)[:6000]
+        + _compact_json(list(skills.values()), ("skill_id", "name", "description"))
     )
+
+
+def _compact_json(items: list[dict], keys: tuple[str, ...], limit: int = 6000) -> str:
+    """Whole entries as valid JSON within ``limit`` characters: long texts are
+    shortened, and entries that do not fit are counted instead of cut."""
+
+    shown: list[dict] = []
+    for item in items:
+        entry = {key: (str(item[key])[:300] if isinstance(item.get(key), str) else item[key])
+                 for key in keys if item.get(key) not in (None, "", [])}
+        if len(json.dumps([*shown, entry], ensure_ascii=False)) > limit:
+            break
+        shown.append(entry)
+    rest = len(items) - len(shown)
+    return json.dumps(shown, ensure_ascii=False) + (f" (+{rest} more not shown)" if rest else "")
 
 
 def _sandbox_test_note() -> str:
@@ -1554,6 +1634,7 @@ async def _prepare_builder(
         by_id = {tool.id: tool for tool in tools}
         claimed_outline_tools: set[str] = set()
         planned_agents: list[PlannedAgentView] = []
+        existing = await _business_agents(storage, user_id)
         for agent in outline.agents:
             tool_ids, _invalid, _duplicates = _claim_exclusive_tool_ids(
                 agent.suggested_tool_ids,
@@ -1565,6 +1646,7 @@ async def _prepare_builder(
                     name=agent.name,
                     objective=agent.objective,
                     suggested_tools=[by_id[tool_id] for tool_id in tool_ids],
+                    similar=_similar_agent(agent.objective, set(tool_ids), existing),
                 ),
             )
         summary = outline.assistant_message or (
@@ -1590,6 +1672,28 @@ async def _prepare_builder(
         )
         return proposal
 
+    existing = await _business_agents(storage, user_id)
+    by_agent_id = {record.id: record for record in existing}
+    outline_plan = _stored_proposal(messages)
+    similar = {agent.name: agent.similar for agent in (outline_plan.planned_agents if outline_plan else []) if agent.similar}
+    undecided = [name for name in similar if name not in body.decisions]
+    if undecided:
+        raise HTTPException(status_code=409, detail=(
+            "Chọn cách xử lý agent trùng nghiệp vụ trước khi sinh cấu hình: " + ", ".join(undecided)))
+    reused = {name: by_agent_id[similar[name].agent_id] for name, choice in body.decisions.items()
+              if choice == "reuse" and name in similar and similar[name].agent_id in by_agent_id}
+    updated = {name: by_agent_id[similar[name].agent_id] for name, choice in body.decisions.items()
+               if choice == "update" and name in similar and similar[name].agent_id in by_agent_id}
+    roster = [{"name": record.data.name, "objective": record.data.build_description,
+               "tools": sorted(tool.split(":", 1)[-1] for tool in _agent_tool_ids(record))} for record in existing]
+    transcript += (
+        "\n\nEXISTING AGENTS (the roster; teammates you may hand off to through TeamSay):\n"
+        + _compact_json(roster, ("name", "objective", "tools"))
+        + "".join(f"\nDo not generate '{name}': the existing agent '{record.data.name}' is reused unchanged."
+                  for name, record in reused.items())
+        + "".join(f"\nGenerate '{name}' as the complete new version of the existing agent '{record.data.name}',"
+                  f" keeping the name '{record.data.name}'." for name, record in updated.items())
+    )
     if progress:
         await progress.stage("generating")
     try:
@@ -1639,11 +1743,6 @@ async def _prepare_builder(
         return proposal
 
     by_id = {tool.id: tool for tool in tools}
-    existing = [
-        record
-        for record in await storage.list_agents(user_id)
-        if record.source == "user" and record.data.system_role == "business"
-    ]
     views: list[ProposedAgentView] = []
     any_blocked = False
     claimed_tool_ids: set[str] = set()
@@ -1677,6 +1776,10 @@ async def _prepare_builder(
             if reuse is not None
             else 0.0
         )
+        if any(agent.name.casefold() in {name.casefold(), record.data.name.casefold()} for name, record in reused.items()):
+            continue  # reused unchanged below, never generated again
+        target = next((record for name, record in updated.items()
+                       if agent.name.casefold() in {name.casefold(), record.data.name.casefold()}), None)
         checks = _agent_checks(agent, selected, invalid, duplicate_tool_ids, reused_skills, unknown)
         passed = all(checks.values())
         views.append(
@@ -1701,10 +1804,21 @@ async def _prepare_builder(
                     "duplicate_tool_ids": duplicate_tool_ids,
                     "reuse_similarity": round(reuse_score, 2),
                 },
+                update_agent_id=target.id if target else None,
+                update_agent_name=target.data.name if target else None,
             ),
         )
         await _evaluate_proposed_agent(views[-1], storage, user_id, model, progress)
         any_blocked = any_blocked or not views[-1].evaluation["passed"]
+    for record in reused.values():
+        # Used as it is in production: its own published version and evaluation.
+        views.append(ProposedAgentView(
+            name=record.data.name, objective=record.data.build_description,
+            system_prompt=record.data.system_prompt, selected_tools=[], skill_name="", skill_markdown="",
+            evaluation={"passed": record.data.lifecycle_state == "published", "checks": {}, "reused": True},
+            spec=record.data.spec or {}, reuse_agent_id=record.id, reuse_agent_name=record.data.name,
+        ))
+        any_blocked = any_blocked or record.data.lifecycle_state != "published"
     if not views:
         any_blocked = True
     proposal = ProposalView(
@@ -1778,7 +1892,8 @@ async def evaluate_builder(body: PublishRequest, user_id: str = Depends(get_curr
             model = await get_model(user_id, proposal.chat_model_config, access)
             model._usage_attributes = {"user_id": user_id, "session_id": session.id, "purpose": "eval"}
             for item in proposal.agents:
-                await _evaluate_proposed_agent(item, storage, user_id, model, progress)
+                if not item.reuse_agent_id:  # a reused agent keeps its own published evaluation
+                    await _evaluate_proposed_agent(item, storage, user_id, model, progress)
             proposal.status = "ready" if proposal.agents and all(item.evaluation["passed"] for item in proposal.agents) else "blocked"
             proposal.revision += 1
             proposal.assistant_message = "Đã chạy lại eval trên đúng cấu hình và test case hiện có; không sinh lại agent."
@@ -1830,19 +1945,23 @@ async def publish_builder(
                 detail="Proposal chưa đạt điều kiện phát hành",
             )
         for item in proposal.agents:
+            if item.reuse_agent_id:
+                # Reused as it is in production: nothing about it changes.
+                reused = await storage.get_agent(user_id, item.reuse_agent_id)
+                if (reused is None or reused.data.lifecycle_state != "published"
+                        or not reused.data.invite_config.invitable):
+                    raise HTTPException(status_code=409, detail="Agent dùng lại không còn đang phát hành.")
+                continue
             if not item.spec:
                 raise HTTPException(status_code=409, detail="Proposal cũ chưa được kiểm thử bằng model; hãy tạo lại.")
             spec = AgentSpec.model_validate(item.spec)
             blocker = publish_blocker(spec, item.evaluation.get("model_report"))
             if blocker or not all(item.evaluation.get("checks", {}).values()):
                 raise HTTPException(status_code=409, detail=blocker or "Cấu hình agent chưa đạt.")
-            if item.reuse_agent_id:
-                reused = await storage.get_agent(user_id, item.reuse_agent_id)
-                if (reused is None or reused.data.lifecycle_state != "published"
-                        or not reused.data.invite_config.invitable or not reused.data.spec
-                        or spec_hash(AgentSpec.model_validate(reused.data.spec)) != spec_hash(spec)
-                        or publish_blocker(spec, reused.data.evaluation)):
-                    raise HTTPException(status_code=409, detail="Agent tái sử dụng chưa có kiểm thử hợp lệ cho đúng spec.")
+            if item.update_agent_id:
+                target = await storage.get_agent(user_id, item.update_agent_id)
+                if target is None or target.source != "user" or target.data.system_role != "business":
+                    raise HTTPException(status_code=409, detail="Agent cần cập nhật không còn tồn tại.")
         assigned_tools: set[str] = set()
         duplicate_tools: set[str] = set()
         for item in proposal.agents:
@@ -1872,10 +1991,33 @@ async def publish_builder(
                 ),
             )
             continue
-        from .._service._agent_studio import apply_bindings, materialize
+        from .._service._agent_studio import apply_bindings, materialize, published_spec
         from ._workforce_studio import _skill_installer
 
         spec = AgentSpec.model_validate(item.spec)
+        if item.update_agent_id:
+            # A new version of the existing agent, published the way Studio publishes one.
+            record = await storage.get_agent(user_id, item.update_agent_id)
+            session = await _primary_session(storage, workspace_manager, user_id, record.id, model_config,
+                                             "Builder primary session")
+            previous = published_spec(record) if record.data.published_version else None
+            record = record.model_copy(deep=True)
+            record.data.resource_workspace_id = "published-" + _generate_id()
+            record.data.generated_skill = item.skill_markdown
+            materialize(record, spec, author="builder", note="Cập nhật từ Agent Builder",
+                        evaluation=item.evaluation["model_report"])
+            await apply_bindings(
+                storage, workspace_manager, user_id, record, spec,
+                install_skill=_skill_installer(request, storage, user_id, record.id), previous=previous, stage=True,
+            )
+            if item.skill_markdown.strip():
+                workspace = await workspace_manager.get_workspace(
+                    user_id, record.id, session.id, record.data.resource_workspace_id)
+                await workspace.add_skill_archive(
+                    _archive(item.skill_name, item.skill_markdown), "tar", item.skill_name, agent_id=record.id)
+            prepared.append(record)
+            result.append(PublishedAgent(agent_id=record.id, session_id=session.id, name=record.data.name, updated=True))
+            continue
         record = AgentRecord(
             user_id=user_id,
             data=AgentData(
