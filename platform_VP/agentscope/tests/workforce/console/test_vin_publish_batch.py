@@ -78,6 +78,30 @@ async def test_batch_activates_together_and_replay_returns_same_agents(publicati
 
 
 @pytest.mark.asyncio
+async def test_only_passed_publishes_the_passing_agents_and_keeps_the_rest(publication):
+    p = publication
+    proposal = p.proposal.model_copy(deep=True)
+    proposal.agents[0].evaluation["passed"] = True
+    proposal.agents[1].evaluation["passed"] = False
+    proposal.status, proposal.revision = "blocked", 2
+    await _persist_builder_turn(p.storage, "alice", "conversation", "Một agent còn trượt", proposal)
+    command = {**p.command, "expected_revision": 2}
+    with pytest.raises(PlatformError, match="PUBLICATION_NOT_READY"):
+        await batch.enqueue(p.storage, "alice", command)
+    queued = await batch.enqueue(p.storage, "alice", {**command, "only_passed": True})
+    assert queued["total"] == 1
+    await p.worker.run_one()
+    job = await batch.find_job(p.storage, "alice", queued["job_id"])
+    assert job.status == "succeeded" and [a["name"] for a in job.result["agents"]] == ["Fixture kỹ thuật"]
+    agents = await p.storage.list_agents("alice")
+    assert [a.data.name for a in agents if a.data.lifecycle_state == "published"] == ["Fixture kỹ thuật"]
+    messages, _ = await p.storage.list_messages("alice", "conversation")
+    kept = _stored_proposal(messages)
+    assert kept.status == "blocked" and kept.proposal_id != "proposal-1" and kept.revision == 3
+    assert [bool(item.reuse_agent_id) for item in kept.agents] == [True, False]
+
+
+@pytest.mark.asyncio
 async def test_stage_crash_repairs_without_duplicate_agents_or_partial_publication(publication, monkeypatch):
     p = publication
     original, calls = batch.apply_bindings, []

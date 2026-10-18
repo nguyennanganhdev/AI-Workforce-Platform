@@ -533,6 +533,9 @@ export function AgentBuilderPage() {
 											<Rocket /> Phát hành
 										</Button>
 									)}
+									{proposal.status === 'blocked' && passedCount > 0 && privateAccount && <BatchPublication key={`${proposal.proposal_id}:passed`} proposal={proposal} disabled={working} onlyPassed={passedCount} onPublished={async () => {
+										await refreshConversation(proposal.conversation_id); await loadAgents();
+									}} />}
 									{proposal.status === 'blocked' && passedCount > 0 && !privateAccount && (
 										<Button variant="outline" onClick={() => void publish(true)} disabled={working}>
 											<Rocket /> Phát hành {passedCount} agent đã đạt

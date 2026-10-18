@@ -49,6 +49,14 @@ async def builder_guard(storage, user_id, conversation_id):
         await authority.complete_claim(context, ident, lease, {"type": "builder-guard", "state": "idle"})
 
 
+def selected(proposal, body):
+    """Indexes to publish: all agents, or with only_passed the new ones that passed eval."""
+    if not body.get("only_passed"):
+        return list(range(len(proposal.agents)))
+    return [index for index, item in enumerate(proposal.agents)
+            if not item.reuse_agent_id and item.evaluation.get("passed")]
+
+
 async def proposal_for(storage, user_id, body):
     from .._router._workforce_console import _BUILDER_AGENT_ID, _list_all_builder_messages, _stored_proposal
     if await storage.get_session(user_id, _BUILDER_AGENT_ID, body["conversation_id"]) is None:
@@ -56,10 +64,13 @@ async def proposal_for(storage, user_id, body):
     proposal = _stored_proposal(await _list_all_builder_messages(storage, user_id, body["conversation_id"]))
     if proposal is None or proposal.proposal_id != body["proposal_id"] or proposal.revision != body["expected_revision"]:
         raise PlatformError("BUILDER_HEAD_CHANGED", 409)
-    if proposal.status not in {"ready", "published"} or not proposal.agents:
+    partial = bool(body.get("only_passed"))
+    allowed = {"ready", "published", "blocked"} if partial else {"ready", "published"}
+    if proposal.status not in allowed or not proposal.agents or not selected(proposal, body):
         raise PlatformError("PUBLICATION_NOT_READY", 409)
     tools = []
-    for item in proposal.agents:
+    for index in selected(proposal, body):
+        item = proposal.agents[index]
         spec = AgentSpec.model_validate(item.spec)
         if publish_blocker(spec, item.evaluation.get("model_report")) or not all(item.evaluation.get("checks", {}).values()):
             raise PlatformError("PUBLICATION_EVALUATION_REQUIRED", 409)
@@ -78,7 +89,8 @@ async def proposal_for(storage, user_id, body):
 async def enqueue(storage, user_id, body, *, previous=None):
     authority, context = await personal_context(storage, user_id)
     proposal = await proposal_for(storage, user_id, body)
-    base = stable_id("builder-batch", context.tenant_id, user_id, body["conversation_id"], body["proposal_id"], str(body["expected_revision"]))
+    base = stable_id("builder-batch", context.tenant_id, user_id, body["conversation_id"], body["proposal_id"],
+                     str(body["expected_revision"]), "passed" if body.get("only_passed") else "all")
     key = base if previous is None else base + ":repair:" + previous.job_id
     payload = {**body, "base_id": base}
     if previous is not None:
@@ -86,15 +98,15 @@ async def enqueue(storage, user_id, body, *, previous=None):
             raise PlatformError("PUBLICATION_STILL_RUNNING", 409)
         payload["resume"] = previous.result or {}
     job = await authority.jobs.enqueue(context, kind="publish-batch", key=key, payload=payload)
-    return view(job, proposal)
+    return view(job, proposal, len(selected(proposal, body)))
 
 
-def view(job, proposal=None):
+def view(job, proposal=None, count=None):
     result = job.result or {}
     phase = result.get("phase", "queued")
     published = job.status == "succeeded" and phase == "published"
     return {"job_id": job.job_id, "status": "published" if published else "failed" if job.status == "failed" else "queued",
-        "phase": phase, "cursor": result.get("cursor", 0), "total": len(proposal.agents) if proposal else result.get("total", 0),
+        "phase": phase, "cursor": result.get("cursor", 0), "total": result.get("total") or count or (len(proposal.agents) if proposal else 0),
         "agents": result.get("agents", []) if published else [], "error": (job.error or {}).get("code"),
         "can_repair": job.status == "failed"}
 
@@ -144,14 +156,16 @@ async def run(worker, authority, context, job):
         manifest = dict(body.get("resume") or {})
         if manifest.get("resource_pins", pins) != pins:
             raise PlatformError("PUBLICATION_RESOURCES_CHANGED", 409)
-        manifest.update(total=len(proposal.agents), resource_pins=pins)
+        chosen = selected(proposal, body)
+        manifest.update(total=len(chosen), resource_pins=pins)
         manifest.setdefault("records", [])
         manifest.setdefault("agents", [])
         manifest.setdefault("cursor", 0)
         manifest["phase"] = "staging"
         await authority.jobs.checkpoint(job, worker.worker_id, manifest)
-        for index, item in enumerate(proposal.agents):
-            if index < manifest["cursor"]:
+        for position, index in enumerate(chosen):
+            item = proposal.agents[index]
+            if position < manifest["cursor"]:
                 continue
             if item.reuse_agent_id:
                 manifest["agents"].append({"agent_id": item.reuse_agent_id, "name": item.reuse_agent_name or item.name,
@@ -191,7 +205,7 @@ async def run(worker, authority, context, job):
                         await workspace.add_skill_archive(_archive(item.skill_name, item.skill_markdown), "tar", item.skill_name, agent_id=ident)
                 manifest["records"].append(record.model_dump(mode="json"))
                 manifest["agents"].append({"agent_id": ident, "session_id": session_id, "name": item.name, "reused": False})
-            manifest["cursor"] = index + 1
+            manifest["cursor"] = position + 1
             await authority.jobs.checkpoint(job, worker.worker_id, manifest)
         await proposal_for(storage, user_id, body)
         if await resource_pins(storage, worker.chat._access, user_id, proposal) != pins:
@@ -205,9 +219,24 @@ async def run(worker, authority, context, job):
             await storage.activate_agents_batch(user_id, records)
         manifest["phase"] = "activated"
         await authority.jobs.checkpoint(job, worker.worker_id, manifest)
-        proposal.status = "published"
+        content = "Đã phát hành toàn bộ agent trong đề xuất."
+        left = [item.name for i, item in enumerate(proposal.agents) if not item.reuse_agent_id and i not in chosen]
+        if body.get("only_passed") and left:
+            # Published agents stay as reused ones; the rest get a new proposal id to fix and publish later.
+            published = {row["agent_id"]: row for row in manifest["agents"] if not row["reused"]}
+            for index in chosen:
+                item, ident = proposal.agents[index], stable_id(body["base_id"], str(index))
+                item.reuse_agent_id, item.reuse_agent_name = ident, published.get(ident, {}).get("name", item.name)
+                item.evaluation = {**item.evaluation, "reused": True}
+            proposal.proposal_id = stable_id(body["base_id"], "remaining")
+            proposal.revision += 1
+            proposal.status = "blocked"
+            content = (f"Đã phát hành {len(chosen)} agent đạt eval. Còn {len(left)} agent chưa đạt: {', '.join(left)}; "
+                       "sửa hoặc chạy lại eval rồi phát hành tiếp.")
+        else:
+            proposal.status = "published"
         await storage.upsert_message(user_id, body["conversation_id"], AssistantMsg(
-            id=stable_id(body["base_id"], "receipt"), name="agent_builder", content="Đã phát hành toàn bộ agent trong đề xuất.",
+            id=stable_id(body["base_id"], "receipt"), name="agent_builder", content=content,
             structured_output={"workforce_builder_proposal": proposal.model_dump(mode="json")}))
         manifest["phase"] = "published"
         return manifest
