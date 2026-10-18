@@ -27,6 +27,13 @@ Nhánh `origin/develop` ở `22b15ff93dab736546b37373c8b0a68d62a4d358`, chưa c�
 - Test sau sửa được ghi trong artifact riêng của bản sửa; dùng Docker network none, provider/transport giả, không mount env thật vào test offline.
 - Bộ hồi quy cuối: 26 passed, gồm phân loại phiên Redis/SQL, nguồn prompt sau lắp runtime, grant đọc BQL, đọc bằng chứng khi 409 và luồng thao tác vẫn dừng khi grant bị thu hồi. Bộ chat cá nhân/nhóm và runtime liên quan: 49 passed, 1 SQLite skip; skip không được coi là nghiệm thu runtime đồng thời PostgreSQL.
 - Frontend TypeScript/Vite build và kiểm tra production API `/api` đạt; ESLint đạt; 26 test văn phòng đạt. Chưa có phiên browser production khả dụng để thao tác UI bằng tay.
+- Suite case đối tác đầy đủ: 38 passed, 7 subtests passed, gồm quyền tool, giao việc, sự kiện nhân viên, approval/resume, kết quả và đóng phiếu bằng provider/transport giả. Lượt chạy mở rộng đầu đã dừng để chạy lại suite này riêng với log tiến độ; chỉ lượt hoàn tất được tính là PASS.
 - Preflight candidate chạy trong tiến trình Python riêng trên VPS, dùng SQL read-only; không thay file/container đang phục vụ. Phiếu closed chỉ có `CaseEvidence`; phiếu open có `CaseEvidence`, `vh_ticket_get`, `vh_knowledge_search`, `vh_staff_available`. Không gọi các tool nghiệp vụ hoặc model/embedding.
 - Không xóa error message/lịch sử để làm như phiên cũ chưa từng lỗi. Không thay phiên bản agent hay trạng thái ticket/approval của cư dân.
 - Chưa deploy cho đến khi chốt nền nhánh: yêu cầu mới nhắc `develop`, trong khi Docker/VPS hiện hành là `develop2`. Browser/UI thật và chất lượng trả lời model chưa được nghiệm thu.
+
+## Bản sửa để kiểm tra
+
+Mã ứng dụng đã commit/push: `a185cc2db41c2935446d89de5ad5e0b9fb543b4a`, nhánh `fix/leader-personal-boundary-20261018`. Image candidate app/web: `agentscope-platform:a185cc2d-leader-boundary-20261018` và `agentscope-platform-web:a185cc2d-leader-boundary-20261018`, build trên bản chuẩn `fe56707a`; chưa dùng cho container production.
+
+Gói Docker: `E:\AWP-Releases\leader-boundary-a185cc2d-20261018`, có source, log test, checksum và script chỉ nạp image. Archive image SHA256: `06bd2a400a3201802f3806e5e679d8dc73b09c28510987583083b27ecf5d94a2`. Kiểm tra import candidate đạt; không có `.env` hay credential môi trường trong image. Source archive không chứa env thật, `.artifacts` hoặc node_modules.

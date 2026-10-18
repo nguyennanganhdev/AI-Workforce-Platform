@@ -71,4 +71,3 @@ async def test_operational_tools_still_fail_closed_when_domain_revokes_grant():
         with pytest.raises(WorkflowGrantUnavailable) as error:
             await runtime._tools("manager", _Case(store, {"workflow_id": workflow, "session_id": "case"}, route), route)
     assert "private details" not in str(error.value)
-
