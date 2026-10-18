@@ -1458,7 +1458,9 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
                 target=f"Monday@{self.monday_agent.id[:8]}", prompt="Inspect safely")
         self.assertNotEqual(answer.state, ToolResultState.ERROR)
         client = self.invite_workspace.add_mcp.call_args.args[0]
-        self.assertEqual(client.confirm_tools, ["flagged", "unknown", "write"])
+        # Only the server/owner consent list is forced; book/cancel/pay/writes are
+        # asked by the runtime risk policy, reads and searches run.
+        self.assertEqual(client.confirm_tools, ["flagged"])
         sessions = await self.storage.list_sessions(self.user_id, self.monday_agent.id)
         self.assertEqual(sessions[0].config.workspace_id, "ws-monday")
 
@@ -1493,6 +1495,38 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             {item["session_id"] for item in wakeups},
             {member.session_id for member in team.data.members},
         )
+
+    async def test_standby_members_are_briefed_but_only_the_coordinator_starts(self):
+        pool = [self.monday_agent]
+        for name in ("Flights", "Hotels"):
+            record = _make_agent_record(self.user_id, name)
+            record.data.lifecycle_state = "published"
+            record.data.invite_config = self.monday_agent.data.invite_config.model_copy()
+            await self.storage.upsert_agent(self.user_id, record)
+            pool.append(record)
+        tool = AgentInvite(
+            storage=self.storage, message_bus=self.bus,
+            workspace_manager=self.workspace_manager, user_id=self.user_id,
+            session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+            invitable_pool=pool,
+        )
+        names = [f"{a.data.name}@{a.id[:8]}" for a in pool]
+        result = await tool(
+            target=names[0], prompt="Plan the whole trip within the total budget",
+            additional_assignments=[{"target": name, "prompt": "Owns this capability", "standby": True}
+                                    for name in names[1:]],
+        )
+        self.assertEqual(result.state, ToolResultState.SUCCESS)
+        self.assertIn("On standby", " ".join(block.text for block in result.content))
+        session = await self.storage.get_session(self.user_id, "", self.leader_session.id)
+        team = await self.storage.get_team(self.user_id, session.team_id)
+        by_agent = {m.agent_id: m.session_id for m in team.data.members}
+        self.assertEqual(set(by_agent), {a.id for a in pool})
+        wakeups = await self.bus.dequeue_wakeups(max_count=10)
+        self.assertEqual({item["session_id"] for item in wakeups}, {by_agent[self.monday_agent.id]})
+        for record in pool[1:]:
+            briefing = await self.bus.inbox_drain(by_agent[record.id], max_count=10)
+            self.assertTrue(any("STANDBY" in str(item) for item in briefing))
 
     async def test_duplicate_batch_is_rejected_before_any_invite(self):
         target = f"Monday@{self.monday_agent.id[:8]}"

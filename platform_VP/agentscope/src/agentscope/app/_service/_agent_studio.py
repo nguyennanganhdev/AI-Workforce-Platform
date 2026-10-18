@@ -268,12 +268,13 @@ async def apply_bindings(
         client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
         client.enable_tools = list(dict.fromkeys(names))
         # Publishing cannot remove the server's consent requirement by editing
-        # a draft flag. Unknown tools are also confirmation-only at runtime.
+        # a draft flag.
         metadata = {item.get("name"): item for item in mcp_record.discovered_tools}
         if stage and any(name not in metadata for name in names):
             raise SpecPatchError("Công cụ không còn trong catalog MCP; hãy đồng bộ và kiểm tra lại.")
         required = set(client.confirm_tools or []) | set(confirm.get(mcp_id) or [])
-        required.update(name for name in names if not catalog_allows_read(metadata.get(name, {})))
+        # A missing readOnlyHint no longer forces a card: the runtime asks only for
+        # sensitive operations (book, cancel, pay, writes, personal data).
         client.confirm_tools = sorted(required.intersection(names)) or None
         if stage:
             await workspace.set_mcp_declarations(

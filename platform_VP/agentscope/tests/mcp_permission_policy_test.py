@@ -54,21 +54,27 @@ def test_restaurant_search_dates_are_not_mistaken_for_booking() -> None:
         "thanh_toan_don_hang",
     ],
 )
-def test_sensitive_mcp_tools_also_run_without_confirmation(tool_name: str) -> None:
-    # Owner decision 19/10/2026: agents decide; no confirmation card for MCP tools.
-    decision = mcp_tool_permission(tool_name, None, {"properties": {}}, force_confirmation=True)
+def test_sensitive_mcp_tools_require_confirmation(tool_name: str) -> None:
+    decision = mcp_tool_permission(tool_name, None, {"properties": {}})
 
-    assert decision.behavior == PermissionBehavior.ALLOW
+    assert decision.behavior == PermissionBehavior.ASK
+    assert decision.bypass_immune is True
 
 
-def test_sensitive_tools_are_still_not_counted_as_read_only() -> None:
-    destructive = SimpleNamespace(destructiveHint=True)
-    assert mcp_tool_requires_confirmation("execute", destructive, {"properties": {}})
-    assert mcp_tool_requires_confirmation(
+def test_destructive_annotation_and_personal_fields_require_confirmation() -> None:
+    destructive = mcp_tool_permission(
+        "execute",
+        SimpleNamespace(destructiveHint=True),
+        {"properties": {}},
+    )
+    personal = mcp_tool_permission(
         "lookup",
         None,
         {"properties": {"passport_number": {"type": "string"}}},
     )
+
+    assert destructive.behavior == PermissionBehavior.ASK
+    assert personal.behavior == PermissionBehavior.ASK
     assert mcp_tool_requires_confirmation(
         "get_customer_profile",
         SimpleNamespace(readOnlyHint=True),

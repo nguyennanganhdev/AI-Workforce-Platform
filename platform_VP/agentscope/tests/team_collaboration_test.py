@@ -106,6 +106,23 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         self.assertEqual("answer", event.kind)
 
+    async def test_coordinator_waits_for_every_specialist_it_asked(self):
+        self.storage.agents["peer2"] = self.storage.agents["peer"].model_copy(deep=True, update={"id": "peer2"})
+        self.storage.agents["peer2"].data.name = "Peer2"
+        self.storage.sessions["peer2-session"] = self.storage.sessions["peer-session"].model_copy(
+            update={"id": "peer2-session", "agent_id": "peer2"})
+        self.storage.team.data.members.append(
+            TeamMember(owner_id="u", agent_id="peer2", session_id="peer2-session", role="created"))
+        first = await self.say("worker", to="Peer", kind="question", content="Search flights within 3M total")
+        second = await self.say("worker", to="Peer2", kind="question", content="Search hotels within 3M total")
+        self.assertEqual("waiting_peer", await self.service.collaboration_pause("u", "ticket-1", "worker-session"))
+        await self.say("peer", to="Worker", kind="answer", content="No flights matched the dates",
+                       in_reply_to=first.metadata["handoff_id"])
+        self.assertEqual("waiting_peer", await self.service.collaboration_pause("u", "ticket-1", "worker-session"))
+        await self.say("peer2", to="Worker", kind="answer", content="No hotels matched the dates",
+                       in_reply_to=second.metadata["handoff_id"])
+        self.assertIsNone(await self.service.collaboration_pause("u", "ticket-1", "worker-session"))
+
     async def test_shared_peer_answer_releases_all_waiters_for_that_provider(self):
         first = await self.say(
             "worker", to="Peer", kind="question", content="Provide the price"

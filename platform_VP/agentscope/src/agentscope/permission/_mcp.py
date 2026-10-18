@@ -1,6 +1,7 @@
-"""Permission policy for partner MCP tools: they run without confirmation.
+"""Risk-based permission policy for partner MCP tools.
 
-The risk identifiers below only decide whether a tool counts as read-only.
+Reads and searches run; booking, cancellation, payment, declared writes and
+personal-data operations need the user's confirmation.
 """
 
 import re
@@ -98,18 +99,31 @@ def mcp_tool_permission(
     *,
     force_confirmation: bool = False,
 ) -> PermissionDecision:
-    """Run every MCP tool bound to an agent without a confirmation card.
+    """Run reads and searches; ask the user before a sensitive action.
 
-    Owner decision (19/10/2026): agents decide for themselves. A tool marked
-    "requires customer consent" keeps its prompt rule ("only after the
-    customer explicitly agrees"), so the agent asks in the conversation
-    instead of the user answering a HITL card. The arguments stay for the
-    callers; they no longer change the decision.
+    PM decision (19/10/2026): a booking, cancellation, payment, write or
+    personal-data operation shows a confirmation card; everything else runs.
+    ``force_confirmation`` is set when the owner marked the tool as requiring
+    customer consent (Agent Spec or MCP confirm list), whatever its name says.
     """
+    if force_confirmation or mcp_tool_requires_confirmation(
+        tool_name,
+        annotations,
+        input_schema,
+    ):
+        return PermissionDecision(
+            behavior=PermissionBehavior.ASK,
+            message=(
+                "This MCP tool can perform a sensitive or destructive action "
+                "and requires explicit user confirmation."
+            ),
+            decision_reason="Sensitive MCP operation",
+            bypass_immune=True,
+        )
     return PermissionDecision(
         behavior=PermissionBehavior.ALLOW,
-        message="MCP tools bound to an agent run without confirmation.",
-        decision_reason="MCP tool auto-run policy",
+        message="This MCP tool is covered by the automatic low-risk policy.",
+        decision_reason="Low-risk MCP operation",
     )
 
 
