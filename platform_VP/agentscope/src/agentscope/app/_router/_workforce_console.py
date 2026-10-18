@@ -302,6 +302,7 @@ class LeaderSessionView(BaseModel):
     agent_id: str
     session_id: str
     name: str
+    is_test: bool = False
 
 
 class BuilderMessageView(BaseModel):
@@ -877,8 +878,9 @@ async def _primary_session(
 ):
     sessions = await storage.list_sessions(user_id, agent_id)
     if leader_only:
-        from .._session_scope import is_leader_case_session
-        sessions = [session for session in sessions if is_leader_case_session(session)]
+        from .._session_scope import is_leader_case_session, is_leader_test_session
+        sessions = ([session for session in sessions if is_leader_case_session(session)]
+                    + [session for session in sessions if is_leader_test_session(session)])
     if sessions:
         return sessions[0]
     workspace_id = await workspace_manager.assign_workspace_id(
@@ -891,7 +893,7 @@ async def _primary_session(
         agent_id=agent_id,
         config=SessionConfig(
             workspace_id=workspace_id,
-            name=name,
+            name="Phiên thử Leader" if leader_only else name,
             chat_model_config=model_config,
         ),
     )
@@ -2356,10 +2358,12 @@ async def bootstrap_leader(
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
 ) -> LeaderSessionView:
     leader, session = await _leader(user_id, storage, workspace_manager)
+    from .._session_scope import is_leader_test_session
     return LeaderSessionView(
         agent_id=leader.id,
         session_id=session.id,
         name=session.config.name,
+        is_test=is_leader_test_session(session),
     )
 
 
@@ -2367,7 +2371,10 @@ async def bootstrap_leader(
     "/leader/tickets",
     response_model=LeaderSessionView,
     status_code=status.HTTP_201_CREATED,
+    deprecated=True,
 )
+@workforce_console_router.post("/leader/tests", response_model=LeaderSessionView,
+                              status_code=status.HTTP_201_CREATED)
 async def create_leader_ticket(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
@@ -2384,7 +2391,7 @@ async def create_leader_ticket(
         agent_id=leader.id,
         config=SessionConfig(
             workspace_id=workspace_id,
-            name="Ticket mới",
+            name="Phiên thử Leader",
             chat_model_config=seed.config.chat_model_config,
         ),
     )
@@ -2404,6 +2411,7 @@ async def create_leader_ticket(
         agent_id=leader.id,
         session_id=session.id,
         name=session.config.name,
+        is_test=True,
     )
 
 

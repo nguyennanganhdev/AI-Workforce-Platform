@@ -30,7 +30,7 @@ const SESSIONS_KEY = ['sessions'];
  *   `error` flags and `refetch` / `create` / `update` / `remove`
  *   helpers that all keep the list in sync.
  */
-export function useSessions(agentId: string | null, scope?: 'leader') {
+export function useSessions(agentId: string | null, scope?: 'leader' | 'leader_tests') {
 	const queryClient = useQueryClient();
 
 	const {

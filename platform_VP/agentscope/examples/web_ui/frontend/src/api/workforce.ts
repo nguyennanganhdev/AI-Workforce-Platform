@@ -146,6 +146,7 @@ export interface LeaderSession {
 	agent_id: string;
 	session_id: string;
 	name: string;
+	is_test?: boolean;
 }
 
 export const workforceApi = {
@@ -191,6 +192,7 @@ export const workforceApi = {
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
 	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
+	createLeaderTest: () => client.post<LeaderSession>('/workforce/console/leader/tests'),
 	room: (sessionId: string) =>
 		client.get<RoomView>(`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room`),
 	streamRoom: async function* (sessionId: string, signal: AbortSignal): AsyncGenerator<RoomView> {

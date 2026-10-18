@@ -99,6 +99,7 @@ interface ChatViewportProps {
 	headerSlot?: ReactNode;
 	/** A partner ticket of the Leader page: an empty session says so. */
 	ticketView?: boolean;
+	sessionScope?: 'leader' | 'leader_tests';
 }
 
 /** Maximum number of panels stacked in a single dock column. */
@@ -199,9 +200,10 @@ export function ChatViewport({
 	onOpenAgentSettings,
 	headerSlot,
 	ticketView = false,
+	sessionScope,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
-	const { sessions, refetch: refetchSessions } = useSessions(agentId, ticketView ? 'leader' : undefined);
+	const { sessions, refetch: refetchSessions } = useSessions(agentId, sessionScope ?? (ticketView ? 'leader' : undefined));
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);

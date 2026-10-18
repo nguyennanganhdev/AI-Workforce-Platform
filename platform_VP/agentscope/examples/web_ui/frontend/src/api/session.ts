@@ -41,7 +41,7 @@ export function takeFreshlyCreated(sessionId: string): boolean {
 }
 
 export const sessionApi = {
-	list: (agentId: string, scope?: 'leader') => client.get<SessionListResponse>('/sessions/', {
+	list: (agentId: string, scope?: 'leader' | 'leader_tests') => client.get<SessionListResponse>('/sessions/', {
 		agent_id: agentId,
 		...(scope ? { scope } : {}),
 	}),
