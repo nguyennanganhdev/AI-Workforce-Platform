@@ -459,6 +459,8 @@ def test_a_handoff_links_the_ticket_and_queues_the_start_in_its_own_transaction(
         assert told.splitlines()[0] == f"ticket_id: {ticket}"
         assert "Light is broken" in told and f"Căn: {code['unit']}" in told and "Mức ưu tiên: Cao" in told and "Số ảnh: 0" in told
         assert "Mức khẩn cấp do Lễ tân đánh giá: không khẩn cấp; mức độ nghiêm trọng: nhẹ" in told.splitlines()
+        # Reception's reasoning about the report reaches the Leader as its own line.
+        assert "Đánh giá của Lễ tân: Resident report" in told.splitlines()
         # Neither the internal code nor the phone number of the resident leaves the domain.
         assert code["code"] not in told and "VH-" not in told and "+84901234567" not in told and "0901234567" not in told
 

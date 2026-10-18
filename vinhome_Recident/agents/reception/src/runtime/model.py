@@ -79,6 +79,8 @@ class ModelConfig:
     # "chat": Chat Completions (other vendors; luna there only calls tools without reasoning).
     api: str = "chat"
     reasoning_effort: str = "low"
+    # The step that reviews a report before it becomes a request reasons more.
+    assessment_effort: str = "medium"
 
     def __post_init__(self):
         if not self.model.strip() or not self.api_key.strip():

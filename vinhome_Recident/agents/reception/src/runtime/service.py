@@ -31,6 +31,7 @@ from .knowledge import KnowledgeSearch
 from .model import ModelConfig, chat_model as build_chat_model, model_endpoint, turn_usage
 from ..agent.loop import EMERGENCY_FAILED_REPLY, FILED_REPLY
 from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
+from ..agent.assessment import assess_report
 from ..agent.loop import run_agent
 from ..agent.prompt import system_prompt
 from ..agent.tools import Toolbox
@@ -86,6 +87,7 @@ class Settings:
                 provider=provider,
                 api=api,
                 reasoning_effort=os.getenv("RECEPTION_REASONING_EFFORT", "").strip().lower() or "low",
+                assessment_effort=os.getenv("RECEPTION_ASSESSMENT_REASONING_EFFORT", "").strip().lower() or "medium",
             ),
         )
 
@@ -184,6 +186,11 @@ async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, k
     toolbox = Toolbox(backend, client, knowledge_url, context, message, turn["open_request"],
                       {"homes": resident["residences"]}, categories)
     if telemetry is not None: toolbox.progress=progress
+    config = getattr(model, "config", None)
+    if getattr(config, "api", None) == "responses":
+        # A model that reasons reviews each proposed request before it is filed.
+        toolbox.assess = lambda proposal: assess_report(model, turn["history"], proposal, categories,
+                                                         config.assessment_effort)
     if policy.get("emergency") is True:
         # The policy's keywords decide before any model runs.
         outcome = await toolbox.emergency_request()
