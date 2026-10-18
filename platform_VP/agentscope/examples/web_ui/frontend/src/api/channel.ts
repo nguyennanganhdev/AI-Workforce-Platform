@@ -10,8 +10,14 @@ import type {
 	UpdateChannelRequest,
 } from './types';
 
+// ponytail: DingTalk and Feishu are hidden for now; add a type here (or drop the filter) to offer it again.
+const VISIBLE_CHANNEL_TYPES = new Set(['discord']);
+
 export const channelApi = {
-	listTypes: () => client.get<ChannelTypeSchema[]>('/channels/types'),
+	listTypes: () =>
+		client
+			.get<ChannelTypeSchema[]>('/channels/types')
+			.then((types) => types.filter((t) => VISIBLE_CHANNEL_TYPES.has(t.channel_type))),
 
 	list: () => client.get<ChannelRecord[]>('/channels/'),
 

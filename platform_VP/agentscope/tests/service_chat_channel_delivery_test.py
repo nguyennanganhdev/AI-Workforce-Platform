@@ -206,7 +206,11 @@ class ChannelDeliveryFromTheRunTest(IsolatedAsyncioTestCase):
         )
         return user_id, agent, session, channel
 
-    async def _run(self, source: SessionOrigin) -> ChannelClients:
+    async def _run(
+        self,
+        source: SessionOrigin,
+        model_error: Exception | None = None,
+    ) -> ChannelClients:
         """Drive one run to completion and return the channel runtime."""
         user_id, agent, session, channel = self._fixture(source)
         storage = _Storage(session, agent, channel)
@@ -245,6 +249,8 @@ class ChannelDeliveryFromTheRunTest(IsolatedAsyncioTestCase):
             return object()
 
         async def _get_model(*_: object, **__: object) -> object:
+            if model_error is not None:
+                raise model_error
             return object()
 
         class _Access:
@@ -310,6 +316,21 @@ class ChannelDeliveryFromTheRunTest(IsolatedAsyncioTestCase):
                     "events": ["REPLY_START", "REPLY_END"],
                 },
             )
+        finally:
+            await clients.__aexit__(None, None, None)
+
+    async def test_a_setup_failure_still_reaches_the_chat(self) -> None:
+        """A run that fails before the agent exists still answers the
+        chat with its failure, rather than leaving the sender in silence."""
+        clients = await self._run(
+            ChannelOrigin(channel_id="chan-1", chat_id="chat-1"),
+            model_error=RuntimeError("Credential 'cred-1' not found."),
+        )
+        try:
+            self.assertEqual(len(_RecordingChannel.instances), 1)
+            channel = _RecordingChannel.instances[0]
+            await asyncio.wait_for(channel.done.wait(), timeout=2.0)
+            self.assertListEqual(channel.seen, ["REPLY_START", "REPLY_END"])
         finally:
             await clients.__aexit__(None, None, None)
 

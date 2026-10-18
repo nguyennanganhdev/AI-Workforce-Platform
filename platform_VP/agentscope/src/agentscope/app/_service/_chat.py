@@ -100,6 +100,7 @@ from ..storage import (
     ContextDelta,
     SessionNaming,
     SessionKnowledgeConfig,
+    SessionOrigin,
     SessionRecord,
     ScheduleOrigin,
     SOPOrigin,
@@ -759,6 +760,61 @@ class ChatService:
                 worker_name,
             )
 
+    async def _deliver_to_channel(
+        self,
+        origin: SessionOrigin | None,
+        session_id: str,
+        agent_id: str,
+        input_msg: object,
+    ) -> None:
+        """Start streaming the run's reply back to its platform chat.
+
+        Delivery is plain REST, so this node does it rather than handing
+        the run to whichever one holds the channel's connection. Covers
+        scheduled / background wakes, not just inbound channel messages.
+        Call before the run publishes anything: the delivery subscribes
+        on the way in.
+
+        Args:
+            origin (`SessionOrigin | None`):
+                Where the session came from; anything but a channel (or
+                a schedule posting into one) delivers nothing.
+            session_id (`str`):
+                The run whose reply is delivered.
+            agent_id (`str`):
+                The agent that owns the session.
+            input_msg (`object`):
+                The run's input, whose last user sender may answer a
+                confirmation card.
+        """
+        if (
+            isinstance(origin, ScheduleOrigin)
+            and origin.deliver_channel_id
+            and origin.deliver_chat_id
+        ):
+            # A schedule posting its result into a channel chat.
+            origin = ChannelOrigin(
+                channel_id=origin.deliver_channel_id,
+                chat_id=origin.deliver_chat_id,
+            )
+        if not isinstance(origin, ChannelOrigin) or self._channel_clients is None:
+            return
+        # Who may answer a confirmation card: the platform user whose
+        # message started this run, else the session opener.
+        senders = [
+            msg.name
+            for msg in (input_msg if isinstance(input_msg, list) else [input_msg])
+            if isinstance(msg, Msg) and msg.role == "user"
+        ]
+        requester = senders[-1] if senders else origin.channel_user_id
+        await self._channel_clients.deliver(
+            session_id=session_id,
+            channel_id=origin.channel_id,
+            chat_id=origin.chat_id,
+            agent_id=agent_id,
+            requester_id=requester or "",
+        )
+
     async def _report_failure(
         self,
         user_id: str,
@@ -1012,6 +1068,7 @@ class ChatService:
             team_roster: list[dict[str, str]] = []
             customer_output_session_id = session_id
             worker_name: str = agent_id
+            delivery_origin: SessionOrigin | None = None
             shared_input_recorded = False
             shared_context_mode = "task"
             shared_context_packet = ""
@@ -1071,6 +1128,7 @@ class ChatService:
                             f"Session {session_id!r} not found for agent {agent_id!r}."
                         ),
                     )
+                delivery_origin = session_record.origin
                 pinned_version = session_record.state.middle_context.get("agent_version")
                 if pinned_version and agent_record.data.system_role == "business":
                     from ._agent_studio import pinned_view
@@ -1890,6 +1948,17 @@ class ChatService:
                     "Chat setup failed for session %s, agent %s (%s)",
                     session_id, agent_id, type(e).__name__,
                 )
+                # A channel chat waits for this failure like any reply;
+                # without a delivery the platform user gets silence.
+                try:
+                    await self._deliver_to_channel(
+                        delivery_origin, session_id, agent_id, input_msg,
+                    )
+                except Exception:  # pylint: disable=broad-except
+                    logger.exception(
+                        "Could not deliver the setup failure of session %s",
+                        session_id,
+                    )
                 await self._report_failure(
                     user_id,
                     session_id,
@@ -2123,41 +2192,9 @@ class ChatService:
                         customer_payload,
                     )
 
-            # Channel-bound run: start streaming the reply back to the
-            # platform chat. Delivery is plain REST, so this node does it
-            # rather than handing the run to whichever one holds the
-            # channel's connection. Covers scheduled / background wakes,
-            # not just inbound channel messages.
-            delivery = session_record.origin
-            if (
-                isinstance(delivery, ScheduleOrigin)
-                and delivery.deliver_channel_id
-                and delivery.deliver_chat_id
-            ):
-                # A schedule posting its result into a channel chat.
-                delivery = ChannelOrigin(
-                    channel_id=delivery.deliver_channel_id,
-                    chat_id=delivery.deliver_chat_id,
-                )
-            if (
-                isinstance(delivery, ChannelOrigin)
-                and self._channel_clients is not None
-            ):
-                # Who may answer a confirmation card: the platform user
-                # whose message started this run, else the session opener.
-                senders = [
-                    msg.name
-                    for msg in (input_msg if isinstance(input_msg, list) else [input_msg])
-                    if isinstance(msg, Msg) and msg.role == "user"
-                ]
-                requester = senders[-1] if senders else delivery.channel_user_id
-                await self._channel_clients.deliver(
-                    session_id=session_id,
-                    channel_id=delivery.channel_id,
-                    chat_id=delivery.chat_id,
-                    agent_id=agent_id,
-                    requester_id=requester or "",
-                )
+            await self._deliver_to_channel(
+                session_record.origin, session_id, agent_id, input_msg,
+            )
             reply_msg: Msg | None = None
             reply_msgs: list[Msg] = []
             released = False
