@@ -7,6 +7,12 @@ services:
       dockerfile: Dockerfile
     image: agentscope-local:latest
     restart: unless-stopped
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        python -m alembic -c /app/src/agentscope/app/storage/_sql/_alembic/alembic.ini upgrade head &&
+        python main.py
     environment:
       AGENTSCOPE_SQL_URL: ${AGENTSCOPE_SQL_URL:-postgresql+asyncpg://agentscope:agentscope@postgres:5432/agentscope}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}

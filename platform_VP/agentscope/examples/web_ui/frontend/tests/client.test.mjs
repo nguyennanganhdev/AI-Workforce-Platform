@@ -5,15 +5,18 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 // Execute the actual client with only Vite's build-time env and browser I/O mocked.
-function clientWith(fetch) {
+function clientWith(fetch, apiBaseUrl) {
   const source = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
-    .replace('import.meta.env.VITE_API_BASE_URL', 'undefined');
+    .replace('import.meta.env.VITE_API_BASE_URL', JSON.stringify(apiBaseUrl));
   const events = [];
   const context = {
     exports: {}, require: () => ({ toast: { error() {} } }),
     URL, AbortSignal, DOMException, Event, fetch,
     localStorage: { getItem: () => null },
-    window: { dispatchEvent: (event) => events.push(event.type) },
+    window: {
+      dispatchEvent: (event) => events.push(event.type),
+      location: { origin: 'https://frontend.example' },
+    },
   };
   vm.runInNewContext(ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -74,4 +77,14 @@ test('concurrent 401s share one refresh request', async () => {
   release();
   await Promise.all([a, b]);
   assert.equal(refreshes, 1);
+});
+
+test('a relative API base keeps every request under its path prefix', async () => {
+  const urls = [];
+  const api = clientWith(async (url) => {
+    urls.push(String(url));
+    return ok({ healthy: true });
+  }, '/api');
+  await api.client.get('/health', undefined, { silent: true });
+  assert.deepEqual(urls, ['https://frontend.example/api/health']);
 });

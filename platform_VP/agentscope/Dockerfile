@@ -25,4 +25,4 @@ WORKDIR /app/examples/agent_service
 
 EXPOSE 8000
 
-CMD ["/bin/sh", "-c", "python -m alembic -c /app/src/agentscope/app/storage/_sql/_alembic/alembic.ini upgrade head && python main.py"]
+CMD ["python", "main.py"]

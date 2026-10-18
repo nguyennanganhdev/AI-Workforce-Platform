@@ -2,7 +2,6 @@
 """The example script to start the agent service."""
 
 import os
-import sys
 from datetime import timedelta
 
 import uvicorn
@@ -63,6 +62,8 @@ storage = RedisStorage(
     port=int(os.getenv("REDIS_PORT", "6379")),
     db=int(os.getenv("REDIS_DB", "0")),
     password=os.getenv("REDIS_PASSWORD") or None,
+    username=os.getenv("REDIS_USERNAME") or None,
+    ssl=os.getenv("REDIS_SSL", "false").lower() in {"1", "true", "yes"},
 )
 
 shared_context_backend = os.getenv(
@@ -110,7 +111,19 @@ blob_store = (
     else None
 )
 
-vector_store = QdrantStore(location=":memory:")
+qdrant_url = os.getenv("QDRANT_URL") or None
+qdrant_path = os.getenv("QDRANT_PATH") or None
+if qdrant_url and qdrant_path:
+    raise RuntimeError("Set only one of QDRANT_URL or QDRANT_PATH")
+if qdrant_url:
+    vector_store = QdrantStore(
+        url=qdrant_url,
+        api_key=os.getenv("QDRANT_API_KEY") or None,
+    )
+elif qdrant_path:
+    vector_store = QdrantStore(path=qdrant_path)
+else:
+    vector_store = QdrantStore(location=":memory:")
 
 auth_service = None
 business_service = None
@@ -175,6 +188,8 @@ app = create_app(
         port=int(os.getenv("REDIS_PORT", "6379")),
         db=int(os.getenv("REDIS_DB", "0")),
         password=os.getenv("REDIS_PASSWORD") or None,
+        username=os.getenv("REDIS_USERNAME") or None,
+        ssl=os.getenv("REDIS_SSL", "false").lower() in {"1", "true", "yes"},
     ),
     workspace_manager=LocalWorkspaceManager(
         basedir=os.path.join(
@@ -186,7 +201,6 @@ app = create_app(
         # The default MCP servers that will be added into the workspace
         default_mcps=default_mcps,
     ),
-    # Knowledge base feature — backed by an in-memory Qdrant store. The
     # CollectionPerKbManager allocates one collection per knowledge base,
     # so any embedding dimension is allowed.
     knowledge_base_manager=CollectionPerKbManager(
@@ -228,7 +242,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        # Hot reload forces a SelectorEventLoop on Windows, which cannot
-        # spawn the subprocesses that the builtin tools rely on
-        reload=sys.platform != "win32",
+        reload=os.getenv("UVICORN_RELOAD", "false").lower() in {"1", "true", "yes"},
     )

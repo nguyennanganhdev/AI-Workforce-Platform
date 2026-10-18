@@ -3,6 +3,7 @@
 .idea
 .vscode
 .venv
+.uv-cache
 venv
 env
 __pycache__
@@ -16,6 +17,7 @@ htmlcov
 build
 dist
 docs
+deploy
 node_modules
 examples/web_ui/node_modules
 examples/agent_service/workspaces

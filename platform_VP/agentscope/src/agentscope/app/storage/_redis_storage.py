@@ -164,6 +164,8 @@ class RedisStorage(StorageBase):
         connection_pool: ConnectionPool | None = None,
         key_ttl: int | None = None,
         key_config: "RedisStorage.KeyConfig | None" = None,
+        username: str | None = None,
+        ssl: bool = False,
         **kwargs: Any,
     ) -> None:
         """Store connection parameters; the actual pool is created in
@@ -188,6 +190,10 @@ class RedisStorage(StorageBase):
             key_config (`RedisStorage.KeyConfig | None`, optional):
                 Key template configuration. Defaults to
                 ``RedisStorage.KeyConfig()``.
+            username (`str | None`, optional):
+                Redis ACL username if required by the server.
+            ssl (`bool`, defaults to `False`):
+                Use a TLS-encrypted Redis connection.
             **kwargs (`Any`):
                 Extra keyword arguments forwarded to
                 ``redis.asyncio.ConnectionPool`` when the pool is created
@@ -197,6 +203,8 @@ class RedisStorage(StorageBase):
         self._port = port
         self._db = db
         self._password = password
+        self._username = username
+        self._ssl = ssl
         self._external_pool: ConnectionPool | None = connection_pool
         self._kwargs = kwargs
         self.key_ttl = key_ttl
@@ -240,9 +248,13 @@ class RedisStorage(StorageBase):
             pool = self._external_pool
         else:
             self._owned_pool = aioredis.ConnectionPool(
+                connection_class=(
+                    aioredis.SSLConnection if self._ssl else aioredis.Connection
+                ),
                 host=self._host,
                 port=self._port,
                 db=self._db,
+                username=self._username,
                 password=self._password,
                 decode_responses=True,
                 **self._kwargs,
