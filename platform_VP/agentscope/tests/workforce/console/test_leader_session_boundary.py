@@ -98,6 +98,13 @@ async def test_create_test_has_its_own_workspace_and_never_binds_a_workflow():
     with patch.object(console, "_leader", AsyncMock(return_value=(SimpleNamespace(id="leader"), seed))):
         view = await console.create_leader_ticket("u", storage, manager)
     assert view.is_test and view.session_id == "test"
+    assert storage.upsert_session.await_args.kwargs["config"].name == "Phiên thử Leader"
+    # A personal account's new Leader session is a conversation, not a BQL test run.
+    with patch.object(console, "_leader", AsyncMock(return_value=(SimpleNamespace(id="leader"), seed))), \
+         patch("agentscope.app._service._personal_jobs.personal_context", AsyncMock(return_value=(object(), object()))):
+        personal = await console.create_leader_ticket("u", storage, manager)
+    assert not personal.is_test
+    assert storage.upsert_session.await_args.kwargs["config"].name == "Cuộc trò chuyện mới"
     assert storage.upsert_session.await_args.kwargs["config"].workspace_id != "real"
     assert "workflow_id" not in created.state.middle_context
     assert seed.state.middle_context["workflow_id"] == "wf"

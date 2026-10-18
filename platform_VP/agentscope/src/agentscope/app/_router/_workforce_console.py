@@ -2529,7 +2529,10 @@ async def create_leader_ticket(
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
 ) -> LeaderSessionView:
+    from .._service._personal_jobs import personal_context
     leader, seed = await _leader(user_id, storage, workspace_manager)
+    # A personal account's Leader sessions are its conversations, not BQL test runs.
+    personal = await personal_context(storage, user_id) is not None
     # A ticket must never collapse into an earlier leader session. Storage
     # intentionally upserts the same (user, agent, workspace) triple, so each
     # locally-created ticket gets an explicit fresh workspace binding even
@@ -2540,7 +2543,7 @@ async def create_leader_ticket(
         agent_id=leader.id,
         config=SessionConfig(
             workspace_id=workspace_id,
-            name="Phiên thử Leader",
+            name="Cuộc trò chuyện mới" if personal else "Phiên thử Leader",
             chat_model_config=seed.config.chat_model_config,
         ),
     )
@@ -2560,7 +2563,7 @@ async def create_leader_ticket(
         agent_id=leader.id,
         session_id=session.id,
         name=session.config.name,
-        is_test=True,
+        is_test=not personal,
     )
 
 
