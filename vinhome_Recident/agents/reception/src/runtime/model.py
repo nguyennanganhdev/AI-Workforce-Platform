@@ -32,8 +32,9 @@ turn_model_config: ContextVar[object | None] = ContextVar('turn_model_config', d
 def _count(payload: dict) -> None:
     usage, reported = turn_usage.get(), payload.get("usage")
     if usage is not None and isinstance(reported, dict):
-        usage["input_tokens"] += int(reported.get("prompt_tokens") or 0)
-        usage["output_tokens"] += int(reported.get("completion_tokens") or 0)
+        # Chat Completions names them prompt/completion tokens, the Responses API input/output tokens.
+        usage["input_tokens"] += int(reported.get("prompt_tokens") or reported.get("input_tokens") or 0)
+        usage["output_tokens"] += int(reported.get("completion_tokens") or reported.get("output_tokens") or 0)
         usage["model_calls"] += 1
 
 # Providers that speak the chat-completions API this runtime sends. Anthropic's own compatibility
@@ -74,12 +75,18 @@ class ModelConfig:
     base_url: str = "https://api.openai.com/v1"
     timeout_seconds: float = 40.0
     provider: str = "openai"
+    # "responses": OpenAI's Responses API, where a model reasons and calls tools in one step.
+    # "chat": Chat Completions (other vendors; luna there only calls tools without reasoning).
+    api: str = "chat"
+    reasoning_effort: str = "low"
 
     def __post_init__(self):
         if not self.model.strip() or not self.api_key.strip():
             raise ValueError("RECEPTION_MODEL and its API key are required")
         if not self.base_url.startswith(("http://", "https://")):
             raise ValueError("Model base URL must be HTTP(S)")
+        if self.api not in ("chat", "responses"):
+            raise ValueError("RECEPTION_MODEL_API must be chat or responses")
 
 
 class ChatCompletionsModel:
@@ -90,12 +97,12 @@ class ChatCompletionsModel:
     def config(self):
         return turn_model_config.get() or self._deployment_config
 
-    async def _post(self, body: dict) -> httpx.Response:
+    async def _post(self, body: dict, path: str = "/chat/completions") -> httpx.Response:
         """One request, sent again once after a rate limit, a server error or a dropped connection."""
         for last in (False, True):
             try:
                 response = await self.client.post(
-                    self.config.base_url.rstrip("/") + "/chat/completions",
+                    self.config.base_url.rstrip("/") + path,
                     headers={"Authorization": "Bearer " + self.config.api_key},
                     timeout=self.config.timeout_seconds, json=body)
             except httpx.TransportError:
@@ -130,8 +137,11 @@ class ChatCompletionsModel:
             raise ModelUnavailable("MODEL_UNAVAILABLE")
         return SimpleNamespace(content=content)
 
-    async def complete(self, messages: list[dict], tools: list[dict]) -> dict:
-        """One step of a tool-calling conversation; returns the assistant message as the provider gave it."""
+    async def complete(self, messages: list[dict], tools: list[dict], effort: str | None = None) -> dict:
+        """One step of a tool-calling conversation; returns the assistant message as the provider gave it.
+
+        `effort` is for the Responses API; Chat Completions has no reasoning with tools here.
+        """
         try:
             response = await self._post({
                 "model": self.config.model, "messages": messages, "tools": tools,
@@ -148,3 +158,71 @@ class ChatCompletionsModel:
         if not isinstance(message, dict):
             raise ModelUnavailable("MODEL_UNAVAILABLE")
         return message
+
+
+def _input_items(messages: list[dict]) -> list[dict]:
+    """Chat-shaped messages as Responses API input items.
+
+    An assistant step keeps the provider's own output items (its reasoning, then its calls):
+    the API needs them back with the call results to go on reasoning.
+    """
+    items = []
+    for message in messages:
+        role = message["role"]
+        if role == "tool":
+            items.append({"type": "function_call_output", "call_id": message["tool_call_id"], "output": message["content"]})
+        elif role == "assistant" and message.get("_items"):
+            items.extend(message["_items"])
+        elif role == "assistant" and message.get("tool_calls"):
+            if message.get("content"):
+                items.append({"role": "assistant", "content": message["content"]})
+            items.extend({"type": "function_call", "call_id": call["id"], "name": call["function"]["name"],
+                          "arguments": call["function"]["arguments"]} for call in message["tool_calls"])
+        else:
+            items.append({"role": role, "content": message.get("content") or ""})
+    return items
+
+
+class ResponsesModel(ChatCompletionsModel):
+    """The same port over OpenAI's Responses API, where the model reasons before it calls a tool."""
+
+    def _body(self, messages: list[dict], tools: list[dict], effort: str | None = None) -> dict:
+        body = {"model": self.config.model, "input": _input_items(messages),
+                "reasoning": {"effort": effort or self.config.reasoning_effort},
+                "text": {"format": {"type": "json_object"}}}
+        if tools:
+            body["tools"] = [{"type": "function", **spec["function"]} for spec in tools]
+        return body
+
+    async def _respond(self, body: dict) -> dict:
+        try:
+            response = await self._post(body, "/responses")
+            response.raise_for_status()
+            payload = response.json()
+            _count(payload)
+            output = payload["output"]
+            if not isinstance(output, list):
+                raise TypeError
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
+            raise ModelUnavailable("MODEL_UNAVAILABLE") from None
+        text = "".join(part.get("text") or "" for item in output if item.get("type") == "message"
+                       for part in item.get("content") or [] if part.get("type") == "output_text")
+        calls = [{"id": item["call_id"], "type": "function",
+                  "function": {"name": item["name"], "arguments": item.get("arguments") or "{}"}}
+                 for item in output if item.get("type") == "function_call"]
+        return {"role": "assistant", "content": text or None, **({"tool_calls": calls} if calls else {}), "_items": output}
+
+    async def complete(self, messages: list[dict], tools: list[dict], effort: str | None = None) -> dict:
+        return await self._respond(self._body(messages, tools, effort))
+
+    async def ainvoke(self, messages):
+        answer = await self._respond(self._body([
+            {"role": "system" if isinstance(message, SystemMessage) else "user", "content": message.content}
+            for message in messages], []))
+        if not isinstance(answer["content"], str):
+            raise ModelUnavailable("MODEL_UNAVAILABLE")
+        return SimpleNamespace(content=answer["content"])
+
+
+def chat_model(config: ModelConfig, client: httpx.AsyncClient) -> ChatCompletionsModel:
+    return (ResponsesModel if config.api == "responses" else ChatCompletionsModel)(config, client)
