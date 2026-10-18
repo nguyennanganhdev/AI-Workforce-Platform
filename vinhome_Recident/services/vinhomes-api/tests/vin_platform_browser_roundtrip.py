@@ -111,10 +111,21 @@ def main(output):
             page.locator("textarea").last.fill("Vòi nước bếp rò rỉ, tôi yêu cầu gửi nhân viên kỹ thuật kiểm tra. Vị trí dưới bồn rửa bếp.")
             page.locator("textarea").last.press("Enter")
             cases = []
+            projection_conflicts = 0
             for _ in range(60):
                 cases = call(customer, "GET", "/service-cases")["items"]
                 if cases:
-                    detail = call(customer, "GET", f'/service-cases/{cases[0]["id"]}?refresh=true')
+                    response = customer.get(f'/service-cases/{cases[0]["id"]}?refresh=true', timeout=30)
+                    # Materialization may change the canonical projection
+                    # between GET and ACK. Reload it; never weaken the ACK CAS.
+                    if response.status_code == 409 and response.json().get("detail") == {
+                        "code": "DOMAIN_REQUEST_REJECTED", "upstream_status": 409
+                    }:
+                        projection_conflicts += 1
+                        page.wait_for_timeout(1000)
+                        continue
+                    response.raise_for_status()
+                    detail = response.json()
                     if detail["data"]["domain"].get("tickets"):
                         break
                 page.wait_for_timeout(1000)
@@ -122,7 +133,8 @@ def main(output):
                 raise AssertionError("Leader did not create and materialize a case through scripted CustomerService")
             case_id = cases[0]["id"]
             ticket_id = detail["data"]["domain"]["tickets"][0]["id"]
-            step("leader_creates_case", case_id=case_id, ticket_id=ticket_id)
+            step("leader_creates_case", case_id=case_id, ticket_id=ticket_id,
+                projection_reload_conflicts=projection_conflicts)
             page.screenshot(path=str(output / "leader-created.png"), full_page=True)
             def domain_login(actor):
                 client = httpx.Client(base_url=DOMAIN, trust_env=False)
@@ -167,11 +179,15 @@ def main(output):
                 json={"version": current["version"], "note": "Kiểm tra và thay gioăng vòi nước bị hỏng.", "labor_cost": 0,
                     "warranty_months": 1, "lines": [{"name": "Gioăng vòi nước", "quantity": "1", "unit": "cái", "unit_price": 0}]})
 
-            def customer_click():
+            def customer_click(*, require_photo=False):
                 page.reload()
                 toggle = page.get_by_text("Yêu cầu dịch vụ của bạn (1)", exact=True)
                 expect(toggle).to_be_visible(timeout=15000)
                 toggle.click()
+                if require_photo:
+                    expect(page.get_by_test_id("customer-case").locator('img').first).to_be_visible(timeout=15000)
+                    page.wait_for_function("""() => [...document.querySelectorAll('[data-testid="customer-case"] img')]
+                        .some(image => image.complete && image.naturalWidth > 0)""")
                 page.get_by_role("button", name="Đồng ý", exact=True).first.click()
                 dialog = page.get_by_role("dialog")
                 expect(dialog).to_be_visible()
@@ -204,15 +220,23 @@ def main(output):
             call(manager, "POST", f'/work-orders/{order["id"]}/qc', status=201,
                 json={"outcome": "pass", "criteria": [{"name": "Vòi nước không rò", "passed": True}]})
             step("staff_evidence_completed_and_domain_qc")
-            receipt = customer_click()
+            receipt = customer_click(require_photo=True)
             worker.screenshot(path=str(output / "staff-finished.png"), full_page=True)
             final = call(customer, "GET", f"/service-cases/{case_id}?refresh=true")["data"]["domain"]
             assert final["service_status"] == "closed", final
             assert final["status"] == "completed", final
             assert all(item["status"] == "closed" for item in final["tickets"])
             assert final["resolution"]["photos"], final
+            for photo in final["resolution"]["photos"]:
+                loaded = customer.get(photo["url"], timeout=30)
+                assert loaded.status_code == 200, (loaded.status_code, loaded.text[:300])
+                assert loaded.headers["content-type"].startswith("image/png")
+                assert loaded.content == image
             expect(page.get_by_test_id("customer-case").get_by_text("Hoàn tất", exact=True)).to_be_visible(timeout=15000)
             expect(page.get_by_role("button", name="Đồng ý", exact=True)).to_have_count(0)
+            expect(page.get_by_test_id("customer-case").locator('img').first).to_be_visible(timeout=15000)
+            page.wait_for_function("""() => [...document.querySelectorAll('[data-testid="customer-case"] img')]
+                .some(image => image.complete && image.naturalWidth > 0)""")
             page.screenshot(path=str(output / "platform-closed.png"), full_page=True)
             step("resident_final_click_and_case_closed", service_status=final["service_status"], receipt_status=receipt.get("status"))
             model = httpx.get("http://127.0.0.1:18103/evidence", trust_env=False).json()
@@ -230,6 +254,8 @@ def main(output):
             evidence["bql_commands"] = int(commands)
             evidence["canonical_case_status"] = final["status"]
             evidence["platform_card_closed"] = True
+            evidence["result_photo_bytes_match"] = True
+            evidence["result_photo_decoded_in_browser"] = True
             evidence["decision_replay_matches"] = True
             evidence["model_calls"] = len(model["calls"])
             evidence["status"] = "PASS"
