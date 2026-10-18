@@ -1,0 +1,222 @@
+{
+  "format_version": 1,
+  "date": "2026-10-18",
+  "status": "BUILT_PACKAGED_RELOAD_VERIFIED",
+  "source_revision": "2d494250c33e2a3e79cb7ee052f8e3fd22ea5d6b",
+  "images": {
+    "platform": {
+      "tag": "agentscope-platform:vin-2d494250-20261018",
+      "id": "sha256:4ad57104edf477610f7c8d9f5974bae436ff08d34cc64e8f6165b9475d5d399e",
+      "source_revision": "2d494250c33e2a3e79cb7ee052f8e3fd22ea5d6b",
+      "os": "linux",
+      "architecture": "amd64",
+      "cmd": [
+        "/bin/sh",
+        "-c",
+        "python -m alembic -c /app/src/agentscope/app/storage/_sql/_alembic/alembic.ini upgrade head && python main.py"
+      ],
+      "size_bytes": 272584150,
+      "source_files_matched": 717,
+      "secret_artifact_files": 0,
+      "pip_check": "PASS"
+    },
+    "web": {
+      "tag": "agentscope-platform-web:vin-2d494250-20261018",
+      "id": "sha256:b95442127b9b706a665fd939acc68f40ecd23c0b018b371497fc4e27be665551",
+      "source_revision": "2d494250c33e2a3e79cb7ee052f8e3fd22ea5d6b",
+      "os": "linux",
+      "architecture": "amd64",
+      "cmd": [
+        "nginx",
+        "-g",
+        "daemon off;"
+      ],
+      "size_bytes": 31980911,
+      "asset_count": 476,
+      "nginx_matches_source": true
+    },
+    "domain": {
+      "tag": "vinhomes-domain-api:vin-2d494250-20261018",
+      "id": "sha256:206244af0b8f2ef8260c1cefbfd4fe8e9e1eb8ae15f7e2f561c8ed2eab9d11f8",
+      "source_revision": "2d494250c33e2a3e79cb7ee052f8e3fd22ea5d6b",
+      "os": "linux",
+      "architecture": "amd64",
+      "cmd": [
+        "python",
+        "-m",
+        "vinhomes_api"
+      ],
+      "size_bytes": 99621566,
+      "pip_check": "PASS"
+    }
+  },
+  "archive": {
+    "file": "images.tar",
+    "bytes": 404240896,
+    "sha256": "2b63e40bffb8f87efc39537ef61e3612406ba06a86945619d86eb0482760b16f",
+    "image_count": 3,
+    "tags": [
+      "agentscope-platform-web:vin-2d494250-20261018",
+      "agentscope-platform:vin-2d494250-20261018",
+      "vinhomes-domain-api:vin-2d494250-20261018"
+    ],
+    "deployment_env_included": false,
+    "qa_image_included": false
+  },
+  "bundle": {
+    "file": "E:\\AWP-Releases\\vin-platform-2d494250-20261018\\vin-platform-2d494250-20261018.zip",
+    "bytes": 404395870,
+    "sha256": "f25f8d0c11b640a6c31ac5afbcdc2492766ba74f3d0dfef2391682ecf5fc396d",
+    "zip_crc_test": "PASS",
+    "files": 11
+  },
+  "image_tests": {
+    "status": "PASS",
+    "dependencies": {
+      "openai": "3.35.1",
+      "fastapi": "0.143.3",
+      "pydantic": "2.14.1",
+      "sqlalchemy": "2.1.5"
+    },
+    "mode": "Production libraries resolve before QA-only fallback; image source retained, readonly shared schemas mounted",
+    "real_model_calls": 0,
+    "paid_model_calls": 0,
+    "network": "none",
+    "suites": {
+      "contracts": {
+        "tests": 90,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "test_runtime_seconds": 58.218,
+        "external_network_attempts": 0,
+        "paid_model_calls": 0,
+        "model_mode": "scripted",
+        "real_model_quality": "not_measured",
+        "real_model_latency_ms": null,
+        "real_model_cost_usd": null
+      },
+      "runtime": {
+        "tests": 532,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 27,
+        "test_runtime_seconds": 93.509,
+        "external_network_attempts": 0,
+        "paid_model_calls": 0,
+        "model_mode": "scripted",
+        "real_model_quality": "not_measured",
+        "real_model_latency_ms": null,
+        "real_model_cost_usd": null
+      }
+    }
+  },
+  "runtime_checks": {
+    "status": "PASS",
+    "source_revision": "2d494250c33e2a3e79cb7ee052f8e3fd22ea5d6b",
+    "real_model_calls": 0,
+    "paid_model_calls": 0,
+    "application_source_mounts": 0,
+    "application_databases_migrated": 0,
+    "fixture_migrations_only": true,
+    "network": "internal, no published ports",
+    "existing_stacks_changed": false,
+    "domain_password_consent_pkce": {
+      "status": "PASS",
+      "image": "vinhomes-domain-api:vin-2d494250-20261018",
+      "app_db_migrations": 0,
+      "paid_model_calls": 0,
+      "production_cmd_ready": true,
+      "password_consent_pkce_grant_profile": true,
+      "legacy_intake_preserved": true,
+      "application_source_mounts": 0,
+      "production_cmd": [
+        "python",
+        "-m",
+        "vinhomes_api"
+      ],
+      "cleanup": "owned API and UUID DB removed; parent PG preserved"
+    },
+    "platform": {
+      "status": "PASS",
+      "ready": true,
+      "personal_register_and_login": true,
+      "role": "VIN_USER"
+    },
+    "migration_head": "0024_vin_admin_revisions",
+    "web": {
+      "status": "PASS",
+      "index": 200,
+      "spa_deep_link": 200,
+      "api_proxy_health": 200,
+      "auth_enforced": true,
+      "nginx_config": "unchanged image config"
+    },
+    "cleanup": "Owned fixture containers, anonymous volumes and internal network removed"
+  },
+  "domain_package_checks": {
+    "status": "PASS",
+    "paid_model_calls": 0,
+    "app_db_migrations": 0,
+    "deployed": false,
+    "compose_flag_wiring": "PASS; linked-customer false/true, cohort cutover always off",
+    "image": {
+      "tag": "vinhomes-domain-api:vin-2d494250-20261018",
+      "id": "sha256:206244af0b8f2ef8260c1cefbfd4fe8e9e1eb8ae15f7e2f561c8ed2eab9d11f8",
+      "revision": "2d494250c33e2a3e79cb7ee052f8e3fd22ea5d6b",
+      "python_sql_files_matched": 128,
+      "pip_check": "PASS",
+      "uid": 10001,
+      "cmd": [
+        "python",
+        "-m",
+        "vinhomes_api"
+      ],
+      "secret_artifact_files": 0
+    }
+  },
+  "compose_overrides": {
+    "platform": {
+      "status": "PASS",
+      "services": [
+        "app",
+        "web"
+      ],
+      "config": "synthetic required variables only; no deployment env loaded"
+    },
+    "domain": {
+      "status": "PASS",
+      "services": [
+        "api",
+        "scheduler",
+        "platform-sync"
+      ],
+      "config": "synthetic required variables only; no deployment env loaded"
+    }
+  },
+  "load_ps1": {
+    "exit_code": 0,
+    "checksums": "PASS",
+    "image_ids_matched": 3,
+    "containers_recreated": 0
+  },
+  "production_api_bundle_test": {
+    "passed": 1,
+    "skipped": 0,
+    "failed": 0
+  },
+  "cleanup": {
+    "owned_fixture_containers_remaining": [],
+    "owned_network_removed": true
+  },
+  "real_model_calls": 0,
+  "paid_model_calls": 0,
+  "VPS_deployed": false,
+  "production_cutover_verified": false,
+  "limitations": [
+    "Three application images; existing infrastructure and Domain frontend/reception/gateway images are required.",
+    "Production CMD smoke covers the named runtime scenarios only; not the full feature matrix.",
+    "Generic runtime retains its actual skipped count; source and prior browser evidence are reported separately.",
+    "Production target preflight, backup/restore and business UAT remain required before VPS cutover."
+  ]
+}
