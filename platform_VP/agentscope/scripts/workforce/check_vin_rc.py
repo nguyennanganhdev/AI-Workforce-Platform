@@ -28,6 +28,52 @@ def cleanup_fixture(fixture, output):
     fixture.down(output)
 
 
+def verify_leader_reply(output, journey):
+    """Reopen the saved conversation; require the final answer in the real UI."""
+    from playwright.sync_api import sync_playwright, expect
+    from urllib.parse import urlsplit
+
+    state = json.loads((output / 'state.json').read_text(encoding='utf-8'))
+    assert state['prefix'].startswith('vin-n1-r04-e2e-')
+    evidence = json.loads((output / 'roundtrip.json').read_text(encoding='utf-8'))
+    user_id = next(item['user_id'] for item in evidence['steps'] if item['name'] == 'register_platform')
+    admin = journey.login_platform('fixtureadmin')
+    try:
+        accounts = journey.call(admin, 'GET', '/admin/vin/accounts', params={'user_id': user_id})['items']
+        assert len(accounts) == 1 and accounts[0]['role'] == 'VIN_USER'
+        customer = journey.login_platform(accounts[0]['username'])
+    finally:
+        admin.close()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                context = browser.new_context(viewport={'width': 1280, 'height': 1000})
+                context.add_cookies([dict(name=c.name, value=c.value, domain='127.0.0.1', path=c.path, httpOnly=True, secure=False, sameSite='Lax') for c in customer.cookies.jar])
+                page = context.new_page()
+                external = []
+                def local_only(route):
+                    parsed = urlsplit(route.request.url)
+                    if (parsed.scheme, parsed.netloc) != ('http', '127.0.0.1:18104'):
+                        external.append(parsed.netloc)
+                        route.abort()
+                    else:
+                        route.continue_()
+                page.route('**/*', local_only)
+                page.goto('http://127.0.0.1:18104/workforce/leader')
+                reply = 'Yêu cầu đã được ghi nhận. Theo dõi trạng thái xác minh trong thẻ yêu cầu.'
+                expect(page.get_by_text(reply, exact=True)).to_be_visible(timeout=15000)
+                page.screenshot(path=str(output / 'leader-final-reply.png'), full_page=True)
+                assert not external
+            finally:
+                browser.close()
+    finally:
+        customer.close()
+    proof = {'status': 'PASS', 'saved_reply_reopened_in_ui': True, 'paid_model_calls': 0}
+    (output / 'leader-receipt-ui.json').write_text(json.dumps(proof, indent=2), encoding='utf-8')
+    return proof
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app-image')
@@ -209,6 +255,7 @@ location / { try_files $uri /index.html; }
         journey.main(output)
         model = httpx.get('http://127.0.0.1:18103/evidence', trust_env=False).json()
         assert [item['operation'] for item in model['calls']] == ['context', 'create', None], 'Leader retried after a valid receipt'
+        report['leader_reply'] = verify_leader_reply(output, journey)
         report['scenarios']['customer_staff_photo_consent'] = 'PASS'
         # Actual N2 admin UI -> production image API -> persisted policy revision.
         from playwright.sync_api import sync_playwright, expect
