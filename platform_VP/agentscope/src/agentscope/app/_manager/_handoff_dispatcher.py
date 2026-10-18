@@ -77,6 +77,7 @@ class HandoffDispatcher:
             task = snapshot.state.tasks.get(record.task_id) if snapshot else None
             if (
                 task is None
+                or task.status == "cancelled"
                 or task.latest_customer_revision != intent["customer_revision"]
             ):
                 await self._context.mark_handoff(record, "cancelled")
@@ -103,7 +104,10 @@ class HandoffDispatcher:
             record.user_id, record.team_id
         )
         task = snapshot.state.tasks.get(record.task_id) if snapshot else None
-        if task is not None and record.context_revision < task.latest_customer_revision:
+        if task is not None and (
+            task.status == "cancelled"
+            or record.context_revision < task.latest_customer_revision
+        ):
             await self._context.mark_handoff(record, "cancelled")
             return
         marker_key = MessageBusKeys.team_handoff_delivery(record.handoff_id)

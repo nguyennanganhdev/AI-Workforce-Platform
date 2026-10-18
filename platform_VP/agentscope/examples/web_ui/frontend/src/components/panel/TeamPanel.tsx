@@ -2,10 +2,8 @@ import {
 	Activity,
 	AlertCircle,
 	ArrowRight,
-	Bot,
 	Check,
 	Clock3,
-	Crown,
 	LoaderCircle,
 	MessageSquareMore,
 	Radio,
@@ -17,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
+import { TeamAgentAvatar } from '@/components/team/TeamAgentAvatar';
 import { Button } from '@/components/ui/button';
 import type {
 	TeamActivityItem,
@@ -163,7 +162,7 @@ export function TeamPanel({
 
 	const renderRow = (
 		key: string,
-		icon: ReactNode,
+		role: TeamActivityParticipant['role'],
 		label: string,
 		sessionId: string | null,
 		disabled: boolean,
@@ -196,7 +195,9 @@ export function TeamPanel({
 						isActive && 'bg-accent text-accent-foreground',
 					)}
 				>
-					<span className="mt-0.5 shrink-0">{icon}</span>
+					<span className="mt-0.5 shrink-0">
+						<TeamAgentAvatar status={runtime.status} role={role} />
+					</span>
 					<span className="min-w-0 flex-1">
 						<span className="flex items-center gap-2">
 							<span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
@@ -224,7 +225,7 @@ export function TeamPanel({
 	const renderLeader = (leader: AgentView) =>
 		renderRow(
 			leader.id,
-			<Crown className="size-3.5 text-amber-600 dark:text-amber-400" />,
+			'leader',
 			leader.data.name,
 			leaderSessionId,
 			false,
@@ -234,7 +235,7 @@ export function TeamPanel({
 	const renderMember = (member: TeamMemberInfo) =>
 		renderRow(
 			member.agent.id,
-			<Bot className="size-3.5" />,
+			'member',
 			member.agent.data.name,
 			member.session_id,
 			member.session_id === null,

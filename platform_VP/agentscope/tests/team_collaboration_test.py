@@ -1019,11 +1019,12 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual((1, 1, False), (completed, errors, waiting))
         self.assertEqual("error", report.metadata["kind"])
 
-    async def test_verification_is_bounded_and_worker_cannot_resolve_others(self):
-        refused = await self.tool("worker")(
+    async def test_verification_is_bounded_and_worker_resolution_is_ignored(self):
+        delivered = await self.tool("worker")(
             to="Peer", kind="handoff", content="Done", resolution="stop"
         )
-        self.assertEqual("error", refused.state)
+        self.assertNotEqual("error", delivered.state)
+        self.assertNotEqual("stopped", self.branch("peer").status)
         for n in range(3):
             await self.say(
                 "leader",

@@ -64,6 +64,7 @@ from .._chat_consent import confirmation_still_pending
 from .._manager import BackgroundTaskManager, SchedulerManager
 from .._shared_context import SharedContextBudgetError, SharedContextService
 from .._team_turn import (
+    cancel_team_turn,
     finish_team_turn,
     get_team_turn,
     set_team_turn_task,
@@ -815,9 +816,14 @@ class ChatService:
         session_id: str,
         agent_id: str,
     ) -> None:
-        """Interrupt an in-progress reply for a session.
+        """Interrupt an in-progress reply or the whole leader-owned team.
 
-        Two paths, chosen by session liveness:
+        A team leader's shared chat first closes the active collaborative
+        task, then broadcasts cancellation to the leader and every member.
+        The team record itself is preserved for the next customer message.
+
+        A standalone or worker session uses one of two paths, chosen by
+        session liveness:
 
         - **Running** (lock held): publish on the interrupt channel so
           the local :class:`~agentscope.app._manager.CancelDispatcher`
@@ -850,19 +856,80 @@ class ChatService:
         if session is None:
             raise LookupError(f"Session '{session_id}' not found.")
 
-        if await self._message_bus.is_locked(
-            MessageBusKeys.session_lock(session_id),
-        ):
+        team = (
+            await self._storage.get_team(user_id, session.team_id)
+            if session.team_id is not None
+            else None
+        )
+        if team is not None and team.session_id == session_id:
+            # Close shared work before signalling processes. Otherwise an
+            # already-durable handoff can wake a member after Stop was clicked.
+            await self._shared_context.cancel_active_task(user_id, team.id)
+            await cancel_team_turn(
+                self._message_bus,
+                team.id,
+                storage=self._shared_context.storage,
+                user_id=user_id,
+            )
+            members = await _ensure_team_members(self._storage, user_id, team)
+            targets = [(agent_id, session)]
+            for member in members:
+                member_session = await self._storage.get_session(
+                    user_id,
+                    member.agent_id,
+                    member.session_id,
+                )
+                if member_session is not None:
+                    targets.append((member.agent_id, member_session))
+            await asyncio.gather(
+                *(
+                    self._interrupt_one(
+                        user_id,
+                        target_session,
+                        target_agent_id,
+                        cancel_background=True,
+                    )
+                    for target_agent_id, target_session in targets
+                ),
+            )
+            return
+
+        await self._interrupt_one(user_id, session, agent_id)
+
+    async def _interrupt_one(
+        self,
+        user_id: str,
+        session: SessionRecord,
+        agent_id: str,
+        *,
+        cancel_background: bool = False,
+    ) -> None:
+        """Interrupt one session, optionally including offloaded tool work."""
+
+        running = await self._message_bus.is_locked(
+            MessageBusKeys.session_lock(session.id),
+        )
+        if cancel_background:
+            await self._message_bus.publish(
+                MessageBusKeys.session_cancel_channel(),
+                {"session_id": session.id},
+            )
+            # Team Stop is a broadcast, not a request to start an idle
+            # session.  The shared task/turn were already closed above, so a
+            # parked member cannot legitimately continue on a later wake-up.
+            return
+        elif running:
             await self._message_bus.publish(
                 MessageBusKeys.session_interrupt_channel(),
-                {"session_id": session_id},
+                {"session_id": session.id},
             )
+        if running:
             return
 
         await enqueue_run_trigger(
             self._message_bus,
             user_id=user_id,
-            session_id=session_id,
+            session_id=session.id,
             agent_id=agent_id,
             kind=MessageBusKeys.WAKEUP_KIND_RESUME,
             inputs=UserInterruptEvent(reply_id=session.state.reply_id),

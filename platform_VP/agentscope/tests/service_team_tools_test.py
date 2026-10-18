@@ -1216,7 +1216,12 @@ class TestTeamSay(_TeamToolsTestBase):
                 ],
                 "state": "error",
                 "is_last": True,
-                "metadata": {},
+                "metadata": {
+                    "retryable": False,
+                    "model_retryable": False,
+                    "reason": "not_in_team",
+                    "error_detail": AnyString(),
+                },
                 "id": AnyString(),
             },
         )
@@ -1373,7 +1378,7 @@ class TestTeamDelete(_TeamToolsTestBase):
                 ],
                 "state": "running",
                 "is_last": True,
-                "metadata": {},
+                "metadata": {"terminal": True, "reason": "team_deleted"},
                 "id": AnyString(),
             },
         )

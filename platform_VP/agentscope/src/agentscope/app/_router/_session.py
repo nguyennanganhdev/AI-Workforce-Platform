@@ -648,11 +648,21 @@ async def list_messages(
         before=before,
         **extra,
     )
+    running_session_ids = [session_id]
+    if existing.team_id is not None:
+        team = await storage.get_team(user_id, existing.team_id)
+        if team is not None and team.session_id == session_id:
+            members = await _ensure_team_members(storage, user_id, team)
+            running_session_ids.extend(member.session_id for member in members)
+    running = await asyncio.gather(
+        *(
+            message_bus.is_locked(MessageBusKeys.session_lock(target_session_id))
+            for target_session_id in dict.fromkeys(running_session_ids)
+        ),
+    )
     return ListMessagesResponse(
         messages=messages,
-        is_running=await message_bus.is_locked(
-            MessageBusKeys.session_lock(session_id),
-        ),
+        is_running=any(running),
         has_more=has_more,
     )
 

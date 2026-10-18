@@ -20,6 +20,7 @@ required.
 import asyncio
 from typing import Any
 from unittest.async_case import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 from pydantic import BaseModel
 from utils import MockModel
@@ -31,7 +32,15 @@ from agentscope.app._manager import (
     ChatRunRegistry,
     BackgroundTaskManager,
 )
+from agentscope.app._service import ChatService
 from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
+from agentscope.app.storage import (
+    SessionConfig,
+    SessionRecord,
+    TeamData,
+    TeamMember,
+    TeamRecord,
+)
 from agentscope.event import ReplyEndEvent
 from agentscope.message import (
     TextBlock,
@@ -267,3 +276,72 @@ class ServiceAgentInterruptTest(IsolatedAsyncioTestCase):
             "completed",
             "Next round after full-flow interruption should complete normally",
         )
+
+    async def test_interrupting_leader_cancels_every_team_session(self) -> None:
+        """The common chat Stop action fans out without deleting the team."""
+
+        leader = SessionRecord(
+            id="leader-session",
+            user_id="u",
+            agent_id="leader",
+            team_id="team-1",
+            config=SessionConfig(workspace_id="ws"),
+        )
+        worker = SessionRecord(
+            id="worker-session",
+            user_id="u",
+            agent_id="worker",
+            team_id="team-1",
+            config=SessionConfig(workspace_id="ws"),
+        )
+        team = TeamRecord(
+            id="team-1",
+            user_id="u",
+            session_id=leader.id,
+            leader_agent_id=leader.agent_id,
+            data=TeamData(
+                name="Team",
+                members=[
+                    TeamMember(
+                        owner_id="u",
+                        agent_id=worker.agent_id,
+                        session_id=worker.id,
+                        role="created",
+                    ),
+                ],
+            ),
+        )
+        storage = AsyncMock()
+
+        async def get_session(_user: str, _agent: str, session_id: str):
+            return {leader.id: leader, worker.id: worker}.get(session_id)
+
+        storage.get_session.side_effect = get_session
+        storage.get_team.return_value = team
+        bus = AsyncMock()
+        # Even idle/parked members receive cancellation, but Stop must not
+        # create fresh resume runs merely to interrupt them.
+        bus.is_locked.return_value = False
+        shared_context = AsyncMock()
+        shared_context.storage = AsyncMock()
+        service = object.__new__(ChatService)
+        service._storage = storage
+        service._message_bus = bus
+        service._shared_context = shared_context
+
+        with patch(
+            "agentscope.app._service._chat.cancel_team_turn",
+            new=AsyncMock(),
+        ) as cancel_turn:
+            await service.interrupt("u", leader.id, leader.agent_id)
+
+        shared_context.cancel_active_task.assert_awaited_once_with("u", team.id)
+        cancel_turn.assert_awaited_once()
+        cancelled = {
+            call.args[1]["session_id"]
+            for call in bus.publish.await_args_list
+            if call.args[0] == MessageBusKeys.session_cancel_channel()
+        }
+        self.assertEqual(cancelled, {leader.id, worker.id})
+        bus.queue_push.assert_not_awaited()
+        storage.delete_team.assert_not_awaited()

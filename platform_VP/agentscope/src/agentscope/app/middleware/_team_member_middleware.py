@@ -246,6 +246,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                         ),
                     ],
                     state=ToolResultState.ERROR,
+                    metadata={"model_retryable": True},
                 )
                 return
         if paused or (call.name, args) in self._repeated_calls(agent):
@@ -260,6 +261,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     )
                 ],
                 state=ToolResultState.ERROR,
+                metadata={"model_retryable": True},
             )
             return
         async for result in next_handler(**input_kwargs):

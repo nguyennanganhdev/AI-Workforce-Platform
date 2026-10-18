@@ -803,12 +803,12 @@ class SharedContextService:
                     ),
                 )
                 record.state.tasks[selected_task_id] = task
-            elif task.status == "completed" and kind not in {
+            elif task.status in {"completed", "cancelled"} and kind not in {
                 "customer_message",
                 "customer_reply",
             }:
                 raise CollaborationStoppedError(
-                    "This customer turn is already finalized; start a new "
+                    "This customer turn is already closed; start a new "
                     "customer requirement before adding more team evidence"
                 )
 
@@ -1130,6 +1130,51 @@ class SharedContextService:
             record.updated_at = datetime.now()
             await self._commit_mutation(user_id, record)
             return tuple(dict.fromkeys(released))
+
+    async def cancel_active_task(
+        self,
+        user_id: str,
+        team_id: str,
+        reason: str = "cancelled by user",
+    ) -> bool:
+        """Close the active team task before cancelling its session runs."""
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            task = (
+                record.state.tasks.get(record.state.active_task_id)
+                if record is not None and record.state.active_task_id is not None
+                else None
+            )
+            if record is None or task is None:
+                return False
+
+            task.status = "cancelled"
+            task.pending_question_ids = ()
+            task.pending_operation_ids = ()
+            for branch in task.collaboration.values():
+                if branch.customer_revision != task.latest_customer_revision:
+                    continue
+                branch.status = "stopped"
+                branch.reason = reason
+                branch.waiting_for.clear()
+            task.updated_at = datetime.now(UTC)
+            record.updated_at = datetime.now()
+            await self._commit_mutation(user_id, record)
+            task_id = task.id
+
+        handoffs = await self._storage.list_outstanding_team_handoffs(limit=500)
+        for handoff in handoffs:
+            if (
+                handoff.user_id == user_id
+                and handoff.team_id == team_id
+                and handoff.task_id == task_id
+            ):
+                await self.mark_handoff(handoff, "cancelled", error=reason)
+        return True
 
     async def current_tool_evidence_for_session(
         self,
@@ -1610,9 +1655,9 @@ class SharedContextService:
             branch = self._branch(task, sender)
             if handoff_id in branch.receipts:
                 return branch.receipts[handoff_id]
-            if task.status == "completed":
+            if task.status in {"completed", "cancelled"}:
                 raise CollaborationStoppedError(
-                    "This customer turn is already finalized; wait for a new "
+                    "This customer turn is already closed; wait for a new "
                     "customer requirement before starting more collaboration"
                 )
             effective_references = tuple(

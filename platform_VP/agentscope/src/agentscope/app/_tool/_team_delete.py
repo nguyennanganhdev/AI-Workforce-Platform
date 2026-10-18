@@ -78,6 +78,7 @@ This is irreversible.
                         ),
                     ),
                 ],
+                metadata={"terminal": True, "reason": "team_deleted"},
             )
         except Exception as e:  # pylint: disable=broad-except
             return ToolChunk(

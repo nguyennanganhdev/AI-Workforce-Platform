@@ -19,6 +19,6 @@ export default defineConfig({
 		},
 	},
 	optimizeDeps: {
-		include: ['mime-types'],
+		include: ['@react-three/drei', '@react-three/fiber', 'mime-types', 'three'],
 	},
 });

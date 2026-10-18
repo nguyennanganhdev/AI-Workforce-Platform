@@ -180,6 +180,91 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(inbox), 1)
 
+    async def test_worker_resolution_is_normalized_instead_of_rejected(self) -> None:
+        """A worker report stays useful even if the model tries to close it."""
+
+        worker_tool = TeamSay(
+            storage=self.storage,  # type: ignore[arg-type]
+            message_bus=self.bus,
+            workspace_manager=object(),
+            user_id="u",
+            session_id="worker-session",
+            agent_id="worker",
+            shared_context_service=self.shared,
+            role="worker",
+        )
+        result = await worker_tool(
+            content="Flight options verified",
+            to="Leader",
+            kind="result",
+            resolution="complete",
+        )
+
+        self.assertNotEqual(result.state, "error")
+        inbox = await self.bus.queue_drain(
+            MessageBusKeys.inbox("leader-session"),
+            max_count=10,
+        )
+        self.assertEqual(len(inbox), 1)
+        intent = next(
+            handoff
+            for handoff in self.storage.handoffs.values()
+            if "collaboration_intent" in handoff.payload
+        )
+        self.assertIsNone(
+            intent.payload["collaboration_intent"]["arguments"]["resolution"],
+        )
+
+    async def test_teamless_failure_has_a_non_retryable_reason(self) -> None:
+        self.storage.sessions["worker-session"].team_id = None
+        worker_tool = TeamSay(
+            storage=self.storage,  # type: ignore[arg-type]
+            message_bus=self.bus,
+            workspace_manager=object(),
+            user_id="u",
+            session_id="worker-session",
+            agent_id="worker",
+            shared_context_service=self.shared,
+            role="worker",
+        )
+
+        result = await worker_tool(content="late result", to="Leader")
+
+        self.assertEqual(result.state, "error")
+        self.assertEqual(result.metadata["reason"], "not_in_team")
+        self.assertFalse(result.metadata["model_retryable"])
+        self.assertIn("not in any team", result.metadata["error_detail"])
+
+    async def test_cancelled_task_rejects_old_handoffs_and_can_restart(self) -> None:
+        await self.tool(content="Collect options", to="Worker")
+
+        cancelled = await self.shared.cancel_active_task("u", "ticket-1")
+
+        self.assertTrue(cancelled)
+        record = await self.storage.get_team_shared_context("u", "ticket-1")
+        task = record.state.tasks[record.state.active_task_id]
+        self.assertEqual(task.status, "cancelled")
+        self.assertTrue(
+            all(branch.status == "stopped" for branch in task.collaboration.values())
+        )
+
+        blocked = await self.tool(content="Late work", to="Worker")
+        self.assertEqual(blocked.state, "error")
+        self.assertEqual(blocked.metadata["reason"], "collaboration_stopped")
+
+        await self.shared.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            kind="customer_message",
+            content="Start a new request",
+            task_id=record.state.active_task_id,
+        )
+        restarted = await self.storage.get_team_shared_context("u", "ticket-1")
+        self.assertEqual(
+            restarted.state.tasks[restarted.state.active_task_id].status,
+            "running",
+        )
+
     async def test_system_leader_result_is_not_semantically_validated(
         self,
     ):

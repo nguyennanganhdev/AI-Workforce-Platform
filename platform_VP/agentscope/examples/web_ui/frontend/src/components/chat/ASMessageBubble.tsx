@@ -67,6 +67,16 @@ interface ToolCallGroupBlock {
 
 type ExtendedContentBlock = ContentBlock | ToolCallGroupBlock;
 
+const TEAM_SAY_FAILURE_LABELS: Record<string, string> = {
+	not_in_team: 'Phiên không còn thuộc team',
+	team_missing: 'Team không còn tồn tại',
+	team_precondition_failed: 'Điều kiện team không còn hợp lệ',
+	collaboration_stopped: 'Nhiệm vụ phối hợp đã dừng',
+	concurrent_update: 'Xung đột cập nhật ngữ cảnh',
+	invalid_request: 'Yêu cầu điều phối không hợp lệ',
+	delivery_failed: 'Không thể giao tin nhắn',
+};
+
 /**
  * Pair every tool_call with its tool_result (by id) and collect *consecutive*
  * tool calls into a single `tool_call_group`, regardless of tool name — so a
@@ -463,11 +473,25 @@ function ASMessageBubbleComponent({
 			if (!payload.content || (!isTeamChat && plainText.includes(payload.content.trim()))) return [];
 			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
 			const effectiveTo = result?.metadata?.effective_to;
+			const failureReason = typeof result?.metadata?.reason === 'string'
+				? TEAM_SAY_FAILURE_LABELS[result.metadata.reason] ?? result.metadata.reason
+				: null;
+			const resultText = typeof result?.output === 'string'
+				? result.output
+				: result?.output
+					?.filter((item): item is TextBlock => item.type === 'text')
+					.map((item) => item.text)
+					.join(' ');
+			const failureDetail = typeof result?.metadata?.error_detail === 'string'
+				? result.metadata.error_detail
+				: resultText || null;
 			return [{
 				id: block.id,
 				...payload,
 				to: typeof effectiveTo === 'string' ? effectiveTo : payload.to,
 				failed: result?.state === 'error',
+				failureReason,
+				failureDetail,
 			}];
 		} catch {
 			return [];
@@ -509,7 +533,12 @@ function ASMessageBubbleComponent({
 							{communication.to?.split('@')[0]}
 						</span>
 						{communication.failed && (
-							<span className="text-destructive">· Gọi thất bại</span>
+							<span className="min-w-0 text-destructive">
+								· {communication.failureReason ?? 'Gọi thất bại'}
+								{communication.failureDetail
+									? `: ${communication.failureDetail.replace(/^TeamSay(?: failed)?:\s*/i, '')}`
+									: ''}
+							</span>
 						)}
 					</div>
 				)) : communications.map((communication) => (

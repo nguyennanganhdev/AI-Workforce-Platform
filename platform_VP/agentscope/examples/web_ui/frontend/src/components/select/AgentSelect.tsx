@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from 'lucide-react';
 
 import type { AgentView } from '@/api';
+import { TeamAgentAvatar } from '@/components/team/TeamAgentAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,10 +51,12 @@ export function AgentSelect({ agents, value, onChange, placeholder, className, .
 	const renderItem = (agent: AgentView) => {
 		const isSelected = agent.id === value;
 		return (
-			<DropdownMenuItem key={agent.id} onSelect={() => onChange?.(agent.id)}>
-				<Check
-					className={`size-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}
-				/>
+			<DropdownMenuItem
+				key={agent.id}
+				className="gap-2.5"
+				onSelect={() => onChange?.(agent.id)}
+			>
+				<TeamAgentAvatar size="sm" />
 				<span className="min-w-0 flex-1 truncate">{agent.data.name}</span>
 				{!agent.editable && (
 					<Badge
@@ -64,6 +67,9 @@ export function AgentSelect({ agents, value, onChange, placeholder, className, .
 						{t('common.readOnly')}
 					</Badge>
 				)}
+				<Check
+					className={`size-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}
+				/>
 			</DropdownMenuItem>
 		);
 	};
@@ -77,7 +83,8 @@ export function AgentSelect({ agents, value, onChange, placeholder, className, .
 					className={cn('justify-between gap-1 font-normal', className)}
 					{...props}
 				>
-					<span className="truncate">{displayLabel}</span>
+					{selected ? <TeamAgentAvatar size="sm" /> : null}
+					<span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
 					<ChevronDown className="size-3.5 text-muted-foreground" />
 				</Button>
 			</DropdownMenuTrigger>

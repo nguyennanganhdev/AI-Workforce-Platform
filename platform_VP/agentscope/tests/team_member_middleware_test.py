@@ -16,7 +16,11 @@ from utils import MockModel
 
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
 from agentscope.app._tool._team_say import STALE_CONTEXT_RESULT
-from agentscope.app.middleware import TeamMemberLoopMiddleware
+from agentscope.app.message_bus import InMemoryMessageBus
+from agentscope.app.middleware import (
+    StateChangeMiddleware,
+    TeamMemberLoopMiddleware,
+)
 from agentscope.event import ReplyEndEvent, TextBlockDeltaEvent
 from agentscope.message import TextBlock, ToolCallBlock, ToolResultState, UserMsg
 from agentscope.model import ChatResponse
@@ -54,11 +58,13 @@ class _FakeTeamSay(ToolBase):
         self,
         state: ToolResultState = ToolResultState.SUCCESS,
         output: str = "delivered",
+        metadata: dict | None = None,
     ):
         super().__init__()
         self.calls: list[dict] = []
         self._state = state
         self._output = output
+        self._metadata = metadata or {}
 
     async def check_permissions(
         self,
@@ -81,15 +87,18 @@ class _FakeTeamSay(ToolBase):
         return ToolChunk(
             content=[TextBlock(text=self._output)],
             state=self._state,
-            metadata=(
-                {
-                    "kind": "requires_user_input",
-                    "customer_question_registered": True,
-                    "effective_to": "Leader",
-                }
-                if kind == "requires_user_input"
-                else {}
-            ),
+            metadata={
+                **(
+                    {
+                        "kind": "requires_user_input",
+                        "customer_question_registered": True,
+                        "effective_to": "Leader",
+                    }
+                    if kind == "requires_user_input"
+                    else {}
+                ),
+                **self._metadata,
+            },
         )
 
 
@@ -125,6 +134,21 @@ class _FakeInputReady(_FakeTeamSay):
         )
 
 
+class _FakeTeamDelete(_FakeTeamSay):
+    """Terminal team deletion used to verify the run cannot continue."""
+
+    name: str = "TeamDelete"
+    description: str = "Delete the current team."
+    input_schema: dict = {"type": "object", "properties": {}}
+
+    async def __call__(self) -> ToolChunk:
+        self.calls.append({})
+        return ToolChunk(
+            content=[TextBlock(text="deleted")],
+            metadata={"terminal": True, "reason": "team_deleted"},
+        )
+
+
 def _text(text: str) -> ChatResponse:
     """A plain text reply — ends the reasoning-acting loop."""
     return ChatResponse(content=[TextBlock(text=text)], is_last=True)
@@ -156,6 +180,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         self.model = MockModel()
         self.team_say = _FakeTeamSay()
         self.extra_tools: list = []
+        self.bus = InMemoryMessageBus()
 
     async def _run(
         self,
@@ -178,6 +203,10 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             toolkit=toolkit,
             react_config=ReActConfig(max_iters=max_iters),
             middlewares=[
+                StateChangeMiddleware(
+                    message_bus=self.bus,
+                    session_id="worker-session",
+                ),
                 TeamMemberLoopMiddleware(
                     leader_name="Leader",
                     max_nudges=max_nudges,
@@ -465,6 +494,47 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             [ReplyFinishedReason.ERROR],
         )
 
+    async def test_non_retryable_team_say_error_stops_before_another_model_call(
+        self,
+    ) -> None:
+        self.team_say = _FakeTeamSay(
+            state=ToolResultState.ERROR,
+            output="TeamSay failed: this session is not in any team",
+        )
+        items = await self._run(
+            [
+                _call("TeamSay", to="Leader", content="late result"),
+                _call("TeamSay", to="Leader", content="must not run"),
+            ],
+        )
+
+        self.assertEqual(self.model.cnt, 1)
+        self.assertEqual(len(self.team_say.calls), 1)
+        self.assertEqual(
+            self._end_events(items)[-1].finished_reason,
+            ReplyFinishedReason.ERROR,
+        )
+
+    async def test_team_delete_success_ends_the_current_run(self) -> None:
+        delete = _FakeTeamDelete()
+        note = _OtherTool()
+        items = await self._run(
+            [
+                _call("TeamDelete"),
+                _call("Note", content="must not run"),
+            ],
+            extra_tools=[delete, note],
+            require_report=False,
+        )
+
+        self.assertEqual(self.model.cnt, 1)
+        self.assertEqual(len(delete.calls), 1)
+        self.assertEqual(note.calls, [])
+        self.assertEqual(
+            self._end_events(items)[-1].finished_reason,
+            ReplyFinishedReason.COMPLETED,
+        )
+
     async def test_stale_report_stops_turn_instead_of_repeating_it(self) -> None:
         """A fresh run must reload shared context before another TeamSay."""
 
@@ -481,7 +551,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         )
         ends = self._end_events(items)
 
-        self.assertEqual(self.model.cnt, 2)
+        self.assertEqual(self.model.cnt, 1)
         self.assertEqual(len(self.team_say.calls), 1)
         self.assertEqual(ends[-1].finished_reason, ReplyFinishedReason.ERROR)
         self.assertIn("fresh worker turn", ends[-1].error.message)
@@ -515,14 +585,30 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 return result
 
         self.team_say = _PartialTeamSay()
-        batch = ChatResponse(content=[
-            *_call("TeamSay", to="Peer", kind="question", content="Find options").content,
-            *_call("TeamSay", to="Missing", kind="question", content="Find alternatives").content,
-        ], is_last=True)
+        batch = ChatResponse(
+            content=[
+                *_call(
+                    "TeamSay",
+                    to="Peer",
+                    kind="question",
+                    content="Find options",
+                ).content,
+                *_call(
+                    "TeamSay",
+                    to="Missing",
+                    kind="question",
+                    content="Find alternatives",
+                ).content,
+            ],
+            is_last=True,
+        )
         items = await self._run([batch, _text("should not run")])
         self.assertEqual(self.model.cnt, 1)
         self.assertEqual(len(self.team_say.calls), 2)
-        self.assertEqual(self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED)
+        self.assertEqual(
+            self._end_events(items)[0].finished_reason,
+            ReplyFinishedReason.ERROR,
+        )
 
     async def test_silent_worker_is_failed_after_max_nudges(self) -> None:
         """A worker that never reports fails instead of looping."""

@@ -1,28 +1,39 @@
-import { motion, useMotionValue, useTransform, type MotionStyle } from 'framer-motion';
 import {
 	Activity,
-	ArrowRight,
-	Focus,
-	Mail,
-	Minus,
-	Plus,
+	Maximize2,
 	Radio,
 	RotateCcw,
 	RotateCw,
 	UsersRound,
+	X,
+	ZoomIn,
+	ZoomOut,
 } from 'lucide-react';
-import {
-	useEffect,
-	useMemo,
-	useRef,
-	type CSSProperties,
-	type PointerEvent as ReactPointerEvent,
-	type WheelEvent as ReactWheelEvent,
-} from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 import type { TeamDetailResponse } from '@/api';
-import { AgentCharacterAvatar } from '@/components/team/AgentCharacterAvatar';
+import type {
+	OfficeAgent,
+	SessionOfficeSnapshot,
+} from '@/components/team/office/model';
+import { ROOM } from '@/components/team/office/office-palette';
+import {
+	buildLayout,
+	LEADER_ID,
+	OfficeSim,
+	populate,
+} from '@/components/team/office/office-sim';
+import type {
+	OfficeCameraAction,
+	OfficeCameraCommand,
+} from '@/components/team/office/Office3D';
+import { TeamAgentAvatar } from '@/components/team/TeamAgentAvatar';
 import { Button } from '@/components/ui/button';
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from '@/components/ui/popover';
 import type { ReplyPhase } from '@/hooks/useMessages';
 import type {
 	TeamActivityItem,
@@ -34,6 +45,9 @@ import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 
 import './MeetingRoomView.css';
+import './office/agent-office.css';
+
+const Office3D = lazy(() => import('./office/Office3D'));
 
 interface MeetingRoomViewProps {
 	team: TeamDetailResponse;
@@ -41,47 +55,32 @@ interface MeetingRoomViewProps {
 	runtimeBySession: Record<string, TeamMemberRuntime>;
 	activities: TeamActivityItem[];
 	latestUserMessageId: string | null;
+	latestUserMessageAt: string | null;
 	phase: ReplyPhase;
 	visible: boolean;
+	simulationCache: OfficeSimulationCache;
 }
 
-interface ActorPosition {
-	x: number;
-	y: number;
-}
+export type OfficeSimulationCache = Map<
+	string,
+	{ rosterKey: string; sim: OfficeSim }
+>;
 
-type ActorStyle = CSSProperties & {
-	'--actor-x': string;
-	'--actor-y': string;
-	'--actor-delay': string;
-};
+const ACTIVE_STATUSES = new Set<TeamRuntimeStatus>([
+	'active',
+	'communicating',
+	'waiting',
+]);
 
-const ROOM_STATUSES = new Set<TeamRuntimeStatus>(['active', 'communicating', 'waiting']);
-const MIN_ZOOM = 0.62;
-const MAX_ZOOM = 1.42;
-
-const MEETING_SEATS: ActorPosition[] = [
-	{ x: 39, y: 23 },
-	{ x: 50, y: 28 },
-	{ x: 47, y: 48 },
-	{ x: 35, y: 52 },
-	{ x: 29, y: 38 },
-	{ x: 42, y: 37 },
-];
-
-const meetingPosition = (index: number, leader: boolean): ActorPosition =>
-	leader ? { x: 31, y: 25 } : MEETING_SEATS[index % MEETING_SEATS.length];
-
-const restPosition = (index: number): ActorPosition => ({
-	x: 64 + (index % 3) * 12,
-	y: 24 + (Math.floor(index / 3) % 2) * 31,
-});
-
-const actorStyle = (position: ActorPosition, index: number): ActorStyle => ({
-	'--actor-x': `${position.x}cqw`,
-	'--actor-y': `${position.y}cqh`,
-	'--actor-delay': `${index * 70}ms`,
-});
+const WEBGL_AVAILABLE = (() => {
+	if (typeof document === 'undefined') return false;
+	try {
+		const canvas = document.createElement('canvas');
+		return Boolean(canvas.getContext('webgl2') ?? canvas.getContext('webgl'));
+	} catch {
+		return false;
+	}
+})();
 
 const fallbackRuntime = (participant: TeamActivityParticipant): TeamMemberRuntime => ({
 	status: participant.sessionId ? 'loading' : 'idle',
@@ -91,7 +90,24 @@ const fallbackRuntime = (participant: TeamActivityParticipant): TeamMemberRuntim
 	connected: false,
 });
 
-const clampZoom = (value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+const runtimeFor = (
+	participant: TeamActivityParticipant,
+	runtimeBySession: Record<string, TeamMemberRuntime>,
+) =>
+	participant.sessionId
+		? (runtimeBySession[participant.sessionId] ?? fallbackRuntime(participant))
+		: fallbackRuntime(participant);
+
+const actorStatus = (
+	participant: TeamActivityParticipant,
+	runtime: TeamMemberRuntime,
+): SessionOfficeSnapshot['participants'][number]['status'] => {
+	if (!participant.sessionId || runtime.status === 'error') return 'off';
+	return ACTIVE_STATUSES.has(runtime.status) ? 'working' : 'idle';
+};
+
+const shortDetail = (value: string) =>
+	value.length > 128 ? `${value.slice(0, 125).trimEnd()}...` : value;
 
 export function MeetingRoomView({
 	team,
@@ -99,235 +115,297 @@ export function MeetingRoomView({
 	runtimeBySession,
 	activities,
 	latestUserMessageId,
+	latestUserMessageAt,
 	phase,
 	visible,
+	simulationCache,
 }: MeetingRoomViewProps) {
 	const { t } = useTranslation();
-	const animatedMessageRef = useRef<string | null>(null);
-	const deliveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const deliveryRef = useRef<HTMLDivElement>(null);
-	const rotation = useMotionValue(-5);
-	const zoom = useMotionValue(0.92);
-	const inverseRotation = useTransform(rotation, (value) => `${-value}deg`);
-	const pointerRef = useRef<{ id: number; x: number } | null>(null);
-	const teamBusy =
-		phase !== 'idle' ||
-		participants.some((participant) => {
-			const status = participant.sessionId
-				? runtimeBySession[participant.sessionId]?.status
-				: 'idle';
-			return status === 'active' || status === 'communicating' || status === 'waiting';
-		});
+	const [activeSimulation, setActiveSimulation] = useState<{
+		key: string;
+		rosterKey: string;
+		sim: OfficeSim;
+	} | null>(null);
+	const [resetKey, setResetKey] = useState(0);
+	const [cameraCommand, setCameraCommand] = useState<OfficeCameraCommand | null>(null);
+	const [selectedId, setSelectedId] = useState<string | null>(null);
+
+	const leader = participants.find((participant) => participant.role === 'leader');
+	const leaderName = team.leader_agent?.data.name;
+	const members = useMemo(
+		() => participants.filter((participant) => participant.role === 'member'),
+		[participants],
+	);
+	const officeAgents = useMemo<OfficeAgent[]>(
+		() =>
+			members.map((participant) => ({
+				id: participant.agentId,
+				name: participant.name,
+				role: participant.role,
+				invitable: Boolean(participant.sessionId),
+			})),
+		[members],
+	);
+	const layout = useMemo(() => buildLayout(officeAgents), [officeAgents]);
+	const simulationKey = team.team.session_id;
+	const rosterKey = officeAgents
+		.map((agent) => `${agent.id}:${agent.name}:${agent.invitable}`)
+		.join('|');
 
 	useEffect(() => {
-		if (
-			!visible ||
-			!teamBusy ||
-			!latestUserMessageId ||
-			animatedMessageRef.current === latestUserMessageId
-		) {
-			return;
+		let cached = simulationCache.get(simulationKey);
+		if (!cached || cached.rosterKey !== rosterKey) {
+			cached?.sim.abort();
+			const next = new OfficeSim();
+			populate(next, layout, officeAgents);
+			cached = { rosterKey, sim: next };
+			simulationCache.set(simulationKey, cached);
 		}
-		animatedMessageRef.current = latestUserMessageId;
-		deliveryRef.current?.classList.add('is-delivering');
-		if (deliveryTimerRef.current) clearTimeout(deliveryTimerRef.current);
-		deliveryTimerRef.current = setTimeout(() => {
-			deliveryRef.current?.classList.remove('is-delivering');
-		}, 4_800);
-		return () => {
-			if (deliveryTimerRef.current) clearTimeout(deliveryTimerRef.current);
+		setActiveSimulation({ key: simulationKey, rosterKey, sim: cached.sim });
+		return () => cached.sim.setPlaying(false);
+	}, [layout, officeAgents, rosterKey, simulationCache, simulationKey]);
+
+	const sim =
+		activeSimulation?.key === simulationKey && activeSimulation.rosterKey === rosterKey
+			? activeSimulation.sim
+			: null;
+
+	const snapshot = useMemo<SessionOfficeSnapshot>(() => {
+		const leaderRuntime = leader ? runtimeFor(leader, runtimeBySession) : null;
+		const memberRows = members.map((participant) => {
+			const runtime = runtimeFor(participant, runtimeBySession);
+			return {
+				id: participant.agentId,
+				name: participant.name,
+				role: participant.role,
+				status: actorStatus(participant, runtime),
+				message:
+					runtime.detail && ACTIVE_STATUSES.has(runtime.status)
+						? shortDetail(runtime.detail)
+						: undefined,
+			};
+		});
+		const participantIdByName = new Map(
+			participants.map((participant) => [participant.name, participant.agentId]),
+		);
+		const chronological = [...activities].reverse();
+		const currentActivities = latestUserMessageAt
+			? chronological.filter((activity) => activity.createdAt >= latestUserMessageAt)
+			: chronological;
+		const leaderCalls = currentActivities.filter(
+			(activity) =>
+				activity.type === 'communication' &&
+				activity.state !== 'error' &&
+				activity.sourceName === leader?.name,
+		);
+		const exchanges = currentActivities.flatMap((activity) => {
+			if (activity.type !== 'communication' || !activity.targetName) return [];
+			const from = participantIdByName.get(activity.sourceName);
+			const to = participantIdByName.get(activity.targetName);
+			if (!from || !to || from === leader?.agentId || to === leader?.agentId) return [];
+			return [{ from, to }];
+		});
+		const activeMembers = members
+			.filter((participant) =>
+				ACTIVE_STATUSES.has(runtimeFor(participant, runtimeBySession).status),
+			)
+			.map((participant) => participant.agentId);
+		const calledByLeader = leaderCalls.flatMap((activity) => {
+			if (!activity.targetName) return [];
+			const targetId = participantIdByName.get(activity.targetName);
+			return targetId && targetId !== leader?.agentId ? [targetId] : [];
+		});
+		const called = [...new Set([...calledByLeader, ...activeMembers])];
+		const waitingForUser =
+			leaderRuntime?.status === 'waiting' &&
+			leaderCalls.at(-1)?.kind === 'requires_user_input';
+		const working =
+			phase !== 'idle' ||
+			participants.some((participant) =>
+				ACTIVE_STATUSES.has(runtimeFor(participant, runtimeBySession).status),
+			);
+		const officePhase: SessionOfficeSnapshot['phase'] = waitingForUser
+			? 'approval'
+			: working
+				? 'work'
+				: activities.length
+					? 'done'
+					: 'idle';
+
+		return {
+			id: team.team.id,
+			source: 'live',
+			statusLabel: working ? t('meetingRoom.live') : t('meetingRoom.ready'),
+			motion: 'events',
+			participants: [
+				{
+					id: LEADER_ID,
+					name: leader?.name ?? leaderName ?? 'Workforce Leader',
+					role: 'leader',
+					status:
+						leader && leaderRuntime
+							? actorStatus(leader, leaderRuntime)
+							: phase === 'idle'
+								? 'idle'
+								: 'working',
+					message:
+						leaderRuntime?.detail && ACTIVE_STATUSES.has(leaderRuntime.status)
+							? shortDetail(leaderRuntime.detail)
+							: undefined,
+				},
+				...memberRows,
+			],
+			phase: officePhase,
+			turn: latestUserMessageId ?? 'initial',
+			called,
+			exchanges,
+			hostId: LEADER_ID,
+			activity: chronological.slice(-6).map((activity) => ({
+				id: activity.id,
+				text: activity.targetName
+					? `${activity.sourceName} → ${activity.targetName}: ${activity.detail || activity.toolName}`
+					: `${activity.sourceName}: ${activity.detail || activity.toolName}`,
+			})),
 		};
-	}, [latestUserMessageId, teamBusy, visible]);
+	}, [
+		activities,
+		latestUserMessageId,
+		latestUserMessageAt,
+		leader,
+		members,
+		participants,
+		phase,
+		runtimeBySession,
+		t,
+		leaderName,
+		team.team.id,
+	]);
 
-	const actors = useMemo(
-		() =>
-			participants.map((participant, index) => {
-				const runtime = participant.sessionId
-					? (runtimeBySession[participant.sessionId] ?? fallbackRuntime(participant))
-					: fallbackRuntime(participant);
-				const inRoom =
-					participant.role === 'leader' ? teamBusy : ROOM_STATUSES.has(runtime.status);
-				return {
-					participant,
-					runtime,
-					inRoom,
-					position: inRoom
-						? meetingPosition(index, participant.role === 'leader')
-						: restPosition(index),
-				};
-			}),
-		[participants, runtimeBySession, teamBusy],
-	);
-	const inRoomCount = actors.filter((actor) => actor.inRoom).length;
-	const activeActorId = actors.find(
-		(actor) => actor.runtime.status === 'active' || actor.runtime.status === 'communicating',
-	)?.participant.agentId;
-	const courierDispatching = actors.some(
-		(actor) => actor.inRoom && actor.participant.role === 'member',
-	);
+	useEffect(() => {
+		if (!sim) return;
+		sim.setPlaying(visible);
+		if (visible) sim.applySession(snapshot, layout);
+	}, [layout, sim, snapshot, visible]);
 
-	const startRotate = (event: ReactPointerEvent<HTMLElement>) => {
-		pointerRef.current = { id: event.pointerId, x: event.clientX };
-		event.currentTarget.setPointerCapture(event.pointerId);
-		event.currentTarget.dataset.dragging = 'true';
+	const runCameraAction = (action: OfficeCameraAction) => {
+		setCameraCommand((current) => ({ id: (current?.id ?? 0) + 1, action }));
 	};
-	const rotate = (event: ReactPointerEvent<HTMLElement>) => {
-		if (pointerRef.current?.id !== event.pointerId) return;
-		rotation.set(rotation.get() + (event.clientX - pointerRef.current.x) * 0.48);
-		pointerRef.current.x = event.clientX;
+
+	const teamBusy = snapshot.phase === 'work' || snapshot.phase === 'approval';
+	const selectedParticipant =
+		selectedId === LEADER_ID
+			? leader
+			: participants.find((participant) => participant.agentId === selectedId);
+	const selectedRuntime = selectedParticipant
+		? runtimeFor(selectedParticipant, runtimeBySession)
+		: null;
+	const roomNames = {
+		meeting: t('meetingRoom.meetingZone'),
+		approval: t('meetingRoom.approvalZone'),
+		reception: t('meetingRoom.receptionZone'),
+		workspace: t('meetingRoom.workZone'),
 	};
-	const stopRotate = (event: ReactPointerEvent<HTMLElement>) => {
-		if (pointerRef.current?.id !== event.pointerId) return;
-		pointerRef.current = null;
-		delete event.currentTarget.dataset.dragging;
-	};
-	const handleWheel = (event: ReactWheelEvent<HTMLElement>) => {
-		event.preventDefault();
-		zoom.set(clampZoom(zoom.get() - event.deltaY * 0.001));
-	};
-	const resetCamera = () => {
-		rotation.set(-5);
-		zoom.set(0.92);
-	};
-	const cameraStyle = {
-		rotateZ: rotation,
-		scale: zoom,
-		'--office-inverse-rotation': inverseRotation,
-	} as MotionStyle;
 
 	return (
-		<div className="team-office-view">
-			<header className="team-office-statusbar">
-				<div className="team-office-statusbar__title">
-					<strong>{team.team.data.name || t('meetingRoom.title')}</strong>
-					<span>{t('meetingRoom.description')}</span>
-				</div>
-				<div className="team-office-statusbar__metrics">
-					<span><Activity />{t('meetingRoom.sessionActivity')}</span>
-					<span className={cn(teamBusy && 'is-live')}><Radio />{teamBusy ? t('meetingRoom.live') : t('meetingRoom.quiet')}</span>
-					<span><UsersRound />{inRoomCount}/{actors.length}</span>
-				</div>
-			</header>
-
-			<div className="team-office-layout">
-				<section
-					className="meeting-room-stage"
-					aria-label={t('meetingRoom.sceneLabel')}
-					tabIndex={0}
-					onPointerDown={startRotate}
-					onPointerMove={rotate}
-					onPointerUp={stopRotate}
-					onPointerCancel={stopRotate}
-					onWheel={handleWheel}
-					onKeyDown={(event) => {
-						if (event.key === 'ArrowLeft') rotation.set(rotation.get() - 15);
-						if (event.key === 'ArrowRight') rotation.set(rotation.get() + 15);
-						if (event.key === '+' || event.key === '=') zoom.set(clampZoom(zoom.get() + 0.1));
-						if (event.key === '-') zoom.set(clampZoom(zoom.get() - 0.1));
-					}}
+		<section
+			className="team-office-view"
+			style={{ background: ROOM.background }}
+			aria-label={t('meetingRoom.sceneLabel')}
+		>
+			{WEBGL_AVAILABLE && sim ? (
+				<Suspense
+					fallback={<div className="team-office-loading">{t('meetingRoom.loading')}</div>}
 				>
-					<div className="meeting-room-camera-tilt">
-						<motion.div className="meeting-room-world" style={cameraStyle}>
-							<div className="meeting-room-wall meeting-room-wall--back" />
-							<div className="meeting-room-wall meeting-room-wall--left" />
-							<div className="meeting-room-zone meeting-room-zone--conference">
-								<span>{t('meetingRoom.meetingZone')}</span>
-							</div>
-							<div className="meeting-room-zone meeting-room-zone--work">
-								<span>{t('meetingRoom.workZone')}</span>
-							</div>
-							<div className="meeting-room-zone meeting-room-zone--lounge">
-								<span>{t('meetingRoom.loungeZone')}</span>
-							</div>
+					<Office3D
+						key={simulationKey}
+						layout={layout}
+						sim={sim}
+						active={visible}
+						selectedId={selectedId}
+						setSelectedId={setSelectedId}
+						roomNames={roomNames}
+						offLabel={t('meetingRoom.status.error')}
+						resetKey={resetKey}
+						cameraCommand={cameraCommand}
+					/>
+				</Suspense>
+			) : (
+				<div className="team-office-loading">{t('meetingRoom.noWebgl')}</div>
+			)}
 
-							<div className="office-reception"><span /></div>
-							<div className="office-mailbox">
-								<Mail />
-								<span>{t('meetingRoom.mailZone')}</span>
-								<span className="meeting-room-envelope" />
-							</div>
-							<div className="meeting-room-table"><span /></div>
-							<div className="office-desk office-desk--one"><span /></div>
-							<div className="office-desk office-desk--two"><span /></div>
-							<div className="office-sofa" />
-							<div className="office-divider office-divider--one" />
-							<div className="office-divider office-divider--two" />
-							<div className="office-plant office-plant--one"><span /></div>
-							<div className="office-plant office-plant--two"><span /></div>
-							<div className="office-plant office-plant--three"><span /></div>
-
-							{actors.map(({ participant, runtime, position, inRoom }, index) => (
-								<div
-									key={participant.agentId}
-									className={cn('meeting-room-actor', inRoom ? 'is-in-room' : 'is-resting')}
-									style={actorStyle(position, index)}
-									data-status={runtime.status}
-								>
-									<div className="meeting-room-actor__billboard">
-										{participant.agentId === activeActorId && runtime.detail ? (
-											<div className="meeting-room-speech">{runtime.detail}</div>
-										) : null}
-										<AgentCharacterAvatar
+			<div className="team-office-toolbar">
+				<span className="team-office-pill">
+					<Activity />
+					{t('meetingRoom.sessionActivity')}
+				</span>
+				<span className={cn('team-office-pill', teamBusy && 'is-live')}>
+					<Radio />
+					{snapshot.statusLabel}
+				</span>
+				<Popover>
+					<PopoverTrigger asChild>
+						<Button variant="outline" className="team-office-pill team-office-pill--button">
+							<UsersRound />
+							{t('meetingRoom.teamAgents')}
+						</Button>
+					</PopoverTrigger>
+					<PopoverContent align="start" className="team-office-roster">
+						<h3>{t('meetingRoom.teamAgents')}</h3>
+						<ul>
+							{participants.map((participant) => {
+								const runtime = runtimeFor(participant, runtimeBySession);
+								return (
+									<li key={participant.agentId}>
+										<TeamAgentAvatar
 											role={participant.role}
-											active={runtime.status === 'active' || runtime.status === 'communicating'}
-							className="size-10"
+											status={runtime.status}
+											size="sm"
 										/>
-										<div className="meeting-room-actor__label">
+										<div>
 											<strong>{participant.name}</strong>
-											<small>{t(`meetingRoom.status.${runtime.status}`)}</small>
+											<span>{t(`meetingRoom.status.${runtime.status}`)}</span>
 										</div>
-									</div>
-								</div>
-							))}
-
-							<div
-								ref={deliveryRef}
-								className={cn('meeting-room-courier', courierDispatching && 'is-dispatching')}
-							>
-								<div className="meeting-room-actor__billboard">
-									<AgentCharacterAvatar role="courier" className="size-10" />
-									<div className="meeting-room-actor__label">
-										<strong>{t('meetingRoom.courier')}</strong>
-										<small>{courierDispatching ? t('meetingRoom.courierDispatching') : t('meetingRoom.courierRest')}</small>
-									</div>
-								</div>
-							</div>
-						</motion.div>
-					</div>
-
-					<div className="meeting-room-camera-hint">{t('meetingRoom.cameraHint')}</div>
-					<div
-						className="meeting-room-camera-controls"
-						onPointerDown={(event) => event.stopPropagation()}
-					>
-						<Button variant="outline" size="icon-sm" onClick={resetCamera} aria-label={t('meetingRoom.resetCamera')} title={t('meetingRoom.resetCamera')}><Focus /></Button>
-						<Button variant="outline" size="icon-sm" onClick={() => rotation.set(rotation.get() - 30)} aria-label={t('meetingRoom.rotateLeft')} title={t('meetingRoom.rotateLeft')}><RotateCcw /></Button>
-						<Button variant="outline" size="icon-sm" onClick={() => rotation.set(rotation.get() + 30)} aria-label={t('meetingRoom.rotateRight')} title={t('meetingRoom.rotateRight')}><RotateCw /></Button>
-						<span />
-						<Button variant="outline" size="icon-sm" onClick={() => zoom.set(clampZoom(zoom.get() - 0.1))} aria-label={t('meetingRoom.zoomOut')} title={t('meetingRoom.zoomOut')}><Minus /></Button>
-						<Button variant="outline" size="icon-sm" onClick={() => zoom.set(clampZoom(zoom.get() + 0.1))} aria-label={t('meetingRoom.zoomIn')} title={t('meetingRoom.zoomIn')}><Plus /></Button>
-					</div>
-				</section>
-
-				<aside className="team-office-activity">
-					<h3>{t('meetingRoom.activity')}</h3>
-					{activities.length === 0 ? (
-						<p className="team-office-activity__empty">{t('meetingRoom.noActivity')}</p>
-					) : (
-						<ol>
-							{activities.slice(0, 10).map((activity) => (
-								<li key={activity.id} data-state={activity.state}>
-									<div>
-										<strong>{activity.sourceName}</strong>
-										{activity.targetName ? <><ArrowRight /><strong>{activity.targetName}</strong></> : null}
-									</div>
-									<p>{activity.detail || activity.toolName}</p>
-								</li>
-							))}
-						</ol>
-					)}
-				</aside>
+									</li>
+								);
+							})}
+						</ul>
+					</PopoverContent>
+				</Popover>
 			</div>
-		</div>
+
+			{selectedParticipant && selectedRuntime ? (
+				<div className="team-office-agent-card">
+					<TeamAgentAvatar
+						role={selectedParticipant.role}
+						status={selectedRuntime.status}
+						size="lg"
+					/>
+					<div>
+						<strong>{selectedParticipant.name}</strong>
+						<span>{t(`meetingRoom.status.${selectedRuntime.status}`)}</span>
+					</div>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						onClick={() => setSelectedId(null)}
+						aria-label={t('meetingRoom.close')}
+					>
+						<X />
+					</Button>
+				</div>
+			) : null}
+
+			<div
+				className="meeting-room-camera-controls"
+				role="toolbar"
+				aria-label={t('meetingRoom.cameraControls')}
+			>
+				<Button variant="ghost" size="icon" onClick={() => runCameraAction('rotate-left')} aria-label={t('meetingRoom.rotateLeft')} title={t('meetingRoom.rotateLeft')}><RotateCcw /></Button>
+				<Button variant="ghost" size="icon" onClick={() => runCameraAction('rotate-right')} aria-label={t('meetingRoom.rotateRight')} title={t('meetingRoom.rotateRight')}><RotateCw /></Button>
+				<Button variant="ghost" size="icon" onClick={() => runCameraAction('zoom-out')} aria-label={t('meetingRoom.zoomOut')} title={t('meetingRoom.zoomOut')}><ZoomOut /></Button>
+				<Button variant="ghost" size="icon" onClick={() => runCameraAction('zoom-in')} aria-label={t('meetingRoom.zoomIn')} title={t('meetingRoom.zoomIn')}><ZoomIn /></Button>
+				<Button variant="ghost" size="icon" onClick={() => setResetKey((key) => key + 1)} aria-label={t('meetingRoom.resetCamera')} title={t('meetingRoom.resetCamera')}><Maximize2 /></Button>
+			</div>
+		</section>
 	);
 }

@@ -37,7 +37,10 @@ import { KnowledgeBaseParametersPopover } from '@/components/popover/KnowledgeBa
 import { ModelParametersPopover } from '@/components/popover/ModelParametersPopover';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { PermissionModeSelect } from '@/components/select/PermissionModeSelect.tsx';
-import { MeetingRoomView } from '@/components/team/MeetingRoomView';
+import {
+	MeetingRoomView,
+	type OfficeSimulationCache,
+} from '@/components/team/MeetingRoomView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -224,6 +227,7 @@ export function ChatViewport({
 	// Persisted so leaving and returning to /chat keeps the same panels.
 	const [panelLayout, setPanelLayout] = useState<PanelKey[][]>(loadPanelLayout);
 	const [teamView, setTeamView] = useState<'chat' | 'office'>('chat');
+	const [officeSimulationCache] = useState<OfficeSimulationCache>(() => new Map());
 
 	useEffect(() => {
 		localStorage.setItem(PANEL_LAYOUT_KEY, JSON.stringify(panelLayout));
@@ -232,6 +236,14 @@ export function ChatViewport({
 	useEffect(() => {
 		setTeamView('chat');
 	}, [sessionId]);
+
+	useEffect(
+		() => () => {
+			officeSimulationCache.forEach(({ sim }) => sim.abort());
+			officeSimulationCache.clear();
+		},
+		[officeSimulationCache],
+	);
 
 	// When the viewport agent differs from the outer page's selected
 	// agent (i.e. user drilled into a team member), `refetchSessions`
@@ -336,20 +348,15 @@ export function ChatViewport({
 		(key: PanelKey) => panelLayout.some((column) => column.includes(key)),
 		[panelLayout],
 	);
-	const teamParticipants = useMemo(
-		() => buildTeamParticipants(view?.team ?? null),
-		[view?.team],
-	);
+	const teamParticipants = useMemo(() => buildTeamParticipants(view?.team ?? null), [view?.team]);
 	const observeTeam = teamView === 'office' || isPanelOpen('team');
-	const observedTeamParticipants = useMemo(
-		() => (observeTeam ? teamParticipants : []),
-		[observeTeam, teamParticipants],
-	);
-	const { runtimeBySession, activities } = useTeamActivity(observedTeamParticipants);
-	const latestUserMessageId = useMemo(
-		() => [...msgs].reverse().find((message) => message.role === 'user')?.id ?? null,
+	const { runtimeBySession, activities } = useTeamActivity(teamParticipants, observeTeam);
+	const latestUserMessage = useMemo(
+		() => [...msgs].reverse().find((message) => message.role === 'user') ?? null,
 		[msgs],
 	);
+	const latestUserMessageId = latestUserMessage?.id ?? null;
+	const latestUserMessageAt = latestUserMessage?.created_at ?? null;
 
 	/**
 	 * Persist a knowledge-base attachment change. `null` detaches every
@@ -424,7 +431,8 @@ export function ChatViewport({
 				.map((agent) => {
 					const duplicate =
 						names.filter(
-							(name) => name.toLocaleLowerCase() === agent.data.name.toLocaleLowerCase(),
+							(name) =>
+								name.toLocaleLowerCase() === agent.data.name.toLocaleLowerCase(),
 						).length > 1;
 					return `@${agent.data.name}${duplicate ? `@${agent.id.slice(0, 8)}` : ''} `;
 				})
@@ -780,6 +788,7 @@ export function ChatViewport({
 			setSelectedPermissionMode(mode),
 		);
 	};
+	const showOffice = isTeamChat && teamView === 'office' && Boolean(view?.team);
 
 	return (
 		<>
@@ -796,7 +805,9 @@ export function ChatViewport({
 									{isTeamChat ? (
 										<div className="flex shrink-0 items-center rounded-lg bg-muted p-0.5">
 											<Button
-												variant={teamView === 'chat' ? 'secondary' : 'ghost'}
+												variant={
+													teamView === 'chat' ? 'secondary' : 'ghost'
+												}
 												size="sm"
 												className="h-7 gap-1.5 px-2.5 text-xs"
 												onClick={() => setTeamView('chat')}
@@ -805,7 +816,9 @@ export function ChatViewport({
 												{t('meetingRoom.chatTab')}
 											</Button>
 											<Button
-												variant={teamView === 'office' ? 'secondary' : 'ghost'}
+												variant={
+													teamView === 'office' ? 'secondary' : 'ghost'
+												}
 												size="sm"
 												className="h-7 gap-1.5 px-2.5 text-xs"
 												onClick={() => setTeamView('office')}
@@ -935,105 +948,121 @@ export function ChatViewport({
 									</DropdownMenu>
 								</div>
 							</div>
-							<div className="flex flex-1 justify-center min-h-0 overflow-hidden relative [--chat-content-w:48rem]">
-								{isTeamChat && teamView === 'office' && view?.team ? (
-									<MeetingRoomView
-										team={view.team}
-										participants={teamParticipants}
-										runtimeBySession={runtimeBySession}
-										activities={activities}
-										latestUserMessageId={latestUserMessageId}
-										phase={phase}
-										visible
-									/>
-								) : (
-								<ChatContent
-									className={'max-w-[var(--chat-content-w)] w-full'}
-									msgs={msgs}
-									teamChat={isTeamChat}
-									loading={messagesLoading}
-									agentId={agentId}
-									sessionId={sessionId}
-									cwd={view?.session.config.cwd ?? null}
-									onCwdChange={handleCwdChange}
-									phase={phase}
-									disabled={readOnly || selectedModel === null}
-									onSend={send}
-									autoComplete={completeTeamMention}
-									onUserConfirm={onUserConfirm}
-									onInterrupt={interrupt}
-									footerSlot={
-										subagentHitl.length > 0 ? (
-											<SubagentHitlCard
-												key={`${subagentHitl[0].worker_session_id}:${subagentHitl[0].reply_id}`}
-												entry={subagentHitl[0]}
-												onConfirm={(toolCall, confirm, rules) =>
-													onSubagentConfirm(
-														subagentHitl[0],
-														toolCall,
-														confirm,
-														rules,
-													)
-												}
-											/>
-										) : null
+							<div className="relative mt-2 flex min-h-0 flex-1 justify-center overflow-hidden [--chat-content-w:48rem]">
+								{isTeamChat && view?.team ? (
+									<div
+										className={`relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl ${showOffice ? '' : 'hidden'}`}
+										aria-hidden={!showOffice}
+									>
+										<MeetingRoomView
+											team={view.team}
+											participants={teamParticipants}
+											runtimeBySession={runtimeBySession}
+											activities={activities}
+											latestUserMessageId={latestUserMessageId}
+											latestUserMessageAt={latestUserMessageAt}
+											phase={phase}
+											visible={showOffice}
+											simulationCache={officeSimulationCache}
+										/>
+									</div>
+								) : null}
+								<div
+									className={
+										showOffice
+											? 'hidden'
+											: 'flex min-h-0 w-full min-w-0 justify-center'
 									}
-									allowedInputTypes={(
-										selectedModelCard?.input_types ?? []
-									).filter(
-										(t) =>
-											/^(image|video|audio|text)\/.+/.test(t) ||
-											t === 'application/pdf' ||
-											t.startsWith('application/vnd.') ||
-											t.startsWith('application/msword') ||
-											t.startsWith('application/vnd.openxmlformats'),
-									)}
-									fileProcessor={async (file) => {
-										const filePath = (file as File & { path?: string }).path;
-										if (filePath) {
+								>
+									<ChatContent
+										className="max-w-[var(--chat-content-w)] w-full"
+										msgs={msgs}
+										teamChat={isTeamChat}
+										loading={messagesLoading}
+										agentId={agentId}
+										sessionId={sessionId}
+										cwd={view?.session.config.cwd ?? null}
+										onCwdChange={handleCwdChange}
+										phase={phase}
+										disabled={readOnly || selectedModel === null}
+										onSend={send}
+										autoComplete={completeTeamMention}
+										onUserConfirm={onUserConfirm}
+										onInterrupt={interrupt}
+										footerSlot={
+											subagentHitl.length > 0 ? (
+												<SubagentHitlCard
+													key={`${subagentHitl[0].worker_session_id}:${subagentHitl[0].reply_id}`}
+													entry={subagentHitl[0]}
+													onConfirm={(toolCall, confirm, rules) =>
+														onSubagentConfirm(
+															subagentHitl[0],
+															toolCall,
+															confirm,
+															rules,
+														)
+													}
+												/>
+											) : null
+										}
+										allowedInputTypes={(
+											selectedModelCard?.input_types ?? []
+										).filter(
+											(t) =>
+												/^(image|video|audio|text)\/.+/.test(t) ||
+												t === 'application/pdf' ||
+												t.startsWith('application/vnd.') ||
+												t.startsWith('application/msword') ||
+												t.startsWith('application/vnd.openxmlformats'),
+										)}
+										fileProcessor={async (file) => {
+											const filePath = (file as File & { path?: string })
+												.path;
+											if (filePath) {
+												return {
+													id: crypto.randomUUID(),
+													type: 'data' as const,
+													source: {
+														type: 'url' as const,
+														url: `file://${filePath}`,
+														media_type:
+															file.type || 'application/octet-stream',
+													},
+													name: file.name,
+													created_at: new Date().toISOString(),
+												};
+											}
+											if (file.type === 'text/plain') {
+												const text = await file.text();
+												return {
+													id: crypto.randomUUID(),
+													type: 'text' as const,
+													text: `[File: ${file.name}]\n${text}`,
+													created_at: new Date().toISOString(),
+												};
+											}
+											const buffer = await file.arrayBuffer();
+											const bytes = new Uint8Array(buffer);
+											let binary = '';
+											for (let i = 0; i < bytes.byteLength; i++) {
+												binary += String.fromCharCode(bytes[i]);
+											}
+											const base64 = btoa(binary);
 											return {
 												id: crypto.randomUUID(),
 												type: 'data' as const,
 												source: {
-													type: 'url' as const,
-													url: `file://${filePath}`,
+													type: 'base64' as const,
 													media_type:
 														file.type || 'application/octet-stream',
+													data: base64,
 												},
 												name: file.name,
 												created_at: new Date().toISOString(),
 											};
-										}
-										if (file.type === 'text/plain') {
-											const text = await file.text();
-											return {
-												id: crypto.randomUUID(),
-												type: 'text' as const,
-												text: `[File: ${file.name}]\n${text}`,
-												created_at: new Date().toISOString(),
-											};
-										}
-										const buffer = await file.arrayBuffer();
-										const bytes = new Uint8Array(buffer);
-										let binary = '';
-										for (let i = 0; i < bytes.byteLength; i++) {
-											binary += String.fromCharCode(bytes[i]);
-										}
-										const base64 = btoa(binary);
-										return {
-											id: crypto.randomUUID(),
-											type: 'data' as const,
-											source: {
-												type: 'base64' as const,
-												media_type: file.type || 'application/octet-stream',
-												data: base64,
-											},
-											name: file.name,
-											created_at: new Date().toISOString(),
-										};
-									}}
-								/>
-								)}
+										}}
+									/>
+								</div>
 							</div>
 						</div>
 					</ResizablePanel>

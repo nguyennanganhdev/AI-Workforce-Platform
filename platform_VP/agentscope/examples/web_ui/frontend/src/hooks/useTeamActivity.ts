@@ -267,7 +267,10 @@ const mergeActivities = (
 };
 
 /** Poll team histories so observing a team never consumes one SSE connection per agent. */
-export function useTeamActivity(participants: TeamActivityParticipant[]) {
+export function useTeamActivity(
+	participants: TeamActivityParticipant[],
+	enabled = true,
+) {
 	const participantKey = useMemo(
 		() =>
 			participants
@@ -284,13 +287,17 @@ export function useTeamActivity(participants: TeamActivityParticipant[]) {
 	const [activities, setActivities] = useState<TeamActivityItem[]>([]);
 
 	useEffect(() => {
-		const snapshot = participants;
 		const nextRuntime: Record<string, TeamMemberRuntime> = {};
-		for (const participant of snapshot) {
+		for (const participant of participants) {
 			if (participant.sessionId) nextRuntime[participant.sessionId] = initialRuntime(participant);
 		}
 		setRuntimeBySession(nextRuntime);
 		setActivities([]);
+	}, [participantKey, participants]);
+
+	useEffect(() => {
+		if (!enabled) return;
+		const snapshot = participants;
 
 		const controller = new AbortController();
 		let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -355,7 +362,7 @@ export function useTeamActivity(participants: TeamActivityParticipant[]) {
 			controller.abort();
 			if (pollTimer) clearTimeout(pollTimer);
 		};
-	}, [participantKey, participants]);
+	}, [enabled, participantKey, participants]);
 
 	return { runtimeBySession, activities };
 }

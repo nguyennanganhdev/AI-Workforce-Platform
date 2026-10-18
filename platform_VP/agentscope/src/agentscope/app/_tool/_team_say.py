@@ -29,7 +29,7 @@ from ..storage import (
 )
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ._constants import HANDLE_LEN
-from ._team_tool_base import _TeamToolBase
+from ._team_tool_base import _TeamToolBase, _TeamToolError
 
 STALE_CONTEXT_RESULT = (
     "TeamSay: result stored for audit but not shared because the customer "
@@ -542,6 +542,11 @@ class TeamSay(_TeamToolBase):
             is_reply_owner = (
                 turn is not None and turn.reply_owner_session_id == self._session_id
             ) or (turn is None and leader.session_id == self._session_id)
+            # Resolution is server-owned.  Older prompts/models may still put
+            # it on a worker report; keep the useful report and let the reply
+            # owner close the assignment instead of rejecting the whole send.
+            if resolution is not None and not is_reply_owner:
+                resolution = None
             reply_owner_name = leader.name
             if turn is not None:
                 reply_owner_name = next(
@@ -1072,6 +1077,7 @@ class TeamSay(_TeamToolBase):
                     metadata={
                         "kind": kind,
                         "reason": "direct_mention_reply_owner",
+                        "model_retryable": True,
                     },
                 )
 
@@ -1203,31 +1209,36 @@ class TeamSay(_TeamToolBase):
             coordination_owner_session_id = (
                 turn.reply_owner_session_id if turn is not None else leader.session_id
             )
-            coordination = await shared_context.coordinate_handoff(
-                user_id=self._user_id,
-                team_id=team.id,
-                task_id=effective_task_id,
-                sender=self._session_id,
-                recipients=tuple(sid for sid, _ in recipients),
-                owner=coordination_owner_session_id,
-                handoff_id=handoff_id,
-                kind=kind,
-                content=content,
-                in_reply_to=in_reply_to,
-                references=reference_event_ids,
-                resolution=resolution,
-                based_on_revision=based_on_revision,
-                share_report=effective_scope == "shared",
-                # A direct peer answer already wakes its requester and remains
-                # durable in Shared Context. Sending the same answer to the
-                # Leader inbox duplicates model work before the coordinator's
-                # final result arrives.
-                notify_owner=not (
-                    kind == "answer"
-                    and in_reply_to is not None
-                    and self._session_id != leader.session_id
-                ),
-            )
+            for attempt in range(2):
+                try:
+                    coordination = await shared_context.coordinate_handoff(
+                        user_id=self._user_id,
+                        team_id=team.id,
+                        task_id=effective_task_id,
+                        sender=self._session_id,
+                        recipients=tuple(sid for sid, _ in recipients),
+                        owner=coordination_owner_session_id,
+                        handoff_id=handoff_id,
+                        kind=kind,
+                        content=content,
+                        in_reply_to=in_reply_to,
+                        references=reference_event_ids,
+                        resolution=resolution,
+                        based_on_revision=based_on_revision,
+                        share_report=effective_scope == "shared",
+                        # A direct peer answer already wakes its requester and
+                        # remains durable in Shared Context. Sending the same
+                        # answer to the Leader inbox duplicates model work.
+                        notify_owner=not (
+                            kind == "answer"
+                            and in_reply_to is not None
+                            and self._session_id != leader.session_id
+                        ),
+                    )
+                    break
+                except SharedContextConcurrencyError:
+                    if attempt == 1:
+                        raise
             kind, content = coordination["kind"], coordination["content"]
             if coordination.get("duplicate"):
                 await shared_context.mark_handoff(intent, "consumed")
@@ -1258,31 +1269,37 @@ class TeamSay(_TeamToolBase):
             ]
             shared_event = None
             if effective_scope == "shared":
-                shared_event = await shared_context.append_event(
-                    user_id=self._user_id,
-                    team_id=team.id,
-                    kind=kind,
-                    content=content,
-                    event_id=handoff_id,
-                    task_id=effective_task_id,
-                    source_agent_id=self._agent_id,
-                    source_session_id=self._session_id,
-                    thread_id=thread_id,
-                    in_reply_to=in_reply_to,
-                    artifact_refs=artifact_refs,
-                    hop_count=hop_count,
-                    task_owner_agent_id=(
-                        recipients[0][1]
-                        if kind == "handoff" and len(recipients) == 1
-                        else None
-                    ),
-                    reply_owner_agent_id=(
-                        turn.reply_owner_agent_id if turn is not None else None
-                    ),
-                    based_on_revision=based_on_revision,
-                    reference_event_ids=reference_event_ids,
-                    delta=context_delta,
-                )
+                for attempt in range(2):
+                    try:
+                        shared_event = await shared_context.append_event(
+                            user_id=self._user_id,
+                            team_id=team.id,
+                            kind=kind,
+                            content=content,
+                            event_id=handoff_id,
+                            task_id=effective_task_id,
+                            source_agent_id=self._agent_id,
+                            source_session_id=self._session_id,
+                            thread_id=thread_id,
+                            in_reply_to=in_reply_to,
+                            artifact_refs=artifact_refs,
+                            hop_count=hop_count,
+                            task_owner_agent_id=(
+                                recipients[0][1]
+                                if kind == "handoff" and len(recipients) == 1
+                                else None
+                            ),
+                            reply_owner_agent_id=(
+                                turn.reply_owner_agent_id if turn is not None else None
+                            ),
+                            based_on_revision=based_on_revision,
+                            reference_event_ids=reference_event_ids,
+                            delta=context_delta,
+                        )
+                        break
+                    except SharedContextConcurrencyError:
+                        if attempt == 1:
+                            raise
                 if shared_event.stale:
                     if kind == "requires_user_input":
                         await reject_user_input_request(
@@ -1478,19 +1495,30 @@ class TeamSay(_TeamToolBase):
                 },
             )
         except Exception as e:  # noqa: BLE001 - tool returns structured error
+            if isinstance(e, _TeamToolError):
+                if "not in any team" in str(e):
+                    reason = "not_in_team"
+                elif "no longer exists" in str(e):
+                    reason = "team_missing"
+                else:
+                    reason = "team_precondition_failed"
+            elif isinstance(e, CollaborationStoppedError):
+                reason = "collaboration_stopped"
+            elif isinstance(e, SharedContextConcurrencyError):
+                reason = "concurrent_update"
+            elif isinstance(e, ValueError):
+                reason = "invalid_request"
+            else:
+                reason = "delivery_failed"
             return ToolChunk(
                 content=[TextBlock(text=f"TeamSay failed: {e}")],
                 state=ToolResultState.ERROR,
                 metadata={
-                    "retryable": not isinstance(
-                        e,
-                        (
-                            ValueError,
-                            CollaborationStoppedError,
-                            SharedContextConcurrencyError,
-                        ),
-                    )
-                }
-                if intent is not None
-                else {},
+                    # The durable handoff dispatcher may retry a CAS conflict,
+                    # but the model must never create another semantic send.
+                    "retryable": isinstance(e, SharedContextConcurrencyError),
+                    "model_retryable": False,
+                    "reason": reason,
+                    "error_detail": str(e),
+                },
             )

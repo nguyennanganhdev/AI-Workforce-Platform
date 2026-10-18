@@ -30,8 +30,16 @@ from typing import Any, AsyncGenerator, Callable
 
 from ..message_bus import MessageBus
 from .._bus_ops import publish_session_event
-from ...event import CustomEvent
+from ...event import CustomEvent, ReplyEndEvent
+from ...message import (
+    HintBlock,
+    TextBlock,
+    ToolCallBlock,
+    ToolResultBlock,
+    ToolResultState,
+)
 from ...middleware import MiddlewareBase
+from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 
 _TEAM_TOOL_NAMES = frozenset(
     {"TeamCreate", "AgentCreate", "AgentInvite", "TeamDelete"},
@@ -66,6 +74,55 @@ class StateChangeMiddleware(MiddlewareBase):  # pylint: disable=abstract-method
         """
         self._bus = message_bus
         self._session_id = session_id
+        self._terminal_error: str | None = None
+
+    @staticmethod
+    def _terminal_tool_result(agent: Any) -> tuple[bool, str | None]:
+        """Return whether the latest team tool result must end this run."""
+
+        for message in reversed(agent.state.context):
+            if message.id != agent.state.reply_id or message.role != "assistant":
+                continue
+            blocks = message.get_content_blocks()
+            call = next(
+                (block for block in reversed(blocks) if isinstance(block, ToolCallBlock)),
+                None,
+            )
+            if call is None or call.name not in {"TeamSay", "TeamDelete"}:
+                return False, None
+            result = next(
+                (
+                    block
+                    for block in blocks
+                    if isinstance(block, ToolResultBlock) and block.id == call.id
+                ),
+                None,
+            )
+            if result is None:
+                return False, None
+            if (
+                call.name == "TeamDelete"
+                and result.state == ToolResultState.SUCCESS
+                and result.metadata.get("terminal") is True
+            ):
+                return True, None
+            if (
+                call.name == "TeamSay"
+                and result.state == ToolResultState.ERROR
+                and result.metadata.get("model_retryable") is not True
+            ):
+                output = (
+                    result.output
+                    if isinstance(result.output, str)
+                    else "\n".join(
+                        block.text
+                        for block in result.output
+                        if isinstance(block, TextBlock)
+                    )
+                )
+                return True, output or "TeamSay failed without a retryable path"
+            return False, None
+        return False, None
 
     @staticmethod
     def _state_hash(agent: Any) -> str:
@@ -143,13 +200,59 @@ class StateChangeMiddleware(MiddlewareBase):  # pylint: disable=abstract-method
             ``AgentEvent | Msg`` — unchanged from downstream.
         """
         hash_before = self._state_hash(agent)
+        self._terminal_error = None
 
         async for item in next_handler(**input_kwargs):
+            if (
+                isinstance(item, ReplyEndEvent)
+                and self._terminal_error
+                and item.finished_reason
+                in {
+                    ReplyFinishedReason.COMPLETED,
+                    ReplyFinishedReason.EXCEED_MAX_ITERS,
+                }
+            ):
+                item = item.model_copy(
+                    update={
+                        "finished_reason": ReplyFinishedReason.ERROR,
+                        "error": ErrorInfo(
+                            type=ErrorType.INTERNAL,
+                            message=self._terminal_error,
+                        ),
+                    },
+                )
             yield item
 
         hash_after = self._state_hash(agent)
         if hash_before != hash_after:
             await self._publish_state(agent)
+
+    async def on_reasoning(
+        self,
+        agent: Any,
+        input_kwargs: dict,
+        next_handler: Callable[..., AsyncGenerator],
+    ) -> AsyncGenerator:
+        """Do not let a terminal team action start another model round."""
+
+        terminal, error = self._terminal_tool_result(agent)
+        if terminal:
+            self._terminal_error = error
+            agent.state.append_context(
+                agent.name,
+                [
+                    HintBlock(
+                        hint=(
+                            "Team action is terminal for this run. Stop now; "
+                            "do not call another tool."
+                        ),
+                    ),
+                ],
+            )
+            yield agent.state.context[-1]
+            return
+        async for item in next_handler(**input_kwargs):
+            yield item
 
     async def on_acting(
         self,

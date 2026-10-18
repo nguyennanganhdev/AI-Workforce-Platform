@@ -16,12 +16,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
-import type { SessionRecord, SessionSourceKind } from '@/api';
+import { workforceApi, type SessionRecord, type SessionSourceKind } from '@/api';
+import sessionTeamMascot from '@/assets/images/session-team-mascot.png';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
 import { AgentSelect } from '@/components/select/AgentSelect';
-import { AgentCharacterAvatar } from '@/components/team/AgentCharacterAvatar';
 import { ChatTourController } from '@/components/tour/ChatTourController';
 import { Button } from '@/components/ui/button';
 import {
@@ -56,6 +56,8 @@ import { useAgents } from '@/hooks/useAgents';
 import { useSessions } from '@/hooks/useSessions';
 import { useTranslation } from '@/i18n/useI18n.ts';
 
+import './ChatPage.css';
+
 /**
  * The chat page's outer shell. Responsibilities split cleanly:
  *
@@ -89,6 +91,30 @@ const SOURCE_ICON: Record<SessionSourceKind, LucideIcon> = {
 const LAST_AGENT_KEY = 'chat_last_agent';
 const LAST_SESSION_KEY = 'chat_last_session';
 
+let leaderBootstrapRequest: ReturnType<typeof workforceApi.bootstrapLeader> | null = null;
+
+const ensureLeader = () => {
+	if (!leaderBootstrapRequest) {
+		leaderBootstrapRequest = workforceApi.bootstrapLeader().finally(() => {
+			leaderBootstrapRequest = null;
+		});
+	}
+	return leaderBootstrapRequest;
+};
+
+function SessionTeamAvatar({ active }: { active: boolean }) {
+	return (
+		<span className={`session-team-avatar${active ? ' is-active' : ''}`} aria-hidden="true">
+			<img
+				className="session-team-avatar__image"
+				src={sessionTeamMascot}
+				alt=""
+				draggable={false}
+			/>
+		</span>
+	);
+}
+
 const ChatPageInner = () => {
 	const navigate = useNavigate();
 	const {
@@ -101,6 +127,7 @@ const ChatPageInner = () => {
 		memberId?: string;
 	}>();
 	const { t } = useTranslation();
+	const [leaderBootstrapPending, setLeaderBootstrapPending] = useState(true);
 	const {
 		agents,
 		loading: agentsLoading,
@@ -126,6 +153,22 @@ const ChatPageInner = () => {
 	const [renameSession, setRenameSession] = useState<SessionRecord | null>(null);
 	const [deleteSessionOpen, setDeleteSessionOpen] = useState(false);
 	const [sessionToDelete, setSessionToDelete] = useState<SessionRecord | null>(null);
+
+	useEffect(() => {
+		let active = true;
+		ensureLeader()
+			.then(async () => {
+				if (!active) return;
+				await refetchAgents();
+			})
+			.catch(() => undefined)
+			.finally(() => {
+				if (active) setLeaderBootstrapPending(false);
+			});
+		return () => {
+			active = false;
+		};
+	}, [refetchAgents]);
 
 	const selectedAgent = publishedAgents.find((a) => a.id === urlAgentId) ?? null;
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
@@ -163,14 +206,16 @@ const ChatPageInner = () => {
 	// Open only published agents. This also moves an old direct URL away
 	// from an agent that has since been unpublished.
 	useEffect(() => {
-		if (agentsLoading) return;
+		if (leaderBootstrapPending || agentsLoading) return;
 		if (urlAgentId && publishedAgents.some((agent) => agent.id === urlAgentId)) return;
 		const remembered = localStorage.getItem(LAST_AGENT_KEY);
 		const agent =
-			publishedAgents.find((item) => item.id === remembered) ?? publishedAgents[0];
+			publishedAgents.find((item) => item.data.system_role === 'leader') ??
+			publishedAgents.find((item) => item.id === remembered) ??
+			publishedAgents[0];
 		if (agent) navigate(`/chat/${agent.id}`, { replace: true });
 		else if (urlAgentId) navigate('/chat', { replace: true });
-	}, [agentsLoading, navigate, publishedAgents, urlAgentId]);
+	}, [agentsLoading, leaderBootstrapPending, navigate, publishedAgents, urlAgentId]);
 
 	// Redirect: URL has an agent but no session, or its sessionId no
 	// longer exists for this agent → reopen the last session viewed
@@ -355,10 +400,8 @@ const ChatPageInner = () => {
 																	}}
 																>
 																	<span className="relative size-9 shrink-0">
-																		<AgentCharacterAvatar
-																			role={view.team ? 'leader' : 'member'}
+																<SessionTeamAvatar
 																			active={urlSessionId === session.id}
-																			className="size-9"
 																		/>
 																		{showSourceIcons ? (
 																			<span className="absolute -right-1 -bottom-0.5 grid size-4 place-items-center rounded-full border border-background bg-card shadow-sm">
@@ -462,10 +505,8 @@ const ChatPageInner = () => {
 																	}}
 																>
 																	<span className="relative size-9 shrink-0">
-																		<AgentCharacterAvatar
-																			role={view.team ? 'leader' : 'member'}
+																<SessionTeamAvatar
 																			active={urlSessionId === session.id}
-																			className="size-9"
 																		/>
 																		{showSourceIcons ? (
 																			<span className="absolute -right-1 -bottom-0.5 grid size-4 place-items-center rounded-full border border-background bg-card shadow-sm">

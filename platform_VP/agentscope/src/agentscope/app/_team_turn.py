@@ -366,6 +366,40 @@ async def finish_team_turn(
         return True
 
 
+async def cancel_team_turn(
+    bus: MessageBus,
+    team_id: str,
+    *,
+    storage: StorageBase | None = None,
+    user_id: str | None = None,
+) -> bool:
+    """Close the current turn and discard questions invalidated by a stop."""
+
+    async with bus.acquire_lock(
+        MessageBusKeys.team_turn_lock(team_id),
+        ttl_secs=MessageBusKeys.TEAM_TURN_LOCK_TTL_SECS,
+    ):
+        state = await get_team_turn(
+            bus,
+            team_id,
+            storage=storage,
+            user_id=user_id,
+        )
+        if state is None:
+            return False
+        state.status = "completed"
+        state.pending_questions.clear()
+        state.pending_question_ids.clear()
+        await _put_team_turn(
+            bus,
+            team_id,
+            state,
+            storage=storage,
+            user_id=user_id,
+        )
+        return True
+
+
 async def team_is_awaiting_user(
     bus: MessageBus,
     team_id: str,
