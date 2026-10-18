@@ -8,6 +8,8 @@ applies tool/knowledge bindings and records an immutable version.
 import asyncio
 import os
 from collections import defaultdict
+from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -372,6 +374,53 @@ async def agent_activity(
             view.last_at = max(view.last_at or "", *(m.created_at for m in used))
         views.append(view)
     return sorted(views, key=lambda item: item.input_tokens + item.output_tokens, reverse=True)
+
+
+class CollaborationLink(BaseModel):
+    """Two agents that worked in the same ticket room."""
+
+    source: str
+    target: str
+    kind: Literal["leader", "peer"]
+    """``leader``: the Leader brought the agent in; ``peer``: two members of one room."""
+    tickets: int
+    last_at: str
+
+
+@workforce_studio_router.get("/collaboration", response_model=list[CollaborationLink])
+async def collaboration(
+    days: int = Query(default=30, ge=1, le=365),
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> list[CollaborationLink]:
+    """Who worked with whom: one count per room (ticket) in the last ``days``."""
+
+    from datetime import timedelta
+
+    since = datetime.now() - timedelta(days=days)
+    links: dict[tuple[str, str, str], CollaborationLink] = {}
+
+    def add(source: str, target: str, kind: str, at: str) -> None:
+        key = (source, target, kind)
+        link = links.get(key)
+        if link is None:
+            links[key] = CollaborationLink(source=source, target=target, kind=kind, tickets=1, last_at=at)
+        else:
+            link.tickets += 1
+            link.last_at = max(link.last_at, at)
+
+    for team in await storage.list_teams(user_id):
+        if team.updated_at.replace(tzinfo=None) < since:
+            continue
+        at = team.updated_at.isoformat()
+        members = sorted({member.agent_id for member in team.data.members} - {team.leader_agent_id})
+        for member in members:
+            if team.leader_agent_id:
+                add(team.leader_agent_id, member, "leader", at)
+        for index, first in enumerate(members):
+            for second in members[index + 1:]:
+                add(first, second, "peer", at)
+    return sorted(links.values(), key=lambda link: link.tickets, reverse=True)
 
 
 @workforce_studio_router.get("/quality")

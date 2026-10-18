@@ -237,6 +237,15 @@ export interface AgentActivity {
 	last_at: string | null;
 }
 
+/** Two agents that worked in the same ticket room (`leader`: the Leader brought it in). */
+export interface CollaborationLink {
+	source: string;
+	target: string;
+	kind: 'leader' | 'peer';
+	tickets: number;
+	last_at: string;
+}
+
 /** Outcomes, message quality and cost of the manager's partner tickets. */
 export interface TicketQuality {
 	days: number;
@@ -278,6 +287,7 @@ export const studioApi = {
 		}),
 	listAgents: () => client.get<AgentSummary[]>(`${base}/agents`),
 	activity: () => client.get<AgentActivity[]>(`${base}/activity`),
+	collaboration: (days = 30) => client.get<CollaborationLink[]>(`${base}/collaboration`, { days: String(days) }),
 	quality: (days = 30) => client.get<TicketQuality>(`${base}/quality`, { days: String(days) }),
 	getAgent: (id: string) => client.get<AgentDetail>(agentPath(id)),
 	create: (body: { template_id?: string; clone_from?: string; spec?: AgentSpec }) =>
@@ -344,6 +354,7 @@ export interface ModelObservability extends CallMetrics {
 	window_since: string;
 	by_model: (CallMetrics & { provider: string; endpoint_id: string; model: string; service_tier: string })[];
 	by_purpose: (CallMetrics & { purpose: string })[];
+	by_agent?: (CallMetrics & { agent_id: string })[];
 	successful_tickets?: number;
 	successful_ticket_cost_usd?: number | null;
 	cost_per_successful_ticket_usd?: number | null;
