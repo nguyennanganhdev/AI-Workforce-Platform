@@ -42,7 +42,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 		if (open) {
 			setForm({
 				...defaultChannelForm(agents[0]?.id ?? ''),
-				channelType: initialType ?? 'feishu',
+				channelType: initialType ?? 'telegram',
 			});
 			setError('');
 			channelApi
@@ -61,9 +61,11 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 		}
 	}, [open, agents, initialType]);
 
-	const valid = isChannelFormValid(form, 'create');
 	// The platform is chosen in the gallery, so name the dialog after it.
 	const picked = channelTypes.find((ct) => ct.channel_type === form.channelType);
+	const required = (picked?.credentials_schema as { required?: string[] } | undefined)?.required ?? [];
+	const valid = isChannelFormValid(form, 'create') && Boolean(picked) &&
+		(form.credentialMode === 'binding' || required.every((key) => Boolean(form.credentials[key]?.trim())));
 
 	const handleSubmit = async () => {
 		setError('');
@@ -82,7 +84,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[560px] !max-w-[560px]">
+			<DialogContent className="w-[calc(100%-2rem)] max-w-[560px]">
 				<DialogHeader>
 					<DialogTitle>
 						{picked

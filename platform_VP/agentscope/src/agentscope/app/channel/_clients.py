@@ -150,6 +150,7 @@ class ChannelClients:
             return None
 
         # Retire the rotated instance; borrowers keep working.
+        channel.bind_message_bus(self._bus)
         self._retire(channel_id)
         self._cache[channel_id] = (version, channel)
         return channel

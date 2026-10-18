@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FlaskConical, History, Rocket, RotateCcw, Save, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -45,6 +46,7 @@ import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
 import { EvaluationProgress } from '@/components/workforce/EvaluationProgress';
 import { useEvaluationProgress } from '@/hooks/useEvaluationProgress';
+import { refreshStudio } from '@/hooks/useStudioAgents';
 
 
 const STATUS_LABEL = {
@@ -85,12 +87,15 @@ export function AgentDetailPage() {
 	const loadProgress = useCallback(() => studioApi.testProgress(agentId), [agentId]);
 	const { progress, progressError } = useEvaluationProgress(agentId || null, loadProgress, busy === 'tests');
 
+	const client = useQueryClient();
 	const apply = useCallback((value: AgentDetail) => {
 		setDetail(value);
 		setSpec(value.draft);
 		setReport(value.last_test);
 		setDirty(false);
-	}, []);
+		// The list and the map read the same cache: they show this change too.
+		void refreshStudio(client);
+	}, [client]);
 
 	const loadMemories = useCallback(() => {
 		studioApi
@@ -203,6 +208,7 @@ export function AgentDetailPage() {
 	const remove = async () => {
 		const done = await run('remove', async () => {
 			await studioApi.remove(agentId);
+			await refreshStudio(client);
 			return true;
 		});
 		setConfirmRemove(false);

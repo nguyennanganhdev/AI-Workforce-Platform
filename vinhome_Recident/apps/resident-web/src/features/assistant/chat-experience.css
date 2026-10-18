@@ -58,3 +58,60 @@
   .reception-processing { grid-template-columns: minmax(0,1fr); }
   .reception-elapsed { padding-left: 28px; }
 }
+
+/* Reception's three phases under the spinner; the platform state reads as management at work. */
+.reception-phases { grid-column: 1/-1; display: flex; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; font-size: 12px; color: var(--vh-muted); }
+.reception-phases li { flex: 1; display: grid; gap: 6px; }
+.reception-phases li i { display: block; height: 3px; border-radius: 3px; background: var(--vh-border); }
+.reception-phases li.done i { background: var(--vh-accent); }
+.reception-phases li.current { color: var(--vh-ink); font-weight: 600; }
+.reception-phases li.current i { background: linear-gradient(90deg, var(--vh-accent) 0%, var(--vh-accent-soft) 50%, var(--vh-accent) 100%); background-size: 200% 100%; animation: reception-flow 1.4s linear infinite; }
+.reception-processing.platform { border-color: color-mix(in srgb, var(--vh-accent) 30%, var(--vh-border)); background: var(--vh-accent-soft); }
+@keyframes reception-flow { to { background-position: -200% 0; } }
+
+/* Every card that waits for the resident: one head, one accent, one way to act. */
+.confirm-card { position: relative; gap: 12px; padding: 16px 16px 16px 18px; border-color: var(--vh-border); box-shadow: 0 6px 24px rgb(41 59 70 / 6%); overflow: hidden; }
+.confirm-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--vh-accent); }
+.confirm-card:not(.pending)::before { background: #9aa6b2; }
+.confirm-card.approved::before, .confirm-card.booked::before { background: #2f9e6e; }
+.confirm-card.rejected::before, .confirm-card.expired::before { background: #b8bec6; }
+.card-head { display: flex; align-items: center; gap: 10px; }
+.card-head > strong { flex: 1; min-width: 0; font-size: 15px; line-height: 1.4; color: var(--vh-ink); }
+.card-head-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; background: var(--vh-accent-soft); color: var(--vh-accent); }
+.card-head-chip { flex-shrink: 0; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.card-head-chip.pending { background: #fff4e5; color: #9a5b00; }
+.card-head-chip.done { background: #eef1f4; color: var(--vh-muted); }
+.confirm-card .approval-costs { padding: 12px; border-radius: 12px; background: var(--vh-background); }
+.confirm-card .approval-costs li:last-child { padding-top: 8px; border-top: 1px dashed var(--vh-border); }
+.confirm-card .card-note { margin: 0; font-size: 13px; color: var(--vh-muted); }
+.confirm-card [role="status"] { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--vh-background); font-size: 14px; color: var(--vh-ink); }
+.confirm-card .primary-button { background: var(--vh-accent); font-size: 14px; }
+.confirm-card .secondary-button { font-size: 14px; }
+.confirm-card .primary-button:disabled, .confirm-card .secondary-button:disabled { opacity: .55; }
+
+/* Where the request stands, pinned above the conversation. */
+.request-progress { position: sticky; top: 0; z-index: 2; display: grid; gap: 12px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--vh-border); border-radius: var(--vh-radius); background: color-mix(in srgb, var(--vh-surface) 94%, transparent); backdrop-filter: blur(8px); box-shadow: 0 8px 28px rgb(41 59 70 / 7%); }
+.request-progress header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.request-progress header > div { display: grid; gap: 4px; min-width: 0; }
+.request-progress header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--vh-ink); }
+.request-progress-open { display: inline-flex; align-items: center; gap: 2px; min-height: 36px; padding: 0 8px; border-radius: 10px; font-size: 13px; color: var(--vh-accent); }
+.request-progress-open:hover { background: var(--vh-accent-soft); }
+.request-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.request-steps li { position: relative; display: grid; justify-items: center; gap: 6px; text-align: center; font-size: 11px; line-height: 1.35; color: var(--vh-muted); }
+.request-steps li + li::before { content: ""; position: absolute; top: 11px; right: 50%; left: -50%; height: 2px; background: var(--vh-border); z-index: 0; }
+.request-steps li.done::before, .request-steps li.current::before { background: var(--vh-accent); }
+.request-step-dot { position: relative; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--vh-border); background: var(--vh-surface); font-size: 11px; font-weight: 600; }
+.request-steps li.done .request-step-dot { border-color: var(--vh-accent); background: var(--vh-accent); color: #fff; }
+.request-steps li.current .request-step-dot { border-color: var(--vh-accent); color: var(--vh-accent); box-shadow: 0 0 0 4px var(--vh-accent-soft); }
+.request-steps li.current { color: var(--vh-ink); font-weight: 600; }
+.request-progress-needs { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: 12px; background: #fff4e5; color: #8a5300; font-size: 13px; font-weight: 600; }
+.request-progress-live { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--vh-ink); }
+.request-progress-live i { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: #2f9e6e; box-shadow: 0 0 0 0 rgb(47 158 110 / 50%); animation: progress-pulse 1.6s ease-out infinite; }
+.request-progress-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0 2px; margin: 0; font-size: 12px; color: var(--vh-muted); }
+.request-progress.cancelled { opacity: .85; }
+@keyframes progress-pulse { to { box-shadow: 0 0 0 8px rgb(47 158 110 / 0%); } }
+@media (max-width: 480px) {
+  .request-steps li { font-size: 10px; }
+  .request-step-dot { width: 22px; height: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { .reception-phases li.current i, .request-progress-live i { animation: none; } }

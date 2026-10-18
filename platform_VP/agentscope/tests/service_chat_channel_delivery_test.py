@@ -150,6 +150,9 @@ class _Storage:
     async def upsert_message(self, *_: object, **__: object) -> None:
         """Accept persisted reply messages."""
 
+    async def list_agent_memories(self, *_: object, **__: object) -> list:
+        return []
+
 
 class _WorkspaceManager:
     """Return a minimal workspace handle."""
@@ -245,7 +248,7 @@ class ChannelDeliveryFromTheRunTest(IsolatedAsyncioTestCase):
             return object()
 
         async def _get_model(*_: object, **__: object) -> object:
-            return object()
+            return SimpleNamespace()
 
         class _Access:
             """Resolve the run's own agent."""
@@ -298,7 +301,7 @@ class ChannelDeliveryFromTheRunTest(IsolatedAsyncioTestCase):
                     "chat_id": channel.target.chat_id,
                     "channel_id": channel.target.channel_id,
                     "metadata": channel.target.metadata,
-                    "events": channel.seen,
+                    "events": [event for event in channel.seen if event.startswith("REPLY_")],
                 },
                 {
                     "chat_id": "chat-1",

@@ -78,6 +78,8 @@ class Toolbox:
         self.searched = False
         self.progress = None
         self.citations: list[dict] = []
+        # The reasoning step that reviews a proposed request before it is filed (assessment.py); optional.
+        self.assess = None
 
     @property
     def acted(self) -> bool:
@@ -189,18 +191,38 @@ class Toolbox:
             return {"error": "no_verified_home", "note": "Tài khoản chưa có căn hộ được xác minh; mời cư dân liên hệ Ban quản lý."}
         if self._home(unit_code) is None:
             return {"error": "choose_home", "homes": [str(home["unit_code"]) for home in self.residence["homes"]]}
-        details = {key: value.strip() for key, value in (
+        proposed = {key: value.strip() for key, value in (
             ("symptom", symptom), ("area", area), ("item", item), ("item_unknown", item_unknown)) if value and value.strip()}
+        assessed = await self.assess({**proposed, "kind": kind, "category_code": category_code, "priority": priority}) \
+            if self.assess else None
+        details = {**proposed, **(assessed["details"] if assessed else {})}
+        if assessed:
+            kind = assessed["kind"] or kind
+            priority = assessed["priority"] or priority
+            category = next((c for c in self.categories if c["code"] == assessed["category_code"]), category)
         report = await self._intake(details, kind)
+        # A detail the assessment worded in a way the resident did not write: the proposal's words, checked again.
+        fallback = {key: proposed[key] for key in report["rejected"] if key in proposed and proposed[key] != details.get(key)}
+        if fallback:
+            report = await self._intake({**details, **fallback}, kind)
         if not report["ready"]:
-            # The backend's question goes to the resident as it is; nothing is handed over this turn.
-            self.question = report["question"]
-            self.clarification = report["missing"] if report["missing"] in ("symptom", "item") else "symptom"
+            # The backend decides what is missing. Its question goes to the resident, or the assessment's
+            # own wording of it when the assessment found the same detail missing; nothing is handed over.
+            missing = report["missing"] if report["missing"] in ("symptom", "item") else "symptom"
+            asked = assessed and assessed["question"] and not any(
+                key in assessed["details"] for key in (("item", "item_unknown") if missing == "item" else ("symptom",)))
+            self.question = assessed["question"] if asked else report["question"]
+            self.clarification = missing
             return {"error": "needs_clarification", "not_in_the_residents_words": report["rejected"]}
+        reason = ("Cư dân chưa nêu được vật hoặc vị trí cụ thể sau hai lần hỏi; cần người kiểm tra." if report["review"]
+                  else "Đề xuất của lễ tân từ mô tả của cư dân.")
+        if assessed and (assessed["summary"] or assessed["reason"]):
+            reason = " ".join(part for part in (
+                f"Tóm tắt của Lễ tân: {assessed['summary']}." if assessed["summary"] else "",
+                assessed["reason"], reason if report["review"] else "") if part)
         return await self._file(report, kind, str(category["id"]), {
-            "priority": priority, "severity": "unknown", "is_emergency": False,
-            "reason": "Cư dân chưa nêu được vật hoặc vị trí cụ thể sau hai lần hỏi; cần người kiểm tra." if report["review"]
-            else "Đề xuất của lễ tân từ mô tả của cư dân."}, "needs_staff")
+            "priority": priority, "severity": assessed["severity"] if assessed else "unknown", "is_emergency": False,
+            "reason": reason[:2000]}, "needs_staff")
 
     async def _report_emergency(self) -> dict:
         # The model may raise an emergency the keywords missed; the backend's policy answers for it.

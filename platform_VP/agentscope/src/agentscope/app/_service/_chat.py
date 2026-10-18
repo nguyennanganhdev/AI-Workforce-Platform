@@ -244,35 +244,17 @@ def _private_context_ratio(context_size: int) -> float:
 
 def _apply_reasoning_effort(model: ChatModelBase, system_role: str) -> None:
     """A fixed reasoning effort per role (``WORKFORCE_REASONING_EFFORT_LEADER``
-    / ``WORKFORCE_REASONING_EFFORT_AGENT``; unset: the provider's default).
+    / ``WORKFORCE_REASONING_EFFORT_AGENT``; unset: medium / low).
 
     Fixed, not per call: a different effort changes the request and so the
-    cached prefix. Reasoning tokens are billed as output.
+    cached prefix. Reasoning tokens are billed as output. OpenAI rejects an
+    effort together with function tools on Chat Completions, so models there
+    are left alone (gpt-4o / gpt-4.1 do not reason at all).
     """
 
-    from ...model import OpenAIChatModel, OpenAIResponseModel
-    from ...model._openai_response._model import _REASONING_MODEL
+    from ._model import apply_reasoning_effort
 
-    if isinstance(model, OpenAIChatModel):
-        if model.model == "gpt-6-luna":
-            model.parameters = model.parameters.model_copy(
-                update={"thinking_enable": True, "reasoning_effort": "none"},
-            )
-        # OpenAI rejects reasoning_effort together with function tools on
-        # Chat Completions (gpt-5.4-mini, gpt-5.5: 400 "use /v1/responses or
-        # set reasoning_effort to 'none'"), and every agent here has tools.
-        return
-    if isinstance(model, OpenAIResponseModel) and not _REASONING_MODEL.match(model.model):
-        # gpt-4o / gpt-4.1 do not reason and reject the parameter.
-        return
-    if os.getenv("WORKFORCE_MODEL_NAME", "").strip() == "gpt-6-luna":
-        return
-    name = "LEADER" if system_role == "leader" else "AGENT"
-    effort = os.getenv(f"WORKFORCE_REASONING_EFFORT_{name}", "").strip().lower()
-    parameters = getattr(model, "parameters", None)
-    if not effort or parameters is None or "reasoning_effort" not in type(parameters).model_fields:
-        return
-    model.parameters = parameters.model_copy(update={"thinking_enable": True, "reasoning_effort": effort})
+    apply_reasoning_effort(model, "leader" if system_role == "leader" else "agent")
 
 
 class _SessionTitle(BaseModel):

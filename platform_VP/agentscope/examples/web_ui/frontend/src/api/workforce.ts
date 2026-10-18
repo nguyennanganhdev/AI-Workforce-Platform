@@ -8,7 +8,21 @@ export interface BuilderTool {
 	mcp_name: string;
 	tool_name: string;
 	description: string;
+	parameters?: string[];
+	access?: 'read' | 'write' | 'unknown';
+	ticket_scoped?: boolean;
 }
+
+/** An existing agent whose job or tools overlap a planned one. */
+export interface SimilarAgent {
+	agent_id: string;
+	name: string;
+	score: number;
+	published: boolean;
+}
+
+/** What to do with a planned agent that duplicates an existing one. */
+export type DuplicateDecision = 'update' | 'reuse' | 'create';
 
 export interface ProposedAgent {
 	tests?: { scenario: string; expected: string }[];
@@ -30,15 +44,21 @@ export interface ProposedAgent {
 		model_report?: TestReport;
 		invalid_tool_ids?: string[];
 		reuse_similarity?: number;
+		reused?: boolean;
+		/** The last automatic repair after a failed evaluation. */
+		repair?: { round: number; explanation: string; changed: string[]; previous_pass_rate: number };
 	};
 	reuse_agent_id: string | null;
 	reuse_agent_name: string | null;
+	update_agent_id?: string | null;
+	update_agent_name?: string | null;
 }
 
 export interface PlannedAgent {
 	name: string;
 	objective: string;
 	suggested_tools: BuilderTool[];
+	similar?: SimilarAgent | null;
 }
 
 export interface BuilderProposal {
@@ -126,6 +146,7 @@ export interface LeaderSession {
 	agent_id: string;
 	session_id: string;
 	name: string;
+	is_test?: boolean;
 }
 
 export const workforceApi = {
@@ -134,15 +155,17 @@ export const workforceApi = {
 		chatModelConfig: ChatModelConfig,
 		conversationId: string | null,
 		confirmOutline = false,
+		decisions: Record<string, DuplicateDecision> = {},
 	) =>
 		client.post<BuilderProposal>('/workforce/console/builder/prepare', {
 			message,
 			chat_model_config: chatModelConfig,
 			conversation_id: conversationId,
 			confirm_outline: confirmOutline,
+			decisions,
 		}),
 	publish: (conversationId: string, proposalId: string, expectedRevision: number) =>
-		client.post<{ agents: Array<{ agent_id: string; session_id: string | null; name: string; reused: boolean }> }>(
+		client.post<{ agents: Array<{ agent_id: string; session_id: string | null; name: string; reused: boolean; updated?: boolean }> }>(
 			'/workforce/console/builder/publish',
 			{
 				conversation_id: conversationId,
@@ -160,6 +183,7 @@ export const workforceApi = {
 		),
 	builderProgress: (conversationId: string) => client.get<EvalProgress | null>(`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}/progress`),
 	evaluate: (conversationId: string, proposalId: string, expectedRevision: number) => client.post<BuilderProposal>('/workforce/console/builder/evaluate', { conversation_id: conversationId, proposal_id: proposalId, expected_revision: expectedRevision }),
+	repair: (conversationId: string, proposalId: string, expectedRevision: number) => client.post<BuilderProposal>('/workforce/console/builder/repair', { conversation_id: conversationId, proposal_id: proposalId, expected_revision: expectedRevision }),
 	listAgents: () => client.get<WorkforceAgent[]>('/workforce/console/agents'),
 	setLifecycle: (agentId: string, state: 'draft' | 'published') =>
 		client.post<WorkforceAgent>(
@@ -168,6 +192,7 @@ export const workforceApi = {
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
 	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
+	createLeaderTest: () => client.post<LeaderSession>('/workforce/console/leader/tests'),
 	room: (sessionId: string) =>
 		client.get<RoomView>(`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room`),
 	streamRoom: async function* (sessionId: string, signal: AbortSignal): AsyncGenerator<RoomView> {

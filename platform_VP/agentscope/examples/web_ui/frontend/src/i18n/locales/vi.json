@@ -886,7 +886,7 @@
 			"retry": "Thử lại"
 		},
 		"title": "Kênh kết nối",
-		"subtitle": "Kết nối nền tảng như Feishu và Discord để tác nhân làm việc trong nhóm chat",
+		"subtitle": "Kết nối Telegram, Zalo OA và Discord để agent tiếp nhận và trả lời tin nhắn",
 		"status": "Trạng thái",
 		"connected": "Đã kết nối",
 		"enable": "Bật",
@@ -899,7 +899,7 @@
 		"rules": "{{count}} quy tắc",
 		"empty": {
 			"title": "Chưa có kênh kết nối",
-			"description": "Tạo kênh để kết nối tác nhân với nền tảng bên ngoài như Feishu, DingTalk."
+			"description": "Tạo kênh Telegram, Zalo OA hoặc Discord để bắt đầu nhận tin nhắn."
 		},
 		"create": {
 			"title": "Tạo kênh",

@@ -284,6 +284,10 @@ class OpenAIChatModel(ChatModelBase):
             kwargs["tools"] = fmt_tools
             if not self.parameters.parallel_tool_calls:
                 kwargs["parallel_tool_calls"] = False
+            if "reasoning_effort" in kwargs and model_name == "gpt-6-luna":
+                # Luna function calling over Chat Completions requires
+                # effort=none; the Responses API is where it reasons.
+                kwargs["reasoning_effort"] = "none"
 
         if fmt_tool_choice is not None:
             kwargs["tool_choice"] = fmt_tool_choice

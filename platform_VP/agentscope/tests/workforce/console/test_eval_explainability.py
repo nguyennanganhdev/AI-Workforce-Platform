@@ -248,7 +248,7 @@ async def test_agent_can_correct_tool_arguments_after_schema_feedback():
         async def __call__(self, **_):
             self.calls += 1
             if self.calls < 3:
-                args = {} if self.calls == 1 else {"ticket_id": "synthetic-ticket"}
+                args = {} if self.calls == 1 else {"query": "synthetic-query"}
                 return ChatResponse(content=[ToolCallBlock(id=str(self.calls), name="vh_travel_catalog", input=json.dumps(args))], is_last=True)
             return ChatResponse(content=[TextBlock(text="Danh mục thử trống.")], is_last=True)
 
@@ -263,7 +263,53 @@ async def test_agent_can_correct_tool_arguments_after_schema_feedback():
     model = Model()
     report = await evaluation.run_spec_tests(spec=travel_spec(), model=model, judge_model=model,
         discovered={"m:vh_travel_catalog": {"read_only": True, "input_schema": {
-            "type": "object", "properties": {"ticket_id": {"type": "string"}}, "required": ["ticket_id"]}}}, run_tool=connector)
-    assert calls == [{"ticket_id": "synthetic-ticket"}]
+            "type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}, run_tool=connector)
+    assert calls == [{"query": "synthetic-query"}]
     assert report["results"][0]["passed"]
     assert report["environment"]["isolated_business_sandbox"] is False
+
+
+@pytest.mark.asyncio
+async def test_without_a_sandbox_ticket_reads_get_fixture_data_and_a_synthetic_handover():
+    """The Vinhomes tools need a ticket grant; an eval without sandbox no longer fails on it."""
+    seen = {}
+
+    class Model:
+        async def __call__(self, messages, **_):
+            seen.setdefault("first", [m.get_text_content() for m in messages])
+            if not any(isinstance(b, ToolCallBlock) for m in messages for b in (m.content if isinstance(m.content, list) else [])):
+                return ChatResponse(content=[ToolCallBlock(id="read", name="vh_ticket_get", input='{"ticket_id": "eval-x"}')], is_last=True)
+            return ChatResponse(content=[TextBlock(text="Phiếu đang chờ phân công.")], is_last=True)
+
+        async def generate_structured_output(self, messages, structured_model, **_):
+            if structured_model is evaluation._FixtureOutput:
+                seen["fixture_prompt"] = messages[0].get_text_content()
+                return SimpleNamespace(content={"output": '{"ticket": {"status": "open"}}'})
+            return SimpleNamespace(content={"passed": False, "reason": "Không gọi tool khác.", "criteria": [
+                {"name": "task_completion", "passed": True, "reason": "ok"},
+                {"name": "evidence", "passed": True, "reason": "ok"},
+                {"name": "scope_safety", "passed": True, "reason": "ok"},
+                {"name": "tool_use", "passed": False, "reason": "Có thể dùng thêm tool"}]})
+
+    async def connector(name, arguments):
+        raise AssertionError("no live connector without a sandbox ticket")
+
+    spec = AgentSpec(name="Điều phối", tools=[SpecTool(tool_id="m:vh_ticket_get", mcp_id="m", tool_name="vh_ticket_get")],
+        tests=[SpecTest(scenario="Phiếu sửa vòi nước của tôi tới đâu rồi?", expected="Tra phiếu và báo trạng thái.",
+                        must_include=["trạng thái hiện tại của phiếu được nêu rõ"])])
+    model = Model()
+    report = await evaluation.run_spec_tests(spec=spec, model=model, judge_model=model, run_tool=connector,
+        discovered={"m:vh_ticket_get": {"read_only": True, "description": "Đọc một phiếu", "input_schema": {
+            "type": "object", "properties": {"ticket_id": {"type": "string"}}, "required": ["ticket_id"]}}})
+    result = report["results"][0]
+    assert result["tool_calls"][0]["mode"] == "fixture" and result["tool_calls"][0]["output"] == '{"ticket": {"status": "open"}}'
+    assert seen["first"][1].startswith("Bàn giao yêu cầu từ đối tác:\nticket_id: eval-")
+    assert "vh_ticket_get" in seen["fixture_prompt"]
+    # The long phrase is the judge's to check; a failed tool_use alone does not fail the case.
+    assert result["checks"] == [] and result["passed"]
+    assert report["environment"]["mode"] == "fixture_ticket_reads" and report["metrics"]["fixture_calls"] == 1
+
+
+def test_literal_checks_are_short_phrases_and_figures():
+    assert evaluation.literal("tòa A") and evaluation.literal("phí 25.000 đồng mỗi tháng")
+    assert not evaluation.literal("Tổng doanh thu đúng theo dữ liệu")

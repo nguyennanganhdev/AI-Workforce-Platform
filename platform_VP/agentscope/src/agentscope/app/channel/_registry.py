@@ -156,7 +156,7 @@ class ChannelTypeRegistry:
 
     def list_types(self) -> list[ChannelTypeSchema]:
         """List frontend schemas for all registered types."""
-        return [self.schema_of(c) for c in self._classes.values()]
+        return [self.schema_of(c) for c in self._classes.values() if not c.hidden_from_catalog]
 
     def extract_platform_bot_id(
         self,

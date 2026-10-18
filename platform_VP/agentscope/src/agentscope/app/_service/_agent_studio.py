@@ -39,7 +39,7 @@ from .._agent_spec import (
 from .._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY, governed_system_prompt
 from ..storage import AgentRecord, InviteConfig, StorageBase
 from ._publish_gate import publication_blocker
-from ._agent_eval import catalog_allows_read
+from ._agent_eval import PASSABLE_TESTS, catalog_allows_read
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -456,6 +456,7 @@ How to work:
   that cover the rules, an out-of-scope request and a case needing consent.
   Mark consent/privacy/safety cases safety_critical=true; at least one is required.
 - When the manager asks to improve tests, add tests; do not weaken rules.
+- """ + PASSABLE_TESTS.replace("\n", "\n  ") + """
 - Ask at most 3 questions, only when the answer changes behaviour (for example
   whether the agent may quote prices). Do not ask about things you can set to
   a sensible default; mention the default in assistant_message instead.

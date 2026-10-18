@@ -104,7 +104,7 @@ export interface TestResult {
 	checks: Array<{ name: string; passed: boolean }>;
 	judge: { passed: boolean; reason: string; criteria?: Array<{ name: string; passed: boolean; reason: string }> } | null;
 	answer: string;
-	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'error'; output?: string; output_truncated?: boolean; error_code?: string; latency_ms?: number }>;
+	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'error' | 'sandbox' | 'fixture'; output?: string; output_truncated?: boolean; error_code?: string; latency_ms?: number }>;
 }
 
 export interface EvalProgress {
@@ -130,9 +130,9 @@ export interface TestReport {
 	publishable: boolean;
 	results: TestResult[];
 	publish_blocker?: string;
-	environment?: { mode: string; isolated_business_sandbox: boolean; note: string };
+	environment?: { mode: string; isolated_business_sandbox: boolean; note: string; fixture_tools?: string[] };
 	thresholds?: { minimum_tests: number; pass_rate: number; safety_pass_rate: number };
-	metrics?: { evaluated: number; failed: number; environment_errors: number; configuration_errors?: number; test_design_errors?: number; model_errors: number; judge_errors: number; checks_passed: number; checks_total: number; judge_passed: number; judge_total: number; safety_passed: number; safety_total: number; tool_calls: number; tool_errors: number; real_reads: number; simulated_calls: number; p50_ms: number | null; p95_ms: number | null };
+	metrics?: { evaluated: number; failed: number; environment_errors: number; configuration_errors?: number; test_design_errors?: number; model_errors: number; judge_errors: number; checks_passed: number; checks_total: number; judge_passed: number; judge_total: number; safety_passed: number; safety_total: number; tool_calls: number; tool_errors: number; real_reads: number; simulated_calls: number; sandbox_calls?: number; fixture_calls?: number; p50_ms: number | null; p95_ms: number | null };
 }
 
 export interface AgentVersion {
@@ -237,6 +237,15 @@ export interface AgentActivity {
 	last_at: string | null;
 }
 
+/** Two agents that worked in the same ticket room (`leader`: the Leader brought it in). */
+export interface CollaborationLink {
+	source: string;
+	target: string;
+	kind: 'leader' | 'peer';
+	tickets: number;
+	last_at: string;
+}
+
 /** Outcomes, message quality and cost of the manager's partner tickets. */
 export interface TicketQuality {
 	days: number;
@@ -278,6 +287,7 @@ export const studioApi = {
 		}),
 	listAgents: () => client.get<AgentSummary[]>(`${base}/agents`),
 	activity: () => client.get<AgentActivity[]>(`${base}/activity`),
+	collaboration: (days = 30) => client.get<CollaborationLink[]>(`${base}/collaboration`, { days: String(days) }),
 	quality: (days = 30) => client.get<TicketQuality>(`${base}/quality`, { days: String(days) }),
 	getAgent: (id: string) => client.get<AgentDetail>(agentPath(id)),
 	create: (body: { template_id?: string; clone_from?: string; spec?: AgentSpec }) =>
@@ -344,6 +354,7 @@ export interface ModelObservability extends CallMetrics {
 	window_since: string;
 	by_model: (CallMetrics & { provider: string; endpoint_id: string; model: string; service_tier: string })[];
 	by_purpose: (CallMetrics & { purpose: string })[];
+	by_agent?: (CallMetrics & { agent_id: string })[];
 	successful_tickets?: number;
 	successful_ticket_cost_usd?: number | null;
 	cost_per_successful_ticket_usd?: number | null;

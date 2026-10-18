@@ -9,6 +9,51 @@ from ...model import ChatModelBase, OpenAIChatModel, OpenAIResponseModel
 from ..._logging import logger
 
 
+# Reasoning effort per purpose when ``WORKFORCE_REASONING_EFFORT_<ROLE>`` is
+# unset. Reasoning tokens count against ``max_output_tokens``, hence the
+# larger output cap below.
+REASONING_DEFAULTS = {"leader": "medium", "builder": "medium", "judge": "medium", "agent": "low"}
+
+
+def reasoning_effort(role: str) -> str:
+    """The effort for ``role`` (leader, agent, builder, judge)."""
+    configured = os.getenv(f"WORKFORCE_REASONING_EFFORT_{role.upper()}", "").strip().lower()
+    return configured or REASONING_DEFAULTS.get(role, "low")
+
+
+def apply_reasoning_effort(model: ChatModelBase, role: str) -> None:
+    """Set ``role``'s effort on a reasoning model of the Responses API.
+
+    Chat Completions refuses function tools together with an effort, so a
+    model there is left alone.
+    """
+    from ...model._openai_response._model import _REASONING_MODEL
+
+    target = getattr(model, "__dict__", {}).get("_model", model)  # _FlexFirst wraps the model
+    parameters = getattr(target, "parameters", None)
+    if (
+        not isinstance(target, OpenAIResponseModel)
+        or not _REASONING_MODEL.match(target.model)
+        or parameters is None
+    ):
+        return
+    target.parameters = parameters.model_copy(
+        update={"thinking_enable": True, "reasoning_effort": reasoning_effort(role)},
+    )
+
+
+def with_reasoning_effort(model: ChatModelBase, role: str) -> ChatModelBase:
+    """A shallow copy of ``model`` reasoning at ``role``'s effort; the same
+    client and ledger, so one model can serve both the agent and its judge."""
+    import copy
+
+    inner = getattr(model, "__dict__", {}).get("_model")
+    # _FlexFirst wraps the model and forwards attributes: copy what it wraps.
+    clone = type(model)(copy.copy(inner)) if inner is not None else copy.copy(model)
+    apply_reasoning_effort(clone, role)
+    return clone
+
+
 def runtime_model_config(config: ChatModelConfig) -> ChatModelConfig:
     """Deployment policy applies to runtime, summaries, evaluation and learning."""
     name = os.getenv("WORKFORCE_MODEL_NAME", "").strip()
@@ -16,13 +61,13 @@ def runtime_model_config(config: ChatModelConfig) -> ChatModelConfig:
         return config
     parameters = {**config.parameters}
     parameters["max_tokens"] = min(
-        int(parameters.get("max_tokens") or 4096),
-        int(os.getenv("WORKFORCE_MAX_OUTPUT_TOKENS", "4096")),
+        int(parameters.get("max_tokens") or 16384),
+        int(os.getenv("WORKFORCE_MAX_OUTPUT_TOKENS", "16384")),
     )
     if name == "gpt-6-luna":
-        # Luna function calling over Chat Completions requires effort=none.
-        # Explicitly send it; omitting it leaves the provider's default active.
-        parameters.update(thinking_enable=True, reasoning_effort="none")
+        # Every call reasons at the agent effort unless its role sets another
+        # (apply_reasoning_effort); get_model drops it on Chat Completions.
+        parameters.update(thinking_enable=True, reasoning_effort=reasoning_effort("agent"))
         parameters.pop("temperature", None)
         parameters.pop("top_p", None)
     return config.model_copy(update={"model": name, "parameters": parameters})

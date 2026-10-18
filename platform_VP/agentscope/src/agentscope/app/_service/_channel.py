@@ -6,7 +6,7 @@ every node's :class:`ChannelLifecycleDispatcher` reconciles its running
 instances against storage. Holds no channel instances.
 """
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..._utils._common import _generate_id
 from ..message_bus import MessageBus, MessageBusKeys
@@ -66,6 +66,17 @@ class ChannelService:
             session (`SessionSettings`): Derived-session settings.
             enabled (`bool`): Whether to start the channel immediately.
         """
+        from pydantic import ValidationError
+
+        channel_cls = self._types.get(channel_type)
+        if channel_cls is None:
+            raise ChannelError("Loại kênh không được hỗ trợ.", 400)
+        try:
+            credentials = channel_cls.Credentials.model_validate(credentials).model_dump()
+            platform_config = channel_cls.Config.model_validate(platform_config).model_dump()
+        except ValidationError as exc:
+            fields = ", ".join(".".join(map(str, error["loc"])) or "credentials" for error in exc.errors())
+            raise ChannelError(f"Cấu hình kênh không hợp lệ. Kiểm tra: {fields}.", 400) from None
         bot_id = self._types.extract_platform_bot_id(
             channel_type,
             credentials,
@@ -117,6 +128,30 @@ class ChannelService:
             updated.channel_type,
             updated.credentials,
         )
+        await self._storage.upsert_channel(updated, bot_id)
+        await self._notify(channel_id)
+        return updated
+
+    async def rotate_secrets(self, channel_id: str, changes: dict) -> ChannelRecord:
+        """Rotate a token without replacing channel/session identity."""
+        from pydantic import ValidationError
+        from ..channel._secrets import open_credentials, secret_fields
+
+        record = await self._require(channel_id)
+        channel_cls = self._types.get(record.channel_type)
+        if record.channel_type not in {"telegram", "zalo_oa"} or channel_cls is None:
+            raise ChannelError("Kênh này chưa hỗ trợ thay token tại chỗ.", 400)
+        allowed = secret_fields(channel_cls.Credentials)
+        if not changes or set(changes) - allowed or any(not isinstance(v, str) or not v.strip() for v in changes.values()):
+            raise ChannelError("Chỉ được cập nhật các trường token hoặc khóa bí mật không rỗng.", 400)
+        try:
+            credentials = channel_cls.Credentials.model_validate({**open_credentials(record.credentials), **changes}).model_dump()
+        except ValidationError:
+            raise ChannelError("Token không hợp lệ hoặc không thuộc bot đang kết nối.", 400) from None
+        version = max(datetime.now(tz=record.updated_at.tzinfo), record.updated_at + timedelta(microseconds=1))
+        updated = record.model_copy(update={"credentials": self._types.seal_credentials(record.channel_type, credentials),
+                                           "updated_at": version})
+        bot_id = self._types.extract_platform_bot_id(record.channel_type, credentials)
         await self._storage.upsert_channel(updated, bot_id)
         await self._notify(channel_id)
         return updated

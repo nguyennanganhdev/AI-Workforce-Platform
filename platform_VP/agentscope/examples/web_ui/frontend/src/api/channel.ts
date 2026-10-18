@@ -22,6 +22,9 @@ export const channelApi = {
 	update: (channelId: string, body: UpdateChannelRequest) =>
 		client.patch<ChannelRecord>(`/channels/${channelId}`, body),
 
+	rotateCredentials: (channelId: string, secrets: Record<string, string>) =>
+		client.patch<ChannelRecord>(`/channels/${channelId}/credentials`, secrets),
+
 	delete: (channelId: string) => client.delete(`/channels/${channelId}`),
 
 	enable: (channelId: string) => client.post<{ status: string }>(`/channels/${channelId}/enable`),
