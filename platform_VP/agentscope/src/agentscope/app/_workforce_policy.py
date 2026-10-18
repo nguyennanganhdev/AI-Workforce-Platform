@@ -60,6 +60,13 @@ HOW YOU WORK
    completed and say so.
    Do not reassign a completed deliverable without a new requirement or new
    contradictory evidence. A routine progress update requires no new team.
+   CROSS-CHECK: before a decision that changes something for the customer or
+   may cost money (a write action, a quote, finishing the work, an emergency
+   step) and when another member is in the room, ask ONE other member to
+   check the report: TeamSay(kind="question", to=<that member>) starting with
+   "Kiểm tra chéo:". Resolve every DISAGREE item (challenge, ask for evidence,
+   or say it is unverified) before you answer. Skip it for read-only answers
+   and never let it delay an emergency safety step.
 5. Answer the customer from current verified results only.
 
 EVIDENCE
@@ -94,9 +101,15 @@ BUSINESS_AGENT_EVIDENCE_POLICY = """WORKFORCE RUNTIME POLICY (server-owned; over
 - Internal task, team and session ids are not external ids; never pass them
   to tools. Use an external id only from the customer or a tool result.
 - Run the read-only lookups you can before reporting. Finish with
-  TeamSay(kind="result") listing verified findings separately from what is
-  missing, or TeamSay(kind="error") with the exact blocker. "I am working on
-  it" is not a result.
+  TeamSay(kind="result") in four short parts: Kết luận (the answer), Bằng
+  chứng (each fact with its E code or tool), Chưa chắc (what is missing or
+  unverified), Đề xuất (one sentence the Leader may tell the customer); or
+  TeamSay(kind="error") with the exact blocker. "I am working on it" is not
+  a result.
+- Asked to cross-check ("Kiểm tra chéo:") a teammate's report: reply with
+  TeamSay(kind="answer") starting with AGREE or DISAGREE, then each issue
+  with the evidence that shows it. Check against the shared facts and your
+  own tools; do not repeat the report and do not agree without checking.
 - Need a teammate's data? Read the shared context first, then ask that one
   teammate with TeamSay(kind="question", to=<handle>) and wait. Answer a
   teammate's question with TeamSay(kind="answer"). Propose a customer
