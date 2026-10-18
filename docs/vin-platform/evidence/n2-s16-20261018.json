@@ -118,6 +118,16 @@
       "passed": 4,
       "skipped": 0,
       "restored_app_started": false
+    },
+    "staff_login_browser_s17": {
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "repro_before_fix": {
+        "status": "FAIL",
+        "unauthorized_responses_in_five_seconds": 108
+      }
     }
   },
   "customer_proof": {
@@ -166,6 +176,11 @@
               "type": "bind",
               "destination": "/staff",
               "read_only": true
+            },
+            {
+              "type": "bind",
+              "destination": "/resident",
+              "read_only": true
             }
           ],
           "flags": {}
@@ -193,7 +208,8 @@
         "staff": 200
       }
     },
-    "output": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4"
+    "output": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4",
+    "staff_entry_url": "http://127.0.0.1:18105/operations/my-tasks"
   },
   "archive": {
     "path": "platform_VP/agentscope/.artifacts/n2-release-9876d94e/images.tar",
@@ -229,5 +245,45 @@
     "journeys": "platform_VP/agentscope/.artifacts/vin-journey/pytest.xml",
     "final_reply": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4/leader-final-reply.png",
     "restore": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4/restore/deep-restore.json"
+  },
+  "staff_login_followup_s17": {
+    "status": "PASS",
+    "red_unauthorized_responses_in_5_seconds": 108,
+    "regression": {
+      "status": "PASS",
+      "passed": 2,
+      "skipped": 0,
+      "paid_model_calls": 0,
+      "viewports": [
+        {
+          "width": 1280,
+          "unauthorized_responses": 1,
+          "page_errors": [],
+          "external_requests": 0,
+          "status": "PASS"
+        },
+        {
+          "width": 390,
+          "unauthorized_responses": 1,
+          "page_errors": [],
+          "external_requests": 0,
+          "status": "PASS"
+        }
+      ]
+    },
+    "gateway_configuration": "nginx-staff-login.conf",
+    "gateway_sha256": "953ccd0253e0a2422a8a845fd305653a2725a04c7f6673b3897ef460cea8d154",
+    "domain_ui": {
+      "staff": {
+        "tree_sha256": "d2776bace13c259bdf870d54b421f07121b038b995a040235e8f82aa121ad3b0",
+        "build_directory": "E:\\AI-Workforce-Platform\\vinhome_Recident\\apps\\staff-web\\dist"
+      },
+      "resident": {
+        "tree_sha256": "3f53bf54fbff75d39f2bb68a9db47eb24297a2d747091e191454000f93b1fee3",
+        "build_directory": "E:\\AI-Workforce-Platform\\vinhome_Recident\\apps\\resident-web\\dist"
+      }
+    },
+    "scripted_model_calls": 3,
+    "paid_model_calls": 0
   }
 }

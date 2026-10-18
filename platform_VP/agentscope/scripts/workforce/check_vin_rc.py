@@ -28,6 +28,81 @@ def cleanup_fixture(fixture, output):
     fixture.down(output)
 
 
+def staff_server():
+    """Match Domain's shared login door; staff owns /operations, not /login."""
+    return '''
+server { listen 18105; root /resident; index index.html; client_max_body_size 25m;
+location /api/business/ { proxy_pass http://127.0.0.1:18101/; proxy_set_header Host $http_host; proxy_set_header X-Vinhomes-Surface ""; }
+location /operations { root /staff; try_files /index.html =404; }
+location /staff-assets/ { root /staff; try_files $uri =404; }
+location /assets/ { try_files $uri =404; }
+location / { try_files $uri /index.html; }
+}\n}\n'''
+
+
+def verify_staff_login(output):
+    """Start with no cookies and use the shared login form on both viewports."""
+    from playwright.sync_api import sync_playwright, expect
+    from urllib.parse import urlsplit
+
+    state = json.loads((output / 'state.json').read_text(encoding='utf-8'))
+    assert state['prefix'].startswith('vin-n1-r04-e2e-')
+    from vin_platform_local_fixture import PASSWORD
+    proof = {'status': 'RUNNING', 'passed': 0, 'skipped': 0, 'paid_model_calls': 0, 'viewports': []}
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                for width in (1280, 390):
+                    context = browser.new_context(viewport={'width': width, 'height': 900})
+                    try:
+                        page = context.new_page()
+                        row = {'width': width, 'unauthorized_responses': 0, 'page_errors': [], 'external_requests': 0}
+                        proof['viewports'].append(row)
+                        def local_only(route):
+                            parsed = urlsplit(route.request.url)
+                            if (parsed.scheme, parsed.netloc) != ('http', '127.0.0.1:18105'):
+                                row['external_requests'] += 1
+                                route.abort()
+                            else:
+                                route.continue_()
+                        def response(result):
+                            if result.status == 401:
+                                row['unauthorized_responses'] += 1
+                        page.route('**/*', local_only)
+                        page.on('pageerror', lambda error: row['page_errors'].append(str(error)))
+                        page.on('response', response)
+                        page.goto('http://127.0.0.1:18105/operations/my-tasks')
+                        expect(page.get_by_label('Email', exact=True)).to_be_visible(timeout=5000)
+                        page.wait_for_timeout(500)
+                        assert row['unauthorized_responses'] <= 2, 'Staff login redirect loop'
+                        page.get_by_label('Email', exact=True).fill(state['domain_users']['local-v3-technical'])
+                        page.get_by_label('Mật khẩu', exact=True).fill(PASSWORD)
+                        page.get_by_role('button', name='Đăng nhập', exact=True).click()
+                        expect(page).to_have_url('http://127.0.0.1:18105/operations/my-tasks')
+                        expect(page.get_by_role('heading', name='Việc của tôi', exact=True)).to_be_visible()
+                        before = row['unauthorized_responses']
+                        page.reload()
+                        expect(page.get_by_role('heading', name='Việc của tôi', exact=True)).to_be_visible()
+                        page.wait_for_timeout(500)
+                        assert row['unauthorized_responses'] == before
+                        assert not row['page_errors'] and not row['external_requests']
+                        page.screenshot(path=str(output / f'staff-login-{width}.png'), full_page=True)
+                        row['status'] = 'PASS'
+                        proof['passed'] += 1
+                    finally:
+                        context.close()
+            finally:
+                browser.close()
+        proof['status'] = 'PASS'
+        return proof
+    except Exception:
+        proof['status'] = 'FAIL'
+        raise
+    finally:
+        (output / 'staff-login-ui.json').write_text(json.dumps(proof, indent=2), encoding='utf-8')
+
+
 def verify_leader_reply(output, journey):
     """Reopen the saved conversation; require the final answer in the real UI."""
     from playwright.sync_api import sync_playwright, expect
@@ -80,6 +155,7 @@ def main():
     parser.add_argument('--web-image')
     parser.add_argument('--domain-image')
     parser.add_argument('--staff-dist', type=Path)
+    parser.add_argument('--resident-dist', type=Path, help='Domain shared login build served on the staff origin')
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--keep-running', action='store_true', help='Keep a successful loopback-only staging fixture for review')
     parser.add_argument('--restore', action='store_true', help='Also rehearse the four-store backup/restore using this RC runtime')
@@ -92,12 +168,14 @@ def main():
     if options.cleanup_only:
         cleanup_fixture(fixture, output)
         return
-    if not all((options.app_image, options.web_image, options.domain_image, options.staff_dist)):
-        parser.error('Pass all three RC images and the unchanged staff build')
+    if not all((options.app_image, options.web_image, options.domain_image, options.staff_dist, options.resident_dist)):
+        parser.error('Pass all three RC images and the unchanged Domain staff/resident builds')
     if (output / 'state.json').exists():
         parser.error('Use a fresh artifact directory; never overwrite a fixture state')
     if not (options.staff_dist / 'index.html').is_file():
         parser.error('Pass the existing Domain staff build')
+    if not (options.resident_dist / 'index.html').is_file():
+        parser.error('Pass the existing Domain resident build for shared login')
     output.mkdir(parents=True, exist_ok=True)
     import vin_platform_browser_roundtrip as journey
     import vin_domain_rc_check as domain_check
@@ -232,17 +310,14 @@ socket.getaddrinfo=checked_resolve
         bundled = (output / 'image-nginx.conf').read_text(encoding='utf-8')
         # Only address/port adaptation: retain production proxy, cookies, SSE,
         # asset cache and SPA rules; staff app/API remain Domain-owned.
-        config = 'events {}\nhttp {\n include /etc/nginx/mime.types;\n' + bundled.replace('listen 80;', 'listen 18104;').replace('http://app:8000/', 'http://127.0.0.1:8000/') + '''
-server { listen 18105; root /staff; index index.html; client_max_body_size 25m;
-location /api/business/ { proxy_pass http://127.0.0.1:18101/; proxy_set_header Host $http_host; proxy_set_header X-Vinhomes-Surface ""; }
-location / { try_files $uri /index.html; }
-}\n}\n'''
+        config = 'events {}\nhttp {\n include /etc/nginx/mime.types;\n' + bundled.replace('listen 80;', 'listen 18104;').replace('http://app:8000/', 'http://127.0.0.1:8000/') + staff_server()
         (output / 'nginx.conf').write_text(config, encoding='utf-8')
         web = prefix + '-web-rc'
         remember(web)
         docker('run', '-d', '--name', web, '--label', 'vin.fixture=' + prefix, '--network', 'container:' + prefix + '-postgres',
             '--mount', 'type=bind,source=' + (output / 'nginx.conf').as_posix() + ',target=/etc/nginx/nginx.conf,readonly',
-            '--mount', 'type=bind,source=' + options.staff_dist.resolve().as_posix() + ',target=/staff,readonly', options.web_image)
+            '--mount', 'type=bind,source=' + options.staff_dist.resolve().as_posix() + ',target=/staff,readonly',
+            '--mount', 'type=bind,source=' + options.resident_dist.resolve().as_posix() + ',target=/resident,readonly', options.web_image)
         fixture.wait_ready('http://127.0.0.1:18104/api/health')
         probe = json.loads(docker('exec', app, 'python', '-c',
             "import json,agentscope;print(json.dumps({'module':agentscope.__file__}))"))
@@ -250,6 +325,8 @@ location / { try_files $uri /index.html; }
         report['runtime_module'] = probe['module']
         report['domain_source_revision'] = domain_revision
         report['application_source_mounts'] = 0
+        report['staff_login'] = verify_staff_login(output)
+        report['scenarios'].update(staff_login_desktop='PASS', staff_login_mobile='PASS')
         report['web_assets_sha256'] = {p.relative_to(output / 'web-dist').as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((output / 'web-dist').rglob('*')) if p.is_file()}
         journey.main(output)
@@ -307,7 +384,7 @@ location / { try_files $uri /index.html; }
             restore = json.loads((output / 'restore/deep-restore.json').read_text(encoding='utf-8'))
             assert restore['status'] == 'PASS' and restore['restored_app_started'] is False
             report['four_store_restore'] = dict(passed=4, skipped=0, restored_app_started=False)
-        report.update(status='PASS', passed=2, skipped=0, failed=0, errors=0, scripted_model_calls=len(model['calls']), external_network_attempts=0)
+        report.update(status='PASS', passed=len(report['scenarios']), skipped=0, failed=0, errors=0, scripted_model_calls=len(model['calls']), external_network_attempts=0)
         report['staging_running'] = options.keep_running
         save()
         print(json.dumps({key: report[key] for key in ('status', 'passed', 'skipped', 'failed', 'errors', 'scripted_model_calls', 'paid_model_calls')}))
