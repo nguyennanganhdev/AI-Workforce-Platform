@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import unicodedata
 from typing import TYPE_CHECKING
 
@@ -117,7 +118,7 @@ def _has_calculation_capability(agent: AgentRecord) -> bool:
     ):
         return True
     declared = _fold_text(
-        " ".join(
+        ". ".join(
             (
                 agent.data.name,
                 agent.data.invite_config.invite_description or "",
@@ -125,6 +126,8 @@ def _has_calculation_capability(agent: AgentRecord) -> bool:
             )
         )
     )
+    # Negative role boundaries do not declare a capability.
+    declared = re.sub(r"\b(?:khong|not|never|without|cannot)\b[^.;!?]*", "", declared)
     return any(
         marker in declared
         for marker in (
@@ -203,6 +206,12 @@ published agent configuration is fixed for the run.
 - You are not currently leading a team. Call ``TeamCreate`` first.
 
 ## Important
+- Assemble the complete required roster in ONE call: target starts first;
+  additional_assignments adds the other specialists without starting them.
+  Include peers needed for later deliverables even while the primary agent
+  clarifies customer inputs. Workers cannot invite missing peers themselves.
+- A coordinator does not replace provider or calculation specialists. Select
+  peers from their declared capabilities and reuse suitable existing members.
 - Do NOT assume the invited agent shares your filesystem. Prefer \
 self-contained messages; do not embed working-directory or file paths \
 unless you have first verified the two sides can see them.

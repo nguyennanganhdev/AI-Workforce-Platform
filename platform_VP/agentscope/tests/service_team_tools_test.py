@@ -1823,6 +1823,11 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
         self.assertEqual(team.data.members, [])
 
     async def test_total_budget_requires_available_calculator(self):
+        self.monday_agent.data.invite_config.invite_description = (
+            "Tiếp nhận nhu cầu và tổng hợp kết quả đã xác minh. "
+            "Không tự tìm dịch vụ hay tính toán thay các trợ lý."
+        )
+        await self.storage.upsert_agent(self.user_id, self.monday_agent)
         calculator = _make_agent_record(self.user_id, "Cost Calculation Agent")
         calculator.data.lifecycle_state = "published"
         calculator.data.invite_config = (
