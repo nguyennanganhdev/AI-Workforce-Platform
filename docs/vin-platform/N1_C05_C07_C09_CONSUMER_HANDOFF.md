@@ -21,6 +21,16 @@ Case phải gắn vào hội thoại/Leader/team của chính khách hàng ở c
 
 ## C07 — feed và publication là hai việc khác nhau
 
+### Bổ sung phương án riêng — 18/10
+
+`GET /service-cases/{id}?refresh=true` trả **`data.domain.plans[]`**. Mỗi item theo `CustomerPlan`: `id,title,status,version,estimatedAmount,steps,canDecide`. Đây là phương án `vh_ticket_plans`, **khác** work-order `pending_decisions[]`. Dùng lại resident-safe projection của Domain: chỉ phương án đã đến bước cư dân hoặc lịch sử đã công khai; không trả proposal thô, management note, actor hay cấu hình nội bộ. Phương án chờ cư dân làm `service_status=waiting_for_customer`, `next_action=review_current_decision`.
+
+Consumer chỉ mở lựa chọn khi `canDecide=true` và `status=resident_pending`, sau refresh/ACK. Gửi `SourceIntent.action="plan-decision"`; outer `expected_version=data.domain.canonical_version`, còn `payload={plan_id:plan.id,expectedVersion:plan.version,decision:"approve"|"reject",note:"..."}` theo `PlanDecisionPayload`. **Không thay plan version bằng case/ticket version.** Note bắt buộc 1–2000 ký tự sau trim. Dùng idempotency key cố định cho cùng lần bấm; payload thay đổi thì tạo key mới. Không gọi endpoint quyết định từ model.
+
+Danh sách/nội dung/version phương án được đưa vào `projection_hash`, vì vậy đổi phương án làm ACK cũ hết hiệu lực. Domain vẫn kiểm signed intent, owner, liên kết plan→case, cả hai version và receipt replay. Schema `CustomerPlan`/`PlanDecisionPayload` có trong `contracts-v1.schema.json` và OpenAPI components; fixture: [`fixtures/c07-plan-decision-v1.json`](fixtures/c07-plan-decision-v1.json).
+
+Kiểm tra mới: Platform Python 3.11 Linux **2 PASS / 0 SKIP**; Domain PostgreSQL với restricted role, approve/reject + stale plan/case version + ACK/hash/replay và regression khách hàng **6 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. Test đầu dùng admin thiếu management scope đã FAIL; fixture chuyển sang actor management Domain có sẵn, không nới quyền production. Test bắt lỗi Decimal trong stale-case error serialization, đã sửa về integer để trả 409 đúng. Không dùng key model thật; chưa chạy lại E2E browser cho slice này. Người 2 nối `decision_actions`/thẻ hiện có, N1 không sửa file consumer.
+
 R04 contract clarification: `pending_decisions[].version` is the **ticket version** consumed by the existing Domain `ResidentApprovalDecision.version`, also exposed as `ticket_version`. The production work_approvals table has no integer revision column. Do not invent an approval-row revision or substitute the case canonical_version; the signed outer expected_version remains the case version. The refreshed projection/hash includes request_detail and this version. N2's existing decision_actions can consume this explicit `version` field. Current Domain decision API locks the ticket and rejects a stale ticket version; no new approval authority/bridge is introduced.
 
 `GET /service-cases/{id}/events?after=0&limit=50&sync=true` trả `items`, `next_cursor`, `has_more`, `last_sequence`, `applied_sequence`, `sync_status`, `synced_at`, `canonical_version`.

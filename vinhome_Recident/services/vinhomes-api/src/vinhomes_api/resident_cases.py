@@ -206,7 +206,7 @@ async def save_receipt(scope, operation, resource, key, payload, result, status,
 
 def check_version(row, expected):
     if row["public_version"] != expected:
-        fail(409, "VERSION_CONFLICT", "Hồ sơ đã thay đổi. Vui lòng tải lại.", currentVersion=row["public_version"])
+        fail(409, "VERSION_CONFLICT", "Hồ sơ đã thay đổi. Vui lòng tải lại.", currentVersion=int(row["public_version"]))
 
 
 async def create_case(scope, body: CreateRequest, request: Request, key: str):

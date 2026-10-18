@@ -338,6 +338,10 @@ async def get_request(ident: UUID, request: Request, events_cursor: str | None =
 
 
 async def customer_projection(scope, ident, row):
+    from .resident_api import request_plans
+    # Reuse the resident allowlist/ownership checks; never publish raw plans,
+    # management notes or internal proposal/dispatch metadata.
+    plans = (await request_plans(ident, scope))["items"]
     tickets = [dict(r) for r in (await scope[0].execute(text(f"""SELECT t.id,t.status,t.version,t.is_emergency
         FROM tickets t JOIN vh_resident_case_tickets ct ON ct.ticket_id=t.id AND ct.tenant_id=t.tenant_id
         WHERE ct.case_id=:case AND t.tenant_id={TENANT} ORDER BY t.id"""), {"case": ident})).mappings()]
@@ -364,13 +368,13 @@ async def customer_projection(scope, ident, row):
         status, action = ("cancelled" if statuses == {"cancelled"} else "closed"), None
     elif any(t["is_emergency"] for t in tickets):
         status, action = "needs_human", "contact_domain_emergency_support"
-    elif approvals or row["public_status"] == "confirmation":
+    elif approvals or any(plan["canDecide"] for plan in plans) or row["public_status"] == "confirmation":
         status, action = "waiting_for_customer", "review_current_decision"
     else:
         status, action = ("in_progress", "follow_progress") if tickets else ("received", "select_service_category")
     projection = jsonable_encoder({"domain_request_id": str(ident), "canonical_version": row["public_version"],
         "service_status": status, "next_action": action, "tickets": tickets,
-        "status": row["public_status"], "pending_decisions": approvals, "work_orders": orders, "result_photos": photos,
+        "status": row["public_status"], "plans": plans, "pending_decisions": approvals, "work_orders": orders, "result_photos": photos,
         "as_of": row["public_updated_at"]})
     fingerprint = hashlib.sha256(json.dumps(projection, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
     return {**projection, "projection_hash": fingerprint}

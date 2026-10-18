@@ -1,9 +1,9 @@
 """Versioned, strict contracts shared with the runtime/UI implementation."""
 
 from datetime import datetime
-from typing import Generic, Literal, TypeVar
+from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
 
 
 CONTRACT_VERSION = "vin-platform-1"
@@ -121,6 +121,27 @@ class SourceIntent(Contract):
     expected_version: int = Field(ge=1)
     payload: dict
     idempotency_key: str = Field(min_length=16, max_length=128)
+
+
+class CustomerPlan(Contract):
+    """C07 resident-visible plan, distinct from work-order approvals."""
+
+    id: str
+    title: str
+    status: Literal["management_pending", "resident_pending", "approved", "rejected"]
+    version: int = Field(ge=0)
+    estimatedAmount: str
+    steps: list[str]
+    canDecide: bool
+
+
+class PlanDecisionPayload(Contract):
+    """SourceIntent.payload for action=plan-decision; version is the plan's."""
+
+    plan_id: str
+    expectedVersion: Annotated[StrictInt, Field(ge=0)]
+    decision: Literal["approve", "reject"]
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
 class CaseEvent(Contract):

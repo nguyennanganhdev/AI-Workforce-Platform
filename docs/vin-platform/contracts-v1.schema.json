@@ -859,6 +859,98 @@
       "title": "SourceIntent",
       "type": "object"
     },
+    "CustomerPlan": {
+      "additionalProperties": false,
+      "description": "C07 resident-visible plan, distinct from work-order approvals.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "management_pending",
+            "resident_pending",
+            "approved",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 0,
+          "title": "Version",
+          "type": "integer"
+        },
+        "estimatedAmount": {
+          "title": "Estimatedamount",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "canDecide": {
+          "title": "Candecide",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "version",
+        "estimatedAmount",
+        "steps",
+        "canDecide"
+      ],
+      "title": "CustomerPlan",
+      "type": "object"
+    },
+    "PlanDecisionPayload": {
+      "additionalProperties": false,
+      "description": "SourceIntent.payload for action=plan-decision; version is the plan's.",
+      "properties": {
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "expectedVersion": {
+          "minimum": 0,
+          "title": "Expectedversion",
+          "type": "integer"
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "note": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id",
+        "expectedVersion",
+        "decision",
+        "note"
+      ],
+      "title": "PlanDecisionPayload",
+      "type": "object"
+    },
     "CaseEvent": {
       "additionalProperties": false,
       "properties": {

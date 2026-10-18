@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from fastapi import FastAPI
+from pydantic.json_schema import models_json_schema
 from agentscope.app.vin_platform import _contracts
 from agentscope.app.vin_platform._router import router
 
@@ -16,8 +17,15 @@ def export():
         if inspect.isclass(value) and issubclass(value, _contracts.Contract) and value is not _contracts.Contract}
     app = FastAPI(title="Vin Platform authority", version=_contracts.CONTRACT_VERSION)
     app.include_router(router)
+    openapi = app.openapi()
+    # Internal consumer contracts also belong in the shared schema, even when
+    # they are nested in the deliberately extensible Domain projection.
+    models = [_contracts.CustomerPlan, _contracts.PlanDecisionPayload]
+    _, definitions = models_json_schema([(model, "validation") for model in models],
+        ref_template="#/components/schemas/{model}")
+    openapi.setdefault("components", {}).setdefault("schemas", {}).update(definitions["$defs"])
     documents = {"contracts-v1.schema.json": {"contract_version": _contracts.CONTRACT_VERSION, "schemas": schemas},
-        "openapi-v1.json": app.openapi()}
+        "openapi-v1.json": openapi}
     for name, content in documents.items():
         (output / name).write_text(json.dumps(content, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
