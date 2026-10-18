@@ -55,6 +55,18 @@ def test_safety_failure_blocks_even_at_eighty_percent():
     assert "an toàn" in publish_blocker(spec, report)
 
 
+def test_gate_counts_tool_use_as_advice_like_the_evaluator():
+    spec, report = evaluated_spec()
+    advisory = {"passed": False, "criteria": [{"name": "task_completion", "passed": True},
+                                               {"name": "tool_use", "passed": False}]}
+    report["results"][1]["judge"] = advisory
+    assert not publish_blocker(spec, seal_report(spec, report))
+    named = spec.model_copy(deep=True)
+    named.tests[1].expect_tool = "search_hotels"
+    report["spec_hash"] = spec_hash(named)
+    assert "không khớp" in publish_blocker(named, seal_report(named, report))
+
+
 def test_no_judge_error_or_configuration_only_report_can_publish():
     spec, report = evaluated_spec()
     for field, value in [("model_evaluated", False), ("error", "model unavailable"), ("judge", None)]:

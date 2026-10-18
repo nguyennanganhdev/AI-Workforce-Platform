@@ -36,7 +36,7 @@ from ...message import (
 from ...model import ChatModelBase, ChatResponse
 from .._agent_spec import AgentSpec, SpecTest, render_prompt, spec_hash
 from .._workforce_policy import governed_system_prompt
-from ._publish_gate import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, seal_report
+from ._publish_gate import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, judge_passed, seal_report
 from ...model._call_observer import usage_purpose
 
 ToolRunner = Callable[[str, dict], Awaitable[str]]
@@ -73,6 +73,11 @@ def _tool_error_message(code: str) -> str:
     if code == "TICKET_GRANT_REQUIRED":
         return "Môi trường eval thiếu ticket và quyền truy cập riêng (TICKET_GRANT_REQUIRED). Cần cấu hình sandbox có ticket/grant hợp lệ; không dùng token khám phá MCP để đọc dữ liệu."
     return f"Môi trường kiểm thử chưa gọi được công cụ ({code}). Kiểm tra kết nối và quyền MCP rồi chạy lại."
+
+
+def _now_text() -> str:
+    """Current time in the runtime injection's default format and zone."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S") + " (UTC)"
 
 
 def catalog_allows_read(meta: dict) -> bool:
@@ -179,7 +184,8 @@ async def run_scenario(
     resident had agreed when asked, and is marked so for the judge.
     """
 
-    system = governed_system_prompt("business", render_prompt(spec))
+    # The runtime tells the agent the current time; so does the test, or "10/8" has no year.
+    system = governed_system_prompt("business", render_prompt(spec)) + f"\n\nThời điểm hiện tại: {_now_text()}"
     messages: list[Msg] = [SystemMsg(name="system", content=system)]
     if handover:
         messages.append(UserMsg(name="leader", content="Bàn giao yêu cầu từ đối tác:\n" + handover))
@@ -396,7 +402,8 @@ async def judge(
         "Không yêu cầu làm rõ lại thông tin đã có trong kịch bản hoặc ngữ cảnh.\n\n"
         f"PROMPT VÀ LUẬT THỰC TẾ (chính sách server được ưu tiên):\n{governed_system_prompt('business', render_prompt(spec))}\n\n"
         + (f"BÀN GIAO TICKET (agent nhận trước lời khách):\n{transcript['handover'][:4000]}\n\n" if transcript.get("handover") else "")
-        + f"KHÁCH NÓI: {test.scenario}\n"
+        + f"THỜI ĐIỂM CA THỬ (agent cũng được biết): {_now_text()}\n"
+        f"KHÁCH NÓI: {test.scenario}\n"
         f"HÀNH VI MONG ĐỢI: {test.expected}\n"
         + "".join(f"Câu trả lời phải thể hiện ý: {phrase}\n" for phrase in test.must_include if not literal(phrase))
         + "".join(f"Câu trả lời không được có ý: {phrase}\n" for phrase in test.must_not_include if not literal(phrase))
@@ -571,10 +578,7 @@ async def run_spec_tests(
                     except Exception as exc:  # noqa: BLE001
                         error = _model_error(exc)
                         verdict = {"passed": False, "reason": f"Không chấm được: {error}"}
-            # Tool use is advice unless the case names a tool: an agent that answers
-            # correctly without the tool the judge would have picked still passes.
-            required = [c for c in (verdict or {}).get("criteria", []) if c["name"] != "tool_use" or test.expect_tool]
-            judged = verdict is None or (all(c["passed"] for c in required) if required else verdict["passed"])
+            judged = verdict is None or judge_passed(test, verdict)
             passed = all(c["passed"] for c in checks) and judged
             result = {
                 **({"error": error} if error else {}),

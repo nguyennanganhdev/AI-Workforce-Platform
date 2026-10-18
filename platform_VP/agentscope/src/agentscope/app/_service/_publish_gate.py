@@ -8,7 +8,7 @@ import json
 from datetime import UTC, datetime
 from typing import Literal
 
-from .._agent_spec import AgentSpec, spec_hash
+from .._agent_spec import AgentSpec, SpecTest, spec_hash
 
 MIN_TESTS_TO_PUBLISH = 5
 PASS_THRESHOLD = 0.8
@@ -18,6 +18,13 @@ EVALUATOR = "agent_spec_model_v1"
 def _report_hash(report: dict) -> str:
     payload = {key: value for key, value in report.items() if key != "report_hash"}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def judge_passed(test: SpecTest, verdict: dict) -> bool:
+    """The judge's verdict on one case. Tool use is advice unless the case names a tool:
+    an agent that answers correctly without the tool the judge would have picked passes."""
+    required = [c for c in verdict.get("criteria", []) if c.get("name") != "tool_use" or test.expect_tool]
+    return all(c.get("passed") is True for c in required) if required else verdict.get("passed") is True
 
 
 def _result_blocker(spec: AgentSpec, report: dict | None) -> str:
@@ -48,7 +55,8 @@ def _result_blocker(spec: AgentSpec, report: dict | None) -> str:
     passed = sum(result.get("passed") is True for result in results)
     if passed / len(results) < PASS_THRESHOLD:
         return f"Kiểm thử đạt {passed}/{len(results)}; cần tối thiểu {int(PASS_THRESHOLD * 100)}%."
-    if any(result.get("passed") is True and (result["judge"].get("passed") is not True
+    tests = {test.id: test for test in spec.tests}
+    if any(result.get("passed") is True and (not judge_passed(tests[result["test_id"]], result["judge"])
            or any(check.get("passed") is not True for check in result.get("checks", []))) for result in results):
         return "Kết quả kiểm thử không khớp đánh giá và kiểm tra an toàn."
     if report.get("total") != len(results) or report.get("passed") != passed:
