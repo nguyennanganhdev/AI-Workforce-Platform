@@ -53,6 +53,10 @@ function buildHeaders(hasBody: boolean): Record<string, string> {
 
 async function extractErrorDetail(res: Response): Promise<string> {
 	const responseText = await res.text();
+	const contentType = res.headers.get('content-type')?.toLowerCase() ?? '';
+	if (contentType.includes('text/html') || /^\s*(?:<!doctype\s+html|<html\b)/i.test(responseText)) {
+		return `Máy chủ tạm thời không thể xử lý yêu cầu (${res.status}). Vui lòng thử lại.`;
+	}
 	try {
 		const json = JSON.parse(responseText) as { detail?: unknown };
 		if (typeof json.detail === 'string') return json.detail;
@@ -60,7 +64,7 @@ async function extractErrorDetail(res: Response): Promise<string> {
 	} catch {
 		// The backend may return a plain-text error.
 	}
-	return responseText || res.statusText;
+	return responseText.slice(0, 500) || res.statusText;
 }
 
 function canRefresh(path: string): boolean {

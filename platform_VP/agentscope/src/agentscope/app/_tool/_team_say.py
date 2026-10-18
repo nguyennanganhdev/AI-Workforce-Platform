@@ -633,6 +633,7 @@ class TeamSay(_TeamToolBase):
                 )
 
             if self._role == "worker" and kind in {
+                "answer",
                 "result",
                 "error",
                 "requires_user_input",
@@ -682,16 +683,16 @@ class TeamSay(_TeamToolBase):
                             ],
                             state=ToolResultState.ERROR,
                         )
-                    if in_reply_to is not None:
-                        matched_request = next(
-                            (
-                                request
-                                for request in pending_requests
-                                if request[0] == in_reply_to
-                            ),
-                            None,
-                        )
-                        if matched_request is None:
+                    matched_request = next(
+                        (
+                            request
+                            for request in pending_requests
+                            if request[0] == in_reply_to
+                        ),
+                        None,
+                    )
+                    if matched_request is None:
+                        if len(pending_requests) > 1:
                             return ToolChunk(
                                 content=[
                                     TextBlock(
@@ -703,17 +704,16 @@ class TeamSay(_TeamToolBase):
                                 ],
                                 state=ToolResultState.ERROR,
                             )
-                        question_id, requester_session_id = matched_request
-                    else:
-                        question_id, requester_session_id = pending_requests[0]
+                        matched_request = pending_requests[0]
+                    question_id, requester_session_id = matched_request
                     requester_name = session_names.get(
                         requester_session_id,
                         requester_session_id,
                     )
-                    if kind in {"result", "error"}:
+                    if kind in {"answer", "result", "error"}:
                         # The causal dependency is server-owned. Models often use
-                        # ``result`` for a completed peer answer; normalize it
-                        # instead of failing and making them retry toward Leader.
+                        # a stale id or ``result`` for a completed peer answer;
+                        # bind the only live request instead of retrying blindly.
                         kind = "answer"
                         to = requester_name
                         in_reply_to = question_id
@@ -736,6 +736,15 @@ class TeamSay(_TeamToolBase):
                             else "CUSTOMER_INPUT_REQUIRED"
                         )
                         content = f"{marker}: {content}"
+                elif (
+                    kind == "answer"
+                    and in_reply_to is None
+                    and not is_reply_owner
+                    and (to is None or to == reply_owner_name)
+                ):
+                    # AgentInvite root assignments have no peer handoff id.
+                    kind = "result"
+                    to = reply_owner_name
 
             if kind == "answer":
                 if not in_reply_to:

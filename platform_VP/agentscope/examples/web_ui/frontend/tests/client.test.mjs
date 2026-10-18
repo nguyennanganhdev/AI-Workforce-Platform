@@ -88,3 +88,17 @@ test('a relative API base keeps every request under its path prefix', async () =
   await api.client.get('/health', undefined, { silent: true });
   assert.deepEqual(urls, ['https://frontend.example/api/health']);
 });
+
+test('an HTML gateway error is never exposed as UI error content', async () => {
+  const api = clientWith(async () => new Response(
+    '<!DOCTYPE html><html><body>Cloudflare gateway details</body></html>',
+    { status: 502, headers: { 'content-type': 'text/html; charset=UTF-8' } },
+  ));
+
+  await assert.rejects(api.client.get('/builder', undefined, { silent: true }), (error) => {
+    assert.equal(error.status, 502);
+    assert.equal(error.detail, 'Máy chủ tạm thời không thể xử lý yêu cầu (502). Vui lòng thử lại.');
+    assert.doesNotMatch(error.detail, /<[^>]+>/);
+    return true;
+  });
+});

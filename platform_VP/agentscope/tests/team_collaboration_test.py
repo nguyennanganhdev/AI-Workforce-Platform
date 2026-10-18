@@ -138,6 +138,43 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual(question.metadata["handoff_id"], event.thread_id)
         self.assertEqual(2, event.hop_count)
 
+    async def test_single_pending_answer_ignores_stale_reply_id(self):
+        question = await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Find available flights",
+        )
+
+        answer = await self.say(
+            "peer",
+            to="Leader",
+            kind="answer",
+            content="Flight VN123 is available",
+            in_reply_to="stale-handoff-id",
+        )
+
+        self.assertEqual("answer", answer.metadata["kind"])
+        self.assertEqual("Worker", answer.metadata["effective_to"])
+        self.assertEqual({}, self.branch("worker").waiting_for)
+        event = next(
+            item
+            for item in self.storage.context.state.events
+            if item.id == answer.metadata["handoff_id"]
+        )
+        self.assertEqual(question.metadata["handoff_id"], event.in_reply_to)
+
+    async def test_root_assignment_answer_is_normalized_to_result(self):
+        answer = await self.say(
+            "worker",
+            to="Leader",
+            kind="answer",
+            content="The assigned analysis is complete",
+        )
+
+        self.assertEqual("result", answer.metadata["kind"])
+        self.assertEqual("Leader", answer.metadata["effective_to"])
+
     async def test_result_cannot_be_used_to_start_peer_work(self):
         result = await self.tool("worker")(
             to="Peer",
@@ -366,6 +403,26 @@ class TestCollaboration(IsolatedAsyncioTestCase):
 
         self.assertEqual("error", result.state)
         self.assertIn("multiple peer questions", result.content[0].text)
+        self.assertEqual(1, len(self.branch("worker").waiting_for))
+        self.assertEqual(1, len(self.branch("leader").waiting_for))
+
+    async def test_ambiguous_peer_answer_rejects_stale_reply_id(self):
+        await self.say(
+            "worker", to="Peer", kind="question", content="Provide the price"
+        )
+        await self.say(
+            "leader", to="Peer", kind="question", content="Provide availability"
+        )
+
+        result = await self.tool("peer")(
+            to="Leader",
+            kind="answer",
+            content="The requested details are ready",
+            in_reply_to="stale-handoff-id",
+        )
+
+        self.assertEqual("error", result.state)
+        self.assertIn("does not identify", result.content[0].text)
         self.assertEqual(1, len(self.branch("worker").waiting_for))
         self.assertEqual(1, len(self.branch("leader").waiting_for))
 

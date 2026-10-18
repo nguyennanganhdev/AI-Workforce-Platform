@@ -30,6 +30,7 @@ from agentscope.app._router._workforce_console import (
     _builder_contract_digest,
     _builder_session,
     _claim_exclusive_tool_ids,
+    _clear_generation_checkpoint,
     _compile_skill_body,
     _compile_system_prompt,
     _contract_checks,
@@ -37,9 +38,11 @@ from agentscope.app._router._workforce_console import (
     _execution_mode_matches_tools,
     _existing_agent_covers,
     _generate,
+    _generation_checkpoint_id,
     _generation_issues,
     _group_tool_catalog,
     _legacy_duplicate_candidates,
+    _load_generation_checkpoint,
     _normalise_skill,
     _outline,
     _outline_issues,
@@ -53,6 +56,7 @@ from agentscope.app._router._workforce_console import (
     _resolve_selected_tools,
     _reused_outline_view,
     _reused_proposal_view,
+    _save_generation_checkpoint,
     _schema_keys,
     _select_model_name,
     _similarity,
@@ -618,7 +622,48 @@ def test_semantic_validation_enforces_the_approved_outline() -> None:
 
 
 class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
-    async def test_generate_stops_after_exactly_one_repair(self) -> None:
+    async def test_generation_checkpoint_round_trip(self) -> None:
+        agent = _generated_agent()
+        outline = _approved_outline_for(agent)
+        config = ChatModelConfig(
+            type="openai_credential",
+            credential_id="credential-1",
+            model="gpt-4.1",
+            parameters={},
+        )
+        checkpoint_id = _generation_checkpoint_id(outline, config, [], [])
+        session = SimpleNamespace(
+            id="builder-session",
+            state=SimpleNamespace(middle_context={}),
+        )
+        storage = SimpleNamespace(update_session_state=AsyncMock())
+        result = (agent, 100, 200)
+
+        await _save_generation_checkpoint(
+            storage,
+            "user-1",
+            session,
+            checkpoint_id,
+            0,
+            result,
+        )
+
+        self.assertEqual(
+            {0: result},
+            _load_generation_checkpoint(session, checkpoint_id, outline, [], []),
+        )
+        await _clear_generation_checkpoint(
+            storage,
+            "user-1",
+            session,
+            checkpoint_id,
+        )
+        self.assertEqual(
+            {},
+            _load_generation_checkpoint(session, checkpoint_id, outline, [], []),
+        )
+
+    async def test_generate_stops_after_one_failed_agent_retry(self) -> None:
         repaired = _generated_agent()
         repaired_generation = BuilderGeneration(agents=[repaired])
         invalid = repaired_generation.model_dump(mode="json")
@@ -637,6 +682,8 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
 
             def __init__(self):
                 self.outputs = [
+                    invalid,
+                    invalid_tracking,
                     invalid,
                     invalid_tracking,
                 ]
@@ -670,7 +717,7 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
                 ),
             )
 
-        self.assertEqual(2, model.calls)
+        self.assertEqual(4, model.calls)
         self.assertIn(
             "Approved outline (authoritative JSON)",
             str(model.messages[0][0].content),
@@ -875,6 +922,123 @@ class TestBuilderSemanticRepair(IsolatedAsyncioTestCase):
         )
         self.assertIn(("repairing", 0, 2), progress_events)
         self.assertEqual(("validating", 2, 2), progress_events[-1])
+
+    async def test_generate_seven_agents_retries_only_coordinator_missing_readiness(
+        self,
+    ) -> None:
+        agents = [
+            _generated_agent(
+                name=f"Agent {index}",
+                role="coordinator" if index == 5 else "specialist",
+            )
+            for index in range(1, 8)
+        ]
+        coordinator = agents[4]
+        invalid_coordinator = BuilderGeneration(
+            agents=[coordinator],
+        ).model_dump(mode="json")
+        contract = invalid_coordinator["agents"][0]["behavior_contract"]
+        del contract["intake_mode"]
+        del contract["required_customer_inputs"]
+
+        class _Model:
+            context_size = 100_000
+
+            def __init__(self):
+                self.calls = {agent.name: 0 for agent in agents}
+                self.repair_prompt = ""
+                self.allow_coordinator = False
+
+            async def count_tokens(self, messages, tools):
+                del messages
+                required = tools[0]["function"]["parameters"]["$defs"][
+                    "AgentBehaviorContract"
+                ]["required"]
+                assert "intake_mode" in required
+                assert "required_customer_inputs" in required
+                return 100
+
+            async def generate_structured_output(self, messages, schema):
+                contract_schema = schema["$defs"]["AgentBehaviorContract"]
+                assert "intake_mode" in contract_schema["required"]
+                assert "required_customer_inputs" in contract_schema["required"]
+                content = str(messages[0].content)
+                selected = next(agent for agent in agents if agent.name in content)
+                self.calls[selected.name] += 1
+                if selected is coordinator and not self.allow_coordinator:
+                    if len(messages) > 2:
+                        self.repair_prompt = str(messages[-1].content)
+                    return SimpleNamespace(content=invalid_coordinator)
+                return SimpleNamespace(
+                    content=BuilderGeneration(agents=[selected]).model_dump(
+                        mode="json"
+                    ),
+                )
+
+        model = _Model()
+        progress_events: list[tuple[str, int, int]] = []
+        checkpoints: dict[int, tuple[GeneratedAgent, int, int]] = {}
+
+        async def progress(stage, completed, total):
+            progress_events.append((stage, completed, total))
+
+        async def checkpoint(index, result):
+            checkpoints[index] = result
+
+        with self.assertRaises(HTTPException):
+            await _generate(
+                "Tạo đội bảy agent",
+                _approved_outline_for(*agents),
+                [],
+                [],
+                model,  # type: ignore[arg-type]
+                ChatModelConfig(
+                    type="openai_credential",
+                    credential_id="credential-1",
+                    model="gpt-4.1",
+                    parameters={},
+                ),
+                progress,
+                agent_completed=checkpoint,
+            )
+
+        self.assertEqual(6, len(checkpoints))
+        self.assertNotIn(4, checkpoints)
+        model.allow_coordinator = True
+        generation, _tokens, _reserve = await _generate(
+            "Tạo đội bảy agent",
+            _approved_outline_for(*agents),
+            [],
+            [],
+            model,  # type: ignore[arg-type]
+            ChatModelConfig(
+                type="openai_credential",
+                credential_id="credential-1",
+                model="gpt-4.1",
+                parameters={},
+            ),
+            progress,
+            checkpoints,
+            checkpoint,
+        )
+
+        self.assertEqual(
+            [agent.name for agent in agents], [a.name for a in generation.agents]
+        )
+        self.assertEqual(5, model.calls[coordinator.name])
+        self.assertTrue(
+            all(
+                model.calls[agent.name] == 1
+                for agent in agents
+                if agent is not coordinator
+            ),
+        )
+        self.assertIn(
+            "coordinator phải dùng intake_mode=required_before_work",
+            model.repair_prompt,
+        )
+        self.assertIn(("repairing", 6, 7), progress_events)
+        self.assertEqual(("validating", 7, 7), progress_events[-1])
 
 
 class TestBuilderModelSelection(IsolatedAsyncioTestCase):

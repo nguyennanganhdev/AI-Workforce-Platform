@@ -163,12 +163,10 @@ const buildHistoryActivities = (
 };
 
 const lastToolCall = (messages: Msg[]): ToolCallBlock | null => {
-	for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-		const blocks = messages[messageIndex]?.content ?? [];
-		for (let blockIndex = blocks.length - 1; blockIndex >= 0; blockIndex -= 1) {
-			const block = blocks[blockIndex];
-			if (block?.type === 'tool_call') return block;
-		}
+	const blocks = messages[messages.length - 1]?.content ?? [];
+	for (let blockIndex = blocks.length - 1; blockIndex >= 0; blockIndex -= 1) {
+		const block = blocks[blockIndex];
+		if (block?.type === 'tool_call') return block;
 	}
 	return null;
 };

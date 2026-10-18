@@ -66,11 +66,13 @@ _FIXED_REACT = ReActConfig()
 _BUILDER_AGENT_ID = "workforce-builder"
 _LEADER_NAME = "Workforce Leader"
 _BUILDER_MEMORY_KEY = "workforce_builder_memory_v1"
+_BUILDER_GENERATION_CHECKPOINT_KEY = "generation_checkpoint"
 _BUILDER_SUMMARY_ATTEMPTS = 2
 _BUILDER_OUTLINE_TIMEOUT_SECONDS = 180
 _BUILDER_GENERATION_TIMEOUT_SECONDS = 180
 _BUILDER_REPAIR_TIMEOUT_SECONDS = 180
 _BUILDER_SEMANTIC_REPAIR_ATTEMPTS = 1
+_BUILDER_FAILED_AGENT_RETRIES = 1
 _BUILDER_GENERATION_CONCURRENCY = 3
 _BUILDER_AUTHORED_PROMPT_MAX_CHARS = 5_000
 _BUILDER_BACKFILL_KEY = "builder_contract_backfill_v1"
@@ -1068,6 +1070,31 @@ def _contract_checks(agent: GeneratedAgent) -> dict[str, bool]:
     }
 
 
+def _input_readiness_issue(agent: GeneratedAgent) -> str:
+    contract = agent.behavior_contract
+    missing = sorted(
+        {"intake_mode", "required_customer_inputs"} - contract.model_fields_set,
+    )
+    if missing:
+        return (
+            f"{agent.name}: phải khai báo tường minh behavior_contract."
+            + " và behavior_contract.".join(missing)
+            + ". Coordinator dùng intake_mode=required_before_work với "
+            "required_customer_inputs không rỗng; specialist dùng "
+            "intake_mode=none và required_customer_inputs=[]."
+        )
+    if contract.role == "coordinator":
+        return (
+            f"{agent.name}: coordinator phải dùng intake_mode=required_before_work "
+            "và required_customer_inputs không rỗng; mỗi key phải có trong "
+            "behavior_contract.requirement.business_profile.input_contract."
+        )
+    return (
+        f"{agent.name}: specialist phải dùng intake_mode=none và "
+        "required_customer_inputs=[]."
+    )
+
+
 def _generation_issues(
     generation: BuilderGeneration,
     tools: list[BuilderTool],
@@ -1165,7 +1192,11 @@ def _generation_issues(
             issues.append(f"{prefix}: action bắt buộc phải là tool_backed")
         for check, passed in _contract_checks(agent).items():
             if not passed:
-                issues.append(f"{prefix}: thiếu contract {check}")
+                issues.append(
+                    _input_readiness_issue(agent)
+                    if check == "input_readiness"
+                    else f"{prefix}: thiếu contract {check}"
+                )
         prompt_chars = len(_compile_system_prompt(agent))
         if prompt_chars > _BUILDER_AUTHORED_PROMPT_MAX_CHARS:
             issues.append(
@@ -1339,13 +1370,20 @@ async def _builder_structured_call(
 ) -> tuple[object, int, int]:
     """Measure the complete Builder prompt before a structured model call."""
 
+    parameters = schema.model_json_schema()
+    contract_schema = parameters.get("$defs", {}).get("AgentBehaviorContract")
+    if contract_schema is not None:
+        required = contract_schema.setdefault("required", [])
+        for field_name in ("intake_mode", "required_customer_inputs"):
+            if field_name not in required:
+                required.append(field_name)
     structured_tool = [
         {
             "type": "function",
             "function": {
                 "name": "generate_structured_output",
                 "description": "Return the required structured output.",
-                "parameters": schema.model_json_schema(),
+                "parameters": parameters,
             },
         },
     ]
@@ -1364,7 +1402,7 @@ async def _builder_structured_call(
     # Let the Builder turn those failures into one informed repair attempt.
     response = await model.generate_structured_output(
         messages,
-        schema.model_json_schema(),
+        parameters,
     )
     return response, prompt_tokens, reserved_output_tokens
 
@@ -1637,6 +1675,38 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
     ) from exc
 
 
+def _normalise_input_readiness(content: object) -> object:
+    """Apply the platform's role/readiness invariant before model validation."""
+
+    if isinstance(content, BaseModel):
+        content = content.model_dump(mode="json", exclude_unset=True)
+    if not isinstance(content, dict) or not isinstance(content.get("agents"), list):
+        return content
+
+    normalized = dict(content)
+    normalized_agents: list[object] = []
+    for value in content["agents"]:
+        if not isinstance(value, dict) or not isinstance(
+            value.get("behavior_contract"),
+            dict,
+        ):
+            normalized_agents.append(value)
+            continue
+        agent = dict(value)
+        contract = dict(value["behavior_contract"])
+        if contract.get("role") == "specialist":
+            contract["intake_mode"] = "none"
+            contract["required_customer_inputs"] = []
+        elif contract.get("role") == "coordinator" and contract.get(
+            "required_customer_inputs",
+        ):
+            contract["intake_mode"] = "required_before_work"
+        agent["behavior_contract"] = contract
+        normalized_agents.append(agent)
+    normalized["agents"] = normalized_agents
+    return normalized
+
+
 async def _generate(
     message: str,
     approved_outline: BuilderOutline,
@@ -1646,6 +1716,12 @@ async def _generate(
     config: ChatModelConfig,
     progress: Callable[
         [Literal["generating", "validating", "repairing"], int, int],
+        Awaitable[None],
+    ]
+    | None = None,
+    completed_agents: dict[int, tuple[GeneratedAgent, int, int]] | None = None,
+    agent_completed: Callable[
+        [int, tuple[GeneratedAgent, int, int]],
         Awaitable[None],
     ]
     | None = None,
@@ -1766,7 +1842,8 @@ model settings or internal IDs in human-facing text.
     try:
         semaphore = asyncio.Semaphore(_BUILDER_GENERATION_CONCURRENCY)
         progress_lock = asyncio.Lock()
-        completed = 0
+        saved_results = completed_agents or {}
+        completed = len(saved_results)
         total = len(approved_outline.agents)
 
         async def report(
@@ -1852,7 +1929,7 @@ model settings or internal IDs in human-facing text.
                     generation: _BuilderAgentGeneration | None = None
                     try:
                         generation = _BuilderAgentGeneration.model_validate(
-                            draft_content,
+                            _normalise_input_readiness(draft_content),
                         )
                         generation = generation.model_copy(
                             update={
@@ -1910,7 +1987,13 @@ model settings or internal IDs in human-facing text.
                                 "tracking_intent=create_only and policy_proposal=null; "
                                 "policy_proposal is allowed only for "
                                 "track_to_completion; unspecified requires a "
-                                "clarification question. Issues:\n- "
+                                "clarification question. Always include both "
+                                "behavior_contract.intake_mode and "
+                                "behavior_contract.required_customer_inputs. "
+                                "A coordinator requires required_before_work plus "
+                                "at least one customer input whose key exists in "
+                                "business_profile.input_contract; a specialist "
+                                "requires none plus an empty input list. Issues:\n- "
                                 + "\n- ".join(issues)
                             ),
                         ),
@@ -1934,11 +2017,14 @@ model settings or internal IDs in human-facing text.
             raise AssertionError("unreachable")
 
         async def generate_and_count(
+            index: int,
             planned_agent: PlannedAgent,
         ) -> tuple[GeneratedAgent, int, int]:
             nonlocal completed
             result = await generate_one(planned_agent)
             async with progress_lock:
+                if agent_completed is not None:
+                    await agent_completed(index, result)
                 completed += 1
                 if progress is not None:
                     await progress(
@@ -1949,22 +2035,52 @@ model settings or internal IDs in human-facing text.
             return result
 
         if progress is not None:
-            await progress("generating", 0, total)
-        tasks = [
-            asyncio.create_task(generate_and_count(agent))
-            for agent in approved_outline.agents
+            await progress("generating", completed, total)
+        results: list[tuple[GeneratedAgent, int, int] | None] = [
+            saved_results.get(index) for index in range(total)
         ]
-        try:
-            results = await asyncio.gather(*tasks)
-        except BaseException:
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            raise
+        pending = [
+            (index, agent)
+            for index, agent in enumerate(approved_outline.agents)
+            if index not in saved_results
+        ]
+        for batch_attempt in range(_BUILDER_FAILED_AGENT_RETRIES + 1):
+            tasks = [
+                asyncio.create_task(generate_and_count(index, agent))
+                for index, agent in pending
+            ]
+            try:
+                outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+            except BaseException:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
+
+            retry: list[tuple[int, PlannedAgent]] = []
+            for (index, agent), outcome in zip(pending, outcomes):
+                if isinstance(outcome, BaseException):
+                    if (
+                        isinstance(outcome, ValueError)
+                        and batch_attempt < _BUILDER_FAILED_AGENT_RETRIES
+                    ):
+                        retry.append((index, agent))
+                        continue
+                    raise outcome
+                results[index] = outcome
+            if not retry:
+                break
+            pending = retry
+            if progress is not None:
+                await progress("repairing", completed, total)
+
+        completed_results = [result for result in results if result is not None]
+        if len(completed_results) != total:
+            raise RuntimeError("Builder did not produce every approved agent")
         return (
-            BuilderGeneration(agents=[result[0] for result in results]),
-            max(result[1] for result in results),
-            max(result[2] for result in results),
+            BuilderGeneration(agents=[result[0] for result in completed_results]),
+            max(result[1] for result in completed_results),
+            max(result[2] for result in completed_results),
         )
     except HTTPException:
         raise
@@ -2367,6 +2483,118 @@ async def _set_builder_progress(
         metadata.pop("build_progress", None)
     else:
         metadata["build_progress"] = progress.model_dump(mode="json")
+    session.state.middle_context[_BUILDER_MEMORY_KEY] = metadata
+    await storage.update_session_state(
+        user_id,
+        _BUILDER_AGENT_ID,
+        session.id,
+        session.state,
+    )
+
+
+def _generation_checkpoint_id(
+    outline: BuilderOutline,
+    config: ChatModelConfig,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> str:
+    return _text_digest(
+        json.dumps(
+            {
+                "outline": outline.model_dump(mode="json"),
+                "builder_model": config.model_dump(mode="json"),
+                "tools": [tool.model_dump(mode="json") for tool in tools],
+                "knowledge_bases": [
+                    knowledge.model_dump(mode="json") for knowledge in knowledge_bases
+                ],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+    )
+
+
+def _load_generation_checkpoint(
+    session: SessionRecord,
+    checkpoint_id: str,
+    outline: BuilderOutline,
+    tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
+) -> dict[int, tuple[GeneratedAgent, int, int]]:
+    metadata = session.state.middle_context.get(_BUILDER_MEMORY_KEY, {})
+    checkpoint = metadata.get(_BUILDER_GENERATION_CHECKPOINT_KEY, {})
+    if not isinstance(checkpoint, dict) or checkpoint.get("id") != checkpoint_id:
+        return {}
+    stored_agents = checkpoint.get("agents", {})
+    if not isinstance(stored_agents, dict):
+        return {}
+
+    loaded: dict[int, tuple[GeneratedAgent, int, int]] = {}
+    for raw_index, payload in stored_agents.items():
+        try:
+            index = int(raw_index)
+            if not 0 <= index < len(outline.agents) or not isinstance(payload, dict):
+                continue
+            agent = GeneratedAgent.model_validate(payload.get("agent"))
+            single_outline = BuilderOutline(agents=[outline.agents[index]])
+            if _generation_issues(
+                BuilderGeneration(agents=[agent]),
+                tools,
+                knowledge_bases,
+                single_outline,
+            ):
+                continue
+            loaded[index] = (
+                agent,
+                int(payload.get("prompt_tokens", 0)),
+                int(payload.get("reserved_output_tokens", 0)),
+            )
+        except (TypeError, ValueError, ValidationError):
+            continue
+    return loaded
+
+
+async def _save_generation_checkpoint(
+    storage: StorageBase,
+    user_id: str,
+    session: SessionRecord,
+    checkpoint_id: str,
+    index: int,
+    result: tuple[GeneratedAgent, int, int],
+) -> None:
+    metadata = dict(session.state.middle_context.get(_BUILDER_MEMORY_KEY, {}))
+    checkpoint = metadata.get(_BUILDER_GENERATION_CHECKPOINT_KEY, {})
+    if not isinstance(checkpoint, dict) or checkpoint.get("id") != checkpoint_id:
+        checkpoint = {"id": checkpoint_id, "agents": {}}
+    stored_agents = dict(checkpoint.get("agents", {}))
+    stored_agents[str(index)] = {
+        "agent": result[0].model_dump(mode="json"),
+        "prompt_tokens": result[1],
+        "reserved_output_tokens": result[2],
+    }
+    checkpoint["agents"] = stored_agents
+    metadata[_BUILDER_GENERATION_CHECKPOINT_KEY] = checkpoint
+    session.state.middle_context[_BUILDER_MEMORY_KEY] = metadata
+    await storage.update_session_state(
+        user_id,
+        _BUILDER_AGENT_ID,
+        session.id,
+        session.state,
+    )
+
+
+async def _clear_generation_checkpoint(
+    storage: StorageBase,
+    user_id: str,
+    session: SessionRecord,
+    checkpoint_id: str,
+) -> None:
+    metadata = dict(session.state.middle_context.get(_BUILDER_MEMORY_KEY, {}))
+    checkpoint = metadata.get(_BUILDER_GENERATION_CHECKPOINT_KEY, {})
+    if not isinstance(checkpoint, dict) or checkpoint.get("id") != checkpoint_id:
+        return
+    metadata.pop(_BUILDER_GENERATION_CHECKPOINT_KEY, None)
     session.state.middle_context[_BUILDER_MEMORY_KEY] = metadata
     await storage.update_session_state(
         user_id,
@@ -2822,6 +3050,19 @@ async def prepare_builder(
         )
 
     if approved_outline is not None:
+        checkpoint_id = _generation_checkpoint_id(
+            approved_outline,
+            builder_config,
+            tools,
+            knowledge_bases,
+        )
+        completed_agents = _load_generation_checkpoint(
+            session,
+            checkpoint_id,
+            approved_outline,
+            tools,
+            knowledge_bases,
+        )
 
         async def update_progress(
             stage: Literal["generating", "validating", "repairing"],
@@ -2839,6 +3080,19 @@ async def prepare_builder(
                 ),
             )
 
+        async def checkpoint_agent(
+            index: int,
+            result: tuple[GeneratedAgent, int, int],
+        ) -> None:
+            await _save_generation_checkpoint(
+                storage,
+                user_id,
+                session,
+                checkpoint_id,
+                index,
+                result,
+            )
+
         try:
             try:
                 generation, prompt_tokens, reserved_output_tokens = await _generate(
@@ -2849,6 +3103,8 @@ async def prepare_builder(
                     model,
                     builder_config,
                     update_progress,
+                    completed_agents,
+                    checkpoint_agent,
                 )
             except _BuilderPromptBudgetError as exc:
                 await _record_builder_prompt_measurement(
@@ -2868,6 +3124,12 @@ async def prepare_builder(
                 prompt_tokens,
                 reserved_output_tokens,
                 model.context_size,
+            )
+            await _clear_generation_checkpoint(
+                storage,
+                user_id,
+                session,
+                checkpoint_id,
             )
         finally:
             await _set_builder_progress(storage, user_id, session, None)
