@@ -387,14 +387,14 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 		>
 			<div className="mb-3 flex items-center justify-between border-b px-4 pb-3">
 				<div>
-					<p className="text-sm font-medium">MCP Catalog của platform</p>
+					<p className="text-sm font-medium">MCP của bạn</p>
 					<p className="text-xs text-muted-foreground">
-						Cài MCP đối tác để Builder có thể chọn tool đã đăng ký.
+						Kết nối MCP riêng để Builder chọn tool. MCP của gói được cấp chỉ xem và dùng.
 					</p>
 				</div>
-				{canManage && <Button size="sm" onClick={onAddDirect}>
-					<PlugZap /> Kết nối MCP đối tác
-				</Button>}
+				<Button size="sm" onClick={onAddDirect}>
+					<PlugZap /> Kết nối MCP
+				</Button>
 			</div>
 			{loading ? (
 				<div className="flex justify-center py-10">
@@ -532,7 +532,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onSync(mcp.id)}
-									disabled={!canManage}
+									disabled={!canManage && mcp.editable === false}
 									title="Đồng bộ lại tool"
 								>
 									<RefreshCw />
@@ -542,7 +542,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onRemove(mcp.id)}
-									disabled={!canManage}
+									disabled={!canManage && mcp.editable === false}
 									title={t('common.delete')}
 								>
 									<Trash2 />
@@ -573,7 +573,8 @@ export function MCPHubPage() {
 	const [editingCard, setEditingCard] = useState<MCPCard | null>(null);
 	const [directOpen, setDirectOpen] = useState(false);
 	const syncMcp = async (mcpId: string) => {
-		if (!canManage) return;
+		// Personal users sync their own MCPs; granted ones are read-only.
+		if (!canManage && mcps.find((mcp) => mcp.id === mcpId)?.editable === false) return;
 		await mcpApi.sync(mcpId);
 		await refetchMcps();
 	};
@@ -730,7 +731,7 @@ export function MCPHubPage() {
 				)}
 			</main>
 
-			{canManage && <><InstallMCPDialog
+			{canManage && <InstallMCPDialog
 				card={editing ? editingCard : null}
 				editing={editing}
 				onOpenChange={(open) => {
@@ -740,12 +741,12 @@ export function MCPHubPage() {
 					}
 				}}
 				onInstalled={refetchMcps}
-			/>
+			/>}
 			<DirectMCPDialog
 				open={directOpen}
 				onOpenChange={setDirectOpen}
 				onInstalled={refetchMcps}
-			/></>}
+			/>
 		</div>
 	);
 }

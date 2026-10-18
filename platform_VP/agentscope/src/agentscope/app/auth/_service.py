@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import re
 import secrets
 from contextlib import AbstractAsyncContextManager
@@ -391,8 +392,9 @@ class AuthService(AbstractAsyncContextManager):
     async def register_personal(self, *, email: str, username: str, password: str) -> AuthUser:
         """Register a personal account without any manager membership or scope.
 
-        Model eligibility and quota are separate admin/Domain decisions. Merely
-        signing up never allocates the shared platform key or an unlimited budget.
+        PM decision 19/10: the account works at once (eligible) on the default
+        personal quota; an admin can suspend it or set its own policy. Signing up
+        never grants an unlimited budget.
         """
         from sqlalchemy import text
         from sqlalchemy.exc import IntegrityError
@@ -411,7 +413,8 @@ class AuthService(AbstractAsyncContextManager):
                     {"id": user.id, "tenant": tenant, "email": email, "username": username,
                      "password": self._password_hasher.hash(password), "now": now})
                 await db.execute(text("""INSERT INTO vin_accounts(user_id,tenant_id,eligible,revision)
-                    VALUES (:id,:tenant,false,1)"""), {"id": user.id, "tenant": tenant})
+                    VALUES (:id,:tenant,:eligible,1)"""), {"id": user.id, "tenant": tenant,
+                    "eligible": os.getenv("PERSONAL_SIGNUP_AUTO_ELIGIBLE", "true").strip().lower() == "true"})
         except IntegrityError as exc:
             raise UserAlreadyExistsError("email or username already exists") from exc
         return user

@@ -719,6 +719,8 @@ export interface MCPView {
 	card_id: string | null;
 	version: string | null;
 	tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
+	/** False for a granted pack/domain MCP: view and use only. */
+	editable?: boolean;
 	catalog_revision: number;
 	last_synced_at: string | null;
 	last_sync_error: string | null;

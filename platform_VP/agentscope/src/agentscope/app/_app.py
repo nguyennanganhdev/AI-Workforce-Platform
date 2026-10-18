@@ -381,8 +381,10 @@ def create_app(
             from .deps import get_current_principal
             from .vin_platform._context import execution_scope
             path = request.url.path.rstrip("/")
+            # Personal users manage their own MCPs (PM 19/10); credentials, skills and the
+            # hub stay admin catalog. The MCP router only touches the caller's own records.
             catalog_mutation = request.method not in {"GET", "HEAD", "OPTIONS"} and any(
-                path == prefix or path.startswith(prefix + "/") for prefix in ("/credential", "/mcp", "/skill", "/hub"))
+                path == prefix or path.startswith(prefix + "/") for prefix in ("/credential", "/skill", "/hub"))
             context = None
             if catalog_mutation or request.headers.get("authorization"):
                 try:

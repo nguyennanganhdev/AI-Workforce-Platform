@@ -22,6 +22,26 @@ async def insert_once(connection, table, values):
     return result.rowcount
 
 
+def default_personal_policy() -> QuotaPolicy:
+    """The quota of a personal account no admin policy covers (env-tunable)."""
+    import os
+
+    def number(name, default):
+        return int(os.getenv(name, str(default)))
+    models = [m.strip() for m in os.getenv("PERSONAL_DEFAULT_MODELS", "gpt-6-luna").split(",") if m.strip()]
+    return QuotaPolicy(
+        daily_tokens=number("PERSONAL_DEFAULT_DAILY_TOKENS", 300_000),
+        monthly_tokens=number("PERSONAL_DEFAULT_MONTHLY_TOKENS", 5_000_000),
+        max_output_tokens=number("PERSONAL_DEFAULT_MAX_OUTPUT_TOKENS", 16_384),
+        max_concurrency=number("PERSONAL_DEFAULT_MAX_CONCURRENCY", 2),
+        storage_bytes=number("PERSONAL_DEFAULT_STORAGE_BYTES", 100 * 1024 * 1024),
+        max_file_bytes=number("PERSONAL_DEFAULT_MAX_FILE_BYTES", 10 * 1024 * 1024),
+        embedding_daily_tokens=number("PERSONAL_DEFAULT_EMBEDDING_DAILY_TOKENS", 200_000),
+        models=models,
+        enabled=os.getenv("PERSONAL_DEFAULT_QUOTA_ENABLED", "true").strip().lower() == "true",
+    )
+
+
 class QuotaAuthority:
     def __init__(self, service):
         self.service = service
@@ -40,6 +60,10 @@ class QuotaAuthority:
             if len({str(r["data"]) for r in group_rows}) > 1:
                 raise PlatformError("QUOTA_POLICY_AMBIGUOUS", 403)
             selected = (group_rows[0] if group_rows else by_key.get(keys[-1]))
+        if selected is None and context.role == "VIN_USER":
+            # Self-registered users work at once on the default quota (PM 19/10);
+            # an admin policy for the user, a group or role:VIN_USER replaces it.
+            selected = {"data": default_personal_policy().model_dump(), "revision": 0}
         if selected is None:
             raise PlatformError("QUOTA_POLICY_REQUIRED", 403)
         policy = QuotaPolicy.model_validate(selected["data"])

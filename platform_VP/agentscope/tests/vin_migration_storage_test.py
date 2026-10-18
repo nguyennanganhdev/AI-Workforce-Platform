@@ -138,6 +138,8 @@ async def test_expand_migration_and_postgres_race(tmp_path):
             assert user.role == "VIN_USER" and user.area_id is None and user.domain_id is None
             async with engine.begin() as db:
                 assert (await db.execute(text("SELECT count(*) FROM wf_manager_memberships WHERE manager_account_id=:u"), {"u": user.id})).scalar_one() == 0
+                # Self-registration works at once on the default quota (PM 19/10).
+                assert (await db.execute(text("SELECT eligible FROM vin_accounts WHERE user_id=:u"), {"u": user.id})).scalar_one() is True
             tokens = await auth.login(tenant_id="test", identity="resident", password="offline-test-password")
             request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(auth_service=auth, vin_platform_service=service)))
             principal = await get_current_principal(request, authorization="Bearer " + tokens.access_token)

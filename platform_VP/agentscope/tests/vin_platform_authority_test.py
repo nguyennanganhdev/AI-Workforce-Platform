@@ -185,9 +185,25 @@ async def test_storage_quota_counts_actual_bytes_and_releases_once(authority):
 
 
 @pytest.mark.asyncio
-async def test_missing_policy_fails_closed(authority):
+async def test_personal_user_without_policy_gets_the_bounded_default(authority, monkeypatch):
+    # PM 19/10: self-registered users work at once on the default quota.
+    alice = await authority.context("alice")
+    monkeypatch.setenv("PERSONAL_DEFAULT_MODELS", "default-model")
+    monkeypatch.setenv("PERSONAL_DEFAULT_DAILY_TOKENS", "50")
+    await authority.quota.reserve(alice, budget=10, purpose="chat", model="default-model")
+    with pytest.raises(PlatformError):
+        await authority.quota.reserve(alice, budget=10, purpose="chat", model="test-model")
+    with pytest.raises(PlatformError, match="QUOTA_EXCEEDED"):
+        await authority.quota.reserve(alice, budget=60, purpose="chat", model="default-model")
+    monkeypatch.setenv("PERSONAL_DEFAULT_QUOTA_ENABLED", "false")
+    with pytest.raises(PlatformError, match="QUOTA_DISABLED"):
+        await authority.quota.reserve(alice, budget=10, purpose="chat", model="default-model")
+
+
+@pytest.mark.asyncio
+async def test_missing_policy_still_fails_closed_for_other_roles(authority):
     with pytest.raises(PlatformError, match="QUOTA_POLICY_REQUIRED"):
-        await authority.quota.reserve(await authority.context("alice"), budget=10, purpose="chat", model="test-model")
+        await authority.quota.reserve(await authority.context("admin"), budget=10, purpose="chat", model="test-model")
 
 
 @pytest.mark.asyncio

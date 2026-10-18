@@ -35,6 +35,7 @@ async def test_existing_mcp_page_returns_granted_safe_readonly_metadata(authorit
     storage = authority.storage
     storage.vin_platform_service = authority
     storage.get_mcp = AsyncMock(return_value=record)
+    storage.list_mcps = AsyncMock(return_value=[])  # alice has no private MCP here
     admin = await authority.context("admin")
     ident = await authority.publish_catalog(admin, CatalogEntry(kind="mcp", resource_id="mcp1", owner_id="admin", name="Domain"))
     grant = await authority.grant(admin, ResourceGrant(catalog_id=ident, subject_kind="user", subject_id="alice", permissions=["view", "bind"]))

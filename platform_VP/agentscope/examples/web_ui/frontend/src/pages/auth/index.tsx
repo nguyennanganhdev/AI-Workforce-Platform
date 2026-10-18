@@ -1,9 +1,9 @@
 import { CircleAlert, Loader2, ShieldCheck } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { AuthShowcase } from './AuthShowcase';
 import { authApi } from '@/api';
-import type { AreaOption, AuthUser, DomainOption } from '@/api';
+import type { AuthUser } from '@/api';
 import { ApiError, getBaseUrl } from '@/api/client';
 import { BRAND_NAME, BrandMark } from '@/components/layout/Brand';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -11,14 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select';
-import { VIN_EXPERIENCE_ENABLED } from '@/features/workforce/shell/flags';
 import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
@@ -37,65 +29,8 @@ export function AuthPage({ onAuthenticated }: Props) {
 	const [email, setEmail] = useState('');
 	const [username, setUsername] = useState('');
 	const [password, setPassword] = useState('');
-	const [domainId, setDomainId] = useState('');
-	const [areaId, setAreaId] = useState('');
-	const [domains, setDomains] = useState<DomainOption[]>([]);
-	const [areas, setAreas] = useState<AreaOption[]>([]);
-	const [loadingDirectory, setLoadingDirectory] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [errorMessage, setErrorMessage] = useState('');
-
-	useEffect(() => {
-		if (VIN_EXPERIENCE_ENABLED) return;
-		let active = true;
-		setLoadingDirectory(true);
-		authApi
-			.listDomains()
-			.then((items) => {
-				if (!active) return;
-				setDomains(items);
-				if (items.length > 0) setDomainId((current) => current || items[0].id);
-			})
-			.catch(() => {
-				// Login remains available even if directory loading fails.
-			})
-			.finally(() => {
-				if (active) setLoadingDirectory(false);
-			});
-		return () => {
-			active = false;
-		};
-	}, []);
-
-	useEffect(() => {
-		if (VIN_EXPERIENCE_ENABLED) return;
-		if (!domainId) {
-			setAreas([]);
-			setAreaId('');
-			return;
-		}
-		let active = true;
-		setLoadingDirectory(true);
-		authApi
-			.listAreas(domainId)
-			.then((items) => {
-				if (!active) return;
-				setAreas(items);
-				setAreaId(items[0]?.id ?? '');
-			})
-			.catch(() => {
-				if (active) {
-					setAreas([]);
-					setAreaId('');
-				}
-			})
-			.finally(() => {
-				if (active) setLoadingDirectory(false);
-			});
-		return () => {
-			active = false;
-		};
-	}, [domainId]);
 
 	const switchMode = (next: Mode) => {
 		setMode(next);
@@ -108,20 +43,13 @@ export function AuthPage({ onAuthenticated }: Props) {
 		setErrorMessage('');
 		try {
 			if (mode !== 'login') {
-				const personal = { email: email.trim(), username: username.trim(), password };
-				const registered = VIN_EXPERIENCE_ENABLED ? await authApi.registerPersonal(personal) : await authApi.register({
-					email: email.trim(),
-					username: username.trim(),
-					password,
-					domain_id: domainId,
-					area_id: areaId,
-				});
+				// Everyone signs up as a personal account; staff accounts are made by an admin.
+				const registered = await authApi.registerPersonal({ email: email.trim(), username: username.trim(), password });
 				if (registered.status === 'pending') {
-					// A BQL account waits for the platform or domain admin.
 					setMode('login');
 					setIdentity(username.trim());
 					setPassword('');
-					setErrorMessage(VIN_EXPERIENCE_ENABLED ? 'Đã gửi đăng ký. Tài khoản đang chờ xác minh.' : 'Đã gửi đăng ký. Tài khoản BQL của khu này đang chờ quản trị duyệt; bạn đăng nhập được sau khi được duyệt.');
+					setErrorMessage('Đã gửi đăng ký. Tài khoản đang chờ quản trị duyệt.');
 					return;
 				}
 			}
@@ -134,12 +62,12 @@ export function AuthPage({ onAuthenticated }: Props) {
 			if (error instanceof ApiError && error.status === 403) {
 				setErrorMessage('Tài khoản đang chờ quản trị duyệt. Vui lòng thử lại sau khi được duyệt.');
 			} else if (error instanceof ApiError && error.status === 409 && mode !== 'login') {
-				setErrorMessage(VIN_EXPERIENCE_ENABLED ? 'Email hoặc tên đăng nhập đã được sử dụng.' : 'Không đăng ký được: email/tên đăng nhập đã có, hoặc khu này đã có tài khoản BQL (mỗi khu một tài khoản).');
+				setErrorMessage('Email hoặc tên đăng nhập đã được sử dụng.');
 			} else if (error instanceof ApiError && error.status === 503) {
 				setErrorMessage(t('auth.authenticationDisabled'));
 			} else {
 				const message = formatApiErrorForAlert(error);
-				const errorKeys: Record<string, string> = {"invalid credentials":"invalidCredentials","invalid email address":"invalidEmail","username must be 3-64 lowercase letters, numbers, ., _, or -":"invalidUsername","password must be 12-1024 bytes":"invalidPassword","email or username already exists":"alreadyExists","domain_id and area_id are required":"scopeRequired","area does not belong to the selected domain":"invalidArea"};
+				const errorKeys: Record<string, string> = {"invalid credentials":"invalidCredentials","invalid email address":"invalidEmail","username must be 3-64 lowercase letters, numbers, ., _, or -":"invalidUsername","password must be 12-1024 bytes":"invalidPassword","email or username already exists":"alreadyExists"};
 				const key = errorKeys[message];
 				setErrorMessage(key ? t('auth.errors.' + key) : message);
 			}
@@ -185,7 +113,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 							<CardDescription className="mt-1.5">
 								{mode === 'login'
 									? t('auth.loginDescription')
-									: VIN_EXPERIENCE_ENABLED ? 'Tạo tài khoản cá nhân. Bạn có thể liên kết Vinhomes sau khi đăng nhập.' : t('auth.registerDescription')}
+									: 'Tạo tài khoản để dựng đội agent của riêng bạn. Gói như Vinhomes hay Travelling được thêm sau khi đăng nhập.'}
 							</CardDescription>
 						</div>
 						<div className="grid grid-cols-2 rounded-full bg-[var(--cue-bg-subtle,var(--muted))] p-1">
@@ -280,56 +208,6 @@ export function AuthPage({ onAuthenticated }: Props) {
 									)}
 								</Field>
 
-								{mode === 'register' && !VIN_EXPERIENCE_ENABLED && (
-									<div className="grid gap-4 sm:grid-cols-2">
-										<Field>
-											<FieldLabel>{t('auth.domain')}</FieldLabel>
-											<Select
-												value={domainId}
-												onValueChange={setDomainId}
-												disabled={loadingDirectory}
-											>
-												<SelectTrigger className="w-full">
-													<SelectValue
-														placeholder={t('auth.selectDomain')}
-													/>
-												</SelectTrigger>
-												<SelectContent>
-													{domains.map((domain) => (
-														<SelectItem
-															key={domain.id}
-															value={domain.id}
-														>
-															{domain.name}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</Field>
-										<Field>
-											<FieldLabel>{t('auth.area')}</FieldLabel>
-											<Select
-												value={areaId}
-												onValueChange={setAreaId}
-												disabled={loadingDirectory || areas.length === 0}
-											>
-												<SelectTrigger className="w-full">
-													<SelectValue
-														placeholder={t('auth.selectArea')}
-													/>
-												</SelectTrigger>
-												<SelectContent>
-													{areas.map((area) => (
-														<SelectItem key={area.id} value={area.id}>
-															{area.name}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</Field>
-									</div>
-								)}
-
 								{errorMessage && (
 									<Alert variant="destructive">
 										<CircleAlert />
@@ -341,10 +219,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 									type="submit"
 									size="lg"
 									className="w-full"
-									disabled={
-										submitting ||
-										(mode === 'register' && !VIN_EXPERIENCE_ENABLED && (!domainId || !areaId))
-									}
+									disabled={submitting}
 								>
 									{submitting && <Loader2 className="size-4 animate-spin" />}
 									{mode === 'login' ? t('auth.login') : t('auth.createAccount')}

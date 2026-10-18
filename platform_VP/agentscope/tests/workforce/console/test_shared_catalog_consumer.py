@@ -34,13 +34,21 @@ async def shared(real_authority):
         discovered_tools=[{"name": "lookup", "read_only": True, "requires_consent": False}])
     skill = SkillRecord(id="shared-skill", user_id="admin", name="safe-skill", markdown="# Reviewed")
 
+    # PM 19/10: a personal user may own private MCPs; only the owner sees them.
+    storage.own_mcps = {}
+
     async def get_record(owner, ident):
-        assert owner == "admin", "Resolver must retain the service owner"
+        if owner != "admin":
+            return storage.own_mcps.get((owner, ident))
         return {mcp.id: mcp, skill.id: skill}.get(ident)
 
+    async def get_skill(owner, ident):
+        assert owner == "admin", "Resolver must retain the service owner"
+        return {skill.id: skill}.get(ident)
+
     storage.get_mcp = AsyncMock(side_effect=get_record)
-    storage.get_skill = AsyncMock(side_effect=get_record)
-    storage.list_mcps = AsyncMock(side_effect=AssertionError("owned-only MCP fallback"))
+    storage.get_skill = AsyncMock(side_effect=get_skill)
+    storage.list_mcps = AsyncMock(side_effect=lambda owner: [r for (o, _), r in storage.own_mcps.items() if o == owner])
     storage.list_skills = AsyncMock(side_effect=AssertionError("owned-only skill fallback"))
     storage.list_knowledge_bases = AsyncMock(return_value=[])
     grants = []
@@ -50,8 +58,21 @@ async def shared(real_authority):
         grants.append(await authority.grant(admin, ResourceGrant(catalog_id=ident,
             subject_kind="user", subject_id="alice", permissions=["view", "bind", "execute"])))
     yield storage, authority, admin, grants, mcp, skill
-    storage.list_mcps.assert_not_awaited()
     storage.list_skills.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_personal_user_owns_private_mcps_next_to_the_granted_catalog(shared):
+    storage, _, _, _, mcp, _ = shared
+    private = MCPRecord(id="alice-mcp", user_id="alice", client=MCPClient(
+        name="alice-travel", is_stateful=False, mcp_config=HttpMCPConfig(url="https://offline.invalid/alice")),
+        discovered_tools=[{"name": "search_hotels", "read_only": False}])
+    storage.own_mcps[("alice", private.id)] = private
+    assert set(await tool_catalog(storage, "alice")) == {"shared-mcp:lookup", "alice-mcp:search_hotels"}
+    assert await resolve_catalog_resource(storage, "alice", "mcp", "alice-mcp") is private
+    assert "alice-mcp:search_hotels" not in await tool_catalog(storage, "bob")
+    # A granted MCP id never resolves to a private record of another owner.
+    assert (await resolve_catalog_resource(storage, "alice", "mcp", "shared-mcp")).id == mcp.id
 
 
 @pytest.mark.asyncio
