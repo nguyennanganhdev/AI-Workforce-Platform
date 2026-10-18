@@ -268,7 +268,7 @@ Hiện tại:
 - Còn thiếu:
   - schema và cờ của tool (mục 3.3);
   - catalog bị cắt (mục 3.3);
-  - tài nguyên chia sẻ: Builder chỉ đọc theo `user_id`. Trên VPS, MCP nằm ở tài khoản `fbcc…` còn KB và skill ở `600f…`, nên Builder của một tài khoản không thấy đủ cả ba loại. Cần dùng `ResourceAccessService` để đọc cả tài nguyên được chia sẻ.
+  - ~~tài nguyên chia sẻ~~: kiểm tra lại ngày 18/10 cho thấy mỗi tài khoản BQL trên VPS đều có MCP, KB và skill riêng, nên Builder đọc đủ. Không phải lỗi; không sửa.
 
 ## 4. Kế hoạch triển khai
 
@@ -287,6 +287,35 @@ Mỗi đợt: một nhánh từ nhánh nền, commit theo lát, PR, test tự đ
 | I. Kênh mới (tùy Q5) | Một kênh (ví dụ Telegram) theo `ChannelBase` | Test với transport giả |
 
 Thứ tự đề xuất: A → B → C → F → E → G → D → H → I. B ảnh hưởng chất lượng của mọi mục khác. F và E giải quyết việc "eval toàn fail".
+
+## 4.1 Trạng thái triển khai (nhánh `feat/review-plan-20261018`)
+
+Quyết định của chủ dự án ngày 18/10:
+- Q1 nền develop2.
+- Q2 Reception dùng gpt-6-luna; mọi vai trò chỉ dùng gpt-6-luna.
+- Q3 effort đúng như đề xuất.
+- Q4 giá đã xác nhận.
+- Q5 Telegram và Zalo OA, ẩn DingTalk/Feishu.
+- Q6 3D thật bằng three.js.
+- Q7 để người triển khai quyết.
+
+Không lượt kiểm thử nào gọi model thật.
+
+| Đợt | Commit | Kết quả |
+|---|---|---|
+| B Platform | `93f79c2e` | Effort theo vai trò. Chat Completions có tool vẫn gửi `none`. Trần output 16.384. Bảng giá gpt-6-luna; lần gọi cũ được tính giá khi đọc. |
+| B Reception | `0737bd86` | Responses API; reasoning items được gửi lại cùng kết quả tool; mặc định gpt-6-luna. |
+| C | `5722bf35` | Bước đánh giá phiếu (effort medium); backend vẫn kiểm trích dẫn; Leader nhận dòng "Đánh giá của Lễ tân". |
+| F | `73d5a408`, `22ea268b` | Fixture khi chưa có sandbox; chấm công bằng; `/builder/repair` (2 vòng); UI eval mới. |
+| E | `c9cb894b` | Agent trùng: chọn Cập nhật / Dùng lại / Tạo mới; Builder thấy roster, schema và quyền tool; library là JSON hợp lệ. |
+| G | `04da4bff` | Sơ đồ 3D three.js đồng bộ với danh sách; `/studio/collaboration`; chi phí $ theo agent. |
+| D | `32925bbf` | Tiến độ ghim 5 bước, dựng từ trạng thái và sự kiện sẵn có của yêu cầu (không cần sự kiện `case.progress` mới); thẻ xác nhận đồng bộ. |
+| H | sau `32925bbf` | Kiểm tra chéo trước quyết định rủi ro; báo cáo thành viên 4 phần. |
+
+Chưa làm và lý do:
+- **Nguồn học mới cho memory:** memory trống vì VPS mới có 1 phiếu được đóng. Thêm nguồn học từ eval có thể làm bẩn memory, nên giữ nguyên quy tắc học từ kết quả đã xác nhận.
+- **Dọn snapshot shared context:** các bản ghi này có thể dùng cho kiểm soát phiên bản và kiểm toán; cần quyết định riêng.
+- **I (Telegram, Zalo OA) và phiên thử Leader:** đang được một phiên khác viết trực tiếp trong worktree này (chưa commit).
 
 ## 5. Câu hỏi cần bạn quyết
 
