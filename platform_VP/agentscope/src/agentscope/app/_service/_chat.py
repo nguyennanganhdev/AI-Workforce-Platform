@@ -96,6 +96,7 @@ from ..storage import (
     ContextDelta,
     SessionNaming,
     SessionRecord,
+    ScheduleOrigin,
     SOPOrigin,
     StorageBase,
 )
@@ -1962,15 +1963,35 @@ class ChatService:
             # rather than handing the run to whichever one holds the
             # channel's connection. Covers scheduled / background wakes,
             # not just inbound channel messages.
+            delivery = session_record.origin
             if (
-                isinstance(session_record.origin, ChannelOrigin)
+                isinstance(delivery, ScheduleOrigin)
+                and delivery.deliver_channel_id
+                and delivery.deliver_chat_id
+            ):
+                # A schedule posting its result into a channel chat.
+                delivery = ChannelOrigin(
+                    channel_id=delivery.deliver_channel_id,
+                    chat_id=delivery.deliver_chat_id,
+                )
+            if (
+                isinstance(delivery, ChannelOrigin)
                 and self._channel_clients is not None
             ):
+                # Who may answer a confirmation card: the platform user
+                # whose message started this run, else the session opener.
+                senders = [
+                    msg.name
+                    for msg in (input_msg if isinstance(input_msg, list) else [input_msg])
+                    if isinstance(msg, Msg) and msg.role == "user"
+                ]
+                requester = senders[-1] if senders else delivery.channel_user_id
                 await self._channel_clients.deliver(
                     session_id=session_id,
-                    channel_id=session_record.origin.channel_id,
-                    chat_id=session_record.origin.chat_id,
+                    channel_id=delivery.channel_id,
+                    chat_id=delivery.chat_id,
                     agent_id=agent_id,
+                    requester_id=requester or "",
                 )
             reply_msg: Msg | None = None
             reply_msgs: list[Msg] = []

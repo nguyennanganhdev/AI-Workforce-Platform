@@ -14,6 +14,7 @@ export { channelApi } from './channel';
 export { healthApi } from './health';
 export { authApi } from './auth';
 export { workforceApi } from './workforce';
+export { adminApi } from './admin';
 export type {
 	AgentToolSettings,
 	BuilderConversationSummary,

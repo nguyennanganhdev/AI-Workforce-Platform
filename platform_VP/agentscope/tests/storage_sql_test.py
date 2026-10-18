@@ -1184,6 +1184,13 @@ class AsyncSQLAlchemyStorageTest(IsolatedAsyncioTestCase):
                     "blob_uri": "local://f.txt",
                     "error": None,
                     "chunk_count": 3,
+                    "text_content": None,
+                    "review_status": "approved",
+                    "source_ref": "",
+                    "version": "",
+                    "reviewed_by": None,
+                    "effective_from": None,
+                    "effective_until": None,
                 },
             },
         )

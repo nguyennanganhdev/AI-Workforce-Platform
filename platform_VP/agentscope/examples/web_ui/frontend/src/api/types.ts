@@ -734,6 +734,8 @@ export interface DirectInstallMCPRequest {
  * re-fetched from the hub when the skill reaches a workspace.
  */
 export interface SkillView {
+	review_status?: 'candidate' | 'approved' | 'revoked';
+	archive_cached?: boolean;
 	id: string;
 	/** Unique per user — the handle a workspace refers to it by. */
 	name: string;
@@ -781,6 +783,12 @@ export interface ScheduleData {
 	permission_mode: PermissionMode;
 	source: ScheduleSource;
 	source_session_id: string;
+	once?: boolean;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
+	last_fired_at?: string | null;
+	last_session_id?: string;
+	last_error?: string;
 }
 
 export interface ScheduleRecord extends RecordBase {
@@ -799,6 +807,10 @@ export interface CreateScheduleRequest {
 	enabled?: boolean;
 	stateful?: boolean;
 	permission_mode?: PermissionMode;
+	once?: boolean;
+	ended_at?: string | null;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
 }
 
 export interface CreateScheduleResponse {
@@ -908,6 +920,7 @@ export interface ListChunkersResponse {
  * :class:`agentscope.app._service.KnowledgeBaseView`.
  */
 export interface KnowledgeBaseView {
+	retrieval_mode?: 'vector' | 'lexical';
 	id: string;
 	name: string;
 	description: string;

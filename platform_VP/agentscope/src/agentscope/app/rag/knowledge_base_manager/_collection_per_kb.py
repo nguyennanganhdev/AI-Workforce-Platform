@@ -136,7 +136,7 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
         if record is None:
             return False
 
-        if await self._vector_store.has_collection(
+        if record.data.retrieval_mode != "lexical" and await self._vector_store.has_collection(
             record.data.collection_name,
         ):
             await self._vector_store.delete_collection(
@@ -183,6 +183,10 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
             raise KnowledgeBaseNotFoundError(
                 f"Knowledge base {knowledge_base_id!r} not found.",
             )
+
+        if record.data.retrieval_mode == "lexical":
+            from ._lexical import LexicalKnowledge
+            return LexicalKnowledge(self._storage, record)
 
         # KB manager is an owner-internal path: the credential lives
         # under the same owner as the knowledge base, so we read it

@@ -18,6 +18,7 @@ from fastapi import (
     HTTPException,
     Path,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -26,6 +27,7 @@ from fastapi.responses import StreamingResponse
 from ..access import ResourceKind
 from ..deps import (
     get_current_user_id,
+    get_current_principal,
     get_download_secret,
     get_knowledge_base_manager,
     get_knowledge_base_service,
@@ -71,6 +73,8 @@ knowledge_base_router = APIRouter(
     tags=["knowledge_bases"],
     responses={404: {"description": "Not found"}},
 )
+from ._knowledge_references import reference_router
+knowledge_base_router.include_router(reference_router)
 
 
 @knowledge_base_router.get(
@@ -858,6 +862,7 @@ async def create_document_download_token(
     summary="Fetch the original uploaded file of a document",
 )
 async def read_knowledge_document(
+    request: Request,
     knowledge_base_id: str = Path(description="The knowledge base id."),
     document_id: str = Path(description="The document id."),
     download: bool = Query(
@@ -875,6 +880,7 @@ async def read_knowledge_document(
         ),
     ),
     x_user_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
     service: "KnowledgeBaseService" = Depends(get_knowledge_base_service),
     download_secret: str = Depends(get_download_secret),
 ) -> StreamingResponse:
@@ -919,13 +925,9 @@ async def read_knowledge_document(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=str(e),
             ) from e
-    elif x_user_id:
-        user_id = x_user_id
     else:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-User-ID header or download token is required.",
-        )
+        principal = await get_current_principal(request, authorization, x_user_id)
+        user_id = principal.user_id
 
     record, size, content = await service.stream_document_content(
         user_id=user_id,

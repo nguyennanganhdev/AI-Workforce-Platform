@@ -51,6 +51,13 @@ class KnowledgeDocumentData(BaseModel):
     filename: str = Field(
         description="Original filename supplied by the uploader.",
     )
+    text_content: str | None = Field(default=None, max_length=100000)
+    review_status: Literal["candidate", "approved", "retired"] = "approved"
+    source_ref: str = Field(default="", max_length=1000)
+    version: str = ""
+    reviewed_by: str | None = None
+    effective_from: str | None = None
+    effective_until: str | None = None
     """The original filename — used both for citation and as the
     ``source`` field on every chunk produced from this document."""
 

@@ -7,6 +7,8 @@ import type { SkillRecord, SkillView } from './types';
  * session's workspace actually holds.
  */
 export const skillApi = {
+	create: (body: { name: string; description: string; markdown: string }) => client.post<SkillView>('/skill', body),
+	review: (id: string, status: 'approved' | 'revoked') => client.post<SkillView>(`/skill/${encodeURIComponent(id)}/review`, { status }),
 	list: () => client.get<SkillView[]>('/skill'),
 
 	/** Unlike the list endpoint, this also carries the `SKILL.md` body. */

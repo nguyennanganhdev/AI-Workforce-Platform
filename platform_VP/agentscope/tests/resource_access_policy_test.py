@@ -417,6 +417,7 @@ class ResourceAccessServiceTest(IsolatedAsyncioTestCase):
             view.model_dump(),
             {
                 "id": "kb-1",
+                "retrieval_mode": "vector",
                 "name": "My KB",
                 "description": "A test knowledge base.",
                 "embedding_model_config": {
@@ -456,6 +457,7 @@ class ResourceAccessServiceTest(IsolatedAsyncioTestCase):
             [
                 {
                     "id": "kb-1",
+                    "retrieval_mode": "vector",
                     "name": "My KB",
                     "description": "A test knowledge base.",
                     "embedding_model_config": {

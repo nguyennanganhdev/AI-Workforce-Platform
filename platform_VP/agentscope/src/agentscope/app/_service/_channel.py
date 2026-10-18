@@ -88,7 +88,7 @@ class ChannelService:
             name=name,
             user_id=user_id,
             enabled=enabled,
-            credentials=credentials,
+            credentials=self._types.seal_credentials(channel_type, credentials),
             platform_config=platform_config,
             routing=routing,
             session=session,

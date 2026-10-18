@@ -93,6 +93,38 @@ class ScheduleData(BaseModel):
         "answer prompts.",
     )
 
+    once: bool = Field(
+        default=False,
+        description="Fire only at the next matching time, then disable.",
+    )
+
+    deliver_channel_id: str = Field(
+        default="",
+        description="Channel the result is posted to; empty keeps it in "
+        "the run's session.",
+    )
+
+    deliver_chat_id: str = Field(
+        default="",
+        description="Platform chat of deliver_channel_id to post into.",
+    )
+
+    last_fired_at: datetime | None = Field(
+        default=None,
+        description="When the schedule last started a run.",
+    )
+
+    last_session_id: str = Field(
+        default="",
+        description="Session of the last run, to open its result.",
+    )
+
+    last_error: str = Field(
+        default="",
+        description="Why the last trigger could not start a run, if it "
+        "failed.",
+    )
+
     source: ScheduleSource = Field(
         default=ScheduleSource.USER,
         description="Indicates how this schedule was created.",

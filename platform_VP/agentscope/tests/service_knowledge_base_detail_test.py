@@ -18,6 +18,7 @@ issue #2360:
 """
 import io
 import tempfile
+from types import SimpleNamespace
 from typing import Any
 from unittest.async_case import IsolatedAsyncioTestCase
 
@@ -33,6 +34,7 @@ from service_knowledge_base_upload_test import (
 )
 
 from agentscope.app import create_app
+from agentscope.app.auth import AuthPrincipal
 from agentscope.app.access import (
     ResourceAccessPolicyBase,
     ResourceKind,
@@ -526,6 +528,21 @@ class DocumentContentTest(_KnowledgeBaseDetailTestBase):
                 headers={"X-User-ID": "user-1"},
             )
             self.assertEqual(response.status_code, 404)
+
+
+class AuthenticatedDocumentPreviewTest(_KnowledgeBaseDetailTestBase):
+    def test_bearer_preview_uses_verified_identity_and_rejects_legacy_spoofing(self):
+        principal = AuthPrincipal(user_id="user-1", tenant_id="default", session_id="s", token_id="t")
+        from unittest.mock import Mock
+
+        with TestClient(self._app) as client:
+            self._app.state.auth_service = SimpleNamespace(verify_access_token=Mock(return_value=principal))
+            path = f"/knowledge_bases/{self._kb_id}/documents/doc-1"
+            preview = client.get(path, headers={"Authorization": "Bearer valid", "X-User-ID": "other-user"})
+            self.assertEqual(preview.status_code, 200)
+            self.assertEqual(preview.content, self._file_bytes)
+            self.assertEqual(client.get(path, headers={"X-User-ID": "user-1"}).status_code, 401)
+            self._app.state.auth_service = None
 
 
 class DocumentDownloadTokenTest(_KnowledgeBaseDetailTestBase):

@@ -406,8 +406,10 @@ class KnowledgeBaseService:
         # write would leave the blob orphaned. Uploading a document is
         # a mutation, so require edit permission.
         owner_id = await self._require_edit(user_id, knowledge_base_id)
-
         document_id = uuid.uuid4().hex
+        kb = await self._storage.get_knowledge_base(owner_id, knowledge_base_id)
+        if kb.data.retrieval_mode == "lexical":
+            raise HTTPException(409, "Kho văn bản dùng mục tài liệu tham chiếu; không chạy embedding khi tải file.")
         blob_uri = await self._blob_store.write_stream(
             key=f"kb/{knowledge_base_id}/{document_id}",
             stream=stream,
@@ -717,6 +719,11 @@ class KnowledgeBaseService:
             document_id,
         )
         blob_uri = document.data.blob_uri
+        if document.data.text_content is not None:
+            payload = document.data.text_content.encode("utf-8")
+            async def inline_content():
+                yield payload
+            return document, len(payload), inline_content()
         try:
             # A measured size doubles as proof the blob is there, so the
             # extra existence check only runs for backends that cannot
@@ -893,6 +900,8 @@ class KnowledgeBaseService:
         record/vector-store state is still consistent and a future
         sweep can reclaim the disk space.  Surface only via logs.
         """
+        if blob_uri.startswith("inline://"):
+            return
         try:
             await self._blob_store.delete(blob_uri)
         except Exception:  # noqa: BLE001 — cleanup only

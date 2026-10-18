@@ -2,7 +2,8 @@ import { format } from 'date-fns';
 import { ChevronDownIcon, CircleAlert, Loader2, PlusCircle } from 'lucide-react';
 import * as React from 'react';
 
-import type { ChatModelConfig, PermissionMode } from '@/api';
+import { channelApi } from '@/api';
+import type { ChannelRecord, ChatModelConfig, PermissionMode } from '@/api';
 import { AgentSelect } from '@/components/select/AgentSelect';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { PermissionModeSelect } from '@/components/select/PermissionModeSelect';
@@ -57,6 +58,8 @@ function getDefaultForm() {
 		permissionMode: 'dont_ask' as PermissionMode,
 		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 		stateful: false,
+		deliverChannelId: '',
+		deliverChatId: '',
 	};
 }
 
@@ -138,17 +141,38 @@ function DatePickerButton({
 export function CreateScheduleDialog({ open, onOpenChange, onCreated }: Props) {
 	const { t } = useTranslation();
 	const { create } = useSchedules();
-	const { agents } = useAgents();
+	const { runnable: agents } = useAgents();
 	const [form, setForm] = React.useState(getDefaultForm);
 	const [loading, setLoading] = React.useState(false);
 	const [error, setError] = React.useState('');
+	const [channels, setChannels] = React.useState<ChannelRecord[]>([]);
+	const [chats, setChats] = React.useState<{ chat_id: string; name: string }[]>([]);
 
 	React.useEffect(() => {
 		if (open) {
 			setForm(getDefaultForm());
 			setError('');
+			// Results go to the area's Discord channel when it has one.
+			channelApi.list().then((records) => {
+				const usable = records.filter((record) => record.enabled);
+				setChannels(usable);
+				const discord = usable.find((record) => record.channel_type === 'discord');
+				if (discord) setForm((prev) => ({ ...prev, deliverChannelId: prev.deliverChannelId || discord.id }));
+			}).catch(() => setChannels([]));
 		}
 	}, [open]);
+
+	React.useEffect(() => {
+		if (!form.deliverChannelId) return;
+		let cancelled = false;
+		channelApi.listChatIds(form.deliverChannelId).then((response) => {
+			if (cancelled) return;
+			setChats(response.chats);
+			setForm((prev) => response.chats.some((chat) => chat.chat_id === prev.deliverChatId)
+				? prev : { ...prev, deliverChatId: response.chats[0]?.chat_id ?? '' });
+		}).catch(() => { if (!cancelled) setChats([]); });
+		return () => { cancelled = true; };
+	}, [form.deliverChannelId]);
 
 	React.useEffect(() => {
 		if (agents.length > 0 && !form.agentId) {
@@ -162,7 +186,8 @@ export function CreateScheduleDialog({ open, onOpenChange, onCreated }: Props) {
 	) => setForm((prev) => ({ ...prev, [key]: value }));
 
 	const isValid =
-		form.name.trim() && !!form.date && !!form.time && !!form.agentId && !!form.chatModelConfig;
+		form.name.trim() && !!form.date && !!form.time && !!form.agentId && !!form.chatModelConfig &&
+		(!form.deliverChannelId || !!form.deliverChatId);
 
 	const applyTemplate = (template: (typeof TEMPLATES)[number]) => setForm((prev) => ({
 		...prev, name: template.name, description: template.description, freq: template.freq, time: template.time,
@@ -196,6 +221,12 @@ export function CreateScheduleDialog({ open, onOpenChange, onCreated }: Props) {
 				enabled: true,
 				stateful: form.stateful,
 				permission_mode: form.permissionMode,
+				once: form.freq === 'once',
+				ended_at: form.freq !== 'once' && form.endDate
+					? new Date(form.endDate.getFullYear(), form.endDate.getMonth(), form.endDate.getDate(), 23, 59, 59).toISOString()
+					: null,
+				deliver_channel_id: form.deliverChannelId,
+				deliver_chat_id: form.deliverChannelId ? form.deliverChatId : '',
 			});
 			onCreated?.();
 			onOpenChange(false);
@@ -340,6 +371,41 @@ export function CreateScheduleDialog({ open, onOpenChange, onCreated }: Props) {
 							/>
 						</Field>
 
+						<Field orientation={'horizontal'}>
+							<FieldLabel>Gửi kết quả vào</FieldLabel>
+							<Select
+								value={form.deliverChannelId || 'none'}
+								onValueChange={(v) => setForm((prev) => ({ ...prev, deliverChannelId: v === 'none' ? '' : v, deliverChatId: '' }))}
+							>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="none">Chỉ lưu trong phiên của agent</SelectItem>
+									{channels.map((channel) => (
+										<SelectItem key={channel.id} value={channel.id}>
+											{channel.name || channel.channel_type}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Field>
+
+						{form.deliverChannelId && (
+							<Field orientation={'horizontal'}>
+								<FieldLabel>Cuộc trò chuyện</FieldLabel>
+								<Select value={form.deliverChatId} onValueChange={(v) => set('deliverChatId', v)}>
+									<SelectTrigger>
+										<SelectValue placeholder={chats.length ? 'Chọn kênh chat' : 'Bot chưa thấy kênh chat nào'} />
+									</SelectTrigger>
+									<SelectContent>
+										{chats.map((chat) => (
+											<SelectItem key={chat.chat_id} value={chat.chat_id}>{chat.name || chat.chat_id}</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</Field>
+						)}
 
 						<Field>
 							<div className="flex flex-row items-center justify-between">

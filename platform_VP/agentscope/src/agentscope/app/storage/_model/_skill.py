@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The installed-skill record."""
+from typing import Literal
 from pydantic import Field
 
 from ._base import _RecordBase
@@ -63,3 +64,11 @@ class SkillRecord(_RecordBase):
 
     enabled: bool = Field(default=True)
     """Whether the skill should be present in the user's workspaces."""
+
+    review_status: Literal["candidate", "approved", "revoked"] = "approved"
+    source_agent_id: str | None = None
+    source_version: int | None = None
+    archive_base64: str = Field(default="", max_length=3_000_000)
+    archive_format: Literal["zip", "tar"] | None = None
+    archive_sha256: str = ""
+    reviewed_by: str | None = None
