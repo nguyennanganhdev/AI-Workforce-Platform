@@ -2045,8 +2045,8 @@ async def conversation_publication(conversation_id: str, proposal_id: str, user_
     if scope is None:
         raise HTTPException(403, "PERSONAL_WORKSPACE_REQUIRED")
     authority, context = scope
-    jobs = [job for job in await authority.jobs.list(context, "publish-batch") if job.payload["body"]["conversation_id"] == conversation_id
-        and job.payload["body"]["proposal_id"] == proposal_id]
+    jobs = [job for job in await authority.jobs.list(context, "publish-batch", source_id=conversation_id)
+        if job.payload["body"]["proposal_id"] == proposal_id]
     return {"publication": view(max(jobs, key=lambda job: job.created_at)) if jobs else None}
 
 

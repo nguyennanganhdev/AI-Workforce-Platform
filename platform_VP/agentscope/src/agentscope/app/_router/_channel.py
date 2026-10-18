@@ -15,7 +15,7 @@
     GET    /channels/{id}/status        Aggregated runtime status
     GET    /channels/{id}/chat_ids      Known chats (for routing config)
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..channel import (
@@ -156,12 +156,12 @@ async def _owned(
 
 
 @channel_router.get("/{channel_id}/runs")
-async def personal_channel_runs(channel_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+async def personal_channel_runs(channel_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage), cursor: str | None = None, limit: int = Query(25, ge=1, le=100)):
     from .._service._personal_jobs import ledger
     from ..vin_platform import PlatformError
     await _owned(channel_id, user_id, storage)
     try:
-        return await ledger(storage, user_id, "channel-event", channel_id)
+        return await ledger(storage, user_id, "channel-event", channel_id, cursor=cursor, limit=limit)
     except PlatformError as exc:
         raise HTTPException(exc.status, exc.code) from exc
 

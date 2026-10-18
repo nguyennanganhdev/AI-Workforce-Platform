@@ -227,27 +227,23 @@ class PersonalJobWorker:
         return await channel.send_saved_private(body)
 
 
-async def ledger(storage, user_id, kind, source_id):
+async def ledger(storage, user_id, kind, source_id, *, cursor=None, limit=25):
     scope = await personal_context(storage, user_id)
     if scope is None:
         raise PlatformError("PERSONAL_WORKSPACE_REQUIRED", 403)
     authority, context = scope
-    jobs = await authority.jobs.list(context, kind)
-    key = "schedule_id" if kind == "schedule-run" else "channel_id"
-    deliveries = await authority.jobs.list(context, "delivery")
+    page = await authority.jobs.list_page(context, kind, source_id=source_id, cursor=cursor, limit=limit)
     result = []
-    for job in jobs:
-        if job.payload["body"].get(key) != source_id:
-            continue
-        matching = [item for item in deliveries if item.idempotency_key.startswith("delivery:" + job.job_id + ":")]
-        result.append({"id": job.job_id, "status": job.status, "attempt": job.attempt, "fencing_token": job.fencing_token,
+    for job in page.items:
+        matching = await authority.jobs.list(context, "delivery", run_id=job.job_id)
+        result.append({"id": job.job_id, "status": job.status, "attempt": job.attempt,
             "created_at": job.created_at, "updated_at": job.updated_at, "session_id": (job.result or {}).get("session_id"),
             "outcome": (job.result or {}).get("state"), "error": (job.error or {}).get("code"),
             "can_repair_delivery": bool((job.result or {}).get("deliveries")) and not matching
                 and all(time.time() - d["created_at"] <= 120 for d in job.result["deliveries"]),
             "deliveries": [{"id": item.job_id, "status": item.status, "attempt": item.attempt,
                 "error": (item.error or {}).get("code")} for item in matching]})
-    return {"items": result}
+    return {"items": result, "has_more": page.has_more, "next_cursor": page.next_cursor}
 
 
 async def repair_delivery(storage, user_id, kind, source_id, job_id):
@@ -255,10 +251,13 @@ async def repair_delivery(storage, user_id, kind, source_id, job_id):
     if scope is None:
         raise PlatformError("PERSONAL_WORKSPACE_REQUIRED", 403)
     authority, context = scope
-    key = "schedule_id" if kind == "schedule-run" else "channel_id"
-    job = next((item for item in await authority.jobs.list(context, kind) if item.job_id == job_id
-        and item.payload["body"].get(key) == source_id), None)
-    if job is None or not job.result or not job.result.get("deliveries"):
+    try:
+        job = await authority.jobs.get(context, kind, job_id, source_id=source_id)
+    except PlatformError as exc:
+        if exc.code == "JOB_NOT_FOUND":
+            raise PlatformError("SAVED_DELIVERY_NOT_FOUND", 404) from exc
+        raise
+    if not job.result or not job.result.get("deliveries"):
         raise PlatformError("SAVED_DELIVERY_NOT_FOUND", 404)
     context = await authority.jobs.context_for(job)
     for body in job.result["deliveries"]:

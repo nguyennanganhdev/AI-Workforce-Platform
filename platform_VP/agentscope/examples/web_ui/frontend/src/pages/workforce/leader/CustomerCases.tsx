@@ -90,6 +90,11 @@ function CaseCard({ item, refresh }: { item: CustomerCase; refresh: () => Promis
 			<p className="font-medium">Nội dung cần bạn xem · {decision.kind}</p>
 			<DecisionDetail value={decision.request_detail} />
 		</div>)}
+		{item.plans?.map((plan) => <div key={plan.id} className="space-y-1 rounded border p-3 text-sm">
+			<h4 className="font-medium">Phương án: {plan.title}</h4><p>Dự toán: {plan.estimatedAmount}</p>
+			<ol className="list-inside list-decimal">{plan.steps.map((step, index) => <li key={index}>{step}</li>)}</ol>
+			<p className="text-muted-foreground">{({ resident_pending: 'Chờ bạn quyết định', approved: 'Đã đồng ý', rejected: 'Đã từ chối', management_pending: 'Đang xem xét' } as Record<string, string>)[plan.status] || 'Đang cập nhật'}</p>
+		</div>)}
 		{item.work_orders?.map((work) => <p key={work.id} className="text-sm">Công việc: {work.status}{work.scheduled_at ? ` · ${new Date(work.scheduled_at).toLocaleString('vi-VN')}` : ''}</p>)}
 		{item.resolution && <div className="space-y-2"><h4 className="text-sm font-medium">Kết quả từ bộ phận xử lý</h4><p className="text-sm whitespace-pre-wrap">{item.resolution.summary}</p>
 			{item.resolution.photos.map((photo) => <EvidencePhoto key={photo.id} photo={photo} />)}</div>}
@@ -100,7 +105,8 @@ function CaseCard({ item, refresh }: { item: CustomerCase; refresh: () => Promis
 		{(more ?? item.has_more) && <Button size="sm" variant="ghost" disabled={loadingMore} onClick={() => void loadMore()}>Tải sự kiện tiếp</Button>}
 		{receipt && <p className="text-sm" role="status">Dịch vụ đã ghi nhận quyết định của bạn.</p>}
 		<div className="flex flex-wrap gap-2">{applied && item.actions.map((action) => <Button key={`${action.action}:${JSON.stringify(action.payload)}`} variant="outline" size="sm" onClick={() => {
-			setNote(''); setSubmittedNote(null); setError(''); setChoice({ action, key: crypto.randomUUID(), summary: item.resolution?.summary || item.description || item.title || '' });
+			const plan = action.action === 'plan-decision' ? item.plans?.find((candidate) => candidate.id === action.payload.plan_id) : undefined;
+			setNote(''); setSubmittedNote(null); setError(''); setChoice({ action, key: crypto.randomUUID(), summary: plan ? `${plan.title}\nDự toán: ${plan.estimatedAmount}\n${plan.steps.join('\n')}` : item.resolution?.summary || item.description || item.title || '' });
 		}}>{action.label}</Button>)}</div>
 		<Dialog open={choice !== null} onOpenChange={(open) => { if (!open && !busy) setChoice(null); }}>
 			<DialogContent><DialogHeader><DialogTitle>{choice?.action.label}</DialogTitle><DialogDescription>

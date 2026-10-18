@@ -273,8 +273,11 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     continue
                 if operation not in {"create", "progress"} or receipt.get("operation") != operation:
                     continue
-                for case in receipt.get("cases", []):
-                    if isinstance(case, dict) and case.get("id"):
+                records = receipt.get("cases")
+                if not isinstance(records, list):
+                    continue
+                for case in records:
+                    if isinstance(case, dict) and case.get("id") and case.get("sync_status") == "applied":
                         current[case["id"]] = EvidenceSource(json.dumps(case, ensure_ascii=False), "customer-service:" + block.id)
         return list(current.values())
 

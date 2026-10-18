@@ -1,7 +1,7 @@
 import { client } from './client';
 
 export interface CustomerAction {
-	action: 'confirm' | 'reopen' | 'work-approval';
+	action: 'confirm' | 'reopen' | 'work-approval' | 'plan-decision';
 	label: string;
 	expected_version: number;
 	payload: Record<string, unknown>;
@@ -21,6 +21,7 @@ export interface CustomerCase {
 	resolution?: { summary: string; photos: { id: string; name: string; url: string }[] };
 	result_photos?: { id: string; name: string; url: string }[];
 	pending_decisions?: { id: string; kind: string; status: string; request_detail: unknown }[];
+	plans?: { id: string; title: string; status: string; version: number; estimatedAmount: string; steps: string[]; canDecide: boolean }[];
 	work_orders?: { id: string; status: string; scheduled_at: string | null }[];
 	events: { id: string; sequence: number; at: string; label: string; note?: string }[];
 	next_cursor?: number;

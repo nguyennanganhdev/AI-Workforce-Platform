@@ -104,10 +104,12 @@ async def find_job(storage, user_id, job_id):
     if scope is None:
         raise PlatformError("PERSONAL_WORKSPACE_REQUIRED", 403)
     authority, context = scope
-    job = next((item for item in await authority.jobs.list(context, "publish-batch") if item.job_id == job_id), None)
-    if job is None:
-        raise PlatformError("PUBLICATION_NOT_FOUND", 404)
-    return job
+    try:
+        return await authority.jobs.get(context, "publish-batch", job_id)
+    except PlatformError as exc:
+        if exc.code == "JOB_NOT_FOUND":
+            raise PlatformError("PUBLICATION_NOT_FOUND", 404) from exc
+        raise
 
 
 async def resource_pins(storage, access, user_id, proposal):

@@ -57,7 +57,8 @@ claim that a chat message has confirmed a quote or completed service."""
             if params.operation in {"create", "progress"}:
                 items = [result] if params.operation == "create" else result.get("items", [])
                 fields = ("id", "code", "sync_status", "service_status", "canonical_version", "as_of", "next_action")
-                receipts = [{key: item[key] for key in fields if key in item} for item in items if item.get("id")]
+                receipts = [{key: item[key] for key in fields if key in item} for item in items
+                    if item.get("id") and item.get("sync_status") == "applied"]
                 if receipts:
                     metadata["customer_service_receipt"] = {
                         "user_id": self._user_id, "agent_id": self._agent_id, "session_id": self._session_id,

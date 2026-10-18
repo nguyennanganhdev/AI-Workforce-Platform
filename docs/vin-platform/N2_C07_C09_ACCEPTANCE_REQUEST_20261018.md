@@ -2,6 +2,8 @@
 
 Đối chiếu producer `2edf060a` ngày 18/10/2026. N2 giữ ownership theo bảng 0.2, không sửa authority/Domain/storage N1. Đây là yêu cầu cụ thể, chưa phải API đã giao hoặc test PASS.
 
+**Cập nhật:** N1 đã giao C07 `43897e9b`, C09 `d4a25cd0` và source-filter/direct lookup `bccbc8e7`. N2 đã ghép và nối consumer. Nội dung bên dưới giữ làm tiêu chí truy vết; kết quả chạy thật xem S15 trong N2_HANDOFF, không dùng trạng thái yêu cầu ban đầu thay trạng thái mới.
+
 ## C07 — phương án riêng
 
 Domain đã nhận `SourceIntent.action=plan-decision` nhưng projection hiện không có phương án để UI đọc và không có revision riêng cho nó. Cần projection canonical đã ACK chứa phương án được phép cho đúng cư dân: ID, revision/version chính xác mà `ResidentPlanDecision` dùng, trạng thái, nội dung review (title/summary, items/steps, amount/currency nếu có), quyền quyết định và payload/schema quyết định. N1 xác nhận tên trường/shape và cung cấp fixture cùng test stale revision. Không suy quyền từ pending work approval hoặc case version.

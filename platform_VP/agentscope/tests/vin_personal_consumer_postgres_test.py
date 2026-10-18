@@ -20,6 +20,10 @@ from workforce.console.test_vin_personal_automation import (  # noqa: F401
     test_expired_run_claim_rejects_stale_worker_without_rerunning,
 )
 from agentscope.app.vin_platform import VinPlatformService
+from workforce.console.test_vin_job_history import (  # noqa: F401
+    test_paged_ledger_crosses_100_and_filters_source_without_leaking_jobs,
+    test_saved_delivery_repair_after_125_runs_does_not_call_model_twice,
+)
 from agentscope.app.vin_platform import _tables as t
 
 
@@ -56,7 +60,7 @@ async def authority(monkeypatch):
         await authority.check_schema()
         from agentscope.app.workforce.foundation._tables import durable_jobs
         original_create = durable_jobs.create
-        monkeypatch.setattr(durable_jobs, "create", lambda connection: original_create(connection, checkfirst=True))
+        monkeypatch.setattr(durable_jobs, "create", lambda connection, **kwargs: original_create(connection, checkfirst=True))
         yield authority
     finally:
         await engine.dispose()

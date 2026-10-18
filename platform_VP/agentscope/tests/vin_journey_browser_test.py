@@ -260,9 +260,104 @@ def test_automation_once_discord_duplicate_and_saved_delivery_ledger(journey, mo
                 return await discord.send_saved_private({'chat_id': '77', 'recipient_id': '100', 'body': body['content'], 'nonce': body['nonce']})
             journey.client.portal.call(resend)
             assert len(journey.model_calls) == 2
+            # Terminal historical fixtures exercise the actual HTTP/UI reader;
+            # they cannot be claimed by the background worker or call a model.
+            async def history():
+                from datetime import timedelta
+                from uuid import uuid4
+                from sqlalchemy import insert, select
+                from agentscope.app.workforce.foundation._tables import durable_jobs
+                async with journey.authority.engine.begin() as db:
+                    original = dict((await db.execute(select(durable_jobs).where(durable_jobs.c.job_type == 'schedule-run'))).mappings().one())
+                    rows = []
+                    for index in range(125):
+                        stamp = original['created_at'] + timedelta(microseconds=index + 1)
+                        rows.append({**original, 'id': uuid4().hex, 'idempotency_key': 'n2-history-' + str(index),
+                            'created_at': stamp, 'updated_at': stamp, 'status': 'failed' if index == 124 else 'succeeded',
+                            'error': {'code': 'FIXTURE_HISTORY_125'} if index == 124 else None, 'result': {'state': 'succeeded'}})
+                    await db.execute(insert(durable_jobs), rows)
+            journey.client.portal.call(history)
+            page.goto(journey.url + '/schedule')
+            page.get_by_role('tab', name='Danh sách', exact=True).click()
+            page.get_by_text('Offline once summary', exact=True).click()
+            region = page.get_by_role('region', name='Lịch sử chạy cá nhân')
+            expect(region.locator('article')).to_have_count(25)
+            for number in range(2, 7):
+                region.get_by_role('button', name='Trang sau', exact=True).click()
+                expect(region.get_by_text('Trang ' + str(number), exact=True)).to_be_visible()
+            expect(region).to_contain_text('FIXTURE_HISTORY_125')
+            expect(region.get_by_role('button', name='Trang sau', exact=True)).to_be_disabled()
+            evidence(journey, 'history-past-125', page)
+            assert len(journey.model_calls) == 2
         finally:
             instance.close()
             journey.client.portal.call(discord._saved_http_client.aclose)
+
+
+@pytest.mark.parametrize('decision', ['approve', 'reject'])
+def test_customer_plan_own_revision_ui_click_and_receipt_replay(journey, decision):
+    from uuid import uuid4
+    from playwright.sync_api import sync_playwright, expect
+    from agentscope.app._service import _customer_cases as cases
+    from agentscope.app.vin_platform._domain import DomainAdapter
+    from test_resident_contract import CATEGORY, client
+
+    with sync_playwright() as playwright:
+        instance, page = browser(journey, playwright)
+        try:
+            link_resident(page, journey)
+            jwt = login(journey)
+            auth = {'Authorization': 'Bearer ' + jwt}
+            response = journey.client.get('/workforce/console/leader/bootstrap', headers=auth)
+            assert response.status_code == 200, response.text
+            leader = response.json()
+            async def create():
+                linked = (await cases.linked_context(journey.storage, 'alice', leader['agent_id'], leader['session_id']))['items'][0]
+                created = await cases.create_request(journey.storage, 'alice', leader['agent_id'], leader['session_id'],
+                    link_id=linked['link_id'], apartment_id=linked['apartments'][0]['id'], category_id=CATEGORY,
+                    description='Voi nuoc bep can sua theo phuong an rieng.', location='Bep duoi bon rua')
+                snapshot = await DomainAdapter(journey.authority).get_case(await journey.authority.context('alice'), created['id'], refresh=True)
+                return created['id'], snapshot['data']['domain']['tickets'][0]['id']
+            case_id, ticket_id = journey.client.portal.call(create)
+            with client(journey.database, 'management') as staff:
+                ticket = staff.get('/tickets/' + ticket_id).json()['ticket']
+                proposed = staff.post('/tickets/' + ticket_id + '/plans', json={'title': 'Reviewed repair plan',
+                    'ticket_version': ticket['version'], 'idempotency_key': uuid4().hex, 'estimated_amount': '120000.00',
+                    'steps': [{'category_id': CATEGORY, 'description': 'Replace fixture seal'}]})
+                assert proposed.status_code == 201, proposed.text
+                plan_id = proposed.json()['id']
+                approved = staff.post('/plans/' + plan_id + '/management-decision', json={
+                    'version': proposed.json()['version'], 'decision': 'approve', 'note': 'Internal fixture note'})
+                assert approved.status_code == 200, approved.text
+                plan_version = approved.json()['version']
+            page.goto(journey.url + '/workforce/leader')
+            page.get_by_test_id('customer-cases').locator('summary').click()
+            label = ('Đồng ý' if decision == 'approve' else 'Từ chối') + ' phương án: Reviewed repair plan'
+            button = page.get_by_role('button', name=label, exact=True)
+            expect(button).to_be_visible()
+            expect(page.get_by_text('Replace fixture seal', exact=True)).to_be_visible()
+            button.click()
+            expect(page.get_by_role('dialog')).to_contain_text('120000.00')
+            page.get_by_role('button', name='Quay lại', exact=True).click()
+            assert not journey.decisions
+            button.click()
+            page.get_by_role('dialog').locator('textarea').fill('Tôi đã xem đầy đủ phương án và gửi lựa chọn.')
+            with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith('/decisions')) as sent:
+                page.get_by_role('button', name='Xác nhận gửi quyết định', exact=True).click()
+            assert sent.value.status == 200, sent.value.text()
+            body = sent.value.request.post_data_json
+            assert body['action'] == 'plan-decision' and body['payload']['plan_id'] == plan_id
+            assert body['payload']['expectedVersion'] == plan_version and body['payload']['decision'] == decision
+            assert len(journey.decisions) == 1
+            # Use a fresh HTTP session after the browser has rotated its cookie.
+            jwt = login(journey)
+            replay = journey.client.post('/service-cases/' + case_id + '/decisions', json=body, headers={'Authorization': 'Bearer ' + jwt})
+            assert replay.status_code == 200 and replay.json() == sent.value.json()
+            assert len(journey.decisions) == 1 and not journey.model_calls
+            expect(button).to_have_count(0)
+            evidence(journey, 'plan-' + decision, page)
+        finally:
+            instance.close()
 
 
 def link_resident(page, journey):

@@ -40,7 +40,7 @@ async def test_current_server_receipt_supports_private_case_and_keeps_unknown_cl
     assert 'state:resident_accepted' in (await middleware._claim_validation('Resident has accepted.', agent)).unsupported
 
 
-@pytest.mark.parametrize('alter', ['user', 'agent', 'session', 'old-reply', 'failed', 'other-tool', 'missing-metadata', 'wrong-operation'])
+@pytest.mark.parametrize('alter', ['user', 'agent', 'session', 'old-reply', 'failed', 'other-tool', 'missing-metadata', 'wrong-operation', 'sync-pending'])
 @pytest.mark.asyncio
 async def test_untrusted_or_stale_receipt_cannot_back_a_claim(alter):
     middleware, agent, result, receipt = setup_receipt()
@@ -56,6 +56,8 @@ async def test_untrusted_or_stale_receipt_cannot_back_a_claim(alter):
         result.metadata.clear()
     elif alter == 'wrong-operation':
         receipt['operation'] = 'context'
+    elif alter == 'sync-pending':
+        receipt['cases'][0]['sync_status'] = 'sync_pending'
     assert (await middleware._claim_validation('Yêu cầu CASE-123456 đã được ghi nhận.', agent)).unsupported
 
 

@@ -15,10 +15,14 @@ const labels: Record<string, string> = { pending: 'Đang chờ', leased: 'Đang 
 
 export function PersonalRuns({ kind, sourceId }: { kind: 'schedule' | 'channels'; sourceId: string }) {
 	const user = useCurrentUser();
+	const sourceKey = JSON.stringify([user?.tenant_id, user?.id, kind, sourceId]);
+	const [paging, setPaging] = useState<{ key: string; index: number; cursors: (string | null)[] }>({ key: sourceKey, index: 0, cursors: [null] });
+	const current = paging.key === sourceKey ? paging : { key: sourceKey, index: 0, cursors: [null] };
+	const cursor = current.cursors[current.index];
 	const [repairing, setRepairing] = useState(false);
 	const [error, setError] = useState('');
-	const query = useQuery({ queryKey: ['personal-runs', user?.tenant_id, user?.id, kind, sourceId],
-		queryFn: () => client.get<{ items: Run[] }>(`/${kind}/${encodeURIComponent(sourceId)}/runs`, undefined, { silent: true }),
+	const query = useQuery({ queryKey: ['personal-runs', user?.tenant_id, user?.id, kind, sourceId, cursor],
+		queryFn: () => client.get<{ items: Run[]; has_more: boolean; next_cursor: string | null }>(`/${kind}/${encodeURIComponent(sourceId)}/runs`, { limit: '25', ...(cursor ? { cursor } : {}) }, { silent: true }),
 		enabled: user?.role === 'VIN_USER', retry: false, refetchInterval: 10000 });
 	if (user?.role !== 'VIN_USER') return null;
 	return <section className="space-y-2 py-3 text-sm" aria-label="Lịch sử chạy cá nhân">
@@ -39,5 +43,13 @@ export function PersonalRuns({ kind, sourceId }: { kind: 'schedule' | 'channels'
 				finally { setRepairing(false); }
 			}}>Gửi kết quả đã lưu</Button>}
 		</article>)}
+		<div className="flex items-center gap-2">
+			<Button variant="outline" size="sm" disabled={current.index === 0 || query.isFetching} onClick={() => setPaging({ ...current, index: current.index - 1 })}>Trang trước</Button>
+			<span>Trang {current.index + 1}</span>
+			<Button variant="outline" size="sm" disabled={!query.data?.has_more || !query.data.next_cursor || query.isFetching} onClick={() => {
+				if (query.data?.next_cursor) setPaging({ key: sourceKey, index: current.index + 1, cursors: [...current.cursors.slice(0, current.index + 1), query.data.next_cursor] });
+			}}>Trang sau</Button>
+			{query.isError && current.index > 0 && <Button variant="ghost" size="sm" onClick={() => setPaging({ key: sourceKey, index: 0, cursors: [null] })}>Tải lại từ đầu</Button>}
+		</div>
 	</section>;
 }

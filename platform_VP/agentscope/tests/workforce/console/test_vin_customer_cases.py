@@ -205,3 +205,16 @@ async def test_invalid_tool_operation_and_non_customer_cannot_sign_or_dispatch(c
 def test_missing_approval_revision_never_uses_case_or_ticket_revision():
     domain = {"canonical_version": 8, "pending_decisions": [{"id": "approval-a", "status": "pending", "ticket_version": 99}]}
     assert cases.decision_actions(domain) == []
+
+
+def test_plan_choices_use_shared_c07_fixture_and_independent_versions():
+    from pathlib import Path
+    document = json.loads((Path(__file__).resolve().parents[5] / 'docs/vin-platform/fixtures/c07-plan-decision-v1.json').read_text(encoding='utf-8'))
+    actions = cases.decision_actions(document)
+    assert len(actions) == 2 and all(action['requires_note'] for action in actions)
+    assert actions[0]['expected_version'] == 17 and actions[0]['payload']['expectedVersion'] == 3
+    assert actions[0]['payload']['plan_id'] == document['plans'][0]['id']
+    assert actions[1]['payload']['decision'] == 'reject'
+    for field, value in [('canDecide', False), ('status', 'management_pending'), ('version', None)]:
+        hidden = {**document, 'plans': [{**document['plans'][0], field: value}]}
+        assert cases.decision_actions(hidden) == []

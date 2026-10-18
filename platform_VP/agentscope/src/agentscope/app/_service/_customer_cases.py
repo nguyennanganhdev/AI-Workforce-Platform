@@ -112,6 +112,11 @@ def decision_actions(domain):
     version = domain.get("canonical_version")
     permissions = domain.get("permissions", {})
     revision = domain.get("resolutionRevision")
+    for plan in domain.get("plans", []):
+        if plan.get("canDecide") is True and plan.get("status") == "resident_pending" and type(plan.get("version")) is int:
+            for decision, label in (("approve", "Đồng ý phương án"), ("reject", "Từ chối phương án")):
+                actions.append({"action": "plan-decision", "label": label + ": " + plan["title"], "requires_note": True,
+                    "payload": {"plan_id": plan["id"], "expectedVersion": plan["version"], "decision": decision}})
     if version and revision:
         if permissions.get("canConfirm"):
             actions.append({"action": "confirm", "label": "Xác nhận hoàn tất", "payload": {"resolutionRevision": revision}})
@@ -138,7 +143,7 @@ async def progress(authority, context, case_id):
     current = page.get("sync_status") == "applied" and page.get("canonical_version") == domain.get("canonical_version")
     # Explicit DTO: never return authority rows, link data, grants or proofs.
     safe_fields = ("code", "title", "description", "location", "canonical_version", "service_status", "status",
-        "as_of", "next_action", "pending_decisions", "work_orders", "resolution", "result_photos", "photos")
+        "as_of", "next_action", "pending_decisions", "plans", "work_orders", "resolution", "result_photos", "photos")
     result = {key: domain[key] for key in safe_fields if key in domain}
     result.update(id=case_id, sync_status="applied" if current else "sync_pending",
         as_of=domain.get("as_of"), next_action=domain.get("next_action"),
