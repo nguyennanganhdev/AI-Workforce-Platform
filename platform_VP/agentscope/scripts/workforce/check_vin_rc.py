@@ -240,7 +240,9 @@ location / { try_files $uri /index.html; }
                 # a fresh login, not the HTTP client's now-revoked access JWT.
                 admin.close()
                 admin = journey.login_platform('fixtureadmin')
-                policy = journey.call(admin, 'GET', '/admin/vin/quota-policies/role:VIN_USER')
+                policies = journey.call(admin, 'GET', '/admin/vin/quota-policies', params={'subject': 'role:VIN_USER'})
+                assert len(policies['items']) == 1
+                policy = policies['items'][0]
                 assert policy['policy']['daily_tokens'] == 190000 and policy['revision'] >= 2
                 assert not external
                 page.screenshot(path=str(output / 'rc-admin-policy.png'), full_page=True)
