@@ -706,7 +706,7 @@ function PlannedAgentCard({
 								disabled={disabled}
 								onClick={() => onDecide(option.value)}
 								className={cn(
-									'flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors',
+									'flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors',
 									decision === option.value
 										? 'border-foreground bg-foreground text-background'
 										: 'border-border/70 bg-background hover:bg-muted',

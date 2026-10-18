@@ -134,7 +134,7 @@ function Edge({ from, to, link, active, motion, dim, now }: {
 
 function Label({ overlay, children, y }: { overlay: Overlay; children: ReactNode; y: number }) {
 	return (
-		<Html position={[0, y, 0]} center distanceFactor={11} zIndexRange={[40, 10]} portal={overlay} style={{ pointerEvents: 'none' }}>
+		<Html position={[0, y, 0]} center zIndexRange={[40, 10]} portal={overlay} style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}>
 			{children}
 		</Html>
 	);
@@ -205,9 +205,9 @@ function Node({
 					</mesh>
 				)}
 				<Label overlay={overlay} y={leader ? 1.35 : 1.05}>
-					<div className={`min-w-28 rounded-xl border bg-background/95 px-2.5 py-1.5 text-center shadow-sm backdrop-blur transition-opacity ${dim ? 'opacity-30' : ''} ${selected ? 'border-amber-400' : 'border-border/70'}`}>
-						<p className="max-w-40 truncate text-[12px]/4 font-semibold text-foreground">{agent.name}</p>
-						<p className="mt-0.5 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground tabular-nums">
+					<div className={`rounded-xl border bg-background/95 px-2.5 py-1 text-center whitespace-nowrap shadow-sm backdrop-blur transition-opacity ${dim ? 'opacity-30' : ''} ${selected ? 'border-amber-400' : 'border-border/70'}`}>
+						<p className="max-w-48 truncate text-[12px]/4 font-semibold text-foreground">{agent.name}</p>
+						<p className="mt-0.5 flex items-center justify-center gap-1 text-[10px]/4 text-muted-foreground tabular-nums">
 							<span className={`inline-block size-1.5 rounded-full ${agent.live ? 'bg-emerald-500' : draft ? 'bg-slate-400' : 'bg-indigo-400'}`} />
 							{leader ? 'Leader' : agent.state === 'published' ? 'Phát hành' : agent.state === 'draft' ? 'Bản nháp' : 'Đã ngừng'}
 							<span>· {agent.tickets} phiếu</span>
@@ -228,7 +228,7 @@ function Entry({ at, title, overlay }: { at: XZ; title: string; overlay: Overlay
 				<meshStandardMaterial color={ENTRY_COLOR} roughness={0.6} />
 			</mesh>
 			<Label overlay={overlay} y={0.95}>
-				<span className="rounded-full border border-border/70 bg-background/90 px-2 py-0.5 text-[11px] text-muted-foreground">{title}</span>
+				<span className="rounded-full border border-border/70 bg-background/90 px-2 py-0.5 text-[11px] whitespace-nowrap text-muted-foreground">{title}</span>
 			</Label>
 		</group>
 	);
@@ -238,7 +238,7 @@ function Entry({ at, title, overlay }: { at: XZ; title: string; overlay: Overlay
 function CameraHome({ radius, home }: { radius: number; home: number }) {
 	const camera = useThree((state) => state.camera);
 	useEffect(() => {
-		camera.position.set(0, radius * 1.15 + 4, radius * 1.45 + 5);
+		camera.position.set(0, radius * 1.35 + 5, radius * 1.7 + 6);
 		camera.lookAt(0, 0, 0);
 	}, [camera, radius, home]);
 	return null;
