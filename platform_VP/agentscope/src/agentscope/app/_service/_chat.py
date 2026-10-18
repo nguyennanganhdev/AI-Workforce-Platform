@@ -1815,6 +1815,10 @@ class ChatService:
                 source = {
                     "user": "platform_chat", "channel": "channel",
                 }.get(audience_session.origin.type, "automation")
+                if management_output:
+                    source = "management"
+                elif partner_room:
+                    source = "partner_api"
                 attachment += conversation_policy(source, audience_session.id)
                 if team_roster_names:
                     attachment += (

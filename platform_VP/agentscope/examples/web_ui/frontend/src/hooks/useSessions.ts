@@ -30,7 +30,7 @@ const SESSIONS_KEY = ['sessions'];
  *   `error` flags and `refetch` / `create` / `update` / `remove`
  *   helpers that all keep the list in sync.
  */
-export function useSessions(agentId: string | null) {
+export function useSessions(agentId: string | null, scope?: 'leader') {
 	const queryClient = useQueryClient();
 
 	const {
@@ -39,8 +39,8 @@ export function useSessions(agentId: string | null) {
 		error,
 		refetch: runRefetch,
 	} = useQuery({
-		queryKey: [...SESSIONS_KEY, agentId],
-		queryFn: () => sessionApi.list(agentId as string).then((res) => res.sessions),
+		queryKey: [...SESSIONS_KEY, agentId, scope ?? 'all'],
+		queryFn: () => sessionApi.list(agentId as string, scope).then((res) => res.sessions),
 		enabled: agentId !== null,
 		retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 3,
 		// This list carries `is_running` and team membership, both of

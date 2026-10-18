@@ -126,7 +126,7 @@ def governed_system_prompt(
 
 
 def conversation_policy(
-    source: Literal["platform_chat", "partner_api", "channel", "automation"],
+    source: Literal["platform_chat", "partner_api", "management", "channel", "automation"],
     conversation_id: str,
     *,
     external_ticket_id: str | None = None,
@@ -149,6 +149,13 @@ def conversation_policy(
         "For partner API requests, the platform delivers via the workflow event "
         "stream; do not contact a different customer, app or ticket."
     )
+    if source == "management":
+        delivery = (
+            "You are answering the authenticated area manager reviewing this "
+            "resident case, not the resident. Reply only to management. "
+            "Do not send resident messages, grant resident consent or change "
+            "the case; use only the read tools explicitly supplied."
+        )
     return (
         f"\nSERVER-RESOLVED CONVERSATION: {identity}\n{delivery}\n"
         "awaiting_user_input means waiting for that same user's reply, not "

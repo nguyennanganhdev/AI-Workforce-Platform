@@ -1007,9 +1007,10 @@ def _members(route: dict) -> dict[str, dict]:
 class ManagementCaseMiddleware(MiddlewareBase):
     """Console Q&A can inspect this ticket but cannot speak for a resident."""
 
-    def __init__(self, tools: list, ticket_id: str = "") -> None:
+    def __init__(self, tools: list, ticket_id: str = "", *, live_tools_unavailable: bool = False) -> None:
         self._tools = [tool for tool in tools if tool.is_read_only]
         self._ticket_id = ticket_id
+        self._live_tools_unavailable = live_tools_unavailable
 
     async def list_tools(self) -> list[ToolBase]:
         return self._tools
@@ -1026,7 +1027,13 @@ class ManagementCaseMiddleware(MiddlewareBase):
         return await next_handler(**input_kwargs)
 
     async def on_system_prompt(self, agent: Any, current_prompt: str) -> str:
-        return current_prompt + (
+        unavailable = (
+            "\nLIVE_CASE_TOOLS_UNAVAILABLE: Domain không cấp quyền truy xuất hiện hành cho bàn giao này. "
+            "Chỉ dùng bằng chứng đã lưu; nêu rõ thời điểm và giới hạn của nguồn. "
+            "Không khẳng định trạng thái hiện tại, không thử lại thao tác hay yêu cầu mở lại phiếu."
+            if self._live_tools_unavailable else ""
+        )
+        return current_prompt + unavailable + (
             "\nSERVER AUDIENCE: Bạn đang trao đổi nội bộ với BAN QUẢN LÝ, không phải cư dân. "
             "Trả lời trực tiếp cho BQL bằng văn bản ngắn gọn. Không TeamSay, CaseSay, "
             "CaseFinalize; không gửi sang cư dân, không suy diễn đồng ý/duyệt/đóng phiếu. "
@@ -1174,10 +1181,17 @@ class CaseRuntime:
             if agent_id != binding["agent_id"] and agent_id not in members:
                 raise ValueError("Agent is not in this ticket's frozen roster")
             only = None if agent_id == binding["agent_id"] else set(members[agent_id].get("tools") or [])
-            case = _Case(self.store, binding, route)
-            tools = await self._tools(user_id, case, route, only=only)
+            case = _Case(self.store, binding, route, context_reader=self.context_sources)
+            from ._grants import WorkflowGrantUnavailable
+            unavailable = False
+            try:
+                tools = await self._tools(user_id, case, route, only=only, read_only=True)
+            except WorkflowGrantUnavailable:
+                # Domain revocation/closed handover remains authoritative.
+                # BQL can still inspect this owned case's archived evidence.
+                tools, unavailable = [], True
             ticket = await self.store.grant_context(binding["workflow_id"])
-            return [ManagementCaseMiddleware(tools, ticket["ticket_id"])]
+            return [ManagementCaseMiddleware([CaseEvidence(case), *tools], ticket["ticket_id"], live_tools_unavailable=unavailable)]
         session = await self.store.session(session_id)
         if session is None:
             return await self._member(user_id, agent_id, session_id)
@@ -1237,13 +1251,18 @@ class CaseRuntime:
         tools = await self._tools(user_id, case, route, only=set(member.get("tools") or []))
         return [PartnerMemberMiddleware(case, tools)]
 
-    async def _tools(self, user_id: str, case: _Case, route: dict, only: set[str] | None = None) -> list[ToolBase]:
+    async def _tools(self, user_id: str, case: _Case, route: dict, only: set[str] | None = None, *, read_only: bool = False) -> list[ToolBase]:
         from .....mcp import MCPClient
 
         tools: list[ToolBase] = []
         clients: dict[str, Any] = {}
         transports: dict[str, Any] = {}
-        for spec in route.get("tools") or []:
+        specs = route.get("tools") or []
+        if read_only:
+            specs = [spec for spec in specs if spec.get("read_only")
+                     and (only is None or spec.get("name") in only)
+                     and (only is not None or not spec.get("internal"))]
+        for spec in specs:
             mcp_id = spec.get("mcp_id")
             if spec.get("internal") and only is None:
                 continue
@@ -1263,7 +1282,7 @@ class CaseRuntime:
                 grant_config = ((route.get("config") or {}).get("mcp_grants") or {}).get(record.client.name)
                 if grant_config:
                     from ._grants import scoped_client
-                    allowed = [s.get("mcp_tool") for s in route.get("tools") or [] if s.get("mcp_id") == mcp_id]
+                    allowed = [s.get("mcp_tool") for s in specs if s.get("mcp_id") == mcp_id]
                     transports[mcp_id] = await scoped_client(record.client, grant_config,
                         await self.store.grant_context(case.workflow_id), case.workflow_id, allowed)
                 else:

@@ -201,7 +201,7 @@ export function ChatViewport({
 	ticketView = false,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
-	const { sessions, refetch: refetchSessions } = useSessions(agentId);
+	const { sessions, refetch: refetchSessions } = useSessions(agentId, ticketView ? 'leader' : undefined);
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);

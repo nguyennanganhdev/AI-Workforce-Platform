@@ -42,7 +42,7 @@ function LeaderPageInner() {
 	const [loading, setLoading] = useState(true);
 	const [creating, setCreating] = useState(false);
 	const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
-	const { sessions, refetch } = useSessions(leader?.agent_id ?? null);
+	const { sessions, refetch } = useSessions(leader?.agent_id ?? null, 'leader');
 
 	useEffect(() => {
 		let active = true;

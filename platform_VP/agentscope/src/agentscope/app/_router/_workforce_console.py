@@ -808,8 +808,13 @@ async def _primary_session(
     agent_id: str,
     model_config: ChatModelConfig,
     name: str,
+    *,
+    leader_only: bool = False,
 ):
     sessions = await storage.list_sessions(user_id, agent_id)
+    if leader_only:
+        from .._session_scope import is_leader_case_session
+        sessions = [session for session in sessions if is_leader_case_session(session)]
     if sessions:
         return sessions[0]
     workspace_id = await workspace_manager.assign_workspace_id(
@@ -2075,6 +2080,7 @@ async def _leader(
         record.id,
         await _model_config(storage, user_id),
         "Ticket mới",
+        leader_only=True,
     )
     workspace = await workspace_manager.get_workspace(
         user_id,
