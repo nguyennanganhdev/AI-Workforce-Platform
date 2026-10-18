@@ -1,6 +1,7 @@
 import { Cable, Plus } from 'lucide-react';
 import * as React from 'react';
 
+import { DiscordIdentityPanel } from './discord-identity';
 import type { ChannelRecord, ChannelStatus, ChannelTypeSchema } from '@/api';
 import { channelApi } from '@/api';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -23,6 +24,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAgents } from '@/hooks/useAgents';
 import { useChannels } from '@/hooks/useChannels';
 import { useTranslation } from '@/i18n/useI18n';
@@ -131,6 +133,7 @@ function ChannelTypeCard({ type, onPick }: { type: ChannelTypeSchema; onPick: ()
 }
 
 export function ChannelPage() {
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
 	const { t } = useTranslation();
 	const { channels, loading, refetch, enable, disable, remove } = useChannels();
 	const { runnable: agents } = useAgents();
@@ -206,6 +209,7 @@ export function ChannelPage() {
 							</div>
 						</div>
 						<Separator />
+						{privateAccount && <DiscordIdentityPanel />}
 
 						<div className="flex-1 overflow-y-auto px-6 py-6">
 							{loading ? (

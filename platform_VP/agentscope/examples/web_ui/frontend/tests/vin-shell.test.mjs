@@ -79,6 +79,16 @@ test('usage validates unknown counters instead of reporting zero or negative usa
   }
 });
 
+test('effective limits preserve revisions and remaining, including quota reductions', () => {
+  const { parseUsage } = personalModule();
+  const usage = { timezone: 'Asia/Ho_Chi_Minh', pending_reconciliation: 0, buckets: [], policy_revision: 3,
+    effective_limits: [{ subject: 'user:resident-a', window: 'day:2026-10-18', limit: 100, used: 20, reserved: 10, remaining: 70 }] };
+  assert.equal(parseUsage(usage).effective_limits[0].remaining, 70);
+  assert.equal(parseUsage(usage).policy_revision, 3);
+  assert.throws(() => parseUsage({ ...usage, effective_limits: [{ ...usage.effective_limits[0], remaining: 100 }] }), /INVALID_CONTRACT/);
+  assert.equal(parseUsage({ ...usage, effective_limits: [{ ...usage.effective_limits[0], limit: 10, remaining: 0 }] }).effective_limits[0].remaining, 0);
+});
+
 test('link public projection excludes secret refs and validates revision/scopes', () => {
   const { parseLinks } = personalModule();
   const link = { id: 'l', provider_id: 'vinhomes', status: 'active', revision: 1,

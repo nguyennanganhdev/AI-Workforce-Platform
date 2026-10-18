@@ -73,6 +73,24 @@ async def _save_agent(storage: StorageBase, user_id: str, record: AgentRecord) -
     except AgentRevisionConflict as exc:
         raise HTTPException(status_code=409, detail="Agent changed concurrently; reload before publishing.") from exc
 
+
+@workforce_console_router.get("/admin/vin/users/{target_id}/usage")
+async def admin_vin_usage(target_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._catalog_resources import catalog_authority
+    from ..vin_platform import PlatformError
+    authority = catalog_authority(storage)
+    if authority is None:
+        raise HTTPException(503, "VIN_PLATFORM_DISABLED")
+    try:
+        context = await authority.context(user_id)
+        authority.admin(context)
+        target = await authority.context(target_id)
+        if target.tenant_id != context.tenant_id:
+            raise PlatformError("CAPABILITY_DENIED", 403)
+        return await authority.quota.usage(target)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
 # These are platform policy, not Builder output and not UI-editable fields.
 _FIXED_CONTEXT = ContextConfig(
     compression_fallback_to_truncation=False,
@@ -265,6 +283,13 @@ class PublishedAgent(BaseModel):
 
 class PublishResponse(BaseModel):
     agents: list[PublishedAgent]
+    status: Literal["queued", "published", "failed"] = "published"
+    job_id: str | None = None
+    phase: str = "published"
+    cursor: int = 0
+    total: int = 0
+    error: str | None = None
+    can_repair: bool = False
 
 
 class LifecycleRequest(BaseModel):
@@ -1232,6 +1257,26 @@ async def _persist_builder_turn(
     user_text: str | None,
     proposal: ProposalView,
 ) -> None:
+    from .._service._publish_batch import builder_guard
+    from .._service._personal_jobs import personal_context
+    if await personal_context(storage, user_id) is None:
+        await _persist_builder_turn_unlocked(storage, user_id, conversation_id, user_text, proposal)
+        return
+    async with builder_guard(storage, user_id, conversation_id):
+        if proposal.revision > 1:
+            current = _stored_proposal(await _list_all_builder_messages(storage, user_id, conversation_id))
+            if current is None or current.proposal_id != proposal.proposal_id or current.revision != proposal.revision - 1:
+                raise HTTPException(409, "Builder proposal changed during evaluation; reload before editing.")
+        await _persist_builder_turn_unlocked(storage, user_id, conversation_id, user_text, proposal)
+
+
+async def _persist_builder_turn_unlocked(
+    storage: StorageBase,
+    user_id: str,
+    conversation_id: str,
+    user_text: str | None,
+    proposal: ProposalView,
+) -> None:
     if user_text is not None:
         await storage.upsert_message(
             user_id,
@@ -1801,6 +1846,14 @@ async def publish_builder(
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
     access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> PublishResponse:
+    from .._service._personal_jobs import personal_context
+    from ..vin_platform import PlatformError
+    if await personal_context(storage, user_id) is not None:
+        from .._service._publish_batch import enqueue
+        try:
+            return PublishResponse(**(await enqueue(storage, user_id, body.model_dump())))
+        except PlatformError as exc:
+            raise HTTPException(exc.status, exc.code) from exc
     async with _proposal_locks[user_id]:
         session = await storage.get_session(
             user_id,
@@ -1974,6 +2027,41 @@ async def publish_builder(
     return PublishResponse(agents=result)
 
 
+@workforce_console_router.get("/builder/publications/{job_id}", response_model=PublishResponse)
+async def builder_publication(job_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._publish_batch import find_job, view
+    from ..vin_platform import PlatformError
+    try:
+        return PublishResponse(**view(await find_job(storage, user_id, job_id)))
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
+@workforce_console_router.get("/builder/conversations/{conversation_id}/publication")
+async def conversation_publication(conversation_id: str, proposal_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._personal_jobs import personal_context
+    from .._service._publish_batch import view
+    scope = await personal_context(storage, user_id)
+    if scope is None:
+        raise HTTPException(403, "PERSONAL_WORKSPACE_REQUIRED")
+    authority, context = scope
+    jobs = [job for job in await authority.jobs.list(context, "publish-batch", source_id=conversation_id)
+        if job.payload["body"]["proposal_id"] == proposal_id]
+    return {"publication": view(max(jobs, key=lambda job: job.created_at)) if jobs else None}
+
+
+@workforce_console_router.post("/builder/publications/{job_id}/repair", response_model=PublishResponse)
+async def repair_builder_publication(job_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._publish_batch import enqueue, find_job
+    from ..vin_platform import PlatformError
+    try:
+        previous = await find_job(storage, user_id, job_id)
+        command = {key: previous.payload["body"][key] for key in ("conversation_id", "proposal_id", "expected_revision")}
+        return PublishResponse(**await enqueue(storage, user_id, command, previous=previous))
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
 @workforce_console_router.get("/agents", response_model=list[WorkforceAgentView])
 async def list_workforce_agents(
     user_id: str = Depends(get_current_user_id),
@@ -2120,6 +2208,21 @@ async def bootstrap_leader(
         session_id=session.id,
         name=session.config.name,
     )
+
+
+@workforce_console_router.get("/leader/{agent_id}/sessions/{session_id}/service-cases")
+async def customer_service_cases(
+    agent_id: str,
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+):
+    from .._service._customer_cases import session_cases
+    from ..vin_platform._contracts import PlatformError
+    try:
+        return await session_cases(storage, user_id, agent_id, session_id)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
 
 
 @workforce_console_router.post(

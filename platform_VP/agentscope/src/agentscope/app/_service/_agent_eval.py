@@ -504,12 +504,26 @@ async def run_spec_tests(
                 await on_progress({"stage": "case_completed", "test_id": test.id, "result": result})
             return result
 
-    results = await asyncio.gather(*(one(index, test) for index, test in enumerate(spec.tests)))
+    cleanup = None
+    try:
+        results = await asyncio.gather(*(one(index, test) for index, test in enumerate(spec.tests)))
+    finally:
+        if sandbox is not None and callable(getattr(sandbox, "cleanup", None)):
+            cleanup_task = asyncio.create_task(sandbox.cleanup())
+            try:
+                cleanup = await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError:
+                await cleanup_task
+                raise
+            except Exception:
+                cleanup = {"status": "pending", "code": "SANDBOX_CLEANUP_PENDING"}
     passed = sum(item["passed"] for item in results)
     total = len(results)
     rate = round(passed / total, 3) if total else 0.0
     # A scenario the model could not play says nothing about the agent.
     errors = [item["error"] for item in results if item.get("error")]
+    if cleanup and cleanup["status"] == "pending":
+        errors.append("Cleanup fixture chưa được xác minh (SANDBOX_CLEANUP_PENDING).")
     report = {
         "evaluator": "agent_spec_model_v1",
         "spec_hash": spec_hash(spec),
@@ -522,8 +536,10 @@ async def run_spec_tests(
         "model_error": errors[0] if errors else None,
         "results": results,
         "simulated_runtime_tools": sorted(simulated_names),
-        "environment": {"mode": "sandbox_fixture_tickets", "isolated_business_sandbox": True,
+        "environment": {"mode": "sandbox_fixture_tickets", "isolated_business_sandbox": not sandbox_error and bool(getattr(sandbox, "tickets", [])),
             "sandbox_run_id": sandbox.run_id, "sandbox_tools": sandbox.tools,
+            **({"data_mode": sandbox.data_mode} if hasattr(sandbox, "data_mode") else {}),
+            **({"cleanup": cleanup} if cleanup else {}),
             "note": "Mỗi ca có ticket mẫu mới trên sandbox đối tác và grant riêng; tool của MCP sandbox chạy thật trên dữ liệu mô phỏng. TeamSay vẫn mô phỏng."}
             if sandbox is not None else
             {"mode": "catalog_reads_simulated_writes", "isolated_business_sandbox": False,

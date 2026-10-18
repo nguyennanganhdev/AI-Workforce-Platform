@@ -1,6 +1,7 @@
 import { Bot, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { CustomerCases } from './CustomerCases';
 import { sessionApi, workforceApi } from '@/api';
 import type { LeaderSession, SessionView } from '@/api';
 import { sessionTime } from '@/components/chat/session-row-utils';
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Spinner } from '@/components/ui/spinner';
 import { AudioProvider } from '@/context/AudioContext';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { usePlatformAccess } from '@/context/platform-access';
 import { useSessions } from '@/hooks/useSessions';
 import { ChatViewport } from '@/pages/chat/ChatViewport';
@@ -38,6 +40,7 @@ function rowPreview(view: SessionView): string {
  * each, and the selected session's chat (and its room) beside them.
  */
 function LeaderPageInner() {
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
 	const access = usePlatformAccess();
 	const [leader, setLeader] = useState<LeaderSession | null>(null);
 	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -167,7 +170,8 @@ function LeaderPageInner() {
 				</div>
 			</aside>
 
-			<main className="flex min-w-0 flex-1 overflow-hidden">
+			<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+				{privateAccount && selectedSessionId && <CustomerCases key={selectedSessionId} agentId={leader.agent_id} sessionId={selectedSessionId} />}
 				<ChatViewport
 					agentId={leader.agent_id}
 					sessionId={selectedSessionId}

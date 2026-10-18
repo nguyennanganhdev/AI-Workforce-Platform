@@ -1,0 +1,166 @@
+{
+  "date": "2026-10-18",
+  "scope": "N1 R04 local integration, not deployed or business UAT",
+  "provenance": {
+    "integration": {
+      "revision": "94c4aad1dad570d6642a912627bf350fc4b48fc1",
+      "dirty": []
+    },
+    "n1_fixture": {
+      "revision": "b2ac966d05ee277ec6410b9100520ab1e4abbe58",
+      "dirty": []
+    },
+    "fixture_sha256": "394b7b06e051e0488eedcdd571a231d4704a307b2fe12d722d94d9c24bb5bc13",
+    "images": {
+      "agentscope-op2-offline-qa:20261017": "sha256:354c2398d061577da2d6b3d12df5d336a78547be7ae0a99f8a8d194a5e2135fe",
+      "vinhomes-op2-offline-qa:20261017": "sha256:9045a4a5f277cb2e72133087465683f346a3a41074ef9d4943332c4ee6b590af",
+      "pgvector/pgvector:pg17": "sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d",
+      "redis:7-alpine": "sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+      "nginx:1.27-alpine": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+    },
+    "web_builds_sha256": {
+      "platform": "e03fb047ad59be98bf3cde5a8a49ccced8b2df4092c1aaa3258aa027b9dd23ed",
+      "staff": "d2776bace13c259bdf870d54b421f07121b038b995a040235e8f82aa121ad3b0"
+    }
+  },
+  "included_n2_backend": "d00ad18e",
+  "provenance_limits": [
+    "External frontend binary hashes are not proof of N2 source/RC provenance.",
+    "Runtime JUnit started after 3df1f1aa and before 1bdef66e; private KB guard passed separately."
+  ],
+  "junit_gates": [
+    {
+      "suite": "contracts",
+      "pass": 63,
+      "skip": 0,
+      "fail": 0,
+      "error": 0,
+      "skip_reasons": {},
+      "junit_sha256": "ef86940d2b57c2d0b6e606c36eccaa8b5f0fd2514d87388a862b5ab8fceb4e10",
+      "artifact": "n1-r04-contracts/builder-check/pytest.xml"
+    },
+    {
+      "suite": "runtime",
+      "pass": 487,
+      "skip": 25,
+      "fail": 0,
+      "error": 0,
+      "skip_reasons": {
+        "VIN_UI_TEST_URL requires the local Vin-enabled frontend": 24,
+        "Concurrent runtime is tested separately on PostgreSQL; SQLite coverage is for persistence/API": 1
+      },
+      "junit_sha256": "4dbd5e974944ad76019c56fbff597c9ec998c9e789a865bee34d3ded810bf1ea",
+      "artifact": "n1-r04-runtime/builder-check/pytest.xml"
+    },
+    {
+      "suite": "domain_final",
+      "pass": 9,
+      "skip": 0,
+      "fail": 0,
+      "error": 0,
+      "skip_reasons": {},
+      "junit_sha256": "b6e011ea2d0f04a3a8a9553770798767b527638dafcebb77a8d7fa5ea57cf38c",
+      "artifact": "n1-r04-domain-final-all.xml"
+    }
+  ],
+  "other_gates_non_additive": [
+    {
+      "suite": "admin_authority_kb_migration",
+      "pass": 28,
+      "skip": 0,
+      "fail": 0,
+      "error": 0,
+      "python": "3.11 Linux"
+    },
+    {
+      "suite": "ledger_hashseed_17",
+      "pass": 8,
+      "skip": 0,
+      "fail": 0,
+      "error": 0,
+      "python": "3.11 Linux"
+    },
+    {
+      "suite": "admin_private_kb_followup",
+      "pass": 4,
+      "skip": 0,
+      "fail": 0,
+      "error": 0,
+      "python": "3.11 Linux"
+    }
+  ],
+  "docker_scenario": {
+    "status": "PASS",
+    "steps": [
+      {
+        "name": "register_platform",
+        "user_id": "c18d4871-f865-48d9-9a7a-8f9f8f9a7709",
+        "role": "VIN_USER"
+      },
+      {
+        "name": "domain_password_and_real_consent"
+      },
+      {
+        "name": "leader_creates_case",
+        "case_id": "77bb4133caf946e9bf951ee79d3095ee",
+        "ticket_id": "d2d7cc26-c1d8-5edd-8157-c576bab838f0",
+        "projection_reload_conflicts": 0
+      },
+      {
+        "name": "domain_dispatch",
+        "order_id": "391c0cac-7f45-423f-96e6-038828257a09",
+        "assignment_id": "2eac8bc3-574b-4715-a518-6408a9c740e6",
+        "actor": "Domain administrator/dispatcher"
+      },
+      {
+        "name": "staff_accepts_in_domain_app"
+      },
+      {
+        "name": "progress_returns_to_platform",
+        "sync_status": "applied",
+        "applied_sequence": 4
+      },
+      {
+        "name": "resident_approves_repair_on_platform"
+      },
+      {
+        "name": "staff_evidence_completed_and_domain_qc"
+      },
+      {
+        "name": "resident_final_click_and_case_closed",
+        "service_status": "closed",
+        "receipt_status": "approved"
+      },
+      {
+        "name": "roundtrip_complete"
+      }
+    ],
+    "paid_model_calls": 0,
+    "http_mocking": false,
+    "bql_commands": 0,
+    "canonical_case_status": "completed",
+    "platform_card_closed": true,
+    "result_photo_bytes_match": true,
+    "result_photo_decoded_in_browser": true,
+    "decision_replay_matches": true,
+    "model_calls": 5,
+    "external_browser_requests": []
+  },
+  "fixture_prefix": "vin-n1-r04-e2e-7d876861",
+  "cleanup": "STOPPED; owned fixture containers/network removed",
+  "m2_enabled": false,
+  "release_status": "not_pushed_not_deployed_no_cohort_cutover",
+  "remaining_gates": [
+    "N2-08 consumer UI and RC build from pinned sources",
+    "Leader direct CustomerService receipt evidence consumer",
+    "Autonomous dispatch and full staff UI workflow",
+    "Resident intake vision/image quota",
+    "Real business UAT and pilot/cutover"
+  ],
+  "superseded_failures": [
+    "final5 upstream 409 during projection polling; bounded reload added without weakening CAS",
+    "final2 PostgreSQL init server readiness race",
+    "contract pre UUID fix: 56 pass / 7 fail",
+    "domain missing shared fixture path: 8 pass / 1 skip, final rerun 9 pass / 0 skip"
+  ]
+}

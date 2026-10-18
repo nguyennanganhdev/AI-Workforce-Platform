@@ -859,6 +859,370 @@
       "title": "SourceIntent",
       "type": "object"
     },
+    "CustomerPlan": {
+      "additionalProperties": false,
+      "description": "C07 resident-visible plan, distinct from work-order approvals.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "management_pending",
+            "resident_pending",
+            "approved",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 0,
+          "title": "Version",
+          "type": "integer"
+        },
+        "estimatedAmount": {
+          "title": "Estimatedamount",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "canDecide": {
+          "title": "Candecide",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "version",
+        "estimatedAmount",
+        "steps",
+        "canDecide"
+      ],
+      "title": "CustomerPlan",
+      "type": "object"
+    },
+    "PlanDecisionPayload": {
+      "additionalProperties": false,
+      "description": "SourceIntent.payload for action=plan-decision; version is the plan's.",
+      "properties": {
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "expectedVersion": {
+          "minimum": 0,
+          "title": "Expectedversion",
+          "type": "integer"
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "reject"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "note": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id",
+        "expectedVersion",
+        "decision",
+        "note"
+      ],
+      "title": "PlanDecisionPayload",
+      "type": "object"
+    },
+    "PersonalJobPage": {
+      "$defs": {
+        "DurableJob": {
+          "additionalProperties": false,
+          "properties": {
+            "job_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Job Id",
+              "type": "string"
+            },
+            "owner_kind": {
+              "$ref": "#/$defs/JobOwnerKind"
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Scope"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "provider_integration_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Provider Integration Id"
+            },
+            "personal_user_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Personal User Id"
+            },
+            "job_type": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Job Type",
+              "type": "string"
+            },
+            "payload": {
+              "additionalProperties": true,
+              "title": "Payload",
+              "type": "object"
+            },
+            "idempotency_key": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Idempotency Key",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/JobStatus",
+              "default": "pending"
+            },
+            "attempt": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Attempt",
+              "type": "integer"
+            },
+            "max_attempts": {
+              "default": 5,
+              "minimum": 1,
+              "title": "Max Attempts",
+              "type": "integer"
+            },
+            "not_before": {
+              "format": "date-time",
+              "title": "Not Before",
+              "type": "string"
+            },
+            "lease_owner": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Lease Owner"
+            },
+            "lease_expires_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Lease Expires At"
+            },
+            "fencing_token": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Fencing Token",
+              "type": "integer"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "job_id",
+            "owner_kind",
+            "tenant_id",
+            "job_type",
+            "payload",
+            "idempotency_key",
+            "not_before",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "DurableJob",
+          "type": "object"
+        },
+        "JobOwnerKind": {
+          "enum": [
+            "scope",
+            "provider",
+            "personal"
+          ],
+          "title": "JobOwnerKind",
+          "type": "string"
+        },
+        "JobStatus": {
+          "enum": [
+            "pending",
+            "leased",
+            "succeeded",
+            "failed"
+          ],
+          "title": "JobStatus",
+          "type": "string"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Internal C09 consumer page; not a public job/secret DTO.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/DurableJob"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "has_more"
+      ],
+      "title": "PersonalJobPage",
+      "type": "object"
+    },
     "CaseEvent": {
       "additionalProperties": false,
       "properties": {
@@ -953,6 +1317,547 @@
         "payload"
       ],
       "title": "AutomationSpec",
+      "type": "object"
+    },
+    "AdminPage": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "vin-platform-1",
+          "default": "vin-platform-1",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "items": {
+          "items": {},
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "offset": {
+          "title": "Offset",
+          "type": "integer"
+        },
+        "limit": {
+          "title": "Limit",
+          "type": "integer"
+        },
+        "next_offset": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Offset"
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "offset",
+        "limit",
+        "next_offset"
+      ],
+      "title": "AdminPage",
+      "type": "object"
+    },
+    "PolicyView": {
+      "$defs": {
+        "QuotaPolicy": {
+          "additionalProperties": false,
+          "properties": {
+            "daily_tokens": {
+              "minimum": 0,
+              "title": "Daily Tokens",
+              "type": "integer"
+            },
+            "monthly_tokens": {
+              "minimum": 0,
+              "title": "Monthly Tokens",
+              "type": "integer"
+            },
+            "max_output_tokens": {
+              "default": 1024,
+              "maximum": 32768,
+              "minimum": 1,
+              "title": "Max Output Tokens",
+              "type": "integer"
+            },
+            "max_concurrency": {
+              "default": 2,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Max Concurrency",
+              "type": "integer"
+            },
+            "storage_bytes": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Storage Bytes",
+              "type": "integer"
+            },
+            "max_file_bytes": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Max File Bytes",
+              "type": "integer"
+            },
+            "embedding_daily_tokens": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Embedding Daily Tokens",
+              "type": "integer"
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "title": "Models",
+              "type": "array"
+            },
+            "enabled": {
+              "default": false,
+              "title": "Enabled",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "daily_tokens",
+            "monthly_tokens"
+          ],
+          "title": "QuotaPolicy",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        },
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "policy": {
+          "$ref": "#/$defs/QuotaPolicy"
+        }
+      },
+      "required": [
+        "subject",
+        "revision",
+        "active",
+        "policy"
+      ],
+      "title": "PolicyView",
+      "type": "object"
+    },
+    "AdminCatalogView": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "credential",
+            "agent",
+            "knowledge_base",
+            "mcp",
+            "skill"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "resource_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Resource Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "version": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 3000,
+          "title": "Description",
+          "type": "string"
+        },
+        "environment": {
+          "default": "production",
+          "enum": [
+            "production",
+            "sandbox"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "model_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Names",
+          "type": "array"
+        },
+        "tool_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tool Names",
+          "type": "array"
+        },
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        },
+        "catalog_id": {
+          "title": "Catalog Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "resource_id",
+        "owner_id",
+        "name",
+        "catalog_id"
+      ],
+      "title": "AdminCatalogView",
+      "type": "object"
+    },
+    "GrantView": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "subject_kind": {
+          "enum": [
+            "user",
+            "group",
+            "role"
+          ],
+          "title": "Subject Kind",
+          "type": "string"
+        },
+        "subject_id": {
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "permissions": {
+          "items": {
+            "enum": [
+              "view",
+              "bind",
+              "execute",
+              "manage"
+            ],
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "catalog_id",
+        "subject_kind",
+        "subject_id",
+        "permissions",
+        "id",
+        "active",
+        "revision"
+      ],
+      "title": "GrantView",
+      "type": "object"
+    },
+    "MembershipView": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        },
+        "group_id": {
+          "title": "Group Id",
+          "type": "string"
+        },
+        "domain_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Domain Id"
+        },
+        "area_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area Id"
+        },
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "user_id",
+        "group_id",
+        "domain_id",
+        "area_id",
+        "active",
+        "expires_at",
+        "revision"
+      ],
+      "title": "MembershipView",
+      "type": "object"
+    },
+    "AccountView": {
+      "additionalProperties": false,
+      "properties": {
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        },
+        "username": {
+          "title": "Username",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "user_id",
+        "username",
+        "role",
+        "status",
+        "eligible",
+        "revision"
+      ],
+      "title": "AccountView",
+      "type": "object"
+    },
+    "LibraryDocumentView": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "catalog_id": {
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "knowledge_base_id": {
+          "title": "Knowledge Base Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "review_status": {
+          "enum": [
+            "candidate",
+            "approved",
+            "retired"
+          ],
+          "title": "Review Status",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "revision": {
+          "title": "Revision",
+          "type": "string"
+        },
+        "source_ref": {
+          "title": "Source Ref",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "reviewed_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewed By"
+        },
+        "effective_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effective From"
+        },
+        "effective_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effective Until"
+        }
+      },
+      "required": [
+        "document_id",
+        "catalog_id",
+        "knowledge_base_id",
+        "owner_id",
+        "filename",
+        "status",
+        "review_status",
+        "version",
+        "revision",
+        "source_ref",
+        "size",
+        "reviewed_by",
+        "effective_from",
+        "effective_until"
+      ],
+      "title": "LibraryDocumentView",
+      "type": "object"
+    },
+    "DocumentReview": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "approved",
+            "retired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "expected_revision": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Expected Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "expected_revision"
+      ],
+      "title": "DocumentReview",
       "type": "object"
     }
   }

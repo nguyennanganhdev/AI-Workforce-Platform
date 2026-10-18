@@ -8,6 +8,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from time import perf_counter
+from urllib.parse import urlsplit
 
 
 def main():
@@ -24,7 +25,17 @@ def main():
     parser.add_argument(
         "--contracts-only", action="store_true", help="Run shared N1/N2 contracts; any skip fails this gate"
     )
+    parser.add_argument("--ui-only", action="store_true", help="Run the existing five Vin browser fixture suites; skip fails")
+    parser.add_argument("--ui-url", help="Explicit loopback Vin-enabled preview origin for --ui-only")
     options = parser.parse_args()
+    if options.ui_only:
+        preview = urlsplit(options.ui_url or "")
+        if (preview.scheme != "http" or preview.hostname not in {"127.0.0.1", "localhost", "::1"}
+                or preview.username or preview.password or preview.path not in {"", "/"} or preview.query or preview.fragment):
+            parser.error("--ui-only requires an explicit loopback HTTP preview origin")
+        if options.contracts_only or options.runtime or options.automation or options.storage:
+            parser.error("Run --ui-only separately from other gates to retain distinct counts")
+        os.environ["VIN_UI_TEST_URL"] = options.ui_url.rstrip("/")
     root = Path(__file__).resolve().parents[2]
     os.chdir(root)
     for path in (root, root / "tests", root / "src"):
@@ -98,12 +109,26 @@ def main():
     started = perf_counter()
     if options.contracts_only:
         suite = [
+            "tests/workforce/console/test_vin_customer_evidence.py",
+            "tests/workforce/console/test_vin_job_history.py",
+            "tests/vin_customer_plan_contract_test.py", "tests/vin_jobs_pagination_test.py",
+            "tests/vin_admin_test.py",
+            "tests/workforce/console/test_vin_admin_usage.py",
+            "tests/workforce/console/test_vin_customer_eval.py",
+            "tests/workforce/console/test_vin_publish_batch.py",
+            "tests/workforce/console/test_vin_personal_automation.py",
+            "tests/workforce/console/test_vin_discord_identity.py",
+            "tests/vin_personal_jobs_test.py",
+            "tests/workforce/console/test_vin_customer_cases.py",
             "tests/workforce/console/test_vin_model_resolver_contract.py",
             "tests/workforce/console/test_shared_catalog_consumer.py",
             "tests/workforce/console/test_vin_runtime_attribution.py",
             "tests/vin_shared_fixture_test.py", "tests/vin_catalog_knowledge_test.py",
             "tests/vin_workspace_test.py",
         ]
+    if options.ui_only:
+        suite = ["tests/workforce/console/test_vin_" + name + "_browser.py"
+                 for name in ("shell", "customer", "discord_identity", "batch", "admin")]
     result = pytest.main(
         [
             "-q",
@@ -133,7 +158,7 @@ def main():
         json.dumps(summary, indent=2), encoding="utf-8"
     )
     print(json.dumps(summary))
-    return result or int(bool(network_attempts) or (options.contracts_only and summary["skipped"] > 0))
+    return result or int(bool(network_attempts) or ((options.contracts_only or options.ui_only) and summary["skipped"] > 0))
 
 
 if __name__ == "__main__":

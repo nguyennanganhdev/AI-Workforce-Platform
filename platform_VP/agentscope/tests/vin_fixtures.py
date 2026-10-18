@@ -33,9 +33,10 @@ def create_authority_schema(connection):
     t.metadata.create_all(connection)
 
 
-async def seed_authority(engine):
+async def seed_authority(engine, *, create_schema=True):
     async with engine.begin() as db:
-        await db.run_sync(create_authority_schema)
+        if create_schema:
+            await db.run_sync(create_authority_schema)
         for user, tenant, role in (("admin", "vin", "PLATFORM_ADMIN"), ("alice", "vin", "VIN_USER"),
                 ("bob", "vin", "VIN_USER"), ("other", "foreign", "PLATFORM_ADMIN")):
             await db.execute(text("""INSERT INTO auth_users
@@ -56,6 +57,35 @@ async def seed_policy_catalog(authority, *, user_id="alice", environment="produc
     await authority.grant(admin, ResourceGrant(catalog_id=ident, subject_kind="user", subject_id=user_id,
         permissions=["view", "bind", "execute"]))
     return await authority.context(user_id, environment=environment)
+
+
+async def seed_admin_catalog(authority):
+    """N2-08 fixture from the real authority: group policy, override and inactive library."""
+    admin = await authority.context("admin")
+    await seed_policy_catalog(authority)
+    policy = QuotaPolicy(daily_tokens=500, monthly_tokens=5000, models=["test-model"], enabled=True)
+    for subject in ("group:pilot", "user:alice"):
+        await authority.set_policy(admin, subject, policy, expected_revision=0)
+    membership = await authority.add_membership(admin, "alice", "pilot")
+    catalog = await authority.publish_catalog(admin, CatalogEntry(kind="knowledge_base", resource_id="vin-library",
+        owner_id="admin", name="Vin fixture library", active=False))
+    grant = await authority.grant(admin, ResourceGrant(catalog_id=catalog, subject_kind="group", subject_id="pilot",
+        permissions=["view", "bind"]))
+    return {"catalog_id": catalog, "grant_id": grant, "membership_id": membership}
+
+
+async def seed_personal_job_history(authority, *, user_id="alice", kind="schedule-run", count=205, source_ids=None):
+    """C09 shared fixture; exercise real personal queue persistence beyond 100."""
+    from agentscope.app.workforce.foundation._tables import durable_jobs
+    async with authority.engine.begin() as db:
+        await db.run_sync(lambda connection: durable_jobs.create(connection, checkfirst=True))
+    context = await authority.context(user_id)
+    field = {"schedule-run": "schedule_id", "channel-event": "channel_id",
+        "delivery": "channel_id", "publish-batch": "conversation_id"}[kind]
+    jobs = [await authority.jobs.enqueue(context, kind=kind, key=f"fixture-history:{index:04}",
+        payload={"fixture": True, "sequence": index,
+            **({field: source_ids[index % len(source_ids)]} if source_ids else {})}) for index in range(count)]
+    return context, jobs
 
 
 @pytest_asyncio.fixture

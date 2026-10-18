@@ -189,6 +189,12 @@ time or interval"
         "agent_id": agent_record.id,
         "shared_context_service": shared_context_service,
     }
+    if is_leader:
+        from ._catalog_resources import catalog_authority
+        authority = catalog_authority(storage)
+        if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
+            from .._tool._customer_service import CustomerService
+            tools.append(CustomerService(**team_tool_kwargs))
     if session_record.config.personal_chat is not None and session_record.config.personal_chat.kind == "group" and session_record.team_id:
         tools.append(TeamSay(**team_tool_kwargs, role=team_role or "worker", management_group=True))
     elif session_record.config.personal_chat is not None:

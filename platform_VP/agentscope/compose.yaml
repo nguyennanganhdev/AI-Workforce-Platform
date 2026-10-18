@@ -10,6 +10,8 @@ services:
     environment:
       AGENTSCOPE_SQL_URL: ${AGENTSCOPE_SQL_URL:-postgresql+asyncpg://agentscope:agentscope@postgres:5432/agentscope}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      VIN_PLATFORM_ENABLED: ${VIN_PLATFORM_ENABLED:-false}
+      VIN_PLATFORM_ENCRYPTION_KEY: ${VIN_PLATFORM_ENCRYPTION_KEY:-}
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set}
       AUTH_REFRESH_PEPPER: ${AUTH_REFRESH_PEPPER:?AUTH_REFRESH_PEPPER must be set}
       AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-agentscope}
@@ -105,6 +107,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_BASE_URL: ${WEB_API_BASE_URL:-/api}
+        VITE_VIN_EXPERIENCE_ENABLED: ${VITE_VIN_EXPERIENCE_ENABLED:-false}
     image: ${WEB_IMAGE:-agentscope-web-local:latest}
     restart: unless-stopped
     ports:

@@ -63,6 +63,8 @@ def browser_app():
                     result = [{**item.model_dump(), "icon_url": ""} for item in ChannelTypeRegistry([DiscordChannel]).list_types()]
                 elif path == "/channels/":
                     result = []
+                elif path == "/channels/discord/identity":
+                    result = {"verified": True, "discord_user_id": "100", "verified_at": 1, "revision": 1}
                 elif path == "/agent/":
                     result = {"agents": []}
                 elif path == "/me/domain-links":
@@ -245,7 +247,9 @@ def test_customer_discord_form_requires_owner_and_explains_empty_allowlist(brows
     owner = page.get_by_label("Discord ID của chủ tài khoản (bắt buộc)", exact=True)
     expect(owner).to_be_visible()
     expect(owner).to_have_attribute("required", "")
-    owner.fill("100")
+    expect(owner).to_have_attribute("readonly", "")
+    assert any(path == "/channels/discord/identity" for _, path, _ in calls), calls
+    expect(owner).to_have_value("100")
     expect(page.locator("#channel-config-allowed_user_ids")).to_have_value("100")
     expect(page.get_by_text("Danh sách rỗng = chặn tất cả người dùng.", exact=False)).to_be_visible()
     page.locator("#channel-config-allowed_user_ids").fill("")

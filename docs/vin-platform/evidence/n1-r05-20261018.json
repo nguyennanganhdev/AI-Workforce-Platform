@@ -1,0 +1,184 @@
+{
+  "date": "2026-10-18",
+  "phase": "R05 staging candidate preparation; not deployed",
+  "c09_lookup_source_contract": "bccbc8e7",
+  "c09_test_order_fix": "c1a8acd84dc0b04ba8b996528d3fa9ba98e69077",
+  "ordering_red_reproduction": {
+    "tests": 1,
+    "failures": 1,
+    "cause": "enqueue order differs from keyset when timestamps tie"
+  },
+  "c09_final_gates_non_additive": [
+    {
+      "name": "windows_py311",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "a65a0dfe7253211b002d985ce20f9c75eebff4c84c4c1327e760f76c80826481"
+    },
+    {
+      "name": "linux_py311",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_sha256": "ad5b33d549f7f4eff61a94bce37d2de33147fe6cd2d893e9834a68662f57f202"
+    }
+  ],
+  "domain_package": {
+    "status": "PASS",
+    "paid_model_calls": 0,
+    "app_db_migrations": 0,
+    "deployed": false,
+    "compose_flag_wiring": "PASS; linked-customer false/true, cohort cutover always off",
+    "image": {
+      "tag": "vinhomes-domain-api:vin-n1-6ef348ce-rc-20261018",
+      "id": "sha256:37573253b6bb2a52b47a922fb42e6858d8a2b97be80efc392beff990b63a41e0",
+      "revision": "6ef348ce1ef51c5f1002218ccff4e7be43f8e273",
+      "python_sql_files_matched": 128,
+      "pip_check": "PASS",
+      "uid": 10001,
+      "cmd": [
+        "python",
+        "-m",
+        "vinhomes_api"
+      ],
+      "secret_artifact_files": 0
+    }
+  },
+  "domain_runtime_smoke": {
+    "status": "PASS",
+    "image": "vinhomes-domain-api:vin-n1-6ef348ce-rc-20261018",
+    "app_db_migrations": 0,
+    "paid_model_calls": 0,
+    "production_cmd_ready": true,
+    "password_consent_pkce_grant_profile": true,
+    "legacy_intake_preserved": true,
+    "application_source_mounts": 0,
+    "production_cmd": [
+      "python",
+      "-m",
+      "vinhomes_api"
+    ],
+    "cleanup": "owned API and UUID DB removed; parent PG preserved"
+  },
+  "c10": {
+    "status": "PASS",
+    "source_revision": "2ce926e3a26ec2f4ebc295dd68ae0c9b638b377d",
+    "scope": "disposable_four_store_restore",
+    "deploy_scripts_sha256_lf": {
+      "backup.sh": "c9dd5d2b88d8ab9c9603d4157bc6db3ad8b0a50b14ff1657665ce0824792ca95",
+      "verify-restore.sh": "04c95007ba30090a6ca2895bef2ebff9003209e0f14f1ac7f29113fe1686ce8f"
+    },
+    "postgres_tables": [
+      {
+        "name": "auth_users",
+        "n": 2,
+        "hash": "9010991fdeeae5546885ae4208b5d2e3"
+      },
+      {
+        "name": "vin_accounts",
+        "n": 2,
+        "hash": "0afb9c9b993baae885c45e00f3451b7d"
+      },
+      {
+        "name": "vin_quota_policies",
+        "n": 1,
+        "hash": "646df0246553bee116ebe7d2044dc980"
+      },
+      {
+        "name": "vin_catalog",
+        "n": 1,
+        "hash": "9659bab8bc7ec6adb8eabcd500fb00d2"
+      },
+      {
+        "name": "vin_grants",
+        "n": 1,
+        "hash": "7ab45a9417edab2ae7503fd2c482e2ca"
+      },
+      {
+        "name": "vin_attempts",
+        "n": 1,
+        "hash": "8ee4394da20d495f46379c5cefbb7be9"
+      },
+      {
+        "name": "vin_subject_usage",
+        "n": 1,
+        "hash": "641a1ee01061032fb4bf3efda4c05203"
+      },
+      {
+        "name": "vin_usage_buckets",
+        "n": 2,
+        "hash": "2ec5678075b24dd7a49c9069a2b6dd73"
+      },
+      {
+        "name": "vin_secrets",
+        "n": 1,
+        "hash": "287506e6481252e48e41cb1823604b5a"
+      },
+      {
+        "name": "vin_domain_links",
+        "n": 1,
+        "hash": "44d51052f4f579a4b4105a6e406c458c"
+      },
+      {
+        "name": "vin_cases",
+        "n": 1,
+        "hash": "c78cff3253ea9f5de7f29adcfaee66b7"
+      },
+      {
+        "name": "vin_audit",
+        "n": 4,
+        "hash": "74edb2a38c621a232d64246c9471b383"
+      },
+      {
+        "name": "wf_durable_jobs",
+        "n": 1,
+        "hash": "c39db5b6f2c3b4c0fafa75ecc48f21c1"
+      }
+    ],
+    "redis": {
+      "keys": 3,
+      "values_match": true,
+      "ttl_preserved": true
+    },
+    "minio": {
+      "objects": 2,
+      "bytes_match": true
+    },
+    "workspace_qdrant": {
+      "points": 1,
+      "private_manifest_match": true
+    },
+    "restored_app_started": false,
+    "model_calls": 0,
+    "production_cutover_verified": false
+  },
+  "c10_stores_passed": 4,
+  "c10_stores_skipped": 0,
+  "n2_observed": {
+    "head_at_review": "e6fd5cb6",
+    "consumer_wip": true,
+    "contracts_pass": 89,
+    "browser_pass": 26,
+    "postgres_pass": 10,
+    "journey_pass": 7,
+    "whole_final_rc_pass": false,
+    "note": "Source harness logs; do not claim a clean production-image RC from these results"
+  },
+  "target_order": [
+    "isolated local staging",
+    "VPS after staging/UAT/preflight"
+  ],
+  "paid_model_calls": 0,
+  "application_database_migrations": 0,
+  "production_changed": false,
+  "remaining": [
+    "N2 consumer commit and direct get/source filter call sites",
+    "Final clean integration and app/web candidate image RC",
+    "Whole image-pair staging acceptance and deployment manifest",
+    "VPS target/backups/client provisioning/UAT",
+    "Customer input image/vision quota and attachment flow before vision pilot"
+  ]
+}

@@ -33,6 +33,11 @@ x-s3-bucket: &s3-bucket ${S3_BUCKET:-vinhomes-files}
 x-embedding-key: &embedding-key ${EMBEDDING_API_KEY-${OPENAI_API_KEY:-}}
 # The AI platform (Workforce v1). Empty URL: the bridge is off and nothing below is used. See platform/README.md.
 x-platform: &platform
+  # Roll out linked customers independently of legacy chatbot cohort cutover.
+  # Defaults preserve the current resident/staff deployment until activation.
+  VINHOMES_CUSTOMER_PLATFORM_ENABLED: ${VINHOMES_CUSTOMER_PLATFORM_ENABLED:-false}
+  VINHOMES_CHATBOT_COHORT_CUTOVER_ENABLED: ${VINHOMES_CHATBOT_COHORT_CUTOVER_ENABLED:-false}
+  VINHOMES_CHATBOT_PLATFORM_COHORTS: ${VINHOMES_CHATBOT_PLATFORM_COHORTS:-[]}
   VINHOMES_API_PLATFORM_URL: ${VINHOMES_API_PLATFORM_URL:-}
   VINHOMES_API_PLATFORM_CUSTOMER_KEY: ${VINHOMES_API_PLATFORM_CUSTOMER_KEY:-}
   VINHOMES_API_PLATFORM_PROVIDER_KEY: ${VINHOMES_API_PLATFORM_PROVIDER_KEY:-}

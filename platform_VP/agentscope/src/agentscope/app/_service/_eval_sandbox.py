@@ -157,6 +157,11 @@ async def eval_sandbox(storage, user_id: str, spec: AgentSpec) -> EvalSandbox | 
     configs = {item["mcp_url"]: item for item in sandbox_configs()}
     if not configs:
         return None
+    from ._catalog_resources import catalog_authority
+    authority = catalog_authority(storage)
+    if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
+        from ._customer_eval_sandbox import build
+        return await build(storage, user_id, spec, list(configs.values()), authority)
     for mcp_id in dict.fromkeys(tool.mcp_id for tool in spec.tools):
         async def revalidate(ident=mcp_id):
             return await resolve_eval_mcp(storage, user_id, ident)

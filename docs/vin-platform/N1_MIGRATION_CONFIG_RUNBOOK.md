@@ -6,7 +6,7 @@ Ngày 18/10/2026. Source delivery; chưa phát hành production. Không dùng ke
 
 1. Chụp SHA/image/config manifest; sao lưu PostgreSQL, Redis, MinIO và workspace/Qdrant theo runbook release hiện có. Không in secret vào manifest. Rehearsal trên bản sao disposable, không dùng DSN production trong test.
 2. Giữ `VIN_PLATFORM_ENABLED=false`, `VINHOMES_CUSTOMER_PLATFORM_ENABLED=false` và frontend flag Người 2 tắt. Backup trước expand schema.
-3. Platform: dùng cùng SQL authority với AuthService. Chạy Alembic từ base hiện tại qua `0021_vin_platform_authority` rồi `0022_personal_job_owner`. Migration 0021 đóng băng 17 bảng Vin; 0022 thêm personal owner vào queue hiện có. `create_app` không tự tạo bảng; khi bật Vin, lifespan kiểm schema và dừng startup nếu thiếu migration.
+3. Platform: dùng cùng SQL authority với AuthService. Chạy Alembic từ base hiện tại qua `0021_vin_platform_authority`, `0022_personal_job_owner`, `0023_personal_job_constraint`, **`0024_vin_admin_revisions`**. Migration 0021 đóng băng 17 bảng Vin; 0022 thêm personal owner, 0023 sửa CHECK queue; 0024 backfill revision grant/membership và cờ active cho quota override. `create_app` không tự tạo bảng; khi bật Vin, lifespan kiểm schema/constraint và dừng startup nếu thiếu migration.
 
    Từ `P`, với `AGENTSCOPE_SQL_URL` là DSN đích đã xác minh:
 
@@ -30,6 +30,7 @@ Ngày 18/10/2026. Source delivery; chưa phát hành production. Không dùng ke
 | Platform | `WORKFORCE_PLATFORM_OPENAI_API_KEY` | Chỉ server hydrate alias; không gọi provider trong test, không seed vào user |
 | Platform | catalog/model/policy | Admin cấp đúng environment, role/group/user/pool; thiếu policy/grant thì deny |
 | Domain | `VINHOMES_CUSTOMER_PLATFORM_ENABLED` | Mặc định tắt, độc lập luồng legacy/staff |
+| Domain | `VINHOMES_CHATBOT_COHORT_CUTOVER_ENABLED`, `VINHOMES_CHATBOT_PLATFORM_COHORTS` | Mặc định false/[]; compose truyền vào api/platform-sync. Không bật M2 cùng lúc bật liên kết; chỉ cutover sau cohort sign-off |
 | Domain | registered client + issuer/redirect | Operator provision; secret hash, exact redirect, HTTPS hoặc loopback test |
 | Sandbox | `VINHOMES_API_EVAL_FIXTURES=enabled` + DB marker | Cần cả hai và synthetic linked subject; không bật/reset production |
 | Người 2 | `VITE_VIN_EXPERIENCE_ENABLED` | Giữ cùng UI; N1 không đổi frontend/deploy file lane Người 2 |
@@ -42,6 +43,10 @@ Rollback bằng feature flags/candidate image tương thích, giữ bảng/ledge
 
 ## Bằng chứng hiện có và gate còn mở
 
+- Kiểm gói Domain không đọc deployment.env: từ `vinhome_Recident/services/vinhomes-api`, chạy `python tests/vin_domain_rc_check.py --output <ignored-dir> [--image <candidate-tag>]`. Config chỉ dùng fixture giả, không start service; khi có image thì kiểm production CMD, non-root UID, pip check, hash Python/SQL khớp source và loại trừ .env/secret/artifact files. Image phải có OCI revision label bằng HEAD đang kiểm. Đây là package proof, không thay browser/RLS/business UAT.
+- Candidate Domain R05 đã có: `vinhomes-domain-api:vin-n1-6ef348ce-rc-20261018`. Dùng `--source-revision 6ef348ce1ef51c5f1002218ccff4e7be43f8e273` khi HEAD chỉ đổi docs/helper sau build; source Python/SQL hiện tại vẫn phải hash-match image. Chạy smoke production CMD trên PG **fixture riêng** bằng `python tests/vin_domain_runtime_smoke.py --image <tag> --database-container <vin-n1-owned-pg> --output <ignored-dir>`. Parent PG phải có label vin.fixture=vin-n1-*, user vinfixture/password offline-vin-fixture-only; helper chỉ tạo/drop DB UUID của nó, không đụng DB khác. Seed dùng helper giả, API không mount source; cần QA image đã có để HTTP check trong network loopback fixture. Kiểm password/consent/PKCE/grant/profile và M2 off, chưa phải whole Platform E2E/staging persistent.
 - Đã chạy migration từ DB PostgreSQL trống lên head hai lần, kiểm quota race/settle/revoke/session thật; CAS credential + batch agent activation SQL/Redis qua fake Redis.
 - Shared auth fixture dùng DDL production 0007/0008. Integration Domain dùng runtime role hạn chế và RLS; không dùng model key thật.
-- Còn PENDING: restore bốn store trên release candidate; Python 3.11 CI Platform (local hiện Python 3.12.13); merge hai lane + browser/runtime C09; positive linked-customer sandbox business; vision adapter; U01–U30 và live business UAT. Không đánh dấu các gate này đã đạt chỉ vì API/test offline xanh.
+- Python 3.11 Linux đã chạy authority/consumer/runtime bằng fixture; số PASS/SKIP thật ghi ở N1 handoff. N1/N2 đã merge vào dev_Chien local e7b80da6 và N1 rebase lên đó.
+- Helper rehearsal: `python tests/vin_release_rehearsal.py --output .artifacts/<thu-muc-moi>` từ P; cần các image QA/infra và docker:27-cli. Tạo source stack dữ liệu giả, dùng script backup/verify-restore hiện có, rồi restore lần hai để so fingerprint SQL, Redis value/TTL, MinIO bytes, Qdrant point và private manifest. Không khởi động restored app/model. Artifact chứa config/secret **giả** của fixture, không commit archive/env.
+- Còn PENDING: restore/canary trên release candidate thật và off-host; runtime/browser C09 consumer sau nối; positive linked-customer sandbox business; vision adapter; U01–U30/live business UAT. Rehearsal disposable không thay production cutover.

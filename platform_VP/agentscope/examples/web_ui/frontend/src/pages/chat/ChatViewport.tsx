@@ -52,6 +52,7 @@ import {
 	ResizablePanelGroup,
 } from '@/components/ui/resizable.tsx';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { liveSessionPresentation } from '@/features/workforce/session/live-adapter';
 import { officeFromSession } from '@/features/workforce/session/presentation';
 import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
@@ -201,6 +202,7 @@ export function ChatViewport({
 	ticketView = false,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
 	const { groups } = useAvailableModels();
 
@@ -1018,7 +1020,7 @@ export function ChatViewport({
 										groupChat={view?.session.config.personal_chat?.kind === 'group'}
 										className="w-full"
 										showWorkspace={!isTicketView && !view?.session.config.personal_chat}
-										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
+										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? (privateAccount ? 'Trao đổi với Leader hoặc @agent của bạn…' : 'Ban quản lý trao đổi với Leader hoặc @agent…') : undefined}
 										agentName={agentName}
 										msgs={transcript}
 										loading={messagesLoading}

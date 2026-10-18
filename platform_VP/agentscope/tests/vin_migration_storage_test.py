@@ -85,10 +85,24 @@ async def test_expand_migration_and_postgres_race(tmp_path):
     try:
         cfg = Config(str(Path(__file__).parents[1] / "src/agentscope/app/storage/_sql/_alembic/alembic.ini"))
         cfg.set_main_option("sqlalchemy.url", url)
+        await asyncio.to_thread(command.upgrade, cfg, "0022_personal_job_owner")
+        async with engine.begin() as db:
+            await db.execute(text("""INSERT INTO wf_durable_jobs
+                (id,owner_kind,owner_namespace,tenant_id,domain_id,area_id,manager_account_id,provider_integration_id,
+                 job_type,payload,payload_hash,idempotency_key,status,attempt,max_attempts,not_before,fencing_token,created_at,updated_at)
+                VALUES('legacy-scope','scope','legacy-scope','test','domain','area','manager',NULL,
+                  'fixture','{}','fixture','legacy-scope-key','pending',0,1,CURRENT_TIMESTAMP,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+                  ('legacy-provider','provider','legacy-provider','test',NULL,NULL,NULL,'provider',
+                  'fixture','{}','fixture','legacy-provider-key','pending',0,1,CURRENT_TIMESTAMP,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"""))
+            await db.execute(text("INSERT INTO vin_memberships (id,tenant_id,user_id,group_id,active) VALUES ('legacy-member','test','alice','pilot',true)"))
+            await db.execute(text("INSERT INTO vin_grants (id,tenant_id,catalog_id,subject_kind,subject_id,permissions,active) VALUES ('legacy-grant','test','catalog','user','alice','[]',true)"))
         await asyncio.to_thread(command.upgrade, cfg, "head")
         await asyncio.to_thread(command.upgrade, cfg, "head")
         async with engine.begin() as db:
-            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0022_personal_job_owner"
+            assert (await db.execute(text("SELECT version_num FROM alembic_version"))).scalar_one() == "0024_vin_admin_revisions"
+            for table_name in ("vin_memberships", "vin_grants"):
+                assert (await db.execute(text("SELECT revision FROM " + table_name))).scalar_one() == 1
+            assert (await db.execute(text("SELECT count(*) FROM wf_durable_jobs WHERE id LIKE 'legacy-%'"))).scalar_one() == 2
             for user, role in [("admin", "PLATFORM_ADMIN"), ("alice", "VIN_USER")]:
                 await db.execute(text("""INSERT INTO auth_users(id,tenant_id,email,username,password_hash,status,role,created_at,updated_at)
                     VALUES(:u,'test',:email,:u,'offline-password-hash','active',:r,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"""),
@@ -99,6 +113,10 @@ async def test_expand_migration_and_postgres_race(tmp_path):
         await service.set_policy(await service.context("admin"), "role:VIN_USER",
             QuotaPolicy(daily_tokens=1000, monthly_tokens=2000, models=["fake"], max_concurrency=20, enabled=True))
         context = await service.context("alice")
+        job = await service.jobs.enqueue(context, kind="delivery", key="migrated-job", payload={"body": "fixture"})
+        claimed = await service.jobs.claim("fixture-worker")
+        assert claimed.job_id == job.job_id and claimed.personal_user_id == "alice"
+        await service.jobs.complete(claimed, "fixture-worker", {"delivered": True})
         async def reserve():
             try:
                 return await service.quota.reserve(context, budget=600, model="fake", purpose="chat")

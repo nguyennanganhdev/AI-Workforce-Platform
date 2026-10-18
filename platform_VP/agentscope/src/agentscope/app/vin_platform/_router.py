@@ -1,8 +1,9 @@
 """Public contract adapters. Runtime reservation/settlement stay internal."""
 
 from datetime import datetime
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import Field, SecretStr
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from ..deps import get_current_principal
 from . import _tables as t
 from ._contracts import CapabilityView, CatalogPage, CatalogEntry, Contract, DomainProvider, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent, WorkspaceState
 from ._domain import DomainAdapter
+from ._contracts import AdminPage, PolicyView, AdminCatalogView, GrantView, MembershipView, AccountView, LibraryDocumentView, DocumentReview
 
 router = APIRouter(tags=["vin-platform"])
 
@@ -117,17 +119,17 @@ async def migrate_credentials(body: MigrationRequest, who=Depends(caller)):
 
 
 @router.put("/admin/vin/accounts/{user_id}/eligibility")
-async def eligibility(user_id: str, body: Eligibility, who=Depends(caller)):
+async def eligibility(user_id: str, body: Eligibility, expected_revision: int | None = Query(None, ge=0), who=Depends(caller)):
     authority, context = who
-    await authority.set_eligibility(context, user_id, body.eligible)
-    return {"updated": True}
+    revision = await authority.set_eligibility(context, user_id, body.eligible, expected_revision=expected_revision)
+    return {"updated": True, "revision": revision}
 
 
 @router.put("/admin/vin/quota-policies/{subject}")
-async def policy(subject: str, body: QuotaPolicy, who=Depends(caller)):
+async def policy(subject: str, body: QuotaPolicy, expected_revision: int | None = Query(None, ge=0), who=Depends(caller)):
     authority, context = who
-    await authority.set_policy(context, subject, body)
-    return {"updated": True}
+    revision = await authority.set_policy(context, subject, body, expected_revision=expected_revision)
+    return {"updated": True, "revision": revision}
 
 
 @router.post("/admin/vin/catalog", status_code=201)
@@ -143,9 +145,9 @@ async def grant(body: ResourceGrant, who=Depends(caller)):
 
 
 @router.delete("/admin/vin/grants/{ident}", status_code=204)
-async def revoke_grant(ident: str, who=Depends(caller)):
+async def revoke_grant(ident: str, expected_revision: int | None = Query(None, ge=1), who=Depends(caller)):
     authority, context = who
-    await authority.revoke_grant(context, ident)
+    await authority.revoke_grant(context, ident, expected_revision=expected_revision)
 
 
 class Membership(Contract):
@@ -163,9 +165,68 @@ async def membership(body: Membership, who=Depends(caller)):
 
 
 @router.delete("/admin/vin/memberships/{ident}", status_code=204)
-async def revoke_membership(ident: str, who=Depends(caller)):
+async def revoke_membership(ident: str, expected_revision: int | None = Query(None, ge=1), who=Depends(caller)):
     authority, context = who
-    await authority.revoke_membership(context, ident)
+    await authority.revoke_membership(context, ident, expected_revision=expected_revision)
+
+
+@router.get("/admin/vin/quota-policies", response_model=AdminPage[PolicyView])
+async def admin_policies(subject: str | None = None, subject_kind: Literal["user", "group", "role", "pool"] | None = None,
+                         active: bool | None = None,
+                         offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), who=Depends(caller)):
+    authority, context = who
+    return await authority.administration.page(context, "policies", subject=subject, subject_kind=subject_kind, active=active, offset=offset, limit=limit)
+
+
+@router.delete("/admin/vin/quota-policies/{subject}", status_code=204)
+async def remove_policy(subject: str, expected_revision: int = Query(ge=1), who=Depends(caller)):
+    authority, context = who
+    await authority.administration.remove_policy(context, subject, expected_revision)
+
+
+@router.get("/admin/vin/catalog", response_model=AdminPage[AdminCatalogView])
+async def admin_catalog(kind: Literal["credential", "agent", "knowledge_base", "mcp", "skill"] | None = None,
+                        environment: Literal["production", "sandbox"] | None = None, active: bool | None = None,
+                        offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), who=Depends(caller)):
+    authority, context = who
+    return await authority.administration.page(context, "catalog", kind=kind, environment=environment, active=active, offset=offset, limit=limit)
+
+
+@router.get("/admin/vin/grants", response_model=AdminPage[GrantView])
+async def admin_grants(catalog_id: str | None = None, subject_kind: Literal["user", "group", "role"] | None = None,
+                       subject_id: str | None = None, active: bool | None = None,
+                       offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), who=Depends(caller)):
+    authority, context = who
+    return await authority.administration.page(context, "grants", catalog_id=catalog_id, subject_kind=subject_kind,
+        subject_id=subject_id, active=active, offset=offset, limit=limit)
+
+
+@router.get("/admin/vin/memberships", response_model=AdminPage[MembershipView])
+async def admin_memberships(user_id: str | None = None, group_id: str | None = None, active: bool | None = None,
+                            offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), who=Depends(caller)):
+    authority, context = who
+    return await authority.administration.page(context, "memberships", user_id=user_id, group_id=group_id,
+        active=active, offset=offset, limit=limit)
+
+
+@router.get("/admin/vin/accounts", response_model=AdminPage[AccountView])
+async def admin_accounts(user_id: str | None = None, eligible: bool | None = None,
+                         offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), who=Depends(caller)):
+    authority, context = who
+    return await authority.administration.accounts(context, user_id=user_id, eligible=eligible, offset=offset, limit=limit)
+
+
+@router.get("/admin/vin/catalog/{catalog_id}/documents", response_model=AdminPage[LibraryDocumentView])
+async def library_documents(catalog_id: str, review_status: Literal["candidate", "approved", "retired"] | None = None,
+                            offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), who=Depends(caller)):
+    authority, context = who
+    return await authority.administration.documents(context, catalog_id, review_status=review_status, offset=offset, limit=limit)
+
+
+@router.post("/admin/vin/catalog/{catalog_id}/documents/{document_id}/review", response_model=LibraryDocumentView)
+async def library_review(catalog_id: str, document_id: str, body: DocumentReview, who=Depends(caller)):
+    authority, context = who
+    return await authority.administration.review(context, catalog_id, document_id, body)
 
 
 class SecretInput(Contract):

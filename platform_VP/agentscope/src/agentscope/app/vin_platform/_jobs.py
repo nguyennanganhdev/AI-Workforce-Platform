@@ -7,14 +7,14 @@ or Redis config store is created here. A delivery retry reuses its saved body.
 from datetime import timedelta
 from uuid import NAMESPACE_URL, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..workforce.foundation._database import SqlAlchemyUnitOfWork
 from ..workforce.foundation._job_repository import SqlDurableJobRepository
 from ..workforce.foundation._tables import durable_jobs
 from ..workforce.foundation.event_delivery import DurableJob, JobOwnerKind
-from ._contracts import PlatformError
+from ._contracts import PersonalJobPage, PlatformError
 from ._service import now
 
 
@@ -51,18 +51,26 @@ class PersonalJobs:
         if job is None:
             return None
         try:
-            context = await self.authority.context(job.personal_user_id, environment=job.payload["environment"],
-                workspace_id=job.payload.get("workspace_id"))
-            async with self.authority.engine.begin() as db:
-                await self.authority.assert_active(db, context)
-            if context.authorization_revision != job.payload["authorization_revision"]:
-                raise PlatformError("AUTHORIZATION_REVOKED", 403)
+            await self.context_for(job)
             if job.attempt > 1 and job.job_type != "delivery":
                 raise PlatformError("OUTCOME_UNKNOWN", 409)
         except PlatformError as exc:
             await self.repository.fail(job.job_id, worker_id, job.fencing_token, {"code": exc.code}, now(), now())
             return None
         return job
+
+    async def context_for(self, job):
+        """Recheck a saved job immediately before runtime/delivery starts."""
+        if job.owner_kind != JobOwnerKind.PERSONAL or not job.personal_user_id:
+            raise PlatformError("CAPABILITY_DENIED", 403)
+        purpose = {"schedule-run": "schedule", "channel-event": "channel", "delivery": "delivery", "publish-batch": "builder"}[job.job_type]
+        context = await self.authority.context(job.personal_user_id, purpose=purpose,
+            environment=job.payload["environment"], workspace_id=job.payload.get("workspace_id"))
+        async with self.authority.engine.begin() as db:
+            await self.authority.assert_active(db, context)
+        if context.tenant_id != job.tenant_id or context.authorization_revision != job.payload["authorization_revision"]:
+            raise PlatformError("AUTHORIZATION_REVOKED", 403)
+        return context
 
     async def complete(self, job, worker_id, result):
         return await self.repository.complete(job.job_id, worker_id, job.fencing_token, result, now())
@@ -81,10 +89,71 @@ class PersonalJobs:
     async def fail(self, job, worker_id, code, *, retry_after=30):
         return await self.repository.fail(job.job_id, worker_id, job.fencing_token, {"code": code}, now(), now() + timedelta(seconds=retry_after))
 
-    async def list(self, context, kind):
+    @staticmethod
+    def _selection(context, kind, source_id=None, run_id=None):
+        fields = {"schedule-run": "schedule_id", "channel-event": "channel_id",
+            "delivery": "channel_id", "publish-batch": "conversation_id"}
+        if kind not in fields:
+            raise PlatformError("INVALID_JOB_KIND", 422)
+        for value in (source_id, run_id):
+            if value is not None and (not isinstance(value, str) or not 1 <= len(value) <= 255):
+                raise PlatformError("INVALID_JOB_FILTER", 422)
+        if run_id is not None and kind != "delivery":
+            raise PlatformError("INVALID_JOB_FILTER", 422)
+        selection = and_(durable_jobs.c.owner_kind == "personal", durable_jobs.c.tenant_id == context.tenant_id,
+            durable_jobs.c.personal_user_id == context.initiator_user_id, durable_jobs.c.job_type == kind)
+        if source_id is not None:
+            selection = and_(selection, durable_jobs.c.payload["body"][fields[kind]].as_string() == source_id)
+        if run_id is not None:
+            selection = and_(selection, durable_jobs.c.idempotency_key.startswith("delivery:" + run_id + ":", autoescape=True))
+        return selection
+
+    async def get(self, context, kind, job_id, *, source_id=None, run_id=None):
+        """Direct lookup for repair; revalidate the saved execution authority."""
+        if not isinstance(job_id, str) or not 1 <= len(job_id) <= 255:
+            raise PlatformError("INVALID_JOB_ID", 422)
+        selection = self._selection(context, kind, source_id, run_id)
+        async with self.authority.engine.begin() as db:
+            await self.authority.assert_active(db, context)
+            row = (await db.execute(select(durable_jobs).where(selection, durable_jobs.c.id == job_id))).mappings().first()
+        if row is None:
+            raise PlatformError("JOB_NOT_FOUND", 404)
+        job = self.repository._model(row)
+        await self.context_for(job)
+        return job
+
+    async def list_page(self, context, kind, *, cursor=None, limit=100, source_id=None, run_id=None):
+        """Keyset pagination scoped to the current tenant, owner and kind.
+
+        The cursor is the last returned job ID, not an authorization token.
+        Deleting that row invalidates the cursor; consumers must reload.
+        """
+        selection = self._selection(context, kind, source_id, run_id)
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise PlatformError("INVALID_PAGINATION", 422)
+        if cursor is not None and (not isinstance(cursor, str) or not 1 <= len(cursor) <= 255):
+            raise PlatformError("INVALID_JOB_CURSOR", 422)
         async with self.authority.engine.begin() as db:
             await self.authority.assert_active(db, context, require_eligible=False)
-            rows = (await db.execute(select(durable_jobs).where(durable_jobs.c.owner_kind == "personal",
-                durable_jobs.c.tenant_id == context.tenant_id, durable_jobs.c.personal_user_id == context.initiator_user_id,
-                durable_jobs.c.job_type == kind).order_by(durable_jobs.c.created_at).limit(100))).mappings().all()
-        return [self.repository._model(row) for row in rows]
+            query = select(durable_jobs).where(selection)
+            if cursor is not None:
+                marker = (await db.execute(select(durable_jobs.c.created_at, durable_jobs.c.id).where(
+                    selection, durable_jobs.c.id == cursor))).mappings().first()
+                if marker is None:
+                    raise PlatformError("INVALID_JOB_CURSOR", 422)
+                query = query.where(or_(durable_jobs.c.created_at > marker["created_at"],
+                    and_(durable_jobs.c.created_at == marker["created_at"], durable_jobs.c.id > marker["id"])))
+            rows = (await db.execute(query.order_by(durable_jobs.c.created_at, durable_jobs.c.id).limit(limit + 1))).mappings().all()
+        has_more = len(rows) > limit
+        return PersonalJobPage(items=[self.repository._model(row) for row in rows[:limit]],
+            next_cursor=rows[limit - 1]["id"] if has_more else None, has_more=has_more)
+
+    async def list(self, context, kind, *, source_id=None, run_id=None):
+        """Compatibility reader: exhaust pages instead of silently truncating."""
+        items, cursor = [], None
+        while True:
+            page = await self.list_page(context, kind, cursor=cursor, source_id=source_id, run_id=run_id)
+            items.extend(page.items)
+            if not page.has_more:
+                return items
+            cursor = page.next_cursor

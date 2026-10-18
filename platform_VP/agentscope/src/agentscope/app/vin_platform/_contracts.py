@@ -1,9 +1,11 @@
 """Versioned, strict contracts shared with the runtime/UI implementation."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
+
+from ..workforce.foundation.event_delivery import DurableJob
 
 
 CONTRACT_VERSION = "vin-platform-1"
@@ -123,6 +125,35 @@ class SourceIntent(Contract):
     idempotency_key: str = Field(min_length=16, max_length=128)
 
 
+class CustomerPlan(Contract):
+    """C07 resident-visible plan, distinct from work-order approvals."""
+
+    id: str
+    title: str
+    status: Literal["management_pending", "resident_pending", "approved", "rejected"]
+    version: int = Field(ge=0)
+    estimatedAmount: str
+    steps: list[str]
+    canDecide: bool
+
+
+class PlanDecisionPayload(Contract):
+    """SourceIntent.payload for action=plan-decision; version is the plan's."""
+
+    plan_id: str
+    expectedVersion: Annotated[StrictInt, Field(ge=0)]
+    decision: Literal["approve", "reject"]
+    note: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+
+
+class PersonalJobPage(Contract):
+    """Internal C09 consumer page; not a public job/secret DTO."""
+
+    items: list[DurableJob]
+    next_cursor: str | None
+    has_more: bool
+
+
 class CaseEvent(Contract):
     schema_version: Literal["vin-case-1"] = "vin-case-1"
     event_id: str
@@ -139,3 +170,74 @@ class AutomationSpec(Contract):
     kind: Literal["schedule", "channel", "delivery", "sandbox", "derived"]
     payload: dict
     expected_revision: int = Field(default=0, ge=0)
+
+
+Item = TypeVar("Item")
+
+
+class AdminPage(Contract, Generic[Item]):
+    contract_version: Literal["vin-platform-1"] = CONTRACT_VERSION
+    items: list[Item]
+    total: int
+    offset: int
+    limit: int
+    next_offset: int | None
+
+
+class PolicyView(Contract):
+    subject: str
+    revision: int
+    active: bool
+    policy: QuotaPolicy
+
+
+class AdminCatalogView(CatalogEntry):
+    catalog_id: str
+
+
+class GrantView(ResourceGrant):
+    id: str
+    active: bool
+    revision: int
+
+
+class MembershipView(Contract):
+    id: str
+    user_id: str
+    group_id: str
+    domain_id: str | None
+    area_id: str | None
+    active: bool
+    expires_at: datetime | None
+    revision: int
+
+
+class AccountView(Contract):
+    user_id: str
+    username: str
+    role: str
+    status: str
+    eligible: bool
+    revision: int
+
+
+class LibraryDocumentView(Contract):
+    document_id: str
+    catalog_id: str
+    knowledge_base_id: str
+    owner_id: str
+    filename: str
+    status: str
+    review_status: Literal["candidate", "approved", "retired"]
+    version: str
+    revision: str
+    source_ref: str
+    size: int
+    reviewed_by: str | None
+    effective_from: str | None
+    effective_until: str | None
+
+
+class DocumentReview(Contract):
+    status: Literal["approved", "retired"]
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")

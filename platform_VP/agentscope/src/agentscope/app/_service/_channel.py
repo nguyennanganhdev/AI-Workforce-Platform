@@ -221,12 +221,19 @@ class ChannelService:
         options = DiscordChannel.Config.model_validate(config)
         authority = getattr(self._storage, "vin_platform_service", None)
         context = await authority.context(user_id) if authority is not None else None
-        if creating and context is not None and context.role == "VIN_USER":
-            if not options.owner_user_id:
-                raise ChannelError("Owner Discord user ID is required for a customer bot.", 400)
+        if context is not None and context.role == "VIN_USER":
+            from ._discord_identity import verified_owner
+            from ..vin_platform import PlatformError
+            try:
+                owner = (await verified_owner(authority, context))["discord_user_id"]
+            except PlatformError as exc:
+                raise ChannelError(exc.code, exc.status) from exc
+            if options.owner_user_id and options.owner_user_id != owner:
+                raise ChannelError("DISCORD_OWNER_MISMATCH", 403)
+            options.owner_user_id = owner
             if options.allowed_user_ids is None:
                 options.allowed_user_ids = [options.owner_user_id]
-            if options.owner_user_id not in options.allowed_user_ids:
+            if creating and options.owner_user_id not in options.allowed_user_ids:
                 raise ChannelError("Allowed Discord user IDs must include the owner; an empty list blocks everyone.", 400)
             if "approver_user_ids" not in options.model_fields_set:
                 options.approver_user_ids = [options.owner_user_id]

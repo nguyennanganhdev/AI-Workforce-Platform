@@ -194,6 +194,15 @@ class SchedulerManager:
                 )
                 return
 
+            from ..._service._personal_jobs import personal_context
+            try:
+                if await personal_context(storage, record.user_id) is not None:
+                    await self._fire_personal(record)
+                    return
+            except Exception:
+                logger.exception("[Schedule:%s] Personal durable enqueue failed", record.id)
+                return
+
             origin = ScheduleOrigin(
                 schedule_id=record.id,
                 deliver_channel_id=record.data.deliver_channel_id or None,
@@ -367,6 +376,34 @@ class SchedulerManager:
                 logger.exception("[Schedule:%s] Could not record the run", record.id)
 
         return _trigger
+
+    async def _fire_personal(self, record):
+        from datetime import timedelta, timezone
+        from ..._service._personal_jobs import enqueue_schedule
+        current = await self._storage.get_schedule(record.user_id, record.id)
+        if current is None or not current.data.enabled:
+            return
+        at = datetime.now(timezone.utc)
+        if current.data.once:
+            slot = "once"
+        else:
+            trigger = self.validate_schedule(current)
+            fire = trigger.get_next_fire_time(None, at - timedelta(seconds=300))
+            due = None
+            while fire is not None and fire <= at:
+                due = fire
+                fire = trigger.get_next_fire_time(fire, fire + timedelta(microseconds=1))
+            if due is None:
+                return
+            slot = due.astimezone(timezone.utc).isoformat()
+        await enqueue_schedule(self._storage, current, slot)
+        # Queue durability precedes consuming a once schedule. Concurrent
+        # timers enqueue the same logical key; only the C09 claimant runs it.
+        data = current.data.model_copy(update={"last_fired_at": at, "last_error": "DISPATCH_OUTCOME_PENDING",
+            **({"enabled": False} if current.data.once else {})})
+        await self._storage.upsert_schedule(current.user_id, current.model_copy(update={"data": data}))
+        if current.data.once:
+            await self.notify_changed(current.id)
 
     # ------------------------------------------------------------------
     # Schedule management

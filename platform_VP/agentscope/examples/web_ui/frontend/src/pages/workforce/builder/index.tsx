@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BatchPublication } from './BatchPublication';
 import { workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
@@ -44,6 +45,7 @@ import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
 import { EvaluationProgress } from '@/components/workforce/EvaluationProgress';
 import { EvaluationReport } from '@/components/workforce/EvaluationReport';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useEvaluationProgress } from '@/hooks/useEvaluationProgress';
 import { cn } from '@/lib/utils';
 
@@ -169,6 +171,7 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 }
 
 export function AgentBuilderPage() {
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [message, setMessage] = useState('');
 	const [conversationId, setConversationId] = useState<string | null>(() =>
@@ -462,7 +465,10 @@ export function AgentBuilderPage() {
 											Model <span className="font-mono">{proposal.chat_model_config.model}</span>
 										</p>
 									</div>
-									{proposal.status === 'ready' && (
+									{proposal.status === 'ready' && privateAccount && <BatchPublication key={proposal.proposal_id} proposal={proposal} disabled={working} onPublished={async () => {
+										await refreshConversation(proposal.conversation_id); await loadAgents();
+									}} />}
+									{proposal.status === 'ready' && !privateAccount && (
 										<Button onClick={publish} disabled={working}>
 											<Rocket /> Phát hành
 										</Button>
