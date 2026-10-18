@@ -33,9 +33,10 @@ def create_authority_schema(connection):
     t.metadata.create_all(connection)
 
 
-async def seed_authority(engine):
+async def seed_authority(engine, *, create_schema=True):
     async with engine.begin() as db:
-        await db.run_sync(create_authority_schema)
+        if create_schema:
+            await db.run_sync(create_authority_schema)
         for user, tenant, role in (("admin", "vin", "PLATFORM_ADMIN"), ("alice", "vin", "VIN_USER"),
                 ("bob", "vin", "VIN_USER"), ("other", "foreign", "PLATFORM_ADMIN")):
             await db.execute(text("""INSERT INTO auth_users
@@ -73,14 +74,17 @@ async def seed_admin_catalog(authority):
     return {"catalog_id": catalog, "grant_id": grant, "membership_id": membership}
 
 
-async def seed_personal_job_history(authority, *, user_id="alice", kind="schedule-run", count=205):
+async def seed_personal_job_history(authority, *, user_id="alice", kind="schedule-run", count=205, source_ids=None):
     """C09 shared fixture; exercise real personal queue persistence beyond 100."""
     from agentscope.app.workforce.foundation._tables import durable_jobs
     async with authority.engine.begin() as db:
         await db.run_sync(lambda connection: durable_jobs.create(connection, checkfirst=True))
     context = await authority.context(user_id)
+    field = {"schedule-run": "schedule_id", "channel-event": "channel_id",
+        "delivery": "channel_id", "publish-batch": "conversation_id"}[kind]
     jobs = [await authority.jobs.enqueue(context, kind=kind, key=f"fixture-history:{index:04}",
-        payload={"fixture": True, "sequence": index}) for index in range(count)]
+        payload={"fixture": True, "sequence": index,
+            **({field: source_ids[index % len(source_ids)]} if source_ids else {})}) for index in range(count)]
     return context, jobs
 
 
