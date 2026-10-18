@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-18",
+  "scope": "N1 independent verification of N2 S16; not VPS acceptance",
+  "n2_head": "55d13fc6",
+  "image_source_revision": "9876d94eaa8c68040bcb2e6cea91ded6f58a606c",
+  "producer_fix_is_ancestor": "c1a8acd84dc0b04ba8b996528d3fa9ba98e69077",
+  "n2_manifest_sha256": "9419523d828db21c9dbcf73d55f5eeb1245acb9afdbadaf5ce5841e00b665ba8",
+  "images_verified": {
+    "app": {
+      "tag": "vin-n2-platform-rc:9876d94e",
+      "id": "sha256:cb0caf0914297c189f6dad1105747de741db22e8d49f36ab9a8f925007180c0a",
+      "source_revision": "9876d94eaa8c68040bcb2e6cea91ded6f58a606c"
+    },
+    "web": {
+      "tag": "vin-n2-web-rc:9876d94e",
+      "id": "sha256:5be765a31e8e5ccfaf8ea311533603086f8f0c418be4c856d64bb2e8e08807df",
+      "source_revision": "9876d94eaa8c68040bcb2e6cea91ded6f58a606c"
+    },
+    "domain": {
+      "tag": "vinhomes-domain-api:vin-n1-6ef348ce-rc-20261018",
+      "id": "sha256:37573253b6bb2a52b47a922fb42e6858d8a2b97be80efc392beff990b63a41e0",
+      "source_revision": "6ef348ce1ef51c5f1002218ccff4e7be43f8e273"
+    }
+  },
+  "independent_tests": {
+    "tests": 25,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "consumer_junit_sha256": "d8870d9b5b3f80ebcd61b1cc249d00f8c7df2c008855b8c0543c6393b03f52ca",
+  "independent_source_hashes": {
+    "platform_python_files": 717,
+    "web_assets": 476,
+    "all_match": true
+  },
+  "independent_archive": {
+    "bytes": 416169984,
+    "sha256": "9684e03ca0843db26933d2de846c944ab5b8fcf356280854941538e57dcea7d1",
+    "image_count": 3,
+    "tags_match": true
+  },
+  "health": {
+    "platform": 200,
+    "domain": 200,
+    "staff": 200
+  },
+  "leader_ui": {
+    "status": "PASS",
+    "saved_reply_reopened_in_ui": true,
+    "paid_model_calls": 0
+  },
+  "additional_scripted_calls": 0,
+  "findings": [
+    {
+      "severity": "P2",
+      "owner": "N2",
+      "file": "docs/vin-platform/N2_STAGING_RC_RUNBOOK_20261018.md",
+      "line": 26,
+      "problem": "Command omits --resident-dist required by runner line 171",
+      "reproduced_exit_code": 2,
+      "effect": "Documented rerun fails before fixture creation",
+      "requested_fix": "Add the Domain resident build path to RC command"
+    }
+  ],
+  "remaining_before_vps": [
+    "Full feature matrix in normal production CMD image pair",
+    "Deployment target/least-privilege/HTTPS/backup/config preflight",
+    "Business UAT signoff",
+    "Input image vision, real Vin KB and autonomous staff dispatch remain uncertified"
+  ],
+  "paid_model_calls": 0,
+  "production_changed": false,
+  "staging_preserved": true,
+  "n2_files_modified": false
+}
