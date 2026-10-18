@@ -141,7 +141,7 @@
   },
   "staging": {
     "scope": "isolated_loopback_fixture",
-    "running": true,
+    "running": false,
     "platform_url": "http://127.0.0.1:18104",
     "staff_url": "http://127.0.0.1:18105",
     "domain_readiness": "http://127.0.0.1:18101/ready",
@@ -209,7 +209,8 @@
       }
     },
     "output": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4",
-    "staff_entry_url": "http://127.0.0.1:18105/operations/my-tasks"
+    "staff_entry_url": "http://127.0.0.1:18105/operations/my-tasks",
+    "superseded_by_owner_use": "n2-s18-owner-use-20261018.json"
   },
   "archive": {
     "path": "platform_VP/agentscope/.artifacts/n2-release-9876d94e/images.tar",

@@ -9,7 +9,7 @@ import httpx
 from configure_vin_owner import docker, inspect, environment
 
 
-def provision(output, model):
+def provision(output, model, embedding_model):
     state = json.loads((output / 'state.json').read_text(encoding='utf-8'))
     prefix = state['prefix']
     assert prefix.startswith('vin-n1-r04-e2e-') and '.artifacts' in output.resolve().parts
@@ -32,7 +32,7 @@ def provision(output, model):
             call('PUT', '/admin/vin/quota-policies/' + subject, params={'expected_revision': revision}, json={
                 'daily_tokens': 200000, 'monthly_tokens': 200000, 'max_output_tokens': 4096,
                 'max_concurrency': 2, 'storage_bytes': 100000000, 'max_file_bytes': 10000000,
-                'embedding_daily_tokens': 0, 'models': [model], 'enabled': True})
+                'embedding_daily_tokens': 10000, 'models': [model, embedding_model], 'enabled': True})
 
         def publish(kind, resource_id, name, description='', **fields):
             rows = call('GET', '/admin/vin/catalog', params={'kind': kind, 'resource_id': resource_id})['items']
@@ -42,13 +42,17 @@ def provision(output, model):
                 description=description, active=True, **fields))
             ident = result['id']
             grants = call('GET', '/admin/vin/grants', params={'catalog_id': ident, 'active': True})['items']
-            for role in roles:
+            resource_roles = roles if kind == 'credential' else ('VIN_USER',)
+            for grant in grants:
+                if grant['subject_kind'] == 'role' and grant['subject_id'] not in resource_roles:
+                    call('DELETE', '/admin/vin/grants/' + grant['id'], params={'expected_revision': grant['revision']})
+            for role in resource_roles:
                 if not any(g['subject_kind'] == 'role' and g['subject_id'] == role and set(g['permissions']) >= {'view', 'bind', 'execute'} for g in grants):
                     call('POST', '/admin/vin/grants', json={'catalog_id': ident, 'subject_kind': 'role',
                         'subject_id': role, 'permissions': ['view', 'bind', 'execute']})
             return ident
 
-        publish('credential', 'vin-platform-openai', 'Model Platform · ' + model, model_names=[model])
+        publish('credential', 'vin-platform-openai', 'Model Platform · ' + model, model_names=[model, embedding_model])
         # Discovery is read-only. Its control token is stripped from the stored
         # customer record before any grant is published. Runtime gets per-ticket auth.
         mcps = call('GET', '/mcp')
@@ -98,9 +102,22 @@ asyncio.run(main())'''.replace('OWNER', repr(admin)).replace('IDENT', repr(mcp['
                 '# Hướng dẫn Platform\nMỗi khách hàng có Leader, agent, hội thoại, kho riêng và lịch riêng. Liên kết Vinhomes ở trang Kết nối rồi gửi yêu cầu trong Leader. Theo dõi tiến độ và ảnh kết quả trong thẻ yêu cầu. Quyết định báo giá, phương án, nghiệm thu phải do bạn tự xem và bấm nút cuối; lời chat không thay xác nhận.\nMCP, provider và skill do quản trị cấp có thể xem, chọn và dùng nhưng không sửa. Builder cho phép soạn agent, review, chạy eval rồi phát hành. Lịch tự động chỉ chạy cho agent đã phát hành; lịch once chạy một lần. Kênh Discord cá nhân cần xác minh Discord ID của chủ và bot riêng.\nKho tri thức văn bản tìm theo từ khóa không cần embedding. Kho này chỉ hướng dẫn sử dụng ứng dụng, không chứa nội quy, biểu phí hoặc cam kết nghiệp vụ Vin. Quản trị cần bổ sung tài liệu nghiệp vụ đúng nguồn và đúng đối tượng trước khi dùng làm căn cứ trả lời.'})
             call('POST', f'/knowledge_bases/{kb_id}/references/{doc["document_id"]}/review', json={'status': 'approved'})
         publish('knowledge_base', kb_id, 'Hướng dẫn sử dụng Platform')
+        # The saved fixture conversation predates the provider change. Runtime
+        # already enforces the deployment model; update its displayed selection
+        # through the same authenticated session API the UI uses.
+        history = json.loads((output / 'roundtrip.json').read_text(encoding='utf-8'))
+        customer_id = next(step['user_id'] for step in history['steps'] if step['name'] == 'register_platform')
+        account = call('GET', '/admin/vin/accounts', params={'user_id': customer_id})['items'][0]
+        customer = call('POST', '/auth/login', json={'tenant_id': 'default', 'identity': account['username'], 'password': PASSWORD})
+        api.headers['Authorization'] = 'Bearer ' + customer['access_token']
+        leader = call('GET', '/workforce/console/leader/bootstrap')
+        call('PATCH', '/sessions/' + leader['session_id'], params={'agent_id': leader['agent_id']}, json={
+            'chat_model_config': {'type': 'openai_credential', 'credential_id': 'vin-platform-openai',
+                'model': model, 'parameters': {'max_tokens': 4096}}, 'fallback_chat_model_config': None})
         report = dict(status='PROVISIONED', model=model, mcp_id=mcp['id'], domain_tools=tools['tool_names'],
             skill_ids=skill_ids, knowledge_base_id=kb_id, kb_mode='lexical', real_Vin_business_documents_loaded=False,
-            embedding_enabled=False, real_provider_requests=0, paid_model_calls=0)
+            embedding_enabled=True, embedding_model=embedding_model, embedding_daily_tokens=10000,
+            real_provider_requests=0, paid_model_calls=0)
         (output / 'owner-resources.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
         print(json.dumps(report))
 
@@ -109,5 +126,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fixture', type=Path, required=True)
     parser.add_argument('--model', default='gpt-6-luna')
+    parser.add_argument('--embedding-model', default='text-embedding-3-small')
     args = parser.parse_args()
-    provision(args.fixture.resolve(), args.model)
+    provision(args.fixture.resolve(), args.model, args.embedding_model)
