@@ -82,7 +82,9 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
         answer = await model.complete(messages, SPECS)
         calls = answer.get("tool_calls") or []
         if calls:
-            messages.append({"role": "assistant", "content": answer.get("content"), "tool_calls": calls})
+            # `_items`: the Responses API's own reasoning and calls, sent back with their results.
+            messages.append({"role": "assistant", "content": answer.get("content"), "tool_calls": calls,
+                             **({"_items": answer["_items"]} if answer.get("_items") else {})})
             for call in calls:
                 try:
                     arguments = json.loads(call["function"]["arguments"] or "{}")

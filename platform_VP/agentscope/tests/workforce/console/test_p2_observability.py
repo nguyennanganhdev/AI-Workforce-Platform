@@ -68,3 +68,25 @@ async def test_success_cost_excludes_stop_tracking_and_unknown_history(monkeypat
         assert result["est_cost_usd"] == 9 and result["cost_per_confirmed_usd"] == 1
     else:
         assert result["est_cost_usd"] is None and result["cost_per_confirmed_usd"] is None
+
+
+def test_calls_recorded_before_the_catalog_are_priced_when_read(tmp_path, monkeypatch):
+    """The confirmed gpt-6-luna price reaches calls the ledger kept unpriced."""
+    import shutil
+    from pathlib import Path
+    from agentscope.app._model_ledger import costed
+
+    catalog = Path(__file__).parents[3] / "deploy" / "vps" / "model-prices.gpt-6-luna.json"
+    shutil.copy(catalog, tmp_path / "prices.json")
+    monkeypatch.setenv("WORKFORCE_PRICE_CATALOG", str(tmp_path / "prices.json"))
+    base = {"provider": "openai_credential", "endpoint_id": "bf7d5842201d21325a6f9dc5", "model": "gpt-6-luna",
+            "started_at": "2026-10-16T08:00:00+00:00", "status": "completed", "usage_complete": True,
+            "input_tokens": 1_000_000, "cached_input_tokens": 400_000, "output_tokens": 100_000,
+            "price": None, "price_reason": "unknown_price", "cost_usd": None, "cost_complete": False}
+    standard, flex, running, other = costed([
+        {**base, "service_tier": "default"}, {**base, "service_tier": "flex"},
+        {**base, "service_tier": "default", "status": "started"}, {**base, "model": "gpt-5.5", "service_tier": "default"}])
+    # 600k uncached x $0.10 + 400k cached x $0.01 + 100k out x $0.50 = $0.114
+    assert float(standard["cost_usd"]) == pytest.approx(0.114) and standard["cost_complete"]
+    assert float(flex["cost_usd"]) == pytest.approx(0.057)
+    assert running["cost_usd"] is None and other["cost_usd"] is None

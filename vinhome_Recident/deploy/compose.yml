@@ -286,7 +286,11 @@ services:
       RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}
       # Where the knowledge pack is searched: the API. Set but empty: Reception answers no information question from a source.
       RECEPTION_KNOWLEDGE_URL: ${RECEPTION_KNOWLEDGE_URL-http://api:8000}
-      RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-5.4-mini}
+      RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-6-luna}
+      # OpenAI: the Responses API, where the model reasons before it calls a tool. Empty = responses for openai.
+      RECEPTION_MODEL_API: ${RECEPTION_MODEL_API:-}
+      RECEPTION_REASONING_EFFORT: ${RECEPTION_REASONING_EFFORT:-low}
+      RECEPTION_ASSESSMENT_REASONING_EFFORT: ${RECEPTION_ASSESSMENT_REASONING_EFFORT:-medium}
       RECEPTION_AGENT: ${RECEPTION_AGENT:-loop}
       RECEPTION_STATE_PATH: ${RECEPTION_STATE_PATH:-/var/lib/reception/reception.sqlite3}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required, paste it in deploy/deployment.env}

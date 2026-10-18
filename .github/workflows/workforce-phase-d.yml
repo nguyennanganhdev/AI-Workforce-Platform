@@ -135,6 +135,7 @@ jobs:
           tests/leader_evidence_middleware_test.py
           tests/service_chat_run_context_test.py
           tests/session_runtime_regression_test.py
+          tests/session_audience_boundary_test.py
           tests/evidence_claims_test.py
           tests/leader_runtime_gaps_test.py
           tests/room_realtime_test.py

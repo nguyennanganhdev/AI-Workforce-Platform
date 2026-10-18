@@ -114,3 +114,67 @@ class ResponsesApiTest(TestCase):
             _apply_reasoning_effort(old, "leader")
         self.assertEqual((True, "low"), (leader.parameters.thinking_enable, leader.parameters.reasoning_effort))
         self.assertEqual((False, None), (old.parameters.thinking_enable, old.parameters.reasoning_effort))
+
+
+class LunaReasoningPolicyTest(TestCase):
+    """Only gpt-6-luna is deployed: every purpose reasons on the Responses API
+    at its role's effort, and Chat Completions keeps effort=none."""
+
+    def _luna(self):
+        from agentscope.model import OpenAIResponseModel
+
+        return OpenAIResponseModel(credential=OpenAICredential(api_key="k"), model="gpt-6-luna")
+
+    def test_role_defaults(self) -> None:
+        from agentscope.app._service._model import apply_reasoning_effort
+
+        env = {f"WORKFORCE_REASONING_EFFORT_{role}": "" for role in ("LEADER", "AGENT", "BUILDER", "JUDGE")}
+        with patch.dict(os.environ, env):
+            efforts = {}
+            for role in ("leader", "agent", "builder", "judge"):
+                model = self._luna()
+                apply_reasoning_effort(model, role)
+                efforts[role] = model.parameters.reasoning_effort
+                self.assertTrue(model.parameters.thinking_enable)
+        self.assertEqual({"leader": "medium", "agent": "low", "builder": "medium", "judge": "medium"}, efforts)
+
+    def test_env_overrides_a_role(self) -> None:
+        with patch.dict(os.environ, {"WORKFORCE_REASONING_EFFORT_LEADER": "high"}):
+            model = self._luna()
+            _apply_reasoning_effort(model, "leader")
+        self.assertEqual("high", model.parameters.reasoning_effort)
+
+    def test_judge_copy_leaves_the_agent_model_alone(self) -> None:
+        from agentscope.app._service._chat import _background
+        from agentscope.app._service._model import with_reasoning_effort
+
+        with patch.dict(os.environ, {"WORKFORCE_REASONING_EFFORT_JUDGE": "", "WORKFORCE_REASONING_EFFORT_AGENT": "",
+                                     "WORKFORCE_BACKGROUND_SERVICE_TIER": "flex"}):
+            agent = with_reasoning_effort(self._luna(), "agent")
+            judge = with_reasoning_effort(agent, "judge")
+            wrapped = _background(agent)
+            wrapped_judge = with_reasoning_effort(wrapped, "judge")
+        self.assertEqual(("low", "medium"), (agent.parameters.reasoning_effort, judge.parameters.reasoning_effort))
+        self.assertIs(agent.client, judge.client)
+        self.assertEqual("low", wrapped._model.parameters.reasoning_effort)
+        self.assertEqual("medium", wrapped_judge._model.parameters.reasoning_effort)
+
+    def test_get_model_reasons_on_the_responses_api(self) -> None:
+        import asyncio
+        from types import SimpleNamespace
+
+        from agentscope.app._service._model import get_model
+        from agentscope.app.storage import ChatModelConfig
+        from agentscope.model import OpenAIResponseModel
+
+        class Access:
+            async def resolve_credential(self, user_id, credential_id):
+                return SimpleNamespace(data={"type": "openai_credential", "name": "x", "api_key": "k"})
+
+        config = ChatModelConfig(type="openai_credential", credential_id="c", model="gpt-6-luna", parameters={})
+        env = {"WORKFORCE_MODEL_NAME": "gpt-6-luna", "WORKFORCE_REASONING_EFFORT_AGENT": "", "OPENAI_CHAT_API": "responses"}
+        with patch.dict(os.environ, env):
+            model = asyncio.run(get_model("u", config, Access()))
+        self.assertIsInstance(model, OpenAIResponseModel)
+        self.assertEqual((True, "low"), (model.parameters.thinking_enable, model.parameters.reasoning_effort))
+        self.assertEqual(16384, model.parameters.max_tokens)

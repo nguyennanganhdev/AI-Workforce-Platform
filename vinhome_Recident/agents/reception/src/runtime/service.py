@@ -28,9 +28,10 @@ from ..graph import (
 from ..persistence import open_sqlite_checkpointer
 from .backend import BackendClient, BackendOperations, DraftStore, OperationRejected, OperationUnknown, RequestPolicy
 from .knowledge import KnowledgeSearch
-from .model import ChatCompletionsModel, ModelConfig, model_endpoint, turn_usage
+from .model import ModelConfig, chat_model as build_chat_model, model_endpoint, turn_usage
 from ..agent.loop import EMERGENCY_FAILED_REPLY, FILED_REPLY
 from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
+from ..agent.assessment import assess_report
 from ..agent.loop import run_agent
 from ..agent.prompt import system_prompt
 from ..agent.tools import Toolbox
@@ -71,6 +72,8 @@ class Settings:
         if len(token) < 32 or not backend.startswith(("http://", "https://")):
             raise ValueError("RECEPTION_SERVICE_TOKEN (32+ characters) and RECEPTION_BACKEND_URL are required")
         provider, base_url, api_key = model_endpoint("RECEPTION")
+        # OpenAI reasons and calls tools together only on the Responses API.
+        api = os.getenv("RECEPTION_MODEL_API", "").strip().lower() or ("responses" if provider == "openai" else "chat")
         return cls(
             backend_url=backend,
             service_token=token,
@@ -82,6 +85,9 @@ class Settings:
                 api_key=api_key,
                 base_url=base_url,
                 provider=provider,
+                api=api,
+                reasoning_effort=os.getenv("RECEPTION_REASONING_EFFORT", "").strip().lower() or "low",
+                assessment_effort=os.getenv("RECEPTION_ASSESSMENT_REASONING_EFFORT", "").strip().lower() or "medium",
             ),
         )
 
@@ -180,6 +186,11 @@ async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, k
     toolbox = Toolbox(backend, client, knowledge_url, context, message, turn["open_request"],
                       {"homes": resident["residences"]}, categories)
     if telemetry is not None: toolbox.progress=progress
+    config = getattr(model, "config", None)
+    if getattr(config, "api", None) == "responses":
+        # A model that reasons reviews each proposed request before it is filed.
+        toolbox.assess = lambda proposal: assess_report(model, turn["history"], proposal, categories,
+                                                         config.assessment_effort)
     if policy.get("emergency") is True:
         # The policy's keywords decide before any model runs.
         outcome = await toolbox.emergency_request()
@@ -219,7 +230,7 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
     async def lifespan(app: FastAPI):
         async with httpx.AsyncClient() as client:
             backend = BackendClient(settings.backend_url, client)
-            chat_model = model or ChatCompletionsModel(settings.model, client)
+            chat_model = model or build_chat_model(settings.model, client)
             app.state.backend, app.state.model, app.state.client = backend, chat_model, client
             if settings.agent == "loop":
                 # The model-led agent keeps nothing between turns, so it opens no state file:

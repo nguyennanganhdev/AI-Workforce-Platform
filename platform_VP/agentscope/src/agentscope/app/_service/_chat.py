@@ -245,35 +245,17 @@ def _private_context_ratio(context_size: int) -> float:
 
 def _apply_reasoning_effort(model: ChatModelBase, system_role: str) -> None:
     """A fixed reasoning effort per role (``WORKFORCE_REASONING_EFFORT_LEADER``
-    / ``WORKFORCE_REASONING_EFFORT_AGENT``; unset: the provider's default).
+    / ``WORKFORCE_REASONING_EFFORT_AGENT``; unset: medium / low).
 
     Fixed, not per call: a different effort changes the request and so the
-    cached prefix. Reasoning tokens are billed as output.
+    cached prefix. Reasoning tokens are billed as output. OpenAI rejects an
+    effort together with function tools on Chat Completions, so models there
+    are left alone (gpt-4o / gpt-4.1 do not reason at all).
     """
 
-    from ...model import OpenAIChatModel, OpenAIResponseModel
-    from ...model._openai_response._model import _REASONING_MODEL
+    from ._model import apply_reasoning_effort
 
-    if isinstance(model, OpenAIChatModel):
-        if model.model == "gpt-6-luna":
-            model.parameters = model.parameters.model_copy(
-                update={"thinking_enable": True, "reasoning_effort": "none"},
-            )
-        # OpenAI rejects reasoning_effort together with function tools on
-        # Chat Completions (gpt-5.4-mini, gpt-5.5: 400 "use /v1/responses or
-        # set reasoning_effort to 'none'"), and every agent here has tools.
-        return
-    if isinstance(model, OpenAIResponseModel) and not _REASONING_MODEL.match(model.model):
-        # gpt-4o / gpt-4.1 do not reason and reject the parameter.
-        return
-    if os.getenv("WORKFORCE_MODEL_NAME", "").strip() == "gpt-6-luna":
-        return
-    name = "LEADER" if system_role == "leader" else "AGENT"
-    effort = os.getenv(f"WORKFORCE_REASONING_EFFORT_{name}", "").strip().lower()
-    parameters = getattr(model, "parameters", None)
-    if not effort or parameters is None or "reasoning_effort" not in type(parameters).model_fields:
-        return
-    model.parameters = parameters.model_copy(update={"thinking_enable": True, "reasoning_effort": effort})
+    apply_reasoning_effort(model, "leader" if system_role == "leader" else "agent")
 
 
 class _SessionTitle(BaseModel):
@@ -1102,6 +1084,7 @@ class ChatService:
             is_reply_owner = False
             report_target_name: str | None = None
             team_roster_names: list[str] = []
+            team_roster_roles: dict[str, str] = {}
             customer_output_session_id = session_id
             worker_name: str = agent_id
             shared_input_recorded = False
@@ -1386,6 +1369,15 @@ class ChatService:
                             if member.role == "invited":
                                 name += "@" + member.agent_id[:HANDLE_LEN]
                             team_roster_names.append(name)
+                            # What each teammate owns, so a member knows whom to ask.
+                            role = (member_agent.data.invite_config.invite_description
+                                    or member_agent.data.build_description or "").strip()[:140]
+                            tools = [str(tool.get("tool_name") or "") for tool in
+                                     (member_agent.data.spec or {}).get("tools", [])][:8]
+                            team_roster_roles[name] = "; ".join(
+                                part for part in (role, "tools: " + ", ".join(filter(None, tools)) if any(tools) else "")
+                                if part
+                            )
 
                 workspace = await self._workspace_manager.get_workspace(
                     user_id,
@@ -1844,12 +1836,19 @@ class ChatService:
                 source = {
                     "user": "platform_chat", "channel": "channel",
                 }.get(audience_session.origin.type, "automation")
+                if management_output:
+                    source = "management"
+                elif partner_room:
+                    source = "partner_api"
                 attachment += conversation_policy(source, audience_session.id)
                 if team_roster_names:
                     attachment += (
                         " Current team roster (use these exact handles in "
                         "TeamSay.to): "
-                        + ", ".join(dict.fromkeys(team_roster_names))
+                        + ", ".join(
+                            f"{name} ({team_roster_roles[name]})" if team_roster_roles.get(name) else name
+                            for name in dict.fromkeys(team_roster_names)
+                        )
                         + ". Ask the responsible peer directly for an internal "
                         "dependency; do not ask the customer to relay it."
                     )

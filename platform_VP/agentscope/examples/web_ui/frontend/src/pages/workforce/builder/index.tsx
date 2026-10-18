@@ -6,11 +6,14 @@ import {
 	CheckCircle2,
 	ChevronRight,
 	CircleAlert,
+	GitBranchPlus,
 	LibraryBig,
 	Plus,
+	Recycle,
 	Rocket,
 	Sparkles,
 	Trash2,
+	Wand2,
 	Wrench,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -24,6 +27,8 @@ import type {
 	BuilderMessage,
 	BuilderProposal,
 	ChatModelConfig,
+	DuplicateDecision,
+	PlannedAgent,
 	WorkforceAgent,
 } from '@/api';
 import robotStill from '@/assets/images/stickers/robot-still.webp';
@@ -126,11 +131,31 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 			</div>
 
 			{reused && (
-				<p className="mt-3 flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
-					<CircleAlert className="mt-0.5 size-4 shrink-0" />
+				<p className="mt-3 flex items-start gap-2 rounded-xl bg-sky-50 p-2.5 text-sm text-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+					<Recycle className="mt-0.5 size-4 shrink-0" />
 					<span>
-						Trùng nghiệp vụ với <strong>{proposal.reuse_agent_name}</strong>; khi phát hành, platform dùng lại
-						agent đó thay vì tạo bản sao.
+						Dùng lại nguyên vẹn <strong>{proposal.reuse_agent_name}</strong> đang phát hành; không sinh bản sao và
+						không đổi agent đó.
+					</span>
+				</p>
+			)}
+			{proposal.update_agent_id && (
+				<p className="mt-3 flex items-start gap-2 rounded-xl bg-violet-50 p-2.5 text-sm text-violet-800 dark:bg-violet-950/30 dark:text-violet-300">
+					<GitBranchPlus className="mt-0.5 size-4 shrink-0" />
+					<span>
+						Phiên bản mới của <strong>{proposal.update_agent_name}</strong>; khi phát hành, agent đó lên phiên bản mới
+						(có thể quay lại bản cũ ở trang quản lý agent).
+					</span>
+				</p>
+			)}
+			{proposal.evaluation.repair && (
+				<p className="mt-3 flex items-start gap-2 rounded-xl bg-muted/60 p-2.5 text-sm">
+					<Wand2 className="mt-0.5 size-4 shrink-0 text-primary" />
+					<span>
+						<strong>Builder đã sửa (vòng {proposal.evaluation.repair.round}):</strong> {proposal.evaluation.repair.explanation}{' '}
+						<span className="text-muted-foreground">
+							Trước khi sửa đạt {Math.round(proposal.evaluation.repair.previous_pass_rate * 100)}%.
+						</span>
 					</span>
 				</p>
 			)}
@@ -190,6 +215,7 @@ export function AgentBuilderPage() {
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
 	const [agentsOpen, setAgentsOpen] = useState(false);
 	const [deleting, setDeleting] = useState<BuilderConversationSummary | null>(null);
+	const [decisions, setDecisions] = useState<Record<string, DuplicateDecision>>({});
 	const loadProgress = useCallback(() => workforceApi.builderProgress(conversationId!), [conversationId]);
 	const { progress, progressError } = useEvaluationProgress(conversationId, loadProgress, working);
 
@@ -207,6 +233,7 @@ export function AgentBuilderPage() {
 			setConversationId(nextId);
 			setConversation(stored.messages);
 			setProposal(stored.proposal);
+			setDecisions({});
 			setContextInfo({ messages: stored.context_messages ?? stored.messages.length, summarized: stored.context_summarized ?? false });
 			if (stored.proposal) setSelectedModel(stored.proposal.chat_model_config);
 			setSearchParams({ conversation_id: nextId }, { replace: true });
@@ -281,6 +308,7 @@ export function AgentBuilderPage() {
 				selectedModel,
 				conversationId,
 				true,
+				decisions,
 			);
 			await refreshConversation(nextProposal.conversation_id);
 		} finally {
@@ -288,8 +316,9 @@ export function AgentBuilderPage() {
 			setWorking(false);
 		}
 	};
+	const undecided = (proposal?.planned_agents ?? []).filter((agent) => agent.similar && !decisions[agent.name]);
 
-	const publish = async () => {
+	const publish = async (onlyPassed = false) => {
 		if (!proposal?.proposal_id) return;
 		setWorking(true);
 		const startedAt = Date.now();
@@ -299,11 +328,20 @@ export function AgentBuilderPage() {
 				proposal.conversation_id,
 				proposal.proposal_id,
 				proposal.revision,
+				onlyPassed,
 			);
-			setProposal({ ...proposal, status: 'published' });
+			if (!onlyPassed) setProposal({ ...proposal, status: 'published' });
 			await refreshConversation(proposal.conversation_id);
 			await loadAgents();
-			toast.success(`Đã sẵn sàng ${result.agents.length} agent trong platform.`);
+			const updated = result.agents.filter((agent) => agent.updated).length;
+			const reused = result.agents.filter((agent) => agent.reused).length;
+			const created = result.agents.length - updated - reused;
+			toast.success(
+				[created && `tạo mới ${created}`, updated && `cập nhật ${updated}`, reused && `dùng lại ${reused}`]
+					.filter(Boolean)
+					.join(', ')
+					.replace(/^./, (first) => first.toUpperCase()) + ' agent.',
+			);
 		} finally {
 			setLastLatency(Date.now() - startedAt);
 			setWorking(false);
@@ -320,6 +358,28 @@ export function AgentBuilderPage() {
 		} catch { toast.error('Chưa chạy lại được eval. Kiểm tra kết nối và tải lại đề xuất.'); }
 		finally { setLastLatency(Date.now() - startedAt); setWorking(false); }
 	};
+	const repair = async () => {
+		if (!proposal?.proposal_id || working) return;
+		setWorking(true);
+		const startedAt = Date.now();
+		setTask({ label: 'Builder đang đọc ca trượt, sửa prompt hoặc test rồi chạy lại eval…', startedAt });
+		try {
+			await workforceApi.repair(proposal.conversation_id, proposal.proposal_id, proposal.revision);
+			await refreshConversation(proposal.conversation_id);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Chưa sửa được theo kết quả eval.');
+		} finally {
+			setLastLatency(Date.now() - startedAt);
+			setWorking(false);
+		}
+	};
+	// Agents that passed can go live now; the rest stay in the proposal to be fixed.
+	const passedCount = (proposal?.agents ?? []).filter((agent) => !agent.reuse_agent_id && agent.evaluation.passed).length;
+	const repairRounds = Math.max(0, ...(proposal?.agents ?? []).map((agent) => agent.evaluation.repair?.round ?? 0));
+	const canRepair =
+		proposal?.status === 'blocked' &&
+		repairRounds < 2 &&
+		(proposal.agents ?? []).some((agent) => !agent.reuse_agent_id && agent.evaluation.model_report && !agent.evaluation.passed);
 
 	const toggleLifecycle = async (agent: WorkforceAgent) => {
 		const next = agent.lifecycle_state === 'published' ? 'draft' : 'published';
@@ -469,13 +529,27 @@ export function AgentBuilderPage() {
 										await refreshConversation(proposal.conversation_id); await loadAgents();
 									}} />}
 									{proposal.status === 'ready' && !privateAccount && (
-										<Button onClick={publish} disabled={working}>
+										<Button onClick={() => void publish()} disabled={working}>
 											<Rocket /> Phát hành
 										</Button>
 									)}
+									{proposal.status === 'blocked' && passedCount > 0 && !privateAccount && (
+										<Button variant="outline" onClick={() => void publish(true)} disabled={working}>
+											<Rocket /> Phát hành {passedCount} agent đã đạt
+										</Button>
+									)}
 									{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (
-										<Button onClick={() => void confirmOutline()} disabled={working}>
+										<Button
+											onClick={() => void confirmOutline()}
+											disabled={working || undecided.length > 0}
+											title={undecided.length ? 'Chọn cách xử lý agent trùng nghiệp vụ trước' : undefined}
+										>
 											<CheckCircle2 /> Chốt và sinh cấu hình
+										</Button>
+									)}
+									{canRepair && (
+										<Button onClick={() => void repair()} disabled={working}>
+											<Wand2 /> Để Builder sửa theo kết quả eval
 										</Button>
 									)}
 									{proposal.agents.length > 0 && proposal.status !== 'published' && <Button variant="outline" onClick={() => void evaluate()} disabled={working}>Chạy lại eval · giữ cấu hình</Button>}
@@ -483,28 +557,21 @@ export function AgentBuilderPage() {
 								{proposal.planned_agents.length > 0 && proposal.agents.length === 0 && (
 									<div className="grid gap-3 md:grid-cols-2">
 										{proposal.planned_agents.map((agent, index) => (
-											<article
+											<PlannedAgentCard
 												key={agent.name}
-												className="flex gap-3 rounded-2xl border border-border/70 bg-background p-3.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both"
-												style={{ animationDelay: `${index * 60}ms` }}
-											>
-												<ClayAvatar id={agent.name} label={agent.name} size={40} />
-												<div className="min-w-0 flex-1">
-													<p className="text-sm font-semibold">{agent.name}</p>
-													<p className="mt-1 line-clamp-3 text-[13px]/[18px] text-muted-foreground">{agent.objective}</p>
-													{agent.suggested_tools.length > 0 && (
-														<div className="mt-2 flex flex-wrap gap-1">
-															{agent.suggested_tools.map((tool) => (
-																<span key={tool.id} className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px]">
-																	{tool.tool_name}
-																</span>
-															))}
-														</div>
-													)}
-												</div>
-											</article>
+												agent={agent}
+												index={index}
+												decision={decisions[agent.name]}
+												disabled={working || proposal.status !== 'needs_input'}
+												onDecide={(choice) => setDecisions((current) => ({ ...current, [agent.name]: choice }))}
+											/>
 										))}
 									</div>
+								)}
+								{undecided.length > 0 && proposal.status === 'needs_input' && (
+									<p role="status" className="text-xs text-amber-700 dark:text-amber-400">
+										{undecided.length} agent trùng nghiệp vụ với agent đang có. Chọn cập nhật, dùng lại hoặc vẫn tạo mới để tiếp tục.
+									</p>
 								)}
 								{proposal.agents.map((agent, index) => (
 									<div
@@ -587,6 +654,88 @@ export function AgentBuilderPage() {
 			onCreated={() => setCredentialRefetchTrigger((value) => value + 1)}
 		/>
 		</>
+	);
+}
+
+const DECISIONS: { value: DuplicateDecision; label: string; hint: string }[] = [
+	{ value: 'update', label: 'Cập nhật agent đó', hint: 'Builder viết phiên bản mới cho agent đang có' },
+	{ value: 'reuse', label: 'Dùng lại nguyên vẹn', hint: 'Không sinh agent mới, giữ agent đang có' },
+	{ value: 'create', label: 'Vẫn tạo mới', hint: 'Tạo agent riêng bên cạnh agent đang có' },
+];
+
+/** One agent of the outline; when it duplicates an existing agent, the manager says what to do. */
+function PlannedAgentCard({
+	agent,
+	index,
+	decision,
+	disabled,
+	onDecide,
+}: {
+	agent: PlannedAgent;
+	index: number;
+	decision?: DuplicateDecision;
+	disabled: boolean;
+	onDecide: (decision: DuplicateDecision) => void;
+}) {
+	return (
+		<article
+			className={cn(
+				'flex flex-col gap-3 rounded-2xl border bg-background p-3.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both',
+				agent.similar && !decision ? 'border-amber-400/70' : 'border-border/70',
+			)}
+			style={{ animationDelay: `${index * 60}ms` }}
+		>
+			<div className="flex gap-3">
+				<ClayAvatar id={agent.name} label={agent.name} size={40} />
+				<div className="min-w-0 flex-1">
+					<p className="text-sm font-semibold">{agent.name}</p>
+					<p className="mt-1 line-clamp-3 text-[13px]/[18px] text-muted-foreground">{agent.objective}</p>
+					{agent.suggested_tools.length > 0 && (
+						<div className="mt-2 flex flex-wrap gap-1">
+							{agent.suggested_tools.map((tool) => (
+								<span key={tool.id} className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px]">
+									{tool.tool_name}
+								</span>
+							))}
+						</div>
+					)}
+				</div>
+			</div>
+			{agent.similar && (
+				<div className="rounded-xl bg-amber-50 p-2.5 text-[13px]/[18px] dark:bg-amber-950/30">
+					<p className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300">
+						<CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+						<span>
+							Giống <strong>{agent.similar.name}</strong> ({Math.round(agent.similar.score * 100)}%,{' '}
+							{agent.similar.published ? 'đang phát hành' : 'bản nháp'}).
+						</span>
+					</p>
+					<div role="radiogroup" aria-label={`Xử lý ${agent.name}`} className="mt-2 grid gap-1.5">
+						{DECISIONS.filter((option) => option.value !== 'reuse' || agent.similar?.published).map((option) => (
+							<button
+								key={option.value}
+								type="button"
+								role="radio"
+								aria-checked={decision === option.value}
+								disabled={disabled}
+								onClick={() => onDecide(option.value)}
+								className={cn(
+									'flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors',
+									decision === option.value
+										? 'border-foreground bg-foreground text-background'
+										: 'border-border/70 bg-background hover:bg-muted',
+								)}
+							>
+								<span className="font-medium">{option.label}</span>
+								<span className={cn('text-xs', decision === option.value ? 'text-background/80' : 'text-muted-foreground')}>
+									{option.hint}
+								</span>
+							</button>
+						))}
+					</div>
+				</div>
+			)}
+		</article>
 	);
 }
 

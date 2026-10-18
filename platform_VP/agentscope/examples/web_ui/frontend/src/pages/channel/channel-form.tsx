@@ -90,6 +90,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 	}, [value.channelType, bindingSupported]);
 
 	const credentialFields = React.useMemo(() => {
+		const schemaLabels = ['telegram', 'zalo_oa'].includes(value.channelType);
 		const schema = typeSchema?.credentials_schema as
 			| { properties?: Record<string, Record<string, unknown>>; required?: string[] }
 			| undefined;
@@ -97,17 +98,17 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 		const required = schema.required ?? [];
 		return Object.entries(schema.properties).map(([key, def]) => ({
 			key,
-			title: t(`channel.fields.${key}.title`, {
+			title: schemaLabels ? (def.title as string) || key : t(`channel.fields.${key}.title`, {
 				defaultValue: (def.title as string) || key,
 			}),
 			description:
-				t(`channel.fields.${key}.description`, {
+				(schemaLabels ? (def.description as string) || '' : t(`channel.fields.${key}.description`, {
 					defaultValue: (def.description as string) || '',
-				}) || undefined,
+				})) || undefined,
 			format: def.format as string | undefined,
 			required: required.includes(key),
 		}));
-	}, [t, typeSchema]);
+	}, [t, typeSchema, value.channelType]);
 
 	const configFields = React.useMemo(() => {
 		const schema = typeSchema?.config_schema as
@@ -196,11 +197,13 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 				value.credentialMode === 'form' &&
 				credentialFields.map((field) => (
 					<Field key={field.key}>
-						<FieldLabel>
+						<FieldLabel htmlFor={`channel-credential-${field.key}`}>
 							{field.title}
 							{field.required && ' *'}
 						</FieldLabel>
 						<Input
+							id={`channel-credential-${field.key}`}
+							required={field.required}
 							className="text-sm"
 							type={field.format === 'password' ? 'password' : 'text'}
 							value={value.credentials[field.key] || ''}
@@ -214,6 +217,11 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 						/>
 					</Field>
 				))}
+			{mode === 'create' && ['telegram', 'zalo_oa'].includes(value.channelType) && (
+				<p className="text-xs leading-relaxed text-muted-foreground">{value.channelType === 'telegram'
+					? 'Tạo bot bằng BotFather. Bot ID là phần số trước dấu : trong token. Kênh nhận tin bằng long polling; bot cần chưa bật webhook Telegram.'
+					: 'Dùng token của Official Account và OA Secret Key của Zalo App. Sau khi tạo, mở chi tiết kênh để sao chép Webhook URL.'}</p>
+			)}
 
 			<Separator />
 
@@ -277,7 +285,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 
 			{configFields.map((field) => (
 				<Field key={field.key}>
-					<div className="flex flex-row items-center justify-between gap-4">
+					<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
 						<div className="flex flex-col gap-y-0.5">
 							<FieldLabel htmlFor={`channel-config-${field.key}`}>{field.key === 'owner_user_id' && privateDiscord ? 'Discord ID của chủ tài khoản (bắt buộc)' : field.title}</FieldLabel>
 							{field.description && (
@@ -307,7 +315,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 							<Input
 								id={`channel-config-${field.key}`}
 								aria-describedby={field.key === 'allowed_user_ids' ? 'discord-allowlist-help' : undefined}
-								className="h-8 w-48 text-sm"
+								className="h-9 w-full text-sm sm:w-48"
 								placeholder="ID, cách nhau bằng dấu phẩy"
 								value={((value.platformConfig[field.key] ?? field.default ?? []) as string[]).join(', ')}
 								onChange={(e) =>
@@ -322,7 +330,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 								id={`channel-config-${field.key}`}
 								required={privateDiscord && field.key === 'owner_user_id' && mode === 'create'}
 								readOnly={privateDiscord && field.key === 'owner_user_id'}
-								className="h-8 w-48 text-sm"
+								className="h-9 w-full text-sm sm:w-48"
 								value={String(
 									value.platformConfig[field.key] ?? field.default ?? '',
 								)}

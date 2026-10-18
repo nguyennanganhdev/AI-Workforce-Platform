@@ -9,7 +9,7 @@ import type { ChannelFormValue } from '@/pages/channel/channel-form';
 
 export function defaultChannelForm(agentId = ''): ChannelFormValue {
 	return {
-		channelType: 'feishu',
+		channelType: 'telegram',
 		name: '',
 		credentialMode: 'form',
 		credentialBindingId: '',

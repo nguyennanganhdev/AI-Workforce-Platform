@@ -2,7 +2,7 @@
 """Session router — create, list, update, delete, stream, and get messages."""
 import asyncio
 import json
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -198,6 +198,7 @@ async def list_sessions(
     storage: StorageBase = Depends(get_storage),
     access: ResourceAccessService = Depends(get_resource_access_service),
     message_bus: MessageBus = Depends(get_message_bus),
+    scope: Literal["leader", "leader_tests"] | None = Query(default=None),
 ) -> ListSessionsResponse:
     """Return all sessions for an agent as enriched
     :class:`SessionView` entries.
@@ -244,6 +245,11 @@ async def list_sessions(
     for session in sessions:
         if session.state.middle_context.get("management_case_session_id"):
             continue
+        if scope in {"leader", "leader_tests"}:
+            from .._session_scope import is_leader_case_session, is_leader_test_session
+            predicate = is_leader_case_session if scope == "leader" else is_leader_test_session
+            if not predicate(session):
+                continue
         team_detail = None
         if session.team_id:
             team_record = await storage.get_team(user_id, session.team_id)

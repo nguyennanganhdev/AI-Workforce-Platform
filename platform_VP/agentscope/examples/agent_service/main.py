@@ -15,6 +15,8 @@ from agentscope.app.channel import (
     DingTalkChannel,
     DiscordChannel,
     FeishuChannel,
+    TelegramChannel,
+    ZaloOAChannel,
 )
 from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
 from agentscope.app.message_bus import RedisMessageBus
@@ -285,6 +287,8 @@ app = create_app(
         DingTalkChannel,
         DiscordChannel,
         FeishuChannel,
+        TelegramChannel,
+        ZaloOAChannel,
     ],
 )
 if "runner" in partner_runner:

@@ -335,6 +335,12 @@ class ChannelBase(ABC):
     """Brand icon URL for the management UI; empty falls back to a
     generated avatar."""
 
+    hidden_from_catalog: bool = False
+    """Keep existing bindings working while hiding this type from new-channel forms."""
+
+    def bind_message_bus(self, bus) -> None:
+        """Supply shared state to adapters needing durable cursors or approvals."""
+
     class Credentials(BaseModel):
         """Secret connection fields (app id, tokens, ...). Subclasses
         override with their own fields; mark a field secret with

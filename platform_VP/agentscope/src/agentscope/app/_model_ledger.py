@@ -76,6 +76,13 @@ def priced(call: dict) -> dict:
     return call
 
 
+def costed(calls: list[dict]) -> list[dict]:
+    """Calls recorded before their price was in the catalog, priced from the
+    catalog version effective at the call's start; recorded snapshots stay."""
+    return [priced(call) if call.get("price") is None and not call.get("cost_complete") and call.get("status") != "started" else call
+            for call in calls]
+
+
 def attach_ledger(model, storage, user_id: str, *, provider: str, url: str):
     async def sink(record):
         if record.get("user_id") != user_id:
@@ -121,13 +128,15 @@ def aggregate(calls: list[dict]) -> dict:
 
 async def observability(storage, user_id: str, days: int = 30) -> dict:
     since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
-    calls = await storage.list_model_calls(user_id, since=since, limit=20001)
+    calls = costed(await storage.list_model_calls(user_id, since=since, limit=20001))
     truncated = len(calls) > 20000
     calls = calls[:20000]
-    groups, purposes = defaultdict(list), defaultdict(list)
+    groups, purposes, agents = defaultdict(list), defaultdict(list), defaultdict(list)
     for call in calls:
         groups[tuple(call.get(k) for k in ("provider", "endpoint_id", "model", "service_tier"))].append(call)
         purposes[call["purpose"]].append(call)
+        if call.get("agent_id"):
+            agents[call["agent_id"]].append(call)
     metrics = aggregate(calls)
     if truncated or recording_failures():
         metrics.update(usage_complete=False, cost_complete=False, est_cost_usd=None)
@@ -135,6 +144,7 @@ async def observability(storage, user_id: str, days: int = 30) -> dict:
             "by_model": [{**dict(zip(("provider", "endpoint_id", "model", "service_tier"), key)), **aggregate(rows)}
                          for key, rows in sorted(groups.items())],
             "by_purpose": [{"purpose": key, **aggregate(rows)} for key, rows in sorted(purposes.items())],
+            "by_agent": [{"agent_id": key, **aggregate(rows)} for key, rows in sorted(agents.items())],
             "backlog": {"model_calls_started": sum(c["status"] == "started" for c in calls)},
             "coverage": {"truncated": truncated, "before_ledger_unknown": True,
                          "recording_started_at": os.getenv("WORKFORCE_LEDGER_STARTED_AT") or None,

@@ -8,6 +8,10 @@ import httpx
 from .....mcp import HttpMCPConfig, MCPClient
 
 
+class WorkflowGrantUnavailable(ValueError):
+    """The Domain no longer permits live access to this handover."""
+
+
 async def scoped_client(client: MCPClient, config: dict, context: dict, workflow_id: str, tools: list[str]) -> MCPClient:
     """Clone the registered client and replace its bootstrap with a workflow bearer.
 
@@ -36,6 +40,8 @@ async def scoped_client(client: MCPClient, config: dict, context: dict, workflow
             "grant_request_id": request_id, "tools": sorted(set(tools)), "ttl_seconds": ttl,
         })
     # Never include an HTTP body, URL headers or credential in an exception/log.
+    if response.status_code == 409:
+        raise WorkflowGrantUnavailable("Live workflow MCP access is unavailable")
     if response.status_code != 200:
         raise ValueError(f"Workflow MCP grant refused (HTTP {response.status_code})")
     grant = response.json()

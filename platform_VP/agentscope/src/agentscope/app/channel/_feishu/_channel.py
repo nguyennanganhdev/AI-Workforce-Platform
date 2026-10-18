@@ -91,6 +91,7 @@ _MAX_CONNECT_ATTEMPTS = 2
 class FeishuChannel(ChannelBase):
     """Feishu platform channel (SDK long-connection mode)."""
 
+    hidden_from_catalog = True
     channel_type = "feishu"
     display_name = "Feishu (Lark)"
     description = "Group and direct-message bot with card interactions."

@@ -168,8 +168,9 @@ with kind="result" (verified findings) or kind="error" (what blocked you).
 - kind="result" / "error": goes to the reply owner automatically (omit to).
   Separate verified tool facts from anything unverified; never send "I am
   working on it" as a result.
-- kind="question": ask ONE teammate (to=<roster handle>) for data they own.
-  Your assignment pauses until they answer; do not poll.
+- kind="question": ask ONE teammate (to=<roster handle>) for data they own,
+  or challenge their result (start with "Phản biện:"). Your assignment
+  pauses until they answer; do not poll.
 - kind="answer": reply to the teammate who asked you (omit to).
 - kind="need_customer_info": propose one question for the customer when a
   human decision is genuinely missing; the reply owner decides whether to ask.

@@ -1,5 +1,17 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { IconCalendarEvent, IconCircleCheck, IconReceipt2, IconShieldCheck } from "@tabler/icons-react";
 import type { PlatformApproval, PlatformBooking, PlatformQuote } from "../../services/types";
+
+/** The head every card in the chat shares: what it is, and whether it still waits for the resident. */
+export function CardHead({ icon, title, pending }: { icon: ReactNode; title: ReactNode; pending: boolean }) {
+  return (
+    <header className="card-head">
+      <span className="card-head-icon" aria-hidden="true">{icon}</span>
+      <strong>{title}</strong>
+      <span className={`card-head-chip ${pending ? "pending" : "done"}`}>{pending ? "Chờ bạn" : "Đã xong"}</span>
+    </header>
+  );
+}
 
 const vnd = (n: number) => `${n.toLocaleString("vi-VN")}đ`;
 const OUTCOME = {
@@ -15,8 +27,8 @@ export function ApprovalCard({ approval, busy, onDecide }: {
   onDecide: (id: string, approve: boolean) => unknown;
 }) {
   return (
-    <section className="question-card" aria-label="Cần bạn đồng ý">
-      <strong>Cần bạn đồng ý</strong>
+    <section className={`question-card confirm-card ${approval.status}`} aria-label="Cần bạn đồng ý">
+      <CardHead icon={<IconShieldCheck size={18} />} title="Cần bạn đồng ý" pending={approval.status === "pending"} />
       <p className="preserve">{approval.text}</p>
       {approval.items && (
         <ul className="approval-costs">
@@ -113,8 +125,8 @@ export function QuoteCard({ quote, busy, onDecide }: {
   onDecide: (id: string, accepted: boolean, reason?: string) => unknown;
 }) {
   return (
-    <section className="question-card" aria-label="Báo giá sửa chữa">
-      <strong>Báo giá sửa chữa</strong>
+    <section className={`question-card confirm-card ${quote.status}`} aria-label="Báo giá sửa chữa">
+      <CardHead icon={<IconReceipt2 size={18} />} title="Báo giá sửa chữa" pending={quote.status === "pending"} />
       <ul className="approval-costs">
         {quote.lines.map((line, index) => (
           <li key={index}>
@@ -133,7 +145,7 @@ export function QuoteCard({ quote, busy, onDecide }: {
           <strong>{vnd(quote.total)}</strong>
         </li>
       </ul>
-      {quote.warrantyMonths > 0 && <p>Bảo hành {quote.warrantyMonths} tháng</p>}
+      {quote.warrantyMonths > 0 && <p className="card-note">Bảo hành {quote.warrantyMonths} tháng</p>}
       {quote.status === "pending" ? (
         <YesOrReason
           id={`quote-reason-${quote.id}`}
@@ -160,8 +172,8 @@ export function BookingCard({ booking, busy, onConfirm }: {
   onConfirm: (id: string) => unknown;
 }) {
   return (
-    <section className="question-card" aria-label="Đặt tiện ích">
-      <strong>Đặt {booking.amenity}</strong>
+    <section className={`question-card confirm-card ${booking.status}`} aria-label="Đặt tiện ích">
+      <CardHead icon={<IconCalendarEvent size={18} />} title={`Đặt ${booking.amenity}`} pending={booking.status === "pending"} />
       <ul className="approval-costs">
         <li>
           <span>Thời gian</span>
@@ -207,8 +219,9 @@ export function CompletionCard({ busy, onResolve }: {
   onResolve: (accepted: boolean, reason?: string) => unknown;
 }) {
   return (
-    <section className="question-card" aria-label="Xác nhận hoàn thành">
-      <strong>Nhân viên đã gửi kết quả nghiệm thu. Bạn xác nhận hoàn thành chứ?</strong>
+    <section className="question-card confirm-card pending" aria-label="Xác nhận hoàn thành">
+      <CardHead icon={<IconCircleCheck size={18} />} title="Xác nhận hoàn thành" pending />
+      <p>Nhân viên đã gửi kết quả nghiệm thu. Bạn xác nhận hoàn thành chứ?</p>
       <YesOrReason
         id="completion-reason"
         yes="Xác nhận hoàn thành"

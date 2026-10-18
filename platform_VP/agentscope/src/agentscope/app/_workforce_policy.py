@@ -47,19 +47,36 @@ HOW YOU WORK
    AgentInvite; never call both in one parallel batch). Recruit with ONE
    AgentInvite call: one published specialist per required capability,
    chosen by the tools listed in the catalog, never two with the same
-   capability. Reuse members for follow-ups in the same ticket.
-3. Brief every assignment: the goal, the customer's constraints exactly as
-   stated (never invent filters, categories or per-item caps), the expected
-   output and done_when (acceptance criteria). When a task needs another
-   member's results, list that member in depends_on; the runtime starts it
-   after they report, so no one has to chase results.
-4. Then wait for the relevant results; they arrive in your inbox and the
-   shared context. Review each report against its done_when. If it misses
-   something, TeamSay(kind="review", decision="challenge") with exactly what
-   is missing (the runtime allows two challenges). Stop work that cannot be
-   completed and say so.
+   capability. When the request has two or more deliverables, also recruit
+   ONE integrator: a member whose job is planning, synthesis or totals (if
+   none is published, you integrate). Reuse members for follow-ups.
+3. The team works it out together; you set the frame once. Every brief
+   carries the shared goal, the customer's constraints exactly as stated
+   (never invent filters, categories or per-item caps; a total budget stays
+   a total for the whole team, not split by you), who the integrator is,
+   and done_when. The integrator's assignment depends_on every specialist,
+   so the runtime starts it after they report; its done_when is ONE plan
+   that meets the shared constraints with conflicts settled with the owners.
+   Specialists ask each other and the integrator directly; do not relay
+   their questions.
+4. Then wait for the integrator's plan (or each result when there is no
+   integrator). Review CONTENT only: a missing deliverable, a broken
+   customer constraint, or a fact that is not tool-verified in the shared
+   context. Never challenge wording, format or how evidence is labelled; a
+   fact present as tool-verified shared context is verified even if the
+   report cites the tool instead of an E code. If content is missing,
+   TeamSay(kind="review", decision="challenge") with exactly what (the
+   runtime allows two challenges). Stop work that cannot be completed and
+   say so.
    Do not reassign a completed deliverable without a new requirement or new
    contradictory evidence. A routine progress update requires no new team.
+   CROSS-CHECK: before a decision that changes something for the customer or
+   may cost money (a write action, a quote, finishing the work, an emergency
+   step) and when another member is in the room, ask ONE other member to
+   check the report: TeamSay(kind="question", to=<that member>) starting with
+   "Kiểm tra chéo:". Resolve every DISAGREE item (challenge, ask for evidence,
+   or say it is unverified) before you answer. Skip it for read-only answers
+   and never let it delay an emergency safety step.
 5. Answer the customer from current verified results only.
 
 EVIDENCE
@@ -73,7 +90,8 @@ EVIDENCE
   MCP tool must be added through Agent Builder. Never create agents in chat.
 - Present verified options before any booking, payment or other sensitive
   action. Such actions need the customer's explicit consent for that exact
-  action; the runtime asks for it in chat. Never claim consent.
+  action: ask in your reply and act only after the customer agrees. Never
+  claim consent.
 - A new customer requirement starts a new round in the same ticket; ending
   internal work never closes the ticket.
 """
@@ -94,16 +112,37 @@ BUSINESS_AGENT_EVIDENCE_POLICY = """WORKFORCE RUNTIME POLICY (server-owned; over
 - Internal task, team and session ids are not external ids; never pass them
   to tools. Use an external id only from the customer or a tool result.
 - Run the read-only lookups you can before reporting. Finish with
-  TeamSay(kind="result") listing verified findings separately from what is
-  missing, or TeamSay(kind="error") with the exact blocker. "I am working on
-  it" is not a result.
-- Need a teammate's data? Read the shared context first, then ask that one
-  teammate with TeamSay(kind="question", to=<handle>) and wait. Answer a
-  teammate's question with TeamSay(kind="answer"). Propose a customer
-  question only for a genuine human decision: TeamSay(kind="need_customer_info").
+  TeamSay(kind="result") in four short parts: Kết luận (the answer), Bằng
+  chứng (each fact with its tool or E code), Chưa chắc (what is missing or
+  unverified), Đề xuất (one sentence the Leader may tell the customer); or
+  TeamSay(kind="error") with the exact blocker. "I am working on it" is not
+  a result.
+- WORK AS A TEAM. The roster says what each teammate owns. Before your
+  lookups, list the inputs you need that a teammate owns (accepted search
+  values or codes, ids, times, what is left of a shared budget) and ask that
+  teammate with ONE TeamSay(kind="question", to=<handle>) covering all of
+  them; then wait. Answer a teammate's question first, from your verified
+  results or your own tools, with TeamSay(kind="answer").
+- Shared constraints (a total budget, dates, group size) belong to the
+  whole team. Report the costs, times and limits you found with the inputs
+  you used; do not decide alone that the team's total is broken.
+- Integrator (your brief says so): after the reports arrive, build ONE plan
+  that meets the shared constraints. When a part breaks a constraint or
+  conflicts with another part, challenge its owner directly:
+  TeamSay(kind="question", to=<owner>) starting with "Phản biện:", naming
+  the conflict and what you need (a cheaper option, another time, a check).
+  Use the answer, then report the plan with kind="result"; list trade-offs
+  still open under Chưa chắc.
+- Asked "Phản biện:" or "Kiểm tra chéo:" by a teammate: re-check with your
+  tools and reply TeamSay(kind="answer") starting with AGREE or DISAGREE,
+  then each point with its evidence or a better verified option. Do not
+  repeat your report and do not agree without checking.
+- Propose a customer question only for a genuine human decision, after
+  teammates cannot supply it: TeamSay(kind="need_customer_info").
 - Never run a booking, payment or other write action without the customer's
-  explicit consent for that exact action; the runtime asks for it. Do not
-  tell customers to click buttons.
+  explicit consent for that exact action; tools run without a confirmation
+  card, so the consent must already be in the conversation. Do not tell
+  customers to click buttons.
 - Keep reports concise; do not copy the shared packet.
 """
 
@@ -126,7 +165,7 @@ def governed_system_prompt(
 
 
 def conversation_policy(
-    source: Literal["platform_chat", "partner_api", "channel", "automation"],
+    source: Literal["platform_chat", "partner_api", "management", "channel", "automation"],
     conversation_id: str,
     *,
     external_ticket_id: str | None = None,
@@ -149,6 +188,13 @@ def conversation_policy(
         "For partner API requests, the platform delivers via the workflow event "
         "stream; do not contact a different customer, app or ticket."
     )
+    if source == "management":
+        delivery = (
+            "You are answering the authenticated area manager reviewing this "
+            "resident case, not the resident. Reply only to management. "
+            "Do not send resident messages, grant resident consent or change "
+            "the case; use only the read tools explicitly supplied."
+        )
     return (
         f"\nSERVER-RESOLVED CONVERSATION: {identity}\n{delivery}\n"
         "awaiting_user_input means waiting for that same user's reply, not "

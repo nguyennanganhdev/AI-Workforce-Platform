@@ -81,8 +81,8 @@ async def ticket_quality(
         else:
             rejected += 1
 
-    from ...._model_ledger import aggregate, recording_failures
-    calls = await storage.list_model_calls(manager_account_id, since=since.isoformat(), limit=20001)
+    from ...._model_ledger import aggregate, costed, recording_failures
+    calls = costed(await storage.list_model_calls(manager_account_id, since=since.isoformat(), limit=20001))
     truncated = len(calls) > 20000
     calls = calls[:20000]
     session_workflows = dict((sid, wid) for wid, sid in bindings)

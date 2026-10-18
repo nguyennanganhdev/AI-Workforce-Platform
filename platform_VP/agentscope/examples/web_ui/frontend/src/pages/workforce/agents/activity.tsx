@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 const number = (value: number) => value.toLocaleString('vi-VN');
 const percent = (value: number | null) => value === null ? 'Chưa biết' : `${(value * 100).toFixed(1)}%`;
-const usd = (value?: number | null) => value == null ? 'Chưa xác định' : `$${value.toFixed(5)}`;
+const usd = (value?: number | null) => value == null ? 'Chưa xác định' : value < 1 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
 const duration = (value: number | null) => value === null ? 'Chưa biết' : `${(value / 1000).toFixed(2)} s`;
 
 export function ActivityDialog() {
@@ -49,7 +49,7 @@ export function ActivityDialog() {
 		['Phiếu hoàn tất', number(data.successful_tickets ?? 0)],
 		['Cần kiểm tra', number(data.backlog.tickets_need_attention ?? 0)],
 		['Latency p50 / p95', `${duration(data.p50_ms)} / ${duration(data.p95_ms)}`],
-		['Chi phí ghi nhận', usd(data.est_cost_usd)],
+		['Chi phí (USD)', data.est_cost_usd != null ? usd(data.est_cost_usd) : data.calls_costed ? `${usd(data.known_cost_usd)} · chưa đủ` : usd(null)],
 	] : [];
 	return <>
 		<Button variant="outline" onClick={() => setOpen(true)}><Activity /> Hoạt động và chi phí</Button>
@@ -67,7 +67,7 @@ export function ActivityDialog() {
 					<div className="flex flex-wrap gap-2"><Badge variant={data.usage_complete ? 'secondary' : 'outline'}>{data.usage_complete ? 'Số liệu sử dụng đầy đủ' : 'Số liệu sử dụng chưa đầy đủ'}</Badge>
 					</div>
 					<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{metrics.map(([label, value]) => <div key={label} className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium tabular-nums">{value}</p></div>)}</div>
-					{data.calls_unpriced > 0 && <p className="text-xs text-muted-foreground">Chưa có bảng giá cho một số lần gọi nên chưa thể tính tổng chi phí.</p>}
+					{data.calls_unpriced > 0 && <p className="text-xs text-muted-foreground">{data.calls_unpriced} lần gọi chưa có bảng giá (model khác gpt-6-luna hoặc chưa có số token), nên tổng chỉ gồm phần đã tính được.</p>}
 					<Table><TableHeader><TableRow><TableHead>Model</TableHead><TableHead>Lần gọi</TableHead><TableHead>Token vào / ra</TableHead><TableHead>Latency p50 / p95</TableHead><TableHead>Chi phí</TableHead></TableRow></TableHeader>
 						<TableBody>{data.by_model.map(row => <TableRow key={[row.provider, row.endpoint_id, row.model, row.service_tier].join(':')}><TableCell className="font-medium">{row.model}</TableCell><TableCell>{number(row.calls)}</TableCell><TableCell>{row.calls_missing_usage === row.calls ? 'Chưa xác định' : `${number(row.input_tokens)} / ${number(row.output_tokens)}${row.usage_complete ? '' : ' · chưa đầy đủ'}`}</TableCell><TableCell>{duration(row.p50_ms)} / {duration(row.p95_ms)}</TableCell><TableCell>{usd(row.est_cost_usd)}</TableCell></TableRow>)}</TableBody></Table>
 					{data.calls === 0 && <p className="py-3 text-center text-sm text-muted-foreground">Chưa có lần gọi nào trong sổ mới.</p>}

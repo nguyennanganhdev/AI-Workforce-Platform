@@ -38,7 +38,8 @@ test('the rendered report shows assumed consent and refuses a green inconclusive
   const context = { exports: {}, require: (name) => {
     if (name === '@/components/ui/badge') return { Badge: ({ children }) => React.createElement('span', null, children) };
     if (name === '@/features/workforce/evaluation/presentation') return { canPresentPublishable, executionLabel, isInconclusive };
-    if (name === 'lucide-react') return { CheckCircle2: () => null, CircleAlert: () => null, Wrench: () => null };
+    if (name === 'lucide-react') return new Proxy({}, { get: () => () => null });
+    if (name === '@/lib/utils') return { cn: (...names) => names.filter(Boolean).join(' ') };
     return require(name);
   } };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {

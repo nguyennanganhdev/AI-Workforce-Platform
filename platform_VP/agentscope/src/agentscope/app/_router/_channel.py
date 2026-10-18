@@ -9,13 +9,15 @@
     POST   /channels/                   Create a channel
     GET    /channels/{id}               Channel details
     PATCH  /channels/{id}               Update routing/session/config
+    PATCH  /channels/{id}/credentials   Rotate Telegram/Zalo secrets
+    POST   /channels/{id}/webhook       Receive signed Zalo OA events
     DELETE /channels/{id}               Delete a channel
     POST   /channels/{id}/enable        Enable
     POST   /channels/{id}/disable       Disable
     GET    /channels/{id}/status        Aggregated runtime status
     GET    /channels/{id}/chat_ids      Known chats (for routing config)
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..channel import (
@@ -39,6 +41,8 @@ from ..deps import (
     get_channel_type_registry,
     get_current_user_id,
     get_storage,
+    get_message_bus,
+    get_workspace_manager,
 )
 from ..storage import ChannelRecord, StorageBase
 from ._schema import (
@@ -90,6 +94,51 @@ async def complete_discord_identity(body: DiscordIdentityCompletion, storage: St
 @channel_router.delete("/discord/identity", status_code=204)
 async def revoke_discord_identity(storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
     await _discord_identity_call("revoke", storage, user_id)
+
+
+@channel_router.post("/{channel_id}/webhook")
+async def receive_zalo_webhook(
+    channel_id: str,
+    request: Request,
+    clients: ChannelClients = Depends(get_channel_clients),
+    bus=Depends(get_message_bus),
+    storage: StorageBase = Depends(get_storage),
+    workspace_manager=Depends(get_workspace_manager),
+):
+    """Public provider ingress authenticated by Zalo's signature, never by a user token."""
+    from ..channel import ChannelGateway, ZaloOAChannel
+    from ..message_bus import MessageBusKeys
+
+    channel = await clients.get(channel_id) if clients else None
+    if not isinstance(channel, ZaloOAChannel):
+        raise HTTPException(404, "Webhook not found.")
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 262144:
+            raise HTTPException(413, "Webhook too large.")
+    try:
+        data = channel.verify_webhook(bytes(raw), request.headers.get("X-ZEvent-Signature", ""))
+        event = channel.webhook_event(data)
+    except ChannelError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from None
+    if event is None:
+        return {"status": "ignored"}
+    key = MessageBusKeys.channel_webhook(channel_id, event.channel_message_id)
+    gateway = ChannelGateway(storage, bus, workspace_manager)
+
+    async def emit(item):
+        await gateway.process(item, raise_errors=True)
+
+    async with bus.acquire_lock(key + ":lock", ttl_secs=30):
+        if await bus.registry_exists(key, "delivered"):
+            return {"status": "duplicate"}
+        try:
+            await channel.receive_text(event, emit)
+            await bus.registry_set(key, "delivered", "1", ttl_secs=86400)
+        except Exception:
+            raise HTTPException(503, "Webhook delivery unavailable; retry later.") from None
+    return {"status": "accepted"}
 
 
 def _to_response(
@@ -329,6 +378,23 @@ async def update_channel(
         record = await service.update(channel_id, updates)
     except ChannelError as e:
         raise HTTPException(e.status_code, str(e)) from e
+    return _to_response(record, registry)
+
+
+@channel_router.patch("/{channel_id}/credentials", response_model=ChannelResponse)
+async def rotate_channel_credentials(
+    channel_id: str,
+    credentials: dict[str, str] = Body(),
+    storage: StorageBase = Depends(get_storage),
+    service: ChannelService = Depends(get_channel_service),
+    registry: ChannelTypeRegistry = Depends(get_channel_type_registry),
+    user_id: str = Depends(get_current_user_id),
+):
+    await _owned(channel_id, user_id, storage)
+    try:
+        record = await service.rotate_secrets(channel_id, credentials)
+    except ChannelError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from None
     return _to_response(record, registry)
 
 

@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -45,6 +46,8 @@ RESOLVED_TEXT = {"approved": "Đã ghi nhận bạn đồng ý.", "rejected": "�
 KIND = {"incident": "Sự cố", "service_request": "Yêu cầu dịch vụ"}
 PRIORITY = {"low": "Thấp", "normal": "Bình thường", "high": "Cao", "critical": "Khẩn cấp"}
 SEVERITY = {"minor": "nhẹ", "moderate": "vừa", "major": "nặng", "critical": "nghiêm trọng"}
+# A phone number or a request code never goes into the hand-over.
+REDACTED = re.compile(r"\bVH-[A-Z0-9-]+|\+?\d[\d .]{7,}\d")
 # v3_reception_runtime.EMERGENCY_KINDS, in the words the coordinator reads.
 EMERGENCY = {"fire": "cháy hoặc khói", "gas": "rò khí gas", "electric": "chập điện hoặc giật điện", "elevator": "kẹt thang máy",
              "water": "ngập nước hoặc vỡ ống nước", "structure": "sập trần"}
@@ -231,7 +234,9 @@ async def link_ticket(db, ticket_id) -> None:
           (select ur.relation from unit_residents ur where ur.tenant_id=t.tenant_id and ur.unit_id=t.unit_id
             and ur.user_id=t.requester_user_id and ur.verification_status='verified' and ur.valid_from<=now()
             and (ur.valid_to is null or ur.valid_to>now()) order by ur.verified_at desc,ur.id limit 1) as resident_relation,
-          (select count(*) from ticket_files f where f.ticket_id=t.id and f.tenant_id=t.tenant_id) as photos
+          (select count(*) from ticket_files f where f.ticket_id=t.id and f.tenant_id=t.tenant_id) as photos,
+          (select e.payload->'assessment'->>'reason' from ticket_events e where e.ticket_id=t.id and e.tenant_id=t.tenant_id
+             and e.event_type='ticket.created' order by e.seq limit 1) as reception_reason
           ,(select coalesce(jsonb_agg(f.file_id::text order by f.created_at,f.file_id),'[]'::jsonb)
             from ticket_files f where f.ticket_id=t.id and f.tenant_id=t.tenant_id
               and f.purpose='issue' and f.uploaded_by=t.requester_user_id) as file_ids
@@ -269,7 +274,10 @@ async def link_ticket(db, ticket_id) -> None:
              f"Tiêu đề: {ticket['title']}", f"Mô tả của cư dân: {ticket['description']}", f"Căn: {ticket['unit']}",
              f"Tòa: {ticket['building']}", f"Phân khu: {ticket['zone'] or 'không có'}",
              f"Mức ưu tiên: {PRIORITY.get(ticket['priority'], ticket['priority'])}",
-             f"Mức khẩn cấp do Lễ tân đánh giá: {urgency}", f"Số ảnh: {ticket['photos']}",
+             f"Mức khẩn cấp do Lễ tân đánh giá: {urgency}",
+             # Reception's own reasoning about the report, worded without codes or phone numbers.
+             "Đánh giá của Lễ tân: " + " ".join(REDACTED.sub("", ticket["reception_reason"] or "không có").split()),
+             f"Số ảnh: {ticket['photos']}",
               f"Giờ tạo: {vn_time(ticket['created_at'])}",f"category_code: {ticket['category_code'] or 'unknown'}",
               f"response_due_at: {ticket['response_due_at'].isoformat() if ticket['response_due_at'] else 'unknown'}",
               f"resolution_due_at: {ticket['resolution_due_at'].isoformat() if ticket['resolution_due_at'] else 'unknown'}",

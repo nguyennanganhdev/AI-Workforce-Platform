@@ -100,6 +100,7 @@ interface ChatViewportProps {
 	headerSlot?: ReactNode;
 	/** A partner ticket of the Leader page: an empty session says so. */
 	ticketView?: boolean;
+	sessionScope?: 'leader' | 'leader_tests';
 }
 
 /** Maximum number of panels stacked in a single dock column. */
@@ -200,10 +201,12 @@ export function ChatViewport({
 	onOpenAgentSettings,
 	headerSlot,
 	ticketView = false,
+	sessionScope,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
 	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
-	const { sessions, refetch: refetchSessions } = useSessions(agentId);
+	// Personal conversations are not partner tickets: never apply the ticket scope to them.
+	const { sessions, refetch: refetchSessions } = useSessions(agentId, privateAccount ? undefined : sessionScope ?? (ticketView ? 'leader' : undefined));
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
