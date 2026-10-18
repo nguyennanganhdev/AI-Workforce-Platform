@@ -361,6 +361,7 @@ class ResourceAccessServiceTest(IsolatedAsyncioTestCase):
             agent.model_dump(),
             {
                 "id": "team-agent",
+                "storage_revision": 0,
                 "user_id": "viewer",
                 "source": "team",
                 "created_at": AnyValue(),
@@ -389,6 +390,7 @@ class ResourceAccessServiceTest(IsolatedAsyncioTestCase):
             [
                 {
                     "id": "agent-1",
+                    "storage_revision": 0,
                     "user_id": "owner",
                     "source": "user",
                     "created_at": AnyValue(),

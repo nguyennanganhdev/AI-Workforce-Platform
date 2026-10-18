@@ -1,0 +1,224 @@
+{
+  "mode": "offline_sql_scripted",
+  "scenarios": [
+    {
+      "id": "terminal-evidence-required",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedCaseCloseBarrierTest",
+      "method": "test_confirmation_text_and_domain_assertion_cannot_replace_terminal_work",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "unknown-work-blocks-close",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedCaseCloseBarrierTest",
+      "method": "test_actual_pending_and_unknown_work_block_even_when_checkpoint_has_no_refs",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "pending-approval-blocks-close",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedCaseCloseBarrierTest",
+      "method": "test_actual_pending_approval_blocks_despite_empty_checkpoint",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "acceptance-ticket-user-bound",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedCaseCloseBarrierTest",
+      "method": "test_domain_acceptance_is_required_and_bound_to_customer_ticket_and_work",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "close-revision-audience-replay",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedCaseCloseBarrierTest",
+      "method": "test_successful_close_preserves_revision_audience_and_replay",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "stop-tracking-distinct",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedCaseCloseBarrierTest",
+      "method": "test_stop_tracking_is_distinct_and_closed_cases_cannot_start_more_work",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "silent-model-failure",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_silent_chat_failure_is_not_a_successful_customer_turn",
+      "critical": false,
+      "expect": {}
+    },
+    {
+      "id": "quota-failure-visible",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_a_ticket_stopped_by_an_empty_model_account_says_so",
+      "critical": false,
+      "expect": {}
+    },
+    {
+      "id": "early-progress-preserved",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_early_progress_is_not_orphaned_or_rolled_back_by_dispatch_response",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "transient-turn-retry",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_a_transient_model_error_retries_the_turn_without_resending_the_input",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "resident-photo-once",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_the_end_users_photos_reach_the_leader_once",
+      "critical": false,
+      "expect": {}
+    },
+    {
+      "id": "staff-progress-room",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_staff_progress_reaches_the_room_of_the_ticket",
+      "critical": false,
+      "expect": {}
+    },
+    {
+      "id": "customer-room-reply",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_the_message_sent_is_the_rooms_reply",
+      "critical": false,
+      "expect": {}
+    },
+    {
+      "id": "dispatch-result-confirm-close",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_dispatch_progress_events_result_and_close_like_the_vinhomes_bridge",
+      "critical": true,
+      "expect": {
+        "wf_workflows": {
+          "count": 1,
+          "contains": {
+            "state": "closed"
+          }
+        },
+        "wf_unified_operations": {
+          "count": 1,
+          "contains": {
+            "terminal": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "unsafe-answer-safe-reply",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerCaseTest",
+      "method": "test_a_turn_whose_every_say_is_refused_sends_the_safe_reply",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "approval-consent-resume",
+      "file": "tests/workforce/integrations/test_unified_partner_case.py",
+      "class": "UnifiedPartnerApprovalTest",
+      "method": "test_approval_required_decision_and_resume",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "dispatch-replay-once",
+      "file": "tests/workforce/integrations/test_p1_recovery.py",
+      "class": "RecoveryTest",
+      "method": "test_repeat_after_persisted_dispatch_does_not_call_partner_twice",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "crash-intent-no-redispatch",
+      "file": "tests/workforce/integrations/test_p1_recovery.py",
+      "class": "RecoveryTest",
+      "method": "test_crash_after_intent_commit_never_blindly_redispatches",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "quarantine-worker-reprocess",
+      "file": "tests/workforce/integrations/test_p1_recovery.py",
+      "class": "RecoveryTest",
+      "method": "test_event_before_operation_is_reprocessed_by_durable_worker",
+      "critical": true,
+      "expect": {
+        "wf_unified_receipts": {
+          "count": 1,
+          "contains": {
+            "ingestion_status": "applied"
+          }
+        }
+      }
+    },
+    {
+      "id": "same-rank-version-order",
+      "file": "tests/workforce/integrations/test_p1_recovery.py",
+      "class": "RecoveryTest",
+      "method": "test_same_rank_stale_and_unversioned_events_cannot_regress",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "projection-worker-replay",
+      "file": "tests/workforce/integrations/test_p1_recovery.py",
+      "class": "RecoveryTest",
+      "method": "test_progress_projection_replays_after_failure_using_stable_id",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "approval-expiry-denied",
+      "file": "tests/workforce/integrations/test_p1_recovery.py",
+      "class": "RecoveryTest",
+      "method": "test_expired_approval_is_resolved_and_resumed_as_denied",
+      "critical": true,
+      "expect": {
+        "wf_unified_approvals": {
+          "count": 1,
+          "contains": {
+            "status": "expired"
+          }
+        }
+      }
+    },
+    {
+      "id": "contract-reonboard-frozen",
+      "file": "tests/workforce/integrations/test_p1_contract.py",
+      "class": "ContractTest",
+      "method": "test_reonboard_does_not_change_running_tool_policy_or_event_schema",
+      "critical": true,
+      "expect": {}
+    },
+    {
+      "id": "contract-corruption-refused",
+      "file": "tests/workforce/integrations/test_p1_contract.py",
+      "class": "ContractTest",
+      "method": "test_corrupt_snapshot_fails_before_connector_execution",
+      "critical": true,
+      "expect": {}
+    }
+  ]
+}

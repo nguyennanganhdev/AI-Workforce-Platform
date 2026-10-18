@@ -135,6 +135,25 @@ class AgentData(BaseModel):
     """Latest immutable Builder readiness result shown before publish."""
 
 
+    spec: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Published :class:`~agentscope.app._agent_spec.AgentSpec` (JSON)."""
+
+    draft_spec: SkipJsonSchema[dict | None] = None
+    """Unpublished edits from the form, the copilot or self-improvement."""
+
+    draft_meta: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Who changed the draft, why, and the last test run tied to its hash."""
+
+    versions: SkipJsonSchema[list[dict]] = Field(default_factory=list)
+    """Immutable published versions: number, spec, prompt, author, note."""
+
+    published_version: SkipJsonSchema[int] = 0
+    """The version number the runtime currently serves (0 = none)."""
+
+    resource_workspace_id: SkipJsonSchema[str | None] = None
+    """Immutable prepared workspace activated with the published version."""
+
+
 class AgentRecord(_RecordBase):
     """The agent ORM model."""
 
@@ -151,6 +170,9 @@ class AgentRecord(_RecordBase):
       Team membership itself is session-level and stored on
       :class:`SessionRecord.team_id`.
     """
+
+    storage_revision: SkipJsonSchema[int] = Field(default=0, ge=0)
+    """Storage CAS token; updates require the revision read by the caller."""
 
     data: AgentData
     """The agent data"""

@@ -23,7 +23,7 @@ from ...contracts import (
 from ...foundation.event_delivery import ConversationSseService
 from ..workflows import WorkflowAuthorization, next_action
 from ..workflows._models import raw_value
-from .phase_a import validate_public_event
+from .phase_a import ApprovalRequiredPayload, validate_public_event
 
 
 class EventCursorExpired(RuntimeError):
@@ -263,39 +263,34 @@ class ConversationEventService:
             raise PermissionError(
                 "snapshot contains a message from another workflow"
             )
+        # A pending approval is its id and status, plus what its
+        # approval.required event said (same shape, same checks).
         allowed_approval_fields = {
             "workflow_id",
-            "approval_id",
-            "summary",
-            "expires_at",
             "status",
+            *ApprovalRequiredPayload.model_fields,
         }
         approval_ids: set[str] = set()
         for approval in snapshot.pending_approvals:
             approval_id = approval.get("approval_id")
-            summary = approval.get("summary")
-            expires_at = approval.get("expires_at")
             status = approval.get("status")
+            required = {
+                key: value
+                for key, value in approval.items()
+                if key not in ("workflow_id", "status")
+            }
+            try:
+                if set(required) - {"approval_id"}:
+                    ApprovalRequiredPayload.model_validate(required)
+                valid = True
+            except ValueError:
+                valid = False
             if (
-                approval.get("workflow_id") != access.workflow_id
+                not valid
+                or approval.get("workflow_id") != access.workflow_id
                 or set(approval) - allowed_approval_fields
                 or not isinstance(approval_id, str)
                 or not approval_id
-                or (
-                    summary is not None
-                    and (
-                        not isinstance(summary, str)
-                        or not summary
-                        or len(summary) > 2000
-                    )
-                )
-                or (
-                    expires_at is not None
-                    and (
-                        not isinstance(expires_at, str)
-                        or len(expires_at) > 100
-                    )
-                )
                 or (
                     status is not None
                     and (

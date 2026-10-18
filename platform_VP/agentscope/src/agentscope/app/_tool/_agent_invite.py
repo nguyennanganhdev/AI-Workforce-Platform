@@ -594,6 +594,14 @@ class AgentInvite(_TeamToolBase):
                     f"for team {team.id} is missing — team is in an "
                     f"inconsistent state.",
                 )
+            contract_versions = leader_session.state.middle_context.get("partner_agent_versions") or {}
+            if contract_versions:
+                version = contract_versions.get(invited.id)
+                if version is None:
+                    return _error("AgentInvite: agent is outside this ticket's frozen team contract.")
+                from .._service._agent_studio import pinned_view
+
+                invited = pinned_view(invited, int(version))
             leader = await _resolve_team_leader(
                 self._storage,
                 self._user_id,
@@ -638,6 +646,10 @@ class AgentInvite(_TeamToolBase):
                     leader_session.config.fallback_chat_model_config
                 )
 
+            prepared_workspace = (invited.data.resource_workspace_id if invited.user_id == self._user_id else None)
+            if prepared_workspace:
+                borrowed_workspace_id = prepared_workspace
+
             # Permission context is NOT inherited from the leader.
             # PermissionContext.working_directories and allow/deny/ask
             # rules are anchored to the leader's workspace, which the
@@ -658,6 +670,10 @@ class AgentInvite(_TeamToolBase):
                 # stays with its own session.
             )
 
+            if leader_session.state.middle_context.get("workflow_id"):
+                worker_state.middle_context["workflow_id"] = leader_session.state.middle_context["workflow_id"]
+            if invited.data.published_version:
+                worker_state.middle_context["agent_version"] = invited.data.published_version
             invited_display = _display_name(
                 invited.data.name,
                 invited.id,
@@ -689,7 +705,7 @@ class AgentInvite(_TeamToolBase):
 
             # MCP declarations are session-scoped. Builder agents rebuild
             # their saved allowlist; legacy agents copy an existing session.
-            if invited.data.execution_mode is not None or invited_sessions:
+            if not prepared_workspace and (invited.data.execution_mode is not None or invited_sessions):
                 workspace = await self._workspace_manager.get_workspace(
                     self._user_id,
                     invited.id,

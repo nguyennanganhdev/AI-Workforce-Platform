@@ -15,6 +15,7 @@ that wants them subscribes through the
 import asyncio
 import inspect
 import json
+import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
@@ -96,6 +97,7 @@ from ..storage import (
     ChannelOrigin,
     ContextDelta,
     SessionNaming,
+    SessionKnowledgeConfig,
     SessionRecord,
     ScheduleOrigin,
     SOPOrigin,
@@ -150,6 +152,16 @@ def _team_chat_message(message: Msg, agent_id: str, session_id: str) -> Msg:
         block for block in projected.content if block.type not in {"thinking", "hint"}
     ]
     return projected
+
+
+def _partner_fact(call: ToolCallBlock, result: ToolResultBlock) -> str:
+    # Preserve exact evidence. Packet projection, rather than an arbitrary
+    # character cut, decides what is sent to the next model call.
+    return json.dumps({
+        "tool_call": {"name": call.name, "input": call.input},
+        "tool_result": result.model_dump(mode="json"),
+        "state": result.state,
+    }, ensure_ascii=False, separators=(",", ":"))
 
 
 class _SessionTitle(BaseModel):
@@ -207,6 +219,7 @@ class ChatService:
         extra_projectors: list[EventProjector] | None = None,
         channel_clients: "ChannelClients | None" = None,
         shared_context_storage: StorageBase | None = None,
+        management_auth_service=None,
     ) -> None:
         """Initialize chat service.
 
@@ -288,6 +301,10 @@ class ChatService:
         )
         self._access = resource_access_service
         self._knowledge_base_manager = knowledge_base_manager
+        from .._agent_learning import AgentLearningService
+
+        self._learning = AgentLearningService(storage, self._shared_context, workspace_manager)
+        self._management_auth_service = management_auth_service
         self._extra_agent_middlewares = extra_agent_middlewares
         # Probed once (the service is built once per lifespan) so legacy
         # three-argument factories keep working without the per-turn cost.
@@ -315,6 +332,58 @@ class ChatService:
             SubagentHitlProjector(storage),
             *(extra_projectors or []),
         ]
+
+    def _learning_hook(self, user_id: str, session_record, agent_record):
+        async def on_verified_answer(team_id: str) -> None:
+            if os.getenv("WORKFORCE_LEARNING", "true").strip().lower() in {"0", "false", "no"}:
+                return
+            team = await self._storage.get_team(user_id, team_id)
+            if team is None:
+                return
+            members = await _ensure_team_members(self._storage, user_id, team)
+            if await self._shared_context.prepare_learning_snapshot(user_id, team_id, members):
+                self.schedule_learning(user_id, session_record, team_id)
+
+        return on_verified_answer
+
+    def schedule_learning(self, user_id: str, session_record, team_id: str) -> None:
+        # Partner case middleware owns verification; it must not train the console loop.
+        if session_record.state.middle_context.get("workflow_id"):
+            return
+        self._learning.schedule(user_id, team_id, lambda: self._learning_models(user_id, session_record))
+
+    async def _learning_models(self, user_id: str, session_record):
+        config = session_record.config.chat_model_config
+        return await get_model(user_id, config, self._access), await get_model(user_id, config, self._access)
+
+    async def record_ticket_outcome(self, user_id: str, team_id: str, success: bool) -> list[str]:
+        team = await self._storage.get_team(user_id, team_id)
+        if team is None:
+            return []
+        members = await _ensure_team_members(self._storage, user_id, team)
+        return await self._learning.memory.record_outcome(user_id, [m.agent_id for m in members], team_id, success)
+
+    async def _recalled_memory(self, user_id, agent_id, team, session_id, customer_input_msgs) -> str:
+        query_parts = [msg.get_text_content() or "" for msg in customer_input_msgs]
+        if team is not None:
+            record = await self._shared_context.storage.get_team_shared_context(user_id, team.id)
+            task = record.state.tasks.get(record.state.active_task_id) if record else None
+            if task is not None:
+                query_parts.append(task.objective)
+                query_parts.extend(e.content for e in record.state.events[-20:]
+                                   if e.task_id == task.id and not e.stale
+                                   and (e.kind == "customer_message" or session_id in e.recipient_session_ids))
+        query = " ".join(query_parts)[:4000]
+        if not query.strip():
+            return ""
+        try:
+            memories = await self._learning.memory.recall(
+                user_id, agent_id, query, ticket=team.id if team else None,
+            )
+            return self._learning.memory.render(memories)
+        except Exception:
+            logger.exception("Memory recall failed for agent %s", agent_id)
+            return ""
 
     async def run(
         self,
@@ -947,6 +1016,8 @@ class ChatService:
             shared_context_tokens = 0
             shared_context_attachment = ""
             context_task_id: str | None = None
+            partner_case = False
+            partner_room = False
             customer_input_msgs = (
                 [input_msg]
                 if isinstance(input_msg, Msg)
@@ -996,6 +1067,20 @@ class ChatService:
                             f"Session {session_id!r} not found for agent {agent_id!r}."
                         ),
                     )
+                pinned_version = session_record.state.middle_context.get("agent_version")
+                if pinned_version and agent_record.data.system_role == "business":
+                    from ._agent_studio import pinned_view
+
+                    agent_record = pinned_view(agent_record, int(pinned_version))
+                    runtime_system_prompt = governed_system_prompt(
+                        agent_record.data.system_role, agent_record.data.system_prompt,
+                    )
+                management_output = session_record.state.middle_context.get("management_output_session_id")
+                if management_output:
+                    visible = await self._storage.get_session(user_id, "", management_output)
+                    if visible is None:
+                        raise ValueError("Management conversation is unavailable")
+                    customer_output_session_id = management_output
                 if isinstance(
                     input_msg, UserConfirmResultEvent,
                 ) and not confirmation_still_pending(
@@ -1203,7 +1288,8 @@ class ChatService:
                     user_id,
                     agent_id,
                     session_id,
-                    session_record.config.workspace_id,
+                    (agent_record.data.resource_workspace_id if agent_record.user_id == user_id else None)
+                    or session_record.config.workspace_id,
                 )
 
                 # Add workspace working directory to the permission context
@@ -1276,7 +1362,17 @@ class ChatService:
                         agent_id=agent_id,
                     ),
                 ]
-                if agent_record.data.system_role == "leader":
+                extras = []
+                if self._extra_agent_middlewares is not None:
+                    factory_args: tuple = (user_id, agent_id, session_id)
+                    if self._middlewares_take_workspace:
+                        factory_args += (workspace,)
+                    extras = await self._extra_agent_middlewares(*factory_args)
+                for extra in extras:
+                    key = await extra.get_middleware_key()
+                    partner_case |= key in {"partner_case", "management_case"}
+                    partner_room |= key in {"partner_case", "partner_case_member", "management_case"}
+                if agent_record.data.system_role == "leader" and not partner_case:
                     middlewares.append(
                         LeaderEvidenceMiddleware(
                             self._storage,
@@ -1284,6 +1380,7 @@ class ChatService:
                             user_id,
                             agent_id,
                             session_id,
+                            on_verified_answer=self._learning_hook(user_id, session_record, agent_record),
                         ),
                     )
                 # Equip the member middleware for loop control
@@ -1306,13 +1403,7 @@ class ChatService:
                 if sop_dispatch is not None:
                     middlewares.append(SOPStepSubmitMiddleware())
 
-                if self._extra_agent_middlewares is not None:
-                    factory_args: tuple = (user_id, agent_id, session_id)
-                    if self._middlewares_take_workspace:
-                        factory_args += (workspace,)
-                    middlewares.extend(
-                        await self._extra_agent_middlewares(*factory_args),
-                    )
+                middlewares.extend(extras)
 
                 # -------------------------------------------------------------
                 # 2b. TTS middleware — inject when the session has a TTS
@@ -1341,6 +1432,9 @@ class ChatService:
                 # and unaware of sharing.
                 # -------------------------------------------------------------
                 kb_cfg = session_record.config.knowledge_config
+                spec_kb_ids = [str(item["kb_id"]) for item in agent_record.data.spec.get("knowledge", []) if item.get("kb_id")]
+                if agent_record.data.resource_workspace_id or (spec_kb_ids and not (kb_cfg and kb_cfg.knowledge_base_ids)):
+                    kb_cfg = SessionKnowledgeConfig(knowledge_base_ids=spec_kb_ids)
                 if (
                     kb_cfg is not None
                     and kb_cfg.knowledge_base_ids
@@ -1385,6 +1479,12 @@ class ChatService:
                 # 3. Toolkit (workspace tools + planning + ToolStop +
                 # schedule + team + extras + skills + mcps).
                 # -------------------------------------------------------------
+                if agent_record.data.resource_workspace_id:
+                    from ._agent_readiness import resource_manifest
+
+                    manifest = await resource_manifest(self._storage, user_id, agent_record)
+                    if not manifest["ready"]:
+                        raise HTTPException(409, detail={"code": "RESOURCE_NOT_READY", "issues": manifest["issues"]})
                 toolkit = await get_toolkit(
                     storage=self._storage,
                     workspace=workspace,
@@ -1407,6 +1507,7 @@ class ChatService:
                     channel_tools=channel_tools,
                     sop_dispatch=sop_dispatch,
                     shared_context_service=self._shared_context,
+                    management_auth_service=self._management_auth_service,
                 )
 
                 # -------------------------------------------------------------
@@ -1451,6 +1552,8 @@ class ChatService:
                                 message
                                 for message in customer_history
                                 if message.id not in current_input_ids
+                                and (not partner_room or (message.metadata.get("actor") not in {"management", "system"}
+                                    and message.metadata.get("audience") != "management"))
                             ],
                             source_session_id=customer_output_session_id,
                             reply_owner_agent_id=(
@@ -1464,6 +1567,8 @@ class ChatService:
                         turn_state.task_id if turn_state is not None else None
                     )
                     for msg in customer_input_msgs:
+                        if partner_room and msg.metadata.get("actor") in {"system", "management"}:
+                            continue
                         text = (msg.get_text_content() or "").strip() or (
                             f"[Customer message {msg.id} contains non-text "
                             "content; inspect the source message.]"
@@ -1583,6 +1688,7 @@ class ChatService:
                 if team is None and (
                     agent_record.data.system_role == "leader"
                     or agent_record.data.tool_bindings
+                    or agent_record.data.spec
                 ):
                     # Measure even the initial turn, before TeamCreate exists.
                     middlewares.append(SharedContextIsolationMiddleware(
@@ -1704,11 +1810,22 @@ class ChatService:
                         )
 
                 attachment = f"<system-notification>{attachment}</system-notification>"
-                system_prompt = runtime_system_prompt + "\n\n" + attachment
+                memory = ""
+                if (agent_record.data.system_role == "business"
+                    and agent_record.data.spec.get("memory_enabled", True)
+                    and shared_context_mode != "isolated" and not partner_room):
+                    memory = await self._recalled_memory(user_id, agent_id, team, session_id, customer_input_msgs)
+                # Rebuilt each turn, never appended to durable history; core preflight counts it.
+                system_prompt = runtime_system_prompt + memory + "\n\n" + attachment
 
                 agent_state = session_record.state
                 agent_state.session_id = session_id
                 context_config = agent_record.data.context_config
+                if any(isinstance(m, SharedContextIsolationMiddleware) for m in middlewares):
+                    context_config = context_config.model_copy(update={
+                        "compression_fallback_to_truncation": False,
+                        "compression_retry_drop_oldest": False,
+                    })
                 agent = self._agent_cls(
                     name=agent_record.data.name,
                     system_prompt=system_prompt,
@@ -1788,11 +1905,16 @@ class ChatService:
                     # TeamSay and other built-ins have their own projections.
                     # MCP and knowledge-base retrieval results are source-backed
                     # evidence that later planners may safely cite.
+                    partner_evidence = (
+                        call is not None and result is not None
+                        and isinstance(team_ctx, _WorkerContext)
+                        and bool((result.metadata or {}).get("external_evidence"))
+                    )
                     if call is not None and (
-                        call.name.startswith("mcp__")
+                        partner_evidence or call.name.startswith("mcp__")
                         or call.name == "search_knowledge"
                     ):
-                        exact = json.dumps(
+                        exact = _partner_fact(call, result) if partner_evidence else json.dumps(
                             {
                                 "tool_call": call.model_dump(mode="json"),
                                 "tool_result": (
@@ -2407,7 +2529,7 @@ class ChatService:
                                 )
                             if (
                                 team is not None
-                                and is_reply_owner
+                                and is_reply_owner and not partner_case
                                 and msg.finished_reason is ReplyFinishedReason.COMPLETED
                             ):
                                 reply_text = (msg.get_text_content() or "").strip()

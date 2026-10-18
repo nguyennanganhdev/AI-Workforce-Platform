@@ -30,3 +30,5 @@ export type {
 	WorkforceAgent,
 } from './workforce';
 export type { AreaOption, AuthUser, DomainOption, LoginRequest, RegisterRequest } from './auth';
+
+export * from './studio';

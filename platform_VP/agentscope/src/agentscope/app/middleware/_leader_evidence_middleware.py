@@ -1,10 +1,12 @@
 """Coordinate Workforce Leader turns without validating business claims."""
 
 import json
+import inspect
 import re
 from collections.abc import AsyncGenerator, Callable
 
 from ..._utils._common import _generate_id
+from ..._logging import logger
 from ...agent import Agent
 from ...event import (
     ReplyEndEvent,
@@ -39,6 +41,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         *,
         wait_seconds: float = 60.0,
         max_nudges: int = 2,
+        on_verified_answer: Callable | None = None,
     ) -> None:
         self._storage = storage
         self._shared_context = shared_context
@@ -47,6 +50,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         self._session_id = session_id
         self._wait_seconds = wait_seconds
         self._max_nudges = max_nudges
+        self._on_verified_answer = on_verified_answer
 
     @staticmethod
     def _expected_reports(agent: Agent) -> int:
@@ -487,6 +491,15 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     "and explicit limitations without promising future work.",
                 )
                 continue
+            if self._on_verified_answer is not None and current_text.strip() and event.finished_reason == ReplyFinishedReason.COMPLETED:
+                try:
+                    session = await self._storage.get_session(self._user_id, self._agent_id, self._session_id)
+                    if session is not None and session.team_id:
+                        result = self._on_verified_answer(session.team_id)
+                        if inspect.isawaitable(result):
+                            await result
+                except Exception:
+                    logger.exception("Verified-answer learning hook failed")
             for text_event in buffered_text:
                 yield text_event
             buffered_text.clear()

@@ -61,6 +61,15 @@ from ..storage import (
 )
 from ..workspace_manager import WorkspaceManagerBase
 
+async def _save_agent(storage: StorageBase, user_id: str, record: AgentRecord) -> None:
+    from ..storage._base import AgentRevisionConflict
+
+    try:
+        await storage.upsert_agent(user_id, record)
+    except AgentRevisionConflict as exc:
+        raise HTTPException(status_code=409, detail="Agent changed concurrently; reload before publishing.") from exc
+
+
 workforce_console_router = APIRouter(
     prefix="/workforce/console",
     tags=["workforce-console"],
@@ -2801,6 +2810,8 @@ async def _builder_managed_agent(
         or record.data.system_role != "business"
     ):
         raise HTTPException(status_code=404, detail="Business agent not found")
+    if record.data.published_version:
+        raise HTTPException(status_code=409, detail="Edit versioned agent resources through Agent Studio")
     if record.data.execution_mode is None:
         raise HTTPException(
             status_code=409,
@@ -3041,12 +3052,19 @@ async def change_agent_lifecycle(
     record = await storage.get_agent(user_id, agent_id)
     if record is None or record.data.system_role != "business":
         raise HTTPException(status_code=404, detail="Business agent not found")
+    if record.data.spec and body.state == "published":
+        from .._agent_spec import AgentSpec
+        from .._service._publish_gate import publish_blocker
+
+        blocker = publish_blocker(AgentSpec.model_validate(record.data.spec), record.data.evaluation)
+        if not record.data.published_version or blocker:
+            raise HTTPException(status_code=409, detail=blocker or "Publish the tested agent through Agent Studio")
     record.data.lifecycle_state = body.state
     record.data.invite_config = InviteConfig(
         invitable=body.state == "published",
         invite_description=record.data.build_description,
     )
-    await storage.upsert_agent(user_id, record)
+    await _save_agent(storage, user_id, record)
     return WorkforceAgentView(
         agent_id=record.id,
         name=record.data.name,
@@ -3086,11 +3104,23 @@ async def _leader(
                 build_description="Fixed platform ticket orchestrator",
             ),
         )
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
     elif record.data.system_prompt != _LEADER_PROMPT:
         # The Leader is platform-owned, so bootstrap also upgrades old records.
         record.data.system_prompt = _LEADER_PROMPT
-        await storage.upsert_agent(user_id, record)
+        await _save_agent(storage, user_id, record)
+    from .._agent_spec import AgentSpec
+    from .._service._publish_gate import publication_blocker, trusted_publication
+
+    leader_spec = AgentSpec(name=_LEADER_NAME, description="Fixed platform ticket orchestrator",
+                            prompt_override=_LEADER_PROMPT, model_tier="strong", self_improve=False)
+    if (record.data.spec != leader_spec.model_dump(mode="json")
+            or record.data.evaluation.get("source") != "system_leader"
+            or publication_blocker(leader_spec, record.data.evaluation, allow_provisioning=True)):
+        record.data.spec = leader_spec.model_dump(mode="json")
+        record.data.evaluation = trusted_publication(leader_spec, source="system_leader",
+            actor="platform:leader-bootstrap", reason="Server-owned fixed Workforce Leader; not a business agent")
+        await _save_agent(storage, user_id, record)
     session = await _primary_session(
         storage,
         workspace_manager,

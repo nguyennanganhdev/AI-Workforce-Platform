@@ -21,6 +21,13 @@ from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.rag.blob_store import S3BlobStore
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
 from agentscope.app.storage import AsyncSQLAlchemyStorage, RedisStorage
+from agentscope.app.workforce.integrations.async_runtime import WorkforceBootstrap
+from agentscope.app.workforce.integrations.unified import (
+    ChatLeaderTurnRunner,
+    build_unified_runtime,
+    resolve_signing_secret,
+    unified_mode_enabled,
+)
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 from agentscope.credential import OpenAICredential
 from agentscope.embedding import OpenAIEmbeddingModel
@@ -165,20 +172,59 @@ if os.getenv("AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
         ),
     )
 
+# Inbox, wake-up, context-mode directives and their distributed locks
+# must survive process boundaries; the same Redis deployment may back
+# StorageBase while these keys remain transport-only and namespaced.
+message_bus = RedisMessageBus(
+    host=os.getenv("REDIS_HOST", "localhost"),
+    port=int(os.getenv("REDIS_PORT", "6379")),
+    db=int(os.getenv("REDIS_DB", "0")),
+    password=os.getenv("REDIS_PASSWORD") or None,
+)
+
+# Partner API (/workforce/v1) in unified mode: partner tickets are answered by
+# the same Leader and Agent Studio agents as the web console. Needs the SQL
+# database and partner API keys (AUTH_ENABLED=true).
+workforce_bootstrap = None
+partner_runner: dict = {}
+if unified_mode_enabled():
+    if business_service is None or not os.getenv("AGENTSCOPE_SQL_URL"):
+        raise RuntimeError(
+            "WORKFORCE_PARTNER_API=true requires AUTH_ENABLED=true and AGENTSCOPE_SQL_URL",
+        )
+
+    def _unified_runtime(foundation):
+        runner = ChatLeaderTurnRunner(foundation.uows)
+        partner_runner["runner"] = runner
+        # Partner photos live in the same S3/MinIO store as knowledge documents.
+        return build_unified_runtime(foundation, runner, asset_store=blob_store)
+
+    workforce_bootstrap = WorkforceBootstrap(
+        database_url=os.environ["AGENTSCOPE_SQL_URL"],
+        message_bus=message_bus,
+        runtime_factory=_unified_runtime,
+        # Provider events (contract section 10): API key + HMAC signing key.
+        authenticate_provider_api_key=business_service.authenticate_partner_api_key,
+        resolve_provider_signing_secret=resolve_signing_secret,
+    )
+
+
+async def _partner_case_middlewares(user_id, agent_id, session_id):
+    """Case tools for sessions of partner workflows; nothing elsewhere."""
+    runner = partner_runner.get("runner")
+    if runner is None:
+        return []
+    return await runner.case_middlewares(user_id, agent_id, session_id)
+
+
 app = create_app(
     storage=storage,
     shared_context_storage=shared_context_storage,
     auth_service=auth_service,
     business_service=business_service,
-    # Inbox, wake-up, context-mode directives and their distributed locks
-    # must survive process boundaries; the same Redis deployment may back
-    # StorageBase while these keys remain transport-only and namespaced.
-    message_bus=RedisMessageBus(
-        host=os.getenv("REDIS_HOST", "localhost"),
-        port=int(os.getenv("REDIS_PORT", "6379")),
-        db=int(os.getenv("REDIS_DB", "0")),
-        password=os.getenv("REDIS_PASSWORD") or None,
-    ),
+    message_bus=message_bus,
+    workforce_bootstrap=workforce_bootstrap,
+    extra_agent_middlewares=_partner_case_middlewares,
     workspace_manager=LocalWorkspaceManager(
         basedir=os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
@@ -221,6 +267,9 @@ app = create_app(
         FeishuChannel,
     ],
 )
+
+if "runner" in partner_runner:
+    partner_runner["runner"].bind(app)
 
 
 if __name__ == "__main__":

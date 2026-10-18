@@ -50,6 +50,7 @@ from ._sop import (
     SOPVerifier,
     SOPWorkspaceGrain,
 )
+from ._agent_memory import AgentMemoryRecord, MemoryKind, MemoryStatus
 from ._team import TeamRecord, TeamData, TeamMember
 from ._team_context import (
     ContextDelta,
@@ -62,6 +63,7 @@ from ._team_context import (
     SharedContextMetrics,
     SharedContextSummary,
     SharedTaskState,
+    TaskAssignment,
     SharedTaskStatus,
     TeamSharedContextRecord,
     TeamSharedContextState,
@@ -72,6 +74,7 @@ from ._user import UserRecord
 
 __all__ = [
     "AgentData",
+    "AgentMemoryRecord",
     "AgentRecord",
     "ChannelBinding",
     "ChannelRecord",
@@ -126,6 +129,7 @@ __all__ = [
     "SharedContextMetrics",
     "SharedContextSummary",
     "SharedTaskState",
+    "TaskAssignment",
     "SharedTaskStatus",
     "TeamSharedContextRecord",
     "TeamSharedContextState",

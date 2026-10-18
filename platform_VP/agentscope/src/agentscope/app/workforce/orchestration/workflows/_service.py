@@ -20,11 +20,14 @@ from ._models import (
     WorkflowAggregate,
     WorkflowAuthorization,
     WorkflowBootstrap,
+    WorkflowApprovalPending,
     WorkflowClosed,
     WorkflowConflict,
+    WorkflowNotReadyToClose,
     WorkflowQueryResult,
     WorkflowRepository,
     WorkflowReservation,
+    WorkflowRevisionConflict,
     WorkflowTicketAlreadyBound,
     parse_aggregate,
     raw_value,
@@ -97,6 +100,7 @@ class WorkflowService:
         clock: Callable[[], datetime],
         ids: Callable[[], str] = lambda: uuid4().hex,
         shared_context_projection: bool = False,
+        completion_close_guard: Callable | None = None,
     ) -> None:
         self.repository = repository
         self.bootstrap = bootstrap
@@ -109,6 +113,7 @@ class WorkflowService:
         self.clock = clock
         self.ids = ids
         self.shared_context_projection = shared_context_projection
+        self.completion_close_guard = completion_close_guard
 
     async def project_shared_context(
         self,
@@ -654,25 +659,37 @@ class WorkflowService:
             )
             record = require_binding(aggregate, scope, audience)
             await self.authorization.authorize(scope, actor, audience, "close", tx)
-            if record.revision != parsed.expected_revision:
-                raise WorkflowConflict("close revision conflict")
             if record.state == WorkflowState.CLOSED:
                 return record
+            if record.revision != parsed.expected_revision:
+                raise WorkflowRevisionConflict(
+                    "close revision conflict", record.revision
+                )
             checkpoint = aggregate.checkpoint
+            completion_ready = False
+            if self.completion_close_guard is not None:
+                completion_ready = await self.completion_close_guard(aggregate, parsed, tx) is True
             if checkpoint.pending_approval_ids and not parsed.stop_tracking_only:
-                raise WorkflowConflict("pending approval prevents completion close")
+                raise WorkflowApprovalPending(
+                    "pending approval prevents completion close"
+                )
             pending_operations = []
             for ref in checkpoint.operation_refs:
                 operation = await self.operations.get(scope, ref, tx)
                 if await self.operations.is_pending(operation, tx):
                     pending_operations.append(ref)
             if pending_operations and not parsed.stop_tracking_only:
-                raise WorkflowConflict("pending operation requires stop_tracking_only")
+                raise WorkflowNotReadyToClose(
+                    "pending operation requires stop_tracking_only"
+                )
             if (
                 record.state != WorkflowState.AWAITING_CONFIRMATION
                 and not parsed.stop_tracking_only
+                and not completion_ready
             ):
-                raise WorkflowConflict("workflow is not ready for completion close")
+                raise WorkflowNotReadyToClose(
+                    "workflow is not ready for completion close"
+                )
             candidate = advance(
                 aggregate,
                 self.clock,
@@ -704,6 +721,7 @@ class WorkflowService:
                     "state": "closed",
                     "revision": candidate.workflow.revision,
                     "reason": parsed.reason,
+                    "stop_tracking_only": parsed.stop_tracking_only,
                     "closed_at": self.clock().isoformat(),
                 },
                 tx,

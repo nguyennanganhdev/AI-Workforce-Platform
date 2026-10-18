@@ -30,6 +30,7 @@ from .storage import (
     SharedContextItem,
     SharedContextSummary,
     SharedTaskState,
+    TaskAssignment,
     StorageBase,
     TeamHandoffRecord,
     TeamSharedContextRecord,
@@ -840,6 +841,7 @@ class SharedContextService:
                     task.status = "running"
                     task.pending_question_ids = ()
                     task.latest_customer_revision = event.revision
+                    task.assignments.clear()
                     record.state.items.append(
                         SharedContextItem(
                             task_id=selected_task_id,
@@ -970,6 +972,7 @@ class SharedContextService:
                 and not task.pending_question_ids
             ):
                 task.status = "running"
+                task.assignments.clear()
             if task.pending_question_ids and task.status == "running":
                 task.status = "waiting_user"
             if not stale and task_owner_agent_id is not None:
@@ -2308,7 +2311,10 @@ class SharedContextService:
             else []
         )
         for task in tasks:
+            task.pop("assignments", None)
+            task.pop("learned_revision", None)
             for branch in task.get("collaboration", {}).values():
+                branch.pop("evidence_rejections", None)
                 branch.pop("receipts", None)
                 branch.pop("signatures", None)
         selected_event_ids = {event.id for event in events}
@@ -2836,6 +2842,57 @@ class SharedContextService:
             "is not an empty section. All source data is retained.\n"
             f"{packet}\n</shared-context-packet>"
         )
+
+    async def prepare_learning_snapshot(self, user_id: str, team_id: str, members) -> bool:
+        """Project a sealed core task for learning without changing its runtime."""
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            task = record.state.tasks.get(record.state.active_task_id) if record else None
+            if task is None or task.status != "completed" or task.pending_question_ids or task.pending_operation_ids:
+                return False
+            assignments = {}
+            for member in members:
+                branch = task.collaboration.get(member.session_id)
+                if branch is None or branch.customer_revision != task.latest_customer_revision:
+                    continue
+                if branch.status != "completed":
+                    return False
+                goal = next((event.content for event in reversed(record.state.events)
+                             if event.task_id == task.id and not event.stale and event.kind == "handoff"
+                             and member.session_id in event.recipient_session_ids), task.objective)
+                assignments[member.session_id] = TaskAssignment(
+                    agent_id=member.agent_id, goal=goal[:20000], status="verified",
+                )
+            if not assignments:
+                return False
+            task.assignments = assignments
+            await self._commit_mutation(user_id, record)
+            return True
+
+    async def mark_learned(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        revision: int,
+    ) -> None:
+        """Record that the learning loop processed ``task_id`` up to ``revision``."""
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            if record is None or task_id not in record.state.tasks:
+                return
+            task = record.state.tasks[task_id]
+            if task.learned_revision >= revision:
+                return
+            task.learned_revision = revision
+            await self._commit_mutation(user_id, record)
 
 
 __all__ = [

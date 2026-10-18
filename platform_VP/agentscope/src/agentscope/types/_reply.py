@@ -28,6 +28,9 @@ class ErrorType(StrEnum):
     """403 — authenticated but not allowed."""
     RATE_LIMIT = "rate_limit"
     """429 — rate/quota exceeded."""
+    QUOTA = "quota"
+    """The provider account has no credit left (e.g. OpenAI
+    ``insufficient_quota``): retrying later does not help."""
     INVALID_REQUEST = "invalid_request"
     """400 / 422 — malformed request."""
     UPSTREAM = "upstream"

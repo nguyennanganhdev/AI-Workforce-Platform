@@ -1136,3 +1136,72 @@ class BusinessService(AbstractAsyncContextManager):
                 .all()
             )
         return [dict(row) for row in rows]
+
+    async def issue_client_key(
+        self,
+        *,
+        client_id: str,
+        expires_at: datetime | None = None,
+    ) -> IssuedPartnerApiKey:
+        """Issue one more key for an existing client, returning it once."""
+        from sqlalchemy import text
+
+        key_id = str(uuid4())
+        secret = secrets.token_urlsafe(48)
+        now = datetime.now(timezone.utc)
+        async with self._require_engine().begin() as connection:
+            client = (
+                await connection.execute(
+                    text(
+                        "SELECT domain_id FROM partner_api_clients "
+                        "WHERE id = :id AND status = 'active'",
+                    ),
+                    {"id": client_id},
+                )
+            ).first()
+            if client is None:
+                raise BusinessNotFoundError("active partner client not found")
+            await connection.execute(
+                text(
+                    """
+                    INSERT INTO partner_api_credentials (
+                        id, client_id, secret_hash, created_at, expires_at
+                    ) VALUES (
+                        :id, :client_id, :secret_hash, :now, :expires_at
+                    )
+                    """,
+                ),
+                {
+                    "id": key_id,
+                    "client_id": client_id,
+                    "secret_hash": self._api_key_hash(secret),
+                    "now": now,
+                    "expires_at": expires_at,
+                },
+            )
+        return IssuedPartnerApiKey(
+            client_id=client_id,
+            key_id=key_id,
+            domain_id=client[0],
+            api_key=f"dp_{key_id}.{secret}",
+            expires_at=expires_at,
+        )
+
+    async def revoke_client_keys(self, *, client_id: str, keep: tuple[str, ...] = ()) -> int:
+        """Revoke every key of a client except ``keep``; returns how many."""
+        from sqlalchemy import bindparam, text
+
+        statement = (
+            "UPDATE partner_api_credentials SET revoked_at = :now "
+            "WHERE client_id = :client_id AND revoked_at IS NULL"
+        )
+        params: dict = {"now": datetime.now(timezone.utc), "client_id": client_id}
+        if keep:
+            statement += " AND id NOT IN :keep"
+            params["keep"] = list(keep)
+        query = text(statement)
+        if keep:
+            query = query.bindparams(bindparam("keep", expanding=True))
+        async with self._require_engine().begin() as connection:
+            result = await connection.execute(query, params)
+        return int(result.rowcount or 0)

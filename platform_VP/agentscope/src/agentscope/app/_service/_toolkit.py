@@ -58,6 +58,7 @@ async def get_toolkit(
     channel_tools: list[ToolBase] | None = None,
     sop_dispatch: str | None = None,
     shared_context_service: SharedContextService | None = None,
+    management_auth_service=None,
 ) -> Toolkit:
     """Assemble the complete :class:`Toolkit` for one chat turn.
 
@@ -152,6 +153,7 @@ optional):
         is_leader
         or bool(agent_record.data.tool_bindings)
         or agent_record.data.execution_mode is not None
+        or bool(agent_record.data.spec)
     )
     tools = [] if business_runtime else await workspace.list_tools()
     if not business_runtime:
@@ -308,6 +310,10 @@ time or interval"
             if client.name in allowed_by_mcp
         ]
 
+    if any(t.get("tool_name", "").startswith("vh_management_") for t in agent_record.data.spec.get("tools", [])):
+        from ._management_mcp import manager_clients
+
+        workspace_mcps = await manager_clients(storage, management_auth_service, user_id, agent_record, workspace_mcps)
     return Toolkit(
         tools=tools,
         skills_or_loaders=[] if is_leader else await workspace.list_skills(

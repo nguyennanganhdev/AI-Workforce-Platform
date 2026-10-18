@@ -6,6 +6,7 @@ from ._base import StorageBase
 from ._redis_storage import RedisStorage
 from ._model import (
     AgentData,
+    AgentMemoryRecord,
     AgentRecord,
     ChannelBinding,
     ChannelRecord,
@@ -61,6 +62,7 @@ from ._model import (
     SharedContextMetrics,
     SharedContextSummary,
     SharedTaskState,
+    TaskAssignment,
     SharedTaskStatus,
     TeamSharedContextRecord,
     TeamSharedContextState,
@@ -103,6 +105,7 @@ __all__ = [
     # The ORM models
     "InviteConfig",
     "AgentData",
+    "AgentMemoryRecord",
     "AgentRecord",
     "ChannelBinding",
     "ChannelRecord",
@@ -154,6 +157,7 @@ __all__ = [
     "SharedContextMetrics",
     "SharedContextSummary",
     "SharedTaskState",
+    "TaskAssignment",
     "SharedTaskStatus",
     "TeamSharedContextRecord",
     "TeamSharedContextState",

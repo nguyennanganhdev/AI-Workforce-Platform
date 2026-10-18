@@ -1177,6 +1177,7 @@ class TestDaytonaWorkspaceBuiltinToolsMock(IsolatedAsyncioTestCase):
                                 "is_stateful": False,
                                 "enable_tools": None,
                                 "disable_tools": None,
+                                "confirm_tools": None,
                                 "execution_timeout": None,
                             },
                         ],

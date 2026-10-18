@@ -87,6 +87,15 @@ class ClassifyErrorTest(unittest.TestCase):
                     expected,
                 )
 
+    def test_an_account_without_credit_is_not_a_rate_limit(self) -> None:
+        """OpenAI answers 429 ``insufficient_quota``; waiting never fixes it."""
+        error = _StatusError(429)
+        error.code = "insufficient_quota"
+        self.assertEqual(_classify_type(error), ErrorType.QUOTA)
+        wrapped = RuntimeError("model call failed")
+        wrapped.__cause__ = _StatusError(429)
+        self.assertEqual(_classify_type(wrapped), ErrorType.RATE_LIMIT)
+
     def test_httpx_connection_errors(self) -> None:
         """httpx transport failures classify as CONNECTION."""
         # These are httpx.TransportError subclasses, NOT builtin

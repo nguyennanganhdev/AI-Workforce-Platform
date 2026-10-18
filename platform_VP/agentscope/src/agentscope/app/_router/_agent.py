@@ -257,6 +257,8 @@ async def update_agent(
         agent_id,
     )
 
+    if existing.data.published_version:
+        raise HTTPException(status_code=409, detail="Edit versioned agents through Agent Studio")
     updates = body.model_dump(exclude_none=True)
     if existing.data.system_role == "leader":
         updates["system_prompt"] = governed_system_prompt(

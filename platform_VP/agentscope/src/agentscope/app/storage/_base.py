@@ -10,6 +10,7 @@ from ...message import Msg
 from ...sop import SOPPhase, SOPRunState
 from ...state import AgentState
 from ._model import (
+    AgentMemoryRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -29,6 +30,20 @@ from ._model import (
     TeamHandoffRecord,
     TeamTurnRecord,
 )
+
+
+class AgentRevisionConflict(RuntimeError):
+    """Another writer changed this agent; reload before retrying the operation."""
+
+def validate_agent_history(current: AgentRecord | None, candidate: AgentRecord) -> None:
+    """Published entries are append-only, including writes outside Studio."""
+    if current is None:
+        return
+    history = current.data.versions
+    if candidate.data.versions[:len(history)] != history:
+        raise AgentRevisionConflict("IMMUTABLE_AGENT_VERSION_CHANGED")
+    if candidate.data.published_version < current.data.published_version:
+        raise AgentRevisionConflict("AGENT_VERSION_REGRESSION")
 
 
 class StorageBase(ABC):
@@ -1513,3 +1528,40 @@ class StorageBase(ABC):
                                offset: int = 0, until: str | None = None) -> list[dict]:
         """Owner-scoped call evidence, in stable ascending start/id order."""
         raise NotImplementedError
+
+    async def upsert_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+    ) -> AgentMemoryRecord:
+        """Insert or replace one remembered item of an agent."""
+        raise NotImplementedError("this storage does not keep agent memory")
+
+    async def list_agent_memories(
+        self,
+        user_id: str,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[AgentMemoryRecord]:
+        """List an agent's memories, newest first."""
+        raise NotImplementedError("this storage does not keep agent memory")
+
+    async def compare_and_swap_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+        expected_revision: int | None,
+    ) -> bool:
+        """Insert (None) or update a memory only at the expected revision."""
+        raise NotImplementedError("this storage does not support atomic agent memory")
+
+    async def get_agent_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        memory_id: str,
+    ) -> AgentMemoryRecord | None:
+        """Read one memory of an agent."""
+        raise NotImplementedError("this storage does not keep agent memory")

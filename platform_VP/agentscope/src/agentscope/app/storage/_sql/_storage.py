@@ -25,6 +25,7 @@ from ....sop import SOPPhase, SOPRunState
 from ....state import AgentState
 from .._base import StorageBase
 from .._model import (
+    AgentMemoryRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -48,6 +49,7 @@ from .._model._session import _origin_kwargs
 from .._utils import _dump_with_secrets
 from ._mappers import _from_record, _to_record
 from ._tables import (
+    AgentMemoryRow,
     AgentRow,
     ChannelRow,
     CredentialRow,
@@ -1031,9 +1033,36 @@ class AsyncSQLAlchemyStorage(StorageBase):
         user_id: str,
         agent_record: AgentRecord,
     ) -> str:
-        """Persist an agent record (create or overwrite)."""
-        _ = user_id  # scoping is enforced by the caller
-        await self._write_row(AgentRow, agent_record)
+        """Persist an agent with an atomic, owner-scoped revision check."""
+        from sqlalchemy import func, insert, update
+        from sqlalchemy.exc import IntegrityError
+        from .._base import AgentRevisionConflict, validate_agent_history
+
+        if agent_record.user_id != user_id:
+            raise PermissionError("Agent owner mismatch")
+        expected = agent_record.storage_revision
+        candidate = agent_record.model_copy(deep=True)
+        candidate.storage_revision = expected + 1
+        candidate.updated_at = datetime.now()
+        row = _from_record(AgentRow, candidate)
+        values = {column.name: getattr(row, column.name) for column in AgentRow.__table__.columns}
+        async with self._session() as sess:
+            current = await sess.get(AgentRow, agent_record.id)
+            validate_agent_history(_to_record(current, AgentRecord) if current is not None else None, candidate)
+            changed = await sess.execute(update(AgentRow).where(
+                AgentRow.id == agent_record.id, AgentRow.user_id == user_id,
+                func.coalesce(AgentRow.payload["storage_revision"].as_integer(), 0) == expected,
+            ).values(**values))
+            if changed.rowcount != 1:
+                if expected != 0:
+                    raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                try:
+                    await sess.execute(insert(AgentRow).values(**values))
+                except IntegrityError as exc:
+                    raise AgentRevisionConflict("AGENT_REVISION_CONFLICT") from exc
+            await sess.commit()
+        agent_record.storage_revision = candidate.storage_revision
+        agent_record.updated_at = candidate.updated_at
         return agent_record.id
 
     async def list_agents(self, user_id: str) -> list[AgentRecord]:
@@ -2473,3 +2502,92 @@ class AsyncSQLAlchemyStorage(StorageBase):
         async with self._session() as sess:
             return list((await sess.execute(query.order_by(ModelCallRow.started_at, ModelCallRow.id)
                         .offset(offset).limit(limit))).scalars().all())
+
+    async def upsert_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+    ) -> AgentMemoryRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        await self._write_row(AgentMemoryRow, record)
+        return record
+
+    async def list_agent_memories(
+        self,
+        user_id: str,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[AgentMemoryRecord]:
+        from sqlalchemy import select
+
+        query = select(AgentMemoryRow).where(
+            AgentMemoryRow.user_id == user_id,
+            AgentMemoryRow.agent_id == agent_id,
+        )
+        if status is not None:
+            query = query.where(AgentMemoryRow.status == status)
+        query = query.order_by(AgentMemoryRow.created_at.desc()).limit(limit)
+        async with self._session() as sess:
+            rows = (await sess.execute(query)).scalars().all()
+        return [_to_record(row, AgentMemoryRecord) for row in rows]
+
+    async def compare_and_swap_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+        expected_revision: int | None,
+    ) -> bool:
+        from sqlalchemy import func, update
+        from sqlalchemy.exc import IntegrityError
+
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        if record.revision != (expected_revision or 0) + 1:
+            raise ValueError("memory revision must advance exactly once")
+        record.updated_at = _utcnow()
+        record.created_at = _to_naive_utc(record.created_at)
+        row = _from_record(AgentMemoryRow, record)
+        async with self._session() as sess:
+            try:
+                if expected_revision is None:
+                    sess.add(row)
+                else:
+                    result = await sess.execute(
+                        update(AgentMemoryRow).where(
+                            AgentMemoryRow.id == record.id,
+                            AgentMemoryRow.user_id == user_id,
+                            AgentMemoryRow.agent_id == record.agent_id,
+                            func.coalesce(AgentMemoryRow.payload["revision"].as_integer(), 0) == expected_revision,
+                        ).values(updated_at=row.updated_at, payload=row.payload, status=row.status),
+                    )
+                    if result.rowcount != 1:
+                        await sess.rollback()
+                        return False
+                await sess.commit()
+                return True
+            except IntegrityError:
+                await sess.rollback()
+                return False
+
+    async def get_agent_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        memory_id: str,
+    ) -> AgentMemoryRecord | None:
+        from sqlalchemy import select
+
+        async with self._session() as sess:
+            row = (
+                await sess.execute(
+                    select(AgentMemoryRow).where(
+                        AgentMemoryRow.id == memory_id,
+                        AgentMemoryRow.user_id == user_id,
+                        AgentMemoryRow.agent_id == agent_id,
+                    ),
+                )
+            ).scalar_one_or_none()
+        return _to_record(row, AgentMemoryRecord) if row is not None else None
