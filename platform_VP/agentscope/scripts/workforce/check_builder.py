@@ -110,6 +110,7 @@ def main():
     if options.contracts_only:
         suite = [
             "tests/workforce/console/test_vin_customer_evidence.py",
+            "tests/workforce/console/test_vin_customer_mcp.py",
             "tests/workforce/console/test_vin_job_history.py",
             "tests/vin_customer_plan_contract_test.py", "tests/vin_jobs_pagination_test.py",
             "tests/vin_admin_test.py",

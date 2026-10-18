@@ -146,6 +146,7 @@ async def progress(authority, context, case_id):
         "as_of", "next_action", "pending_decisions", "plans", "work_orders", "resolution", "result_photos", "photos")
     result = {key: domain[key] for key in safe_fields if key in domain}
     result.update(id=case_id, sync_status="applied" if current else "sync_pending",
+        ticket_ids=[str(item["id"]) for item in domain.get("tickets", []) if item.get("id")],
         as_of=domain.get("as_of"), next_action=domain.get("next_action"),
         events=[{"id": event["event_id"], "sequence": event["sequence"], "at": event["occurred_at"],
             "label": event["data"].get("label", event["event_type"]), "note": event["data"].get("note")}
