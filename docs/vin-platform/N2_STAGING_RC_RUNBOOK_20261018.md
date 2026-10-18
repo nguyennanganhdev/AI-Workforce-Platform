@@ -1,5 +1,7 @@
 # N2 — nghiệm thu cặp image trên staging cách ly
 
+Bản đã kiểm: app/web `vin-n2-platform-rc:9876d94e`, `vin-n2-web-rc:9876d94e`, Domain bên dưới. Staging đang lưu ở `P/.artifacts/n2-s16-staging-r4`; hai CMD scenario 2 PASS/0 SKIP, saved Leader reply UI PASS, restore 4/4 kho. Chi tiết và giới hạn: [S16 handoff](../N2_HANDOFF_SLICES_20261018.md), [manifest](evidence/n2-s16-20261018.json). Không ghi đè thư mục này khi chạy lại; dùng output mới hoặc cleanup-only để dọn.
+
 Thứ tự đã chốt: staging trước, VPS sau. Runner không đọc deployment.env, không dùng model thật và không thay stack đang phục vụ. `VIN_PLATFORM_ENABLED=true`, `VINHOMES_CUSTOMER_PLATFORM_ENABLED=true`, M2/chatbot cohort cutover=false. DB fixture nâng đến 0024, tách khỏi DB ứng dụng.
 
 ## Build từ commit sạch
