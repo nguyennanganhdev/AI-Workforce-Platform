@@ -35,3 +35,17 @@ Vinhomes là **một gói có liên kết tài khoản**. Domain Vinhomes, app n
 - Không dùng key model để test; PM tự test trên UI.
 - Phiếu đối tác Vinhomes (Leader của ban quản lý) phải tiếp tục chạy trong suốt quá trình.
 - Không động vào các worktree `-user1` và `-user2` của phiên khác.
+
+## Tiến độ (19/10)
+
+| Bước | Trạng thái | Commit |
+|---|---|---|
+| 0 | Đã gộp; test console 262 qua; test cấp cao nhất lỗi đúng 3 lỗi có sẵn như `dev_Chien` | `ae836d7b` |
+| 1–2 | Leader khởi động một agent điều phối, các agent chuyên trách ở chế độ chờ (`standby`); agent hỏi nhau và phản biện nhau; tìm kiếm tự chạy, còn đặt, hủy và thanh toán hiện thẻ xác nhận. PM chọn làm lại hành vi của Đông trên bộ máy hiện có thay vì gộp nhánh (49 file xung đột). | `8ce35a9f` |
+| 3–4 | Đăng ký cá nhân, không còn mục khu và domain; tài khoản dùng được ngay với hạn mức mặc định `PERSONAL_DEFAULT_*`; mỗi người có MCP riêng | `4ae9d012` |
+| 5 | Thư viện gói (bảng `vin_packs`, migration 0025): admin soạn gói, người dùng thêm gói và nhận đội agent mẫu đã phát hành | `dfbeb084` |
+| 6 | Bỏ "cư dân" và "ban quản lý" khỏi màn hình chung | `dff885b3` |
+| — | Tài khoản cá nhân phát hành trước các agent đã đạt eval (luồng phát hành theo lô) | `f4225527` |
+| 7 | Chờ PM xác nhận: deploy bật lớp tài khoản cá nhân trên production theo `docs/vin-platform/N1_MIGRATION_CONFIG_RUNBOOK.md` | — |
+
+Chưa làm: đưa panel hoạt động nhóm (TeamPanel) của Đông sang; dựng sẵn hai gói Travelling và Vinhomes (làm lúc deploy); liên kết Vinhomes cần migration 0026 phía Domain và cấp client đăng ký.
