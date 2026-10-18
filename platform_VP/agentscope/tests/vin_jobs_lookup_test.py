@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlsplit, urlunsplit
@@ -54,19 +55,27 @@ async def history_authority(request, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_filter_before_limit_reads_125_from_second_source_and_direct_lookup(history_authority):
+async def test_filter_before_limit_reads_125_from_second_source_and_direct_lookup(history_authority, monkeypatch):
     authority = history_authority
+    # Reproduce coarse Windows clock resolution on every platform. Source A
+    # precedes B, but jobs within each source must break timestamp ties by ID.
+    at = datetime(2026, 10, 18, tzinfo=UTC)
+    timestamps = iter([at] * 125 + [at + timedelta(seconds=1)] * 125 + [at] * 125)
+    monkeypatch.setattr("agentscope.app.vin_platform._jobs.now", lambda: next(timestamps))
     context, jobs = await seed_personal_job_history(authority, count=250,
         source_ids=["schedule-a"] * 125 + ["schedule-b"] * 125)
     await seed_personal_job_history(authority, user_id="bob", count=125, source_ids=["schedule-b"])
+    assert len({job.created_at for job in jobs[125:]}) == 1
     first = await authority.jobs.list_page(context, "schedule-run", source_id="schedule-b")
     second = await authority.jobs.list_page(context, "schedule-run", source_id="schedule-b", cursor=first.next_cursor)
     assert (len(first.items), len(second.items)) == (100, 25)
     assert first.has_more and not second.has_more and second.next_cursor is None
-    expected = [job.job_id for job in jobs[125:]]
-    assert [job.job_id for job in first.items + second.items] == expected
+    expected = [job.job_id for job in sorted(jobs[125:], key=lambda job: (job.created_at, job.job_id))]
+    actual = [job.job_id for job in first.items + second.items]
+    assert actual == expected
+    assert len(actual) == len(set(actual)) == 125
     found = await authority.jobs.get(context, "schedule-run", jobs[-1].job_id, source_id="schedule-b")
-    assert found.job_id == expected[-1] and found.payload["body"]["sequence"] == 249
+    assert found.job_id == jobs[-1].job_id and found.payload["body"]["sequence"] == 249
     assert [job.job_id for job in await authority.jobs.list(context, "schedule-run", source_id="schedule-b")] == expected
     with pytest.raises(PlatformError, match="INVALID_JOB_CURSOR"):
         await authority.jobs.list_page(context, "schedule-run", source_id="schedule-a", cursor=first.next_cursor)

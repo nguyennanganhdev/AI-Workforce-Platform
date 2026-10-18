@@ -48,6 +48,8 @@ Fixture chạy xuyên Platform–Domain: `vinhome_Recident/services/vinhomes-api
 
 R05 bổ sung theo yêu cầu nghiệm thu N2:
 
+Sửa nghiệm thu ordering: expected trong test phải sort **(created_at,job_id)**, không theo thứ tự enqueue. Fixture test hiện cố định timestamp trùng trong từng nguồn; kiểm 125 ID duy nhất, lookup đúng job sequence 249 độc lập vị trí keyset và giữ toàn bộ scope/revoke checks. Sau tái hiện RED 1 FAIL, cả **Python 3.11 Windows và Linux đều 15 PASS / 0 SKIP / 0 FAIL / 0 ERROR** (SQLite + PostgreSQL). Đây là sửa test N1, không đổi thứ tự production để làm xanh.
+
 ```python
 page = await authority.jobs.list_page(context, "schedule-run", source_id=schedule_id, cursor=cursor)
 job = await authority.jobs.get(context, "schedule-run", job_id, source_id=schedule_id)
