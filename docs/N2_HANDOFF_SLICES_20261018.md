@@ -420,3 +420,8 @@ phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ kh
 - Strict contracts **81 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, 23.86s. Runtime/evidence/chat/team/automation **501 PASS / 25 SKIP / 0 FAIL / 0 ERROR**, 46.29s; 25 skip vẫn là browser/PG gate riêng. Có 13 ca mới về valid receipt, wrong owner/agent/session, old reply, tool error, forged prose, wrong operation, latest progress, team và giữ nguyên lời trả lời đã chứng minh; claim sai case/ticket closed/resident accepted vẫn bị chặn. Actual C05 tool test xác minh metadata không secret. Ruff F401/F811/F821/F841 PASS. External attempts 0, paid model calls 0.
 - Browser journey được tăng assertion câu trả lời Leader và đúng hai scripted calls, chưa nhận PASS cho assertion mới trước khi chạy. Log `.artifacts/n2-s13-{contracts,runtime}.log`.
 - Yêu cầu producer/test cụ thể: `docs/vin-platform/N2_C07_C09_ACCEPTANCE_REQUEST_20261018.md`. Chưa có contract mới thì không tự sửa N1 hoặc ghi C07/C09 hoàn tất.
+
+## S14 — Đóng gói RC Platform cách ly
+
+- Phát hiện thiếu wiring deploy: frontend Dockerfile chỉ nhận API base, chưa nhận `VITE_VIN_EXPERIENCE_ENABLED`; compose chưa truyền Vin flag/key backend. Bổ sung cờ với mặc định false và key từ môi trường server, frontend build arg rõ ràng; không đổi môi trường đang chạy. Dùng pnpm 10.33.2 là bản đã build/test local với lockfile hiện tại.
+- Sẽ build bằng Dockerfile production, tag/label theo SHA đã commit, ghi image ID và hash bundle thực lấy từ image. Chưa gán PASS RC hoặc production khi chưa build/chạy; fixture bootstrap và API dispatcher không thay bằng chứng agent tự giao việc hoặc UAT nghiệp vụ.

@@ -3,7 +3,7 @@
 FROM node:24-bookworm-slim AS build
 
 WORKDIR /web
-RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
@@ -14,6 +14,8 @@ COPY frontend frontend
 # The browser calls the API at this address (baked in at build time).
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ARG VITE_VIN_EXPERIENCE_ENABLED=false
+ENV VITE_VIN_EXPERIENCE_ENABLED=${VITE_VIN_EXPERIENCE_ENABLED}
 RUN pnpm --filter frontend run build
 RUN if [ "$VITE_API_BASE_URL" = "/api" ]; then \
     WEB_DIST_DIR=/web/frontend/dist node --test frontend/tests/production-api.test.mjs; \
