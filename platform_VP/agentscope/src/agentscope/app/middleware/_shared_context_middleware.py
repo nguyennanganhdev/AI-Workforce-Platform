@@ -7,9 +7,10 @@ from collections.abc import Awaitable, Callable
 
 from ..._logging import logger
 from ...agent import Agent, ContextConfig
-from ...message import Msg, TextBlock, UserMsg
+from ...message import Msg, TextBlock, ToolCallBlock, ToolResultState, UserMsg
 from ...middleware import MiddlewareBase
 from ...model import ChatResponse, ChatModelBase
+from ...tool import ToolResponse
 from .._shared_context import SharedContextBudgetError, SharedContextService
 from ..storage import ContextMode, StorageBase
 
@@ -48,6 +49,9 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         self._reference_event_ids = reference_event_ids
         self._packet_budget: int | None = None
         self._packet_model: ChatModelBase | None = None
+        self._paging_call_ids: set[str] = set()
+        self._paging_model_call_id: str | None = None
+        self._paging_reads: dict[str, dict | None] = {}
         prior_context = prior_context or []
         self._prior_message_ids = {message.id for message in prior_context}
         self._prior_block_ids = {
@@ -153,11 +157,25 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             grant = agent.state.middle_context.get(
                 "shared_context_sources", {}
             )
+            scope = {
+                "user_id": self._user_id,
+                "team_id": self._team_id,
+                "task_id": self._task_id,
+                "reply_id": agent.state.reply_id,
+                "mode": self._mode,
+                "reference_event_ids": list(self._reference_event_ids),
+            }
+            if self._allow_source_references and any(
+                grant.get(key) != value for key, value in scope.items()
+            ):
+                grant = {**scope, "references": [], "sources": {}}
+                agent.state.middle_context["shared_context_sources"] = grant
+                self._event_revision = None
             sources_cached = await self._service.packet_sources_available(
                 self._user_id,
                 self._team_id,
                 self._task_id,
-                grant.get("references", ()),
+                grant.get("current_references", ()),
             )
             record = await self._service.storage.get_team_shared_context(
                 self._user_id, self._team_id
@@ -196,13 +214,23 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 self._packet_budget = packet_budget
                 self._packet_model = model
                 if self._allow_source_references:
-                    agent.state.middle_context["shared_context_sources"] = {
-                        "team_id": self._team_id,
-                        "task_id": self._task_id,
-                        "references": json.loads(packet).get(
-                            "source_references", []
-                        ),
-                    }
+                    value = json.loads(packet)
+                    references = value.get("source_references", [])
+                    grant["current_references"] = references
+                    grant["references"] = list(
+                        dict.fromkeys([*grant["references"], *references])
+                    )
+                    for section in (
+                        value["authoritative_state"]["items"],
+                        value["authoritative_state"]["tasks"],
+                        value["recent_events"],
+                        value["summary"],
+                    ):
+                        if isinstance(section, dict) and "source_ref" in section:
+                            grant["sources"][section["source_ref"]] = {
+                                **section,
+                                "revision": value["revision"],
+                            }
                 await self._service.pin_session_revision(
                     agent.state.session_id,
                     team_id=self._team_id,
@@ -291,6 +319,9 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         input_kwargs: dict,
         next_handler: Callable[..., Awaitable[ChatResponse]],
     ) -> ChatResponse:
+        self._paging_call_ids = set()
+        self._paging_model_call_id = None
+        self._paging_reads = {}
         await self._refresh_packet(agent, input_kwargs["current_model"])
         filtered = self._model_messages(agent, input_kwargs["messages"])
 
@@ -453,6 +484,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 )
             )
             await charge()
+            self._track_paging_call(response)
             return response
 
         async def measured_stream():
@@ -467,6 +499,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         partial_content.extend(chunk.content)
                         if chunk.is_last:
                             complete = True
+                            self._track_paging_call(chunk)
                             output_tokens = (
                                 chunk.usage.output_tokens
                                 if chunk.usage
@@ -501,6 +534,38 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
 
         return measured_stream()
 
+    def _track_paging_call(self, response: ChatResponse) -> None:
+        calls = [
+            block for block in response.content
+            if isinstance(block, ToolCallBlock)
+        ]
+        if calls and all(call.name == "SharedContextRead" for call in calls):
+            self._paging_call_ids = {call.id for call in calls}
+            self._paging_model_call_id = response.id
+
+    async def on_reply(self, agent, input_kwargs, next_handler):
+        max_iters = agent.react_config.max_iters
+        grant = agent.state.middle_context.get("shared_context_sources", {})
+        if (
+            self._allow_source_references
+            and grant.get("user_id") == self._user_id
+            and grant.get("reply_id") == agent.state.reply_id
+            and grant.get("team_id") == self._team_id
+            and grant.get("task_id") == self._task_id
+            and grant.get("mode") == self._mode
+            and agent.state.get_awaiting_tool_calls(agent.name)
+        ):
+            agent.react_config = agent.react_config.model_copy(
+                update={"max_iters": max_iters + grant.get("iteration_credits", 0)},
+            )
+        try:
+            async for event in next_handler(**input_kwargs):
+                yield event
+        finally:
+            agent.react_config = agent.react_config.model_copy(
+                update={"max_iters": max_iters},
+            )
+
     async def on_acting(self, agent, input_kwargs, next_handler):
         session_id = getattr(agent.state, "session_id", None)
         if self._team_id is None or session_id is None:
@@ -511,9 +576,40 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             self._user_id, self._team_id, session_id, task_id=self._task_id
         )
         started = time.monotonic()
+        call_id = input_kwargs["tool_call"].id
         try:
             async with asyncio.timeout(remaining):
                 async for result in next_handler(**input_kwargs):
+                    if (
+                        call_id in self._paging_call_ids
+                        and isinstance(result, ToolResponse)
+                    ):
+                        self._paging_reads[call_id] = (
+                            result.metadata.get("shared_context_read")
+                            if result.state == ToolResultState.SUCCESS
+                            else None
+                        )
+                        if self._paging_call_ids == self._paging_reads.keys():
+                            self._paging_call_ids = set()
+                            if all(self._paging_reads.values()):
+                                credited = await self._service.credit_source_read(
+                                    self._user_id, self._team_id, session_id,
+                                    task_id=self._task_id, customer_revision=epoch,
+                                    source_reads=list(self._paging_reads.values()),
+                                    paging_call_id=self._paging_model_call_id,
+                                )
+                                if credited:
+                                    grant = agent.state.middle_context[
+                                        "shared_context_sources"
+                                    ]
+                                    grant["iteration_credits"] = (
+                                        grant.get("iteration_credits", 0) + 1
+                                    )
+                                    agent.react_config = agent.react_config.model_copy(
+                                        update={
+                                            "max_iters": agent.react_config.max_iters + 1,
+                                        },
+                                    )
                     yield result
         finally:
             await self._service.measure_collaboration(

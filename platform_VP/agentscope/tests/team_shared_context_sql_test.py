@@ -11,6 +11,7 @@ from agentscope.app.storage import (
     TeamSharedContextRecord,
 )
 from agentscope.app.storage._sql._tables import TeamSharedContextSnapshotRow
+from agentscope.app.storage._model._team_context import CollaborationBranch
 
 
 class TestTeamSharedContextSQL(IsolatedAsyncioTestCase):
@@ -88,6 +89,10 @@ class TestTeamSharedContextSQL(IsolatedAsyncioTestCase):
                 objective="Plan a trip",
             )
             record.state.revision = 1
+            record.state.tasks["task-1"].collaboration["worker"] = CollaborationBranch(
+                model_calls=22, paging_model_calls=20, paging_call_ids=("page-call",),
+                source_read_progress={"authoritative_state.items": (40000, 20)},
+            )
             record.state.events.append(
                 SharedContextEvent(
                     id="event-1",
@@ -104,6 +109,10 @@ class TestTeamSharedContextSQL(IsolatedAsyncioTestCase):
                 "ticket-1",
             )
             self.assertEqual(loaded.state.events[0].id, "event-1")
+            branch = loaded.state.tasks["task-1"].collaboration["worker"]
+            self.assertEqual(branch.model_calls - branch.paging_model_calls, 2)
+            self.assertEqual(branch.paging_call_ids, ("page-call",))
+            self.assertEqual(branch.source_read_progress["authoritative_state.items"], (40000, 20))
             self.assertIsNone(
                 await storage.get_team_shared_context("owner-2", "ticket-1"),
             )
