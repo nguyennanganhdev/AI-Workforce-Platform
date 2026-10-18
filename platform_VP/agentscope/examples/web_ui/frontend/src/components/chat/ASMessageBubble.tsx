@@ -14,6 +14,7 @@ import {
 	ChevronRight,
 	CirclePlay,
 	Copy,
+	ArrowRight,
 	FileText,
 	FileVideo2,
 	Loader2,
@@ -389,6 +390,7 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
+	teamChatMode?: 'customer-reply' | 'activity';
 	onReplyTo?: (agentId: string, name: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
@@ -413,8 +415,13 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
+function ASMessageBubbleComponent({
+	message,
+	teamChatMode,
+	onReplyTo,
+}: MessageBubbleProps) {
 	const isUser = message.role === 'user';
+	const isTeamChat = teamChatMode !== undefined;
 	const { t } = useTranslation();
 
 	// A terminal reason is authoritative even for legacy rows that were
@@ -438,6 +445,9 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	);
 
 	const blocks = groupToolCalls(message.content);
+	const visibleBlocks = isTeamChat
+		? blocks.filter((block) => block.type !== 'tool_call_group')
+		: blocks;
 
 	// What the copy button hands over — the prose of the message, without
 	// the tool calls and attachments around it.
@@ -450,7 +460,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 		if (block.type !== 'tool_call' || block.name !== 'TeamSay') return [];
 		try {
 			const payload = JSON.parse(block.input) as { to?: string | null; kind?: string; content?: string };
-			if (!payload.content || plainText.includes(payload.content.trim())) return [];
+			if (!payload.content || (!isTeamChat && plainText.includes(payload.content.trim()))) return [];
 			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
 			const effectiveTo = result?.metadata?.effective_to;
 			return [{
@@ -463,7 +473,14 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 			return [];
 		}
 	});
-
+	const agentCommunications = communications.filter((communication) => {
+		const target = communication.to?.trim().toLowerCase();
+		return Boolean(
+			target &&
+			!['null', 'none', 'customer'].includes(target) &&
+			target.split('@')[0] !== message.name.trim().toLowerCase().split('@')[0],
+		);
+	});
 	const startMs = new Date(message.created_at).getTime();
 	const terminalTime =
 		message.finished_at ??
@@ -476,12 +493,26 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
-				{!isUser && message.name && (
+				{!isUser && message.name && (!isTeamChat || agentCommunications.length === 0) && (
 					<div className="px-2 pt-2 text-sm font-medium text-muted-foreground" data-agent-name={message.name}>
 						{message.name}
 					</div>
 				)}
-				{communications.map((communication) => (
+				{isTeamChat ? agentCommunications.map((communication) => (
+					<div
+						key={communication.id}
+						className="mx-2 my-2 flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+					>
+						<span className="font-medium text-foreground">{message.name}</span>
+						<ArrowRight className="size-3.5 shrink-0" />
+						<span className="font-medium text-foreground">
+							{communication.to?.split('@')[0]}
+						</span>
+						{communication.failed && (
+							<span className="text-destructive">· Gọi thất bại</span>
+						)}
+					</div>
+				)) : communications.map((communication) => (
 					<div key={communication.id} className="mx-2 my-2 rounded-xl border border-border px-3 py-2">
 						<div className="mb-1 text-xs text-muted-foreground">
 							→ {communication.to && !['null', 'none'].includes(communication.to) ? communication.to.split('@')[0] : 'Khách hàng'}
@@ -490,7 +521,12 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 						<Markdown>{communication.content}</Markdown>
 					</div>
 				))}
-				{blocks
+				{isTeamChat && isRunning && !plainText && (
+					<div className="shimmer px-2 py-2 text-sm text-muted-foreground">
+						{t('messageBubble.thinking')}
+					</div>
+				)}
+				{visibleBlocks
 					.filter((block) => block.type !== 'data')
 					.map((block, index) => (
 						<Bubble key={index} variant={isUser ? 'muted' : 'ghost'}>
@@ -499,7 +535,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 							</BubbleContent>
 						</Bubble>
 					))}
-				{message.finished_reason === ReplyFinishedReason.ERROR && (
+				{teamChatMode !== 'activity' && message.finished_reason === ReplyFinishedReason.ERROR && (
 					<Alert
 						variant="destructive"
 						className="m-2 w-[calc(100%-1rem)] border-red-200 bg-red-50 text-destructive dark:border-red-900 dark:bg-red-950 dark:text-red-50"
@@ -515,7 +551,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 					</Alert>
 				)}
 				<AttachmentGroup className="max-w-full">
-					{blocks
+					{visibleBlocks
 						.filter((block) => block.type === 'data')
 						.map((block, index) => (
 							<ASBlock block={block} key={index} />
@@ -527,7 +563,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 							<CopyButton text={plainText} />
 						</MessageFooter>
 					)
-				) : (
+				) : teamChatMode === 'activity' ? null : (
 					<MessageFooter className="gap-1 font-mono">
 						<Badge
 							variant="secondary"
@@ -544,7 +580,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
-						{onReplyTo && typeof teamAgentId === 'string' && (
+						{onReplyTo && plainText && typeof teamAgentId === 'string' && (
 							<Button variant="ghost" size="xs" onClick={() => onReplyTo(teamAgentId, message.name)} aria-label={`Trả lời ${message.name}`}>
 								<Reply className="size-3" /> Trả lời
 							</Button>

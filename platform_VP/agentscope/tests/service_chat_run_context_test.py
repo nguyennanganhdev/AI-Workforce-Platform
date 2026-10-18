@@ -8,15 +8,10 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from agentscope.agent import ContextConfig, ReActConfig
-from agentscope.app._service import ChatService
 from agentscope.app._bus_ops import deliver_to_inbox
+from agentscope.app._service import ChatService
+from agentscope.app._service._chat import _team_chat_message
 from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
-from agentscope.event import (
-    HintBlockEvent, ReplyEndEvent, ReplyStartEvent,
-    TextBlockStartEvent, TextBlockDeltaEvent, TextBlockEndEvent,
-    ThinkingBlockStartEvent, ThinkingBlockDeltaEvent, ThinkingBlockEndEvent,
-)
-from agentscope.message import HintBlock, UserMsg
 from agentscope.app.storage import (
     AgentData,
     AgentRecord,
@@ -29,6 +24,18 @@ from agentscope.app.storage import (
     TeamSharedContextRecord,
     TeamTurnRecord,
 )
+from agentscope.event import (
+    HintBlockEvent,
+    ReplyEndEvent,
+    ReplyStartEvent,
+    TextBlockDeltaEvent,
+    TextBlockEndEvent,
+    TextBlockStartEvent,
+    ThinkingBlockDeltaEvent,
+    ThinkingBlockEndEvent,
+    ThinkingBlockStartEvent,
+)
+from agentscope.message import AssistantMsg, HintBlock, UserMsg
 from agentscope.types import ReplyFinishedReason
 
 
@@ -186,6 +193,19 @@ class _SharedStorage:
 class TestRunContextResolution(IsolatedAsyncioTestCase):
     """Team identity is read once and shared by toolkit + middleware."""
 
+    def test_team_projection_marks_customer_reply_owner(self):
+        reply = AssistantMsg(name="Hotel", content="Visible answer")
+
+        projected = _team_chat_message(
+            reply,
+            "worker",
+            "worker-session",
+            is_reply_owner=True,
+        )
+
+        self.assertIs(projected.metadata["team_reply_owner"], True)
+        self.assertEqual(projected.get_text_content(), "Visible answer")
+
     async def test_completed_turn_drops_automatic_leader_wakeup(self):
         leader = AgentRecord(
             id="leader",
@@ -332,10 +352,12 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
         self.assertEqual(projected.name, "Hotel")
         self.assertEqual(projected.get_text_content(), "Hotel options ready")
         self.assertEqual(projected.metadata["team_agent_id"], worker.id)
+        self.assertIs(projected.metadata["team_reply_owner"], False)
         self.assertFalse(projected.get_content_blocks("thinking"))
         self.assertFalse(projected.get_content_blocks("hint"))
         feed = [payload for _, payload in await bus.log_read(MessageBusKeys.session_events(leader_session.id))]
         self.assertEqual(feed[0]["type"], "REPLY_START")
+        self.assertIs(feed[0]["metadata"]["team_reply_owner"], False)
         reply_events = [event for event in feed if event.get("reply_id") == "reply"]
         self.assertEqual(reply_events[-1]["type"], "REPLY_END")
         self.assertFalse(any(event["type"].startswith("THINKING") or event["type"] == "HINT_BLOCK" for event in feed))

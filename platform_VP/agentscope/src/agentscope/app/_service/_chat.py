@@ -135,7 +135,13 @@ class _WorkerContext:
 _TeamContext = _LeaderContext | _WorkerContext
 
 
-def _team_chat_message(message: Msg, agent_id: str, session_id: str) -> Msg:
+def _team_chat_message(
+    message: Msg,
+    agent_id: str,
+    session_id: str,
+    *,
+    is_reply_owner: bool,
+) -> Msg:
     """Project public activity while retaining its author and reply identity."""
 
     projected = message.model_copy(deep=True)
@@ -143,6 +149,7 @@ def _team_chat_message(message: Msg, agent_id: str, session_id: str) -> Msg:
         **projected.metadata,
         "team_agent_id": agent_id,
         "team_session_id": session_id,
+        "team_reply_owner": is_reply_owner,
     }
     projected.content = [
         block for block in projected.content if block.type not in {"thinking", "hint"}
@@ -696,6 +703,7 @@ class ChatService:
         error: Exception,
         team_ctx: "_TeamContext | None" = None,
         worker_name: str | None = None,
+        is_reply_owner: bool = False,
     ) -> None:
         """Tell the client about a failure that reached no reply.
 
@@ -730,13 +738,21 @@ class ChatService:
             worker_name (`str | None`, optional):
                 Display name used in that notification. Defaults to
                 ``agent_id`` when the agent record never loaded.
+            is_reply_owner (`bool`, optional):
+                Whether this failed run owned the customer-facing reply.
         """
         try:
             reply_id = _generate_id()
+            reply_metadata = {
+                "team_agent_id": agent_id,
+                "team_session_id": session_id,
+                "team_reply_owner": is_reply_owner,
+            }
             start_event = ReplyStartEvent(
                 session_id=session_id,
                 reply_id=reply_id,
                 name=worker_name or agent_id,
+                metadata=reply_metadata,
             )
             end_event = ReplyEndEvent(
                 session_id=session_id,
@@ -749,7 +765,7 @@ class ChatService:
                 id=reply_id,
                 name=worker_name or agent_id,
                 content=[],
-                metadata={"team_agent_id": agent_id, "team_session_id": session_id},
+                metadata=reply_metadata,
             )
             for event in (start_event, end_event):
                 reply_msg.append_event(event)
@@ -1765,6 +1781,7 @@ class ChatService:
                     e,
                     team_ctx,
                     worker_name,
+                    is_reply_owner,
                 )
                 return
 
@@ -1783,7 +1800,12 @@ class ChatService:
                         try:
                             await self._storage.upsert_message(
                                 user_id, customer_output_session_id,
-                                _team_chat_message(reply_msg, agent_id, session_id),
+                                _team_chat_message(
+                                    reply_msg,
+                                    agent_id,
+                                    session_id,
+                                    is_reply_owner=is_reply_owner,
+                                ),
                             )
                         except Exception:  # pylint: disable=broad-except
                             logger.exception("Could not save team reply start; final persistence will retry.")
@@ -1964,6 +1986,7 @@ class ChatService:
                         **payload.get("metadata", {}),
                         "team_agent_id": agent_id,
                         "team_session_id": session_id,
+                        "team_reply_owner": is_reply_owner,
                     }
                 await publish_session_event(
                     self._message_bus,
@@ -1980,6 +2003,7 @@ class ChatService:
                         **payload.get("metadata", {}),
                         "team_agent_id": agent_id,
                         "team_session_id": session_id,
+                        "team_reply_owner": is_reply_owner,
                     }
                     if "session_id" in customer_payload:
                         customer_payload["session_id"] = customer_output_session_id
@@ -2054,7 +2078,11 @@ class ChatService:
                                         id=event.reply_id,
                                         name=event.name,
                                         content=[],
-                                        metadata={"team_agent_id": agent_id, "team_session_id": session_id},
+                                        metadata={
+                                            "team_agent_id": agent_id,
+                                            "team_session_id": session_id,
+                                            "team_reply_owner": is_reply_owner,
+                                        },
                                     )
                                 elif reply_msg is not None:
                                     reply_msg.append_event(event)
@@ -2166,6 +2194,7 @@ class ChatService:
                                 e,
                                 team_ctx,
                                 worker_name,
+                                is_reply_owner,
                             )
                         else:
                             await self._close_failed_reply(
@@ -2402,6 +2431,13 @@ class ChatService:
                         if isinstance(team_ctx, _WorkerContext):
                             persistence_output_session_id = team_ctx.leader_session_id
                         for msg in reply_msgs:
+                            if team is not None:
+                                msg.metadata = {
+                                    **msg.metadata,
+                                    "team_agent_id": agent_id,
+                                    "team_session_id": session_id,
+                                    "team_reply_owner": is_reply_owner,
+                                }
                             await self._storage.upsert_message(
                                 user_id,
                                 session_id,
@@ -2411,7 +2447,12 @@ class ChatService:
                                 await self._storage.upsert_message(
                                     user_id,
                                     persistence_output_session_id,
-                                    _team_chat_message(msg, agent_id, session_id),
+                                    _team_chat_message(
+                                        msg,
+                                        agent_id,
+                                        session_id,
+                                        is_reply_owner=is_reply_owner,
+                                    ),
                                 )
                             if (
                                 team is not None

@@ -106,6 +106,36 @@ interface ChatContentProps {
 	onCwdChange: (cwd: string | null) => void | Promise<void>;
 }
 
+type TeamChatMode = 'customer-reply' | 'activity';
+
+interface VisibleMessage {
+	message: Msg;
+	teamMode?: TeamChatMode;
+}
+
+function teamSayTarget(message: Msg, call: ToolCallBlock): string | null {
+	try {
+		const input = JSON.parse(call.input) as { to?: string | null };
+		const result = message.content.find(
+			(block) => block.type === 'tool_result' && block.id === call.id,
+		);
+		const effectiveTo = result?.type === 'tool_result' ? result.metadata?.effective_to : null;
+		return typeof effectiveTo === 'string' ? effectiveTo : input.to ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function isAgentTarget(target: string | null, sourceName: string): boolean {
+	if (!target) return false;
+	const normalized = target.trim().toLowerCase();
+	const source = sourceName.trim().toLowerCase();
+	return (
+		!['null', 'none', 'customer'].includes(normalized) &&
+		normalized.split('@')[0] !== source.split('@')[0]
+	);
+}
+
 const ChatContentComponent: React.FC<ChatContentProps> = ({
 	msgs,
 	loading = false,
@@ -126,12 +156,70 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	onCwdChange,
 }) => {
 	const { t, i18n } = useTranslation();
-	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
-		if (message.role !== 'assistant') return [message];
-		const content = message.content.filter((block) => block.type !== 'hint' && block.type !== 'thinking');
-		if (content.length === 0 && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
-		return [{ ...message, content }];
-	}) : msgs, [msgs, teamChat]);
+	const visibleMessages = useMemo<VisibleMessage[]>(() => {
+		if (!teamChat) return msgs.map((message) => ({ message }));
+
+		return msgs.flatMap((message): VisibleMessage[] => {
+			if (message.role !== 'assistant') return [{ message }];
+
+			const ownerFlag = message.metadata?.team_reply_owner;
+			const isCustomerReply =
+				ownerFlag === true ||
+				(ownerFlag !== false &&
+					typeof message.metadata?.team_agent_id === 'string' &&
+					message.metadata.team_agent_id === agentId);
+			const teamSayCalls = message.content.filter(
+				(block): block is ToolCallBlock =>
+					block.type === 'tool_call' && block.name === 'TeamSay',
+			);
+			const teamSayIds = new Set(teamSayCalls.map((call) => call.id));
+			const hasAgentCall = teamSayCalls.some((call) =>
+				isAgentTarget(teamSayTarget(message, call), message.name),
+			);
+			const hasActiveAgentCall = teamSayCalls.some((call) => {
+				if (!isAgentTarget(teamSayTarget(message, call), message.name)) return false;
+				const result = message.content.find(
+					(block) => block.type === 'tool_result' && block.id === call.id,
+				);
+				return result?.type !== 'tool_result' || result.state !== 'error';
+			});
+			const content = message.content.filter((block) => {
+				if (block.type === 'tool_call') return block.name === 'TeamSay';
+				if (block.type === 'tool_result') return teamSayIds.has(block.id);
+				return (
+					isCustomerReply &&
+					!hasActiveAgentCall &&
+					(block.type === 'text' || block.type === 'data')
+				);
+			});
+			const isRunning = !message.finished_at && !message.finished_reason;
+			const hasCustomerContent = content.some(
+				(block) => block.type === 'text' || block.type === 'data',
+			);
+
+			if (!isCustomerReply && !isRunning && !hasAgentCall) return [];
+			if (
+				isCustomerReply &&
+				!isRunning &&
+				!hasCustomerContent &&
+				!hasAgentCall &&
+				message.finished_reason !== ReplyFinishedReason.ERROR
+			) {
+				return [];
+			}
+
+			return [{
+				message: { ...message, content },
+				teamMode: isCustomerReply ? 'customer-reply' : 'activity',
+			}];
+		});
+	}, [agentId, msgs, teamChat]);
+	const lastVisibleAssistant = [...visibleMessages]
+		.reverse()
+		.find(
+			({ message, teamMode }) =>
+				message.role === 'assistant' && teamMode !== 'activity',
+		)?.message;
 	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
 	useEffect(() => setReplyTarget(null), [sessionId]);
 	const handleSend = (content: ContentBlock[]) => {
@@ -191,8 +279,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					<MessageScroller>
 						<MessageScrollerViewport>
 							<MessageScrollerContent>
-								{visibleMsgs.map((message, index) => {
-									const previous = visibleMsgs[index - 1];
+								{visibleMessages.map(({ message, teamMode }, index) => {
+									const previous = visibleMessages[index - 1]?.message;
 									const at = new Date(message.created_at);
 									const previousAt = previous
 										? new Date(previous.finished_at ?? previous.created_at)
@@ -215,14 +303,15 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 											)}
 											<ASMessageBubble
 												message={message}
+												teamChatMode={teamMode}
 												onUserConfirm={onUserConfirm}
-												onReplyTo={teamChat ? (targetAgentId, name) => setReplyTarget({ agentId: targetAgentId, name }) : undefined}
+												onReplyTo={teamMode === 'customer-reply' ? (targetAgentId, name) => setReplyTarget({ agentId: targetAgentId, name }) : undefined}
 											/>
 										</MessageScrollerItem>
 									);
 								})}
-								{msgs.length > 0 &&
-									msgs[msgs.length - 1].finished_reason ===
+								{lastVisibleAssistant &&
+									lastVisibleAssistant.finished_reason ===
 										ReplyFinishedReason.EXCEED_MAX_ITERS &&
 									phase === 'idle' && (
 										<Alert
