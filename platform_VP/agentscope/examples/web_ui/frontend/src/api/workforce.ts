@@ -1,4 +1,4 @@
-import { client } from './client';
+import { ApiError, client } from './client';
 import type { ChatModelConfig } from './types';
 
 export interface BuilderTool {
@@ -102,6 +102,36 @@ export interface WorkforceAgent {
 	evaluation: Record<string, unknown>;
 }
 
+/** A normalized room event consumed by the optional team activity UI. */
+export interface RoomEntry {
+	at: string;
+	kind: string;
+	sender: string;
+	to: string;
+	text: string;
+	after: string[];
+}
+
+/** Aggregate usage for one participant in a workforce room. */
+export interface RoomParticipant {
+	agent_id: string;
+	name: string;
+	model: string;
+	calls: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	output_tokens: number;
+}
+
+/** Optional room projection used by the new team conversation components. */
+export interface RoomView {
+	participants: RoomParticipant[];
+	timeline: RoomEntry[];
+	packet_tokens: number;
+	peak_packet_tokens: number;
+	packet_budget: number;
+}
+
 export interface AgentToolSettings {
 	agent_id: string;
 	selected_tool_ids: string[];
@@ -119,6 +149,8 @@ export interface LeaderSession {
 	session_id: string;
 	name: string;
 }
+
+let roomUnavailable = false;
 
 export const workforceApi = {
 	prepare: (
@@ -190,4 +222,21 @@ export const workforceApi = {
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
 	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
+	// Optional extension: disabled for the stock FastAPI backend.
+	room: async (sessionId: string): Promise<RoomView | null> => {
+		if (import.meta.env.VITE_ENABLE_WORKFORCE_ROOM !== 'true' || roomUnavailable) return null;
+		try {
+			return await client.get<RoomView>(
+				`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room`,
+				undefined,
+				{ silent: true },
+			);
+		} catch (error) {
+			if (error instanceof ApiError && error.status === 404) {
+				roomUnavailable = true;
+				return null;
+			}
+			throw error;
+		}
+	},
 };

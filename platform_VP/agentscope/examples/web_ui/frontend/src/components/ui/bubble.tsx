@@ -15,7 +15,9 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 const bubbleVariants = cva(
-	'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full',
+	// `agent` shares `ghost`'s exemption from the 80% cap: a reply has to be able
+	// to span the column so a code block or a table inside it is not squeezed.
+	'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full data-[variant=agent]:max-w-full',
 	{
 		variants: {
 			variant: {
@@ -30,6 +32,17 @@ const bubbleVariants = cva(
 				ghost: 'border-none *:data-[slot=bubble-content]:rounded-none *:data-[slot=bubble-content]:bg-transparent *:data-[slot=bubble-content]:p-0 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-muted [&>[data-slot=bubble-content]:is(button,a):hover]:text-foreground dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-muted/50',
 				destructive:
 					'*:data-[slot=bubble-content]:bg-destructive/10 *:data-[slot=bubble-content]:text-destructive dark:*:data-[slot=bubble-content]:bg-destructive/20 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-destructive/20 dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-destructive/30',
+				// The two Cue variants (tokens in `styles/cue.css`): flat grey
+				// bubbles with a 20px radius, no tail, no shadow, ~15px text.
+				// Radius uses `[&>[data-slot=bubble-content]]:` rather than
+				// `*:data-[slot=…]:` because `BubbleContent` sets `rounded-xl` on
+				// itself, and the attribute selector outranks it outright.
+				//
+				// What a person said: right-aligned, the same grey as the agent's.
+				question:
+					'max-w-[min(80%,560px)] [&>[data-slot=bubble-content]]:rounded-[var(--r-bubble,20px)] [&>[data-slot=bubble-content]]:px-4 [&>[data-slot=bubble-content]]:py-2.5 [&>[data-slot=bubble-content]]:text-[15px]/[22px] *:data-[slot=bubble-content]:bg-[var(--cue-bg-bubble,var(--secondary))] *:data-[slot=bubble-content]:text-foreground',
+				// What an agent said: left-aligned grey bubble, no avatar beside it.
+				agent: '[&>[data-slot=bubble-content]]:max-w-[min(100%,640px)] [&>[data-slot=bubble-content]]:rounded-[var(--r-bubble,20px)] [&>[data-slot=bubble-content]]:px-4 [&>[data-slot=bubble-content]]:py-2.5 [&>[data-slot=bubble-content]]:text-[15px]/[22px] *:data-[slot=bubble-content]:bg-[var(--cue-bg-bubble,var(--secondary))] *:data-[slot=bubble-content]:text-foreground',
 			},
 		},
 		defaultVariants: {

@@ -1,58 +1,121 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Onborda, OnbordaProvider } from 'onborda';
 import { useEffect, useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
-import { MCPHubPage } from './pages/mcp';
-import { SkillHubPage } from './pages/skill';
 import { authApi } from '@/api';
 import type { AuthUser } from '@/api';
 import { AUTH_EXPIRED_EVENT } from '@/api/client';
 import { RouteError } from '@/components/error/RouteError';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { ChatLayout } from '@/components/layout/ChatLayout';
+import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { buildChatTour } from '@/components/tour/chatTourSteps';
 import { TourCard } from '@/components/tour/TourCard';
+import { CurrentUserProvider } from '@/context/CurrentUserContext';
 import { UploadProvider } from '@/context/UploadContext';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
 import { AuthPage } from '@/pages/auth';
-import { ChannelPage } from '@/pages/channel';
-import { ChatPage } from '@/pages/chat';
-import { CredentialPage } from '@/pages/credential';
-import { KnowledgePage } from '@/pages/knowledge';
-import { SchedulePage } from '@/pages/schedule';
-import { AgentBuilderPage } from '@/pages/workforce/builder';
-import { LeaderPage } from '@/pages/workforce/leader';
+import { LandingPage } from '@/pages/landing/LandingPage';
+
+/**
+ * Load a page's code only when its route is visited. The chat viewport pulls
+ * in markdown, mermaid and code highlighting; keeping every page in the entry
+ * chunk made the first load download all of it (3 MB entry chunk).
+ */
+function page<T extends Record<string, unknown>>(load: () => Promise<T>, name: keyof T) {
+	return async () => ({ Component: (await load())[name] as ComponentType });
+}
 
 const router = createBrowserRouter([
+	// Two shells. The chat gets the whole window; everything that is
+	// configured rather than talked to lives behind its own navigation.
 	{
-		element: <AppLayout />,
+		element: <ChatLayout />,
 		errorElement: <RouteError />,
 		children: [
 			{
 				// Content-level boundary: a crash in a page replaces only
-				// the Outlet area, so AppLayout (the icon rail / nav) stays
-				// usable. The parent route keeps its own errorElement as a
-				// last-resort catch-all for AppLayout/AppSidebar crashes.
+				// the Outlet area, so the shell around it stays usable. The
+				// parent route keeps its own errorElement as a last-resort
+				// catch-all for a crash in the layout itself.
 				errorElement: <RouteError />,
 				children: [
-					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
-					{ path: '/workforce/leader', element: <LeaderPage /> },
-					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
 					{
 						path: '/chat/:agentId?/:sessionId?/:memberId?',
-						element: <ChatPage />,
+						lazy: page(() => import('@/pages/chat'), 'ChatPage'),
 					},
-					{ path: '/schedule', element: <SchedulePage /> },
-					{ path: '/channel', element: <ChannelPage /> },
-					{ path: '/credential', element: <CredentialPage /> },
-					{ path: '/mcp', element: <MCPHubPage /> },
-					{ path: '/mcp/:hubId', element: <MCPHubPage /> },
-					{ path: '/skill', element: <SkillHubPage /> },
-					{ path: '/skill/:hubId', element: <SkillHubPage /> },
-					{ path: '/knowledge', element: <KnowledgePage /> },
-					{ path: '/knowledge/:kbId', element: <KnowledgePage /> },
+				],
+			},
+		],
+	},
+	{
+		element: <SettingsLayout />,
+		errorElement: <RouteError />,
+		children: [
+			{
+				errorElement: <RouteError />,
+				children: [
+					// Tickets and agents first: the Leader is the management board's
+					// front door; settings keep their own paths so old links still work.
+					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
+					{
+						path: '/workforce/leader',
+						lazy: page(() => import('@/pages/workforce/leader'), 'LeaderPage'),
+					},
+					{
+						path: '/workforce/builder',
+						lazy: page(() => import('@/pages/workforce/builder'), 'AgentBuilderPage'),
+					},
+					{
+						path: '/workforce/agents',
+						lazy: page(
+							() => import('@/pages/workforce/agents/compatible'),
+							'AgentManagementPage',
+						),
+					},
+					{
+						path: '/workforce/agents/:agentId',
+						lazy: page(
+							() => import('@/pages/workforce/agents/compatible'),
+							'AgentDetailPage',
+						),
+					},
+					{ path: '/settings', element: <Navigate to="/workforce/agents" replace /> },
+					// The agent map is a tab of agent management now.
+					{
+						path: '/agents/*',
+						element: <Navigate to="/workforce/agents?view=graph" replace />,
+					},
+					{
+						path: '/schedule',
+						lazy: page(() => import('@/pages/schedule'), 'SchedulePage'),
+					},
+					{
+						path: '/channel',
+						lazy: page(() => import('@/pages/channel'), 'ChannelPage'),
+					},
+					{
+						path: '/credential',
+						lazy: page(() => import('@/pages/credential'), 'CredentialPage'),
+					},
+					{ path: '/mcp', lazy: page(() => import('./pages/mcp'), 'MCPHubPage') },
+					{ path: '/mcp/:hubId', lazy: page(() => import('./pages/mcp'), 'MCPHubPage') },
+					{ path: '/skill', lazy: page(() => import('./pages/skill'), 'SkillHubPage') },
+					{
+						path: '/skill/:hubId',
+						lazy: page(() => import('./pages/skill'), 'SkillHubPage'),
+					},
+					{
+						path: '/knowledge',
+						lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage'),
+					},
+					{
+						path: '/knowledge/:kbId',
+						lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage'),
+					},
 				],
 			},
 		],
@@ -60,12 +123,13 @@ const router = createBrowserRouter([
 	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
 ]);
 
-function App() {
+function PlatformApp() {
 	const { t } = useTranslation();
 	const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'anonymous'>(
 		'checking',
 	);
-	const [, setCurrentUser] = useState<AuthUser | null>(null);
+	const [showAuth, setShowAuth] = useState(false);
+	const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 	const tours = useMemo(() => [buildChatTour(t)], [t]);
 
 	useEffect(() => {
@@ -98,12 +162,17 @@ function App() {
 	if (authStatus === 'anonymous') {
 		return (
 			<>
-				<AuthPage
-					onAuthenticated={(user) => {
-						setCurrentUser(user);
-						setAuthStatus('authenticated');
-					}}
-				/>
+				{showAuth ? (
+					<AuthPage
+						onBack={() => setShowAuth(false)}
+						onAuthenticated={(user) => {
+							setCurrentUser(user);
+							setAuthStatus('authenticated');
+						}}
+					/>
+				) : (
+					<LandingPage onGetStarted={() => setShowAuth(true)} />
+				)}
 				<Toaster richColors position="top-right" />
 			</>
 		);
@@ -118,9 +187,11 @@ function App() {
 					shadowOpacity="0.6"
 					cardTransition={{ type: 'spring', duration: 0.4 }}
 				>
-					<UploadProvider>
-						<RouterProvider router={router} />
-					</UploadProvider>
+					<CurrentUserProvider value={currentUser}>
+						<UploadProvider>
+							<RouterProvider router={router} />
+						</UploadProvider>
+					</CurrentUserProvider>
 					<Toaster richColors position="top-right" />
 				</Onborda>
 			</OnbordaProvider>
@@ -128,4 +199,4 @@ function App() {
 	);
 }
 
-export default App;
+export default PlatformApp;

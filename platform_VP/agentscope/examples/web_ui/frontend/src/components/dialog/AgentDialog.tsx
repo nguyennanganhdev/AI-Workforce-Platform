@@ -3,9 +3,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { ContextConfig, InviteConfig, ReActConfig } from '@/api';
+import { defaultAgentFormValues } from '@/components/form/agent-form-utils';
 import {
 	AgentFormFields,
-	defaultAgentFormValues,
 	type AgentFormValues,
 	type AgentSection,
 } from '@/components/form/AgentFormFields';
@@ -26,15 +26,22 @@ import { useAgentSchema } from '@/hooks/useAgentSchema';
 import { formatApiErrorForAlert } from '@/lib/api-error';
 
 interface Props {
-	onCreated?: () => void;
-	children: ReactNode;
+	onCreated?: (agentId: string) => void | Promise<void>;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
+	children?: ReactNode;
 }
 
-export function AgentDialog({ onCreated, children }: Props) {
+export function AgentDialog({ onCreated, children, open: controlledOpen, onOpenChange }: Props) {
 	const { create } = useAgents();
 	const { t } = useTranslation();
 	const { schema } = useAgentSchema();
-	const [open, setOpen] = useState(false);
+	const [internalOpen, setInternalOpen] = useState(false);
+	const open = controlledOpen ?? internalOpen;
+	const setOpen = (value: boolean) => {
+		setInternalOpen(value);
+		onOpenChange?.(value);
+	};
 	const [submitting, setSubmitting] = useState(false);
 	const [values, setValues] = useState<AgentFormValues | null>(null);
 	const [errorMsg, setErrorMsg] = useState('');
@@ -63,7 +70,7 @@ export function AgentDialog({ onCreated, children }: Props) {
 		setErrorMsg('');
 		setSubmitting(true);
 		try {
-			await create(
+			const result = await create(
 				{
 					name,
 					system_prompt: values.identity.system_prompt as string | undefined,
@@ -74,7 +81,7 @@ export function AgentDialog({ onCreated, children }: Props) {
 				{ silent: true },
 			);
 			setOpen(false);
-			onCreated?.();
+			await onCreated?.(result.agent_id);
 		} catch (e) {
 			setErrorMsg(formatApiErrorForAlert(e));
 		} finally {
@@ -86,8 +93,8 @@ export function AgentDialog({ onCreated, children }: Props) {
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger asChild>{children}</DialogTrigger>
-			<DialogContent className="!w-[500px] !max-w-[500px]">
+			{children && <DialogTrigger asChild>{children}</DialogTrigger>}
+			<DialogContent className="!w-[500px] !max-w-[calc(100%-2rem)]">
 				<DialogHeader>
 					<DialogTitle>{t('dialog-agent-create.title')}</DialogTitle>
 					<DialogDescription className="sr-only">

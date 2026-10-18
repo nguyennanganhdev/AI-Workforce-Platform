@@ -1,23 +1,21 @@
+import type { TextBlock } from '@agentscope-ai/agentscope/message';
 import type { PermissionContext } from '@agentscope-ai/agentscope/permission';
 import type { TaskContext } from '@agentscope-ai/agentscope/state';
 import {
 	BookText,
-	Building2,
-	ChevronDown,
 	Database,
 	ListTodo,
-	MessageSquareText,
 	PanelRight,
 	ShieldCheck,
+	SquareUser,
 	UsersRound,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
 	ChatModelConfig,
 	PermissionMode,
 	SessionKnowledgeConfig,
-	TeamDetailResponse,
 	TTSModelConfig,
 	UpdateSessionRequest,
 } from '@/api';
@@ -25,6 +23,8 @@ import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
+import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
+import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
 import { McpPanel } from '@/components/panel/McpPanel';
@@ -37,9 +37,9 @@ import { KnowledgeBaseParametersPopover } from '@/components/popover/KnowledgeBa
 import { ModelParametersPopover } from '@/components/popover/ModelParametersPopover';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { PermissionModeSelect } from '@/components/select/PermissionModeSelect.tsx';
-import { MeetingRoomView } from '@/components/team/MeetingRoomView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
@@ -52,15 +52,18 @@ import {
 	ResizablePanelGroup,
 } from '@/components/ui/resizable.tsx';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { liveSessionPresentation } from '@/features/workforce/session/live-adapter';
+import { officeFromSession } from '@/features/workforce/session/presentation';
+import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
 import { useKnowledgeBaseMiddlewareSchema } from '@/hooks/useKnowledgeBaseMiddlewareSchema';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
 import { useMessages } from '@/hooks/useMessages';
 import { useSessions } from '@/hooks/useSessions';
-import { useTeamActivity, type TeamActivityParticipant } from '@/hooks/useTeamActivity';
 import { useWorkspace } from '@/hooks/useWorkspace.ts';
 import { useWorkspaceStatus } from '@/hooks/useWorkspaceStatus';
 import { useTranslation } from '@/i18n/useI18n';
+import { takeGroupKickoff } from '@/lib/group-chats';
 
 interface ChatViewportProps {
 	/**
@@ -74,8 +77,6 @@ interface ChatViewportProps {
 	 * workspace drive every control rendered here.
 	 */
 	sessionId: string | null;
-	/** Read-only team-member inspection: poll history and never open an SSE stream. */
-	readOnly?: boolean;
 	/**
 	 * Optional hook invoked when a server-side change to this session
 	 * or its team arrives on the SSE stream. The outer page owns the
@@ -83,6 +84,21 @@ interface ChatViewportProps {
 	 * refetch too; passing this callback wires that signal up.
 	 */
 	onSessionsChanged?: () => void;
+	/** The agent's display name, for the header and the composer. */
+	agentName?: string;
+	/**
+	 * Opens the agent's own settings. The header's avatar-and-name button
+	 * calls it — Cue's "open Profile" — and is inert without it.
+	 */
+	onOpenAgentSettings?: () => void;
+	/**
+	 * Rendered right after the agent's name — the page passes its chat
+	 * (session) switcher here. Without it the header shows the open
+	 * session's name instead.
+	 */
+	headerSlot?: ReactNode;
+	/** A partner ticket of the Leader page: an empty session says so. */
+	ticketView?: boolean;
 }
 
 /** Maximum number of panels stacked in a single dock column. */
@@ -90,28 +106,6 @@ const MAX_PANELS_PER_COLUMN = 2;
 
 /** localStorage key holding the dock layout across page navigations. */
 const PANEL_LAYOUT_KEY = 'chat_panel_layout';
-
-const buildTeamParticipants = (team: TeamDetailResponse | null): TeamActivityParticipant[] => {
-	if (!team) return [];
-	const participants: TeamActivityParticipant[] = [];
-	if (team.leader_agent) {
-		participants.push({
-			agentId: team.leader_agent.id,
-			sessionId: team.team.session_id,
-			name: team.leader_agent.data.name,
-			role: 'leader',
-		});
-	}
-	for (const member of team.members) {
-		participants.push({
-			agentId: member.agent.id,
-			sessionId: member.session_id,
-			name: member.agent.data.name,
-			role: 'member',
-		});
-	}
-	return participants;
-};
 
 // Typed as a full Record so adding a PanelKey without listing it here
 // is a compile error rather than a silently unrestorable panel.
@@ -200,8 +194,11 @@ function closePanelInLayout(layout: PanelKey[][], key: PanelKey): PanelKey[][] {
 export function ChatViewport({
 	agentId,
 	sessionId,
-	readOnly = false,
 	onSessionsChanged,
+	agentName,
+	onOpenAgentSettings,
+	headerSlot,
+	ticketView = false,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
@@ -224,15 +221,10 @@ export function ChatViewport({
 	// panels stacked top→bottom. Open order determines placement.
 	// Persisted so leaving and returning to /chat keeps the same panels.
 	const [panelLayout, setPanelLayout] = useState<PanelKey[][]>(loadPanelLayout);
-	const [teamView, setTeamView] = useState<'chat' | 'office'>('chat');
 
 	useEffect(() => {
 		localStorage.setItem(PANEL_LAYOUT_KEY, JSON.stringify(panelLayout));
 	}, [panelLayout]);
-
-	useEffect(() => {
-		setTeamView('chat');
-	}, [sessionId]);
 
 	// When the viewport agent differs from the outer page's selected
 	// agent (i.e. user drilled into a team member), `refetchSessions`
@@ -285,8 +277,6 @@ export function ChatViewport({
 		},
 		[sessionId],
 	);
-	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
-	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 
 	const {
 		msgs,
@@ -298,8 +288,6 @@ export function ChatViewport({
 		subagentHitl,
 		interrupt,
 	} = useMessages(agentId, sessionId, {
-		stream: !readOnly,
-		teamChat: isTeamChat,
 		onTeamUpdated: handleTeamUpdated,
 		onStateUpdated: handleStateUpdated,
 		onSessionUpdated: handleSessionUpdated,
@@ -315,7 +303,7 @@ export function ChatViewport({
 		uploadSkill,
 		addSkillsFromLibrary,
 		removeSkill,
-	} = useWorkspace(readOnly ? null : agentId, readOnly ? null : sessionId);
+	} = useWorkspace(agentId, sessionId);
 	const { knowledgeBases, loading: knowledgeBasesLoading } = useKnowledgeBases();
 	const { schema: kbMiddlewareSchema } = useKnowledgeBaseMiddlewareSchema();
 
@@ -336,20 +324,6 @@ export function ChatViewport({
 	const isPanelOpen = useCallback(
 		(key: PanelKey) => panelLayout.some((column) => column.includes(key)),
 		[panelLayout],
-	);
-	const teamParticipants = useMemo(
-		() => buildTeamParticipants(view?.team ?? null),
-		[view?.team],
-	);
-	const observeTeam = teamView === 'office' || isPanelOpen('team');
-	const observedTeamParticipants = useMemo(
-		() => (observeTeam ? teamParticipants : []),
-		[observeTeam, teamParticipants],
-	);
-	const { runtimeBySession, activities } = useTeamActivity(observedTeamParticipants);
-	const latestUserMessageId = useMemo(
-		() => [...msgs].reverse().find((message) => message.role === 'user')?.id ?? null,
-		[msgs],
 	);
 
 	/**
@@ -383,7 +357,7 @@ export function ChatViewport({
 	 */
 	const patchConfig = useCallback(
 		async (body: UpdateSessionRequest, apply: () => void) => {
-			if (readOnly || !sessionId || !agentId) return;
+			if (!sessionId || !agentId) return;
 			setConfigPending(true);
 			try {
 				await sessionApi.update(sessionId, agentId, body);
@@ -395,7 +369,7 @@ export function ChatViewport({
 				setConfigPending(false);
 			}
 		},
-		[readOnly, sessionId, agentId, refetchSessions],
+		[sessionId, agentId, refetchSessions],
 	);
 
 	const handleKnowledgeConfigChange = useCallback(
@@ -410,19 +384,18 @@ export function ChatViewport({
 	// Declared above `panels` — the memo factory reads `view.team`
 	// eagerly on first render, so a later `const` would still be in
 	// the temporal dead zone.
+	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+	const isTicketView = ticketView || Boolean((view?.session.state.middle_context as Record<string, unknown> | undefined)?.workflow_id);
+	const team = view?.team;
 	const completeTeamMention = useCallback(
 		(input: string): string | null => {
 			if (!input.startsWith('@') || input.includes('\n')) return null;
 			const names = [
-				...(view?.team?.leader_agent ? [view.team.leader_agent.data.name] : []),
-				...(view?.team?.members.map(({ agent }) => agent.data.name) ?? []),
+				...(team?.leader_agent ? [team.leader_agent.data.name] : []),
+				...(team?.members.map(({ agent }) => agent.data.name) ?? []),
 			];
-			const candidates = [
-				...(view?.team?.leader_agent ? [view.team.leader_agent] : []),
-				...(view?.team?.members.map(({ agent }) => agent) ?? []),
-			];
-			const candidate = candidates
-				.map((agent) => {
+			const candidate = team?.members
+				.map(({ agent }) => {
 					const duplicate =
 						names.filter(
 							(name) => name.toLocaleLowerCase() === agent.data.name.toLocaleLowerCase(),
@@ -434,12 +407,36 @@ export function ChatViewport({
 				);
 			return candidate ? input + candidate.slice(input.length) : null;
 		},
-		[view],
+		[team],
 	);
 
+	// The room's agents: a leading `@name` sends the message to that agent.
+	const mentions = useMemo(
+		() =>
+			(team?.members ?? []).map(({ agent }) => ({
+				id: agent.id,
+				name: cleanName(agent.data.name),
+				insert: `${completeTeamMention(`@${agent.data.name}`) ?? `@${agent.data.name} `}`,
+			})),
+		[team, completeTeamMention],
+	);
+	// Names to portraits, for the room's message cards ("Leader" is the team's leader).
+	const roster = useMemo(
+		() =>
+			new Map([
+				...[...(team?.leader_agent ? [team.leader_agent] : []), ...(team?.members.map(({ agent }) => agent) ?? [])].map(
+					(agent) => [cleanName(agent.data.name).toLocaleLowerCase(), agent.id] as const,
+				),
+				...(team?.leader_agent ? [['leader', team.leader_agent.id] as const] : []),
+			]),
+		[team],
+	);
+	// The room's log (members' reports and tool calls), shared by cards and panel.
+	const room = useRoom(team?.team.session_id ?? null);
+
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
-		readOnly ? null : agentId,
-		readOnly ? null : sessionId,
+		agentId,
+		sessionId,
 		view?.session.config.cwd ?? null,
 	);
 
@@ -544,14 +541,7 @@ export function ChatViewport({
 					</span>
 				),
 				icon: <UsersRound className="size-4" />,
-				content: (
-					<TeamPanel
-						team={view?.team ?? null}
-						currentSessionId={sessionId}
-						runtimeBySession={runtimeBySession}
-						activities={activities}
-					/>
-				),
+				content: <TeamPanel team={view?.team ?? null} currentSessionId={sessionId} />,
 			},
 		}),
 		[
@@ -575,8 +565,6 @@ export function ChatViewport({
 			handleKnowledgeConfigChange,
 			sessionId,
 			view,
-			runtimeBySession,
-			activities,
 		],
 	);
 
@@ -605,6 +593,26 @@ export function ChatViewport({
 		setSelectedKnowledgeConfig(null);
 	}, [sessionId]);
 
+	// A group chat opens with its leader's instructions to form the team,
+	// sent once the chat is ready to send at all: history loaded and empty,
+	// nothing running, a model chosen.
+	useEffect(() => {
+		if (!sessionId || selectedModel === null || messagesLoading) return;
+		if (phase !== 'idle' || msgs.length > 0) return;
+		const text = takeGroupKickoff(sessionId);
+		if (!text) return;
+		const now = new Date().toISOString();
+		send([
+			{
+				id: crypto.randomUUID(),
+				type: 'text',
+				text,
+				created_at: now,
+				finished_at: now,
+			} as TextBlock,
+		]);
+	}, [sessionId, selectedModel, messagesLoading, phase, msgs.length, send]);
+
 	const selectedModelCard = useMemo(() => {
 		if (!selectedModel) return null;
 		const items = groups[selectedModel.type];
@@ -614,7 +622,7 @@ export function ChatViewport({
 			if (card) return card;
 		}
 		return null;
-	}, [groups, selectedModel?.type, selectedModel?.model]);
+	}, [groups, selectedModel]);
 
 	/**
 	 * Pick the first model the available-models endpoint surfaces, used
@@ -624,7 +632,7 @@ export function ChatViewport({
 	 * @returns The first available `ChatModelConfig`, or `null` when
 	 *   no credentials / models are configured.
 	 */
-	const getFirstAvailableModel = (): ChatModelConfig | null => {
+	const getFirstAvailableModel = useCallback((): ChatModelConfig | null => {
 		const firstType = Object.keys(groups)[0];
 		if (!firstType) return null;
 		const items = groups[firstType];
@@ -640,7 +648,7 @@ export function ChatViewport({
 			model: modelName,
 			parameters: {},
 		};
-	};
+	}, [groups]);
 
 	// Seed tasks + permission from the session snapshot ONCE per
 	// session, then leave them to the CustomEvent(name="state_updated")
@@ -684,7 +692,7 @@ export function ChatViewport({
 
 		if (sessionModel) {
 			setSelectedModel(sessionModel);
-		} else if (!readOnly) {
+		} else {
 			const firstModel = getFirstAvailableModel();
 			if (firstModel) {
 				setSelectedModel(firstModel);
@@ -710,7 +718,7 @@ export function ChatViewport({
 		setSelectedFallbackModel(view.session.config.fallback_chat_model_config ?? null);
 		setSelectedTTSModel(view.session.config.tts_model_config ?? null);
 		setSelectedKnowledgeConfig(view.session.config.knowledge_config ?? null);
-	}, [view, groups, sessionId, agentId, readOnly]);
+	}, [view, sessionId, agentId, getFirstAvailableModel, refetchSessions]);
 
 	// Sync selectedPermissionMode when the session changes. Same
 	// loading-window guard as above — don't reset the displayed mode
@@ -783,7 +791,7 @@ export function ChatViewport({
 		// Bypasses `patchConfig`: the dialog shows the failure inline and
 		// stays open on it, so the toast would be a duplicate and the
 		// swallowed rejection would let the dialog close as if it worked.
-		if (readOnly || !sessionId || !agentId) return;
+		if (!sessionId || !agentId) return;
 		setConfigPending(true);
 		try {
 			await sessionApi.update(sessionId, agentId, { cwd: next }, { silent: true });
@@ -799,282 +807,330 @@ export function ChatViewport({
 		);
 	};
 
-	return (
-		<>
-			<main className="flex size-full">
-				<ResizablePanelGroup orientation="horizontal">
-					<ResizablePanel
-						className="flex flex-1 rounded-[22px] bg-card shadow-panel"
-						minSize="24rem"
-					>
-						<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden p-2">
-							<div className="flex flex-row gap-x-2 justify-between">
-								<div className="flex min-w-0 flex-row items-center gap-x-1">
-									<SidebarTrigger className="md:hidden" />
-									{isTeamChat ? (
-										<div className="flex shrink-0 items-center rounded-lg bg-muted p-0.5">
-											<Button
-												variant={teamView === 'chat' ? 'secondary' : 'ghost'}
-												size="sm"
-												className="h-7 gap-1.5 px-2.5 text-xs"
-												onClick={() => setTeamView('chat')}
-											>
-												<MessageSquareText className="size-3.5" />
-												{t('meetingRoom.chatTab')}
-											</Button>
-											<Button
-												variant={teamView === 'office' ? 'secondary' : 'ghost'}
-												size="sm"
-												className="h-7 gap-1.5 px-2.5 text-xs"
-												onClick={() => setTeamView('office')}
-											>
-												<Building2 className="size-3.5" />
-												{t('meetingRoom.officeTab')}
-											</Button>
-										</div>
-									) : null}
-									{/* The open session, named opposite its own
-									    settings. The sidebar is the only other
-									    place the name appears, and it collapses
-									    on mobile — so on a narrow screen this is
-									    the only thing saying which conversation
-									    is on screen.
+	const office =
+		sessionId && agentId
+			? officeFromSession(
+					liveSessionPresentation({
+						id: `${agentId}:${sessionId}`,
+						ownerId: agentId,
+						ownerName: agentName ?? 'Agent',
+						agents: [
+							...(view?.team?.leader_agent ? [view.team.leader_agent] : []),
+							...(view?.team?.members.map((member) => member.agent) ?? []),
+						],
+						messages: msgs,
+						replyPhase: phase,
+						status: view?.status,
+						awaitingApproval: subagentHitl.length > 0,
+						loading: messagesLoading,
+					}),
+				)
+			: undefined;
 
-									    Withheld until the session has something
-									    in it: an untouched one is still named
-									    after the timestamp it was created at,
-									    and a date is worse than no title at all.
-									    The first reply replaces that with a real
-									    one. */}
-									{msgs.length > 0 && (
-										<span
-											className="truncate px-2 text-sm text-muted-foreground"
-											title={view?.session.config.name}
-										>
-											{view?.session.config.name}
-										</span>
-									)}
-									{readOnly ? (
-										<Badge variant="secondary">{t('common.readOnly')}</Badge>
-									) : null}
-								</div>
-								{/* Never squeezed by a long session name: the
-								    name truncates instead. */}
-								<div className="flex shrink-0 flex-row gap-x-1">
-									<LlmSelect
-										id="tour-llm-select"
-										variant="ghost"
-										className="font-mono text-muted-foreground hover:text-foreground"
-										value={selectedModel}
-										onChange={handleLlmChange}
-										onAddCredential={() => setCredentialOpen(true)}
-										refetchTrigger={credentialRefetchTrigger}
-										disabled={readOnly || configPending}
-									/>
-									<ModelParametersPopover
-										selectedModel={selectedModel}
-										modelCard={selectedModelCard}
-										onChange={handleParametersChange}
-										selectedFallbackModel={selectedFallbackModel}
-										onFallbackChange={handleFallbackChange}
-										selectedTTSModel={selectedTTSModel}
-										onTTSChange={handleTTSChange}
-										disabled={readOnly || configPending}
-									/>
-									<PermissionModeSelect
-										id="tour-permission-mode"
-										variant={'ghost'}
-										className="font-mono text-muted-foreground hover:text-foreground"
-										value={selectedPermissionMode}
-										disabled={readOnly || !sessionId || configPending}
-										onChange={handlePermissionModeChange}
-									/>
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-											<Button
-												variant="ghost"
-												size="sm"
-												className="gap-1 px-2"
-											>
-												<PanelRight />
-												<ChevronDown className="size-3 text-muted-foreground" />
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align="end" className="w-auto">
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('plan')}
-												onCheckedChange={() => togglePanel('plan')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<ListTodo />
-												{t('panel.plan.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('mcp')}
-												onCheckedChange={() => togglePanel('mcp')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<MCPSvg className="size-4" />
-												MCP
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('skill')}
-												onCheckedChange={() => togglePanel('skill')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<BookText />
-												{t('panel.skill.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('permission')}
-												onCheckedChange={() => togglePanel('permission')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<ShieldCheck />
-												{t('panel.permission.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('knowledge')}
-												onCheckedChange={() => togglePanel('knowledge')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<Database />
-												{t('panel.knowledge.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('team')}
-												onCheckedChange={() => togglePanel('team')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<UsersRound />
-												{t('common.team')}
-											</DropdownMenuCheckboxItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
-								</div>
-							</div>
-							<div className="flex flex-1 justify-center min-h-0 overflow-hidden relative [--chat-content-w:48rem]">
-								{isTeamChat && teamView === 'office' && view?.team ? (
-									<MeetingRoomView
-										team={view.team}
-										participants={teamParticipants}
-										runtimeBySession={runtimeBySession}
-										activities={activities}
-										latestUserMessageId={latestUserMessageId}
-										phase={phase}
-										visible
-									/>
-								) : (
-								<ChatContent
-									className={'max-w-[var(--chat-content-w)] w-full'}
-									msgs={msgs}
-									teamChat={isTeamChat}
-									loading={messagesLoading}
-									agentId={agentId}
-									sessionId={sessionId}
-									cwd={view?.session.config.cwd ?? null}
-									onCwdChange={handleCwdChange}
-									git={workspaceStatus?.git ?? null}
-									onRefreshGit={refetchWorkspaceStatus}
-									phase={phase}
-									disabled={readOnly || selectedModel === null}
-									onSend={send}
-									autoComplete={completeTeamMention}
-									onUserConfirm={onUserConfirm}
-									onInterrupt={interrupt}
-									// cwd={
-									// 	{cwd: view?.session.config.cwd, git: {
-									// 		branch: 'main',
-									// 		deletion: 0,
-									// 		addition: 0,
-									// 	}}
-									// }
-									footerSlot={
-										subagentHitl.length > 0 ? (
-											<SubagentHitlCard
-												key={`${subagentHitl[0].worker_session_id}:${subagentHitl[0].reply_id}`}
-												entry={subagentHitl[0]}
-												onConfirm={(toolCall, confirm, rules) =>
-													onSubagentConfirm(
-														subagentHitl[0],
-														toolCall,
-														confirm,
-														rules,
-													)
+	return (
+		<TicketViewContext.Provider value={isTicketView}>
+		<TeamRosterContext.Provider value={roster}>
+		<RoomContext.Provider value={room}>
+			<SessionWorkspace snapshot={office}>
+				<main className="flex size-full">
+					<ResizablePanelGroup orientation="horizontal">
+						<ResizablePanel className="flex flex-1 bg-background" minSize="24rem">
+							<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden">
+								{/* 48px header, no rule under it: the agent on the left
+							    (opens its settings), the session's own controls and
+							    the side-panel toggles on the right. */}
+								<div className="flex h-12 shrink-0 flex-row items-center justify-between gap-x-2 px-2">
+									<div className="flex min-w-0 flex-row items-center gap-x-1">
+										<SidebarTrigger className="md:hidden" />
+										{agentId && (
+											<button
+												type="button"
+												onClick={onOpenAgentSettings}
+												disabled={!onOpenAgentSettings}
+												title={
+													onOpenAgentSettings
+														? t('chat.header.openProfile', {
+																name: agentName ?? '',
+															})
+														: undefined
 												}
-											/>
-										) : null
-									}
-									allowedInputTypes={(
-										selectedModelCard?.input_types ?? []
-									).filter(
-										(t) =>
-											/^(image|video|audio|text)\/.+/.test(t) ||
-											t === 'application/pdf' ||
-											t.startsWith('application/vnd.') ||
-											t.startsWith('application/msword') ||
-											t.startsWith('application/vnd.openxmlformats'),
-									)}
-									fileProcessor={async (file) => {
-										const filePath = (file as File & { path?: string }).path;
-										if (filePath) {
+												className="flex h-8 min-w-0 items-center gap-2 rounded-lg px-2 enabled:hover:bg-[var(--cue-bg-subtle,var(--accent))]"
+											>
+												<ClayAvatar
+													id={agentId}
+													label={agentName || undefined}
+													size={20}
+												/>
+												<span className="truncate text-[17px]/6 font-medium text-foreground">
+													{agentName}
+												</span>
+											</button>
+										)}
+										{/* The open session's name, after the agent. Withheld
+									    until the session has something in it: an
+									    untouched one is still named after the timestamp
+									    it was created at. */}
+										{headerSlot ??
+											(msgs.length > 0 && view?.session.config.name && (
+												<span
+													className="truncate text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]"
+													title={view.session.config.name}
+												>
+													{view.session.config.name}
+												</span>
+											))}
+									</div>
+									{/* Never squeezed by a long session name: the
+								    name truncates instead. */}
+									<div className="flex shrink-0 flex-row items-center gap-x-1">
+										{!isTicketView && <>
+										<LlmSelect
+											id="tour-llm-select"
+											variant="ghost"
+											className="text-[13px] text-muted-foreground hover:text-foreground"
+											value={selectedModel}
+											onChange={handleLlmChange}
+											onAddCredential={() => setCredentialOpen(true)}
+											refetchTrigger={credentialRefetchTrigger}
+											disabled={configPending}
+										/>
+										<ModelParametersPopover
+											selectedModel={selectedModel}
+											modelCard={selectedModelCard}
+											onChange={handleParametersChange}
+											selectedFallbackModel={selectedFallbackModel}
+											onFallbackChange={handleFallbackChange}
+											selectedTTSModel={selectedTTSModel}
+											onTTSChange={handleTTSChange}
+											disabled={configPending}
+										/>
+										<PermissionModeSelect
+											id="tour-permission-mode"
+											variant={'ghost'}
+											className="text-[13px] text-muted-foreground hover:text-foreground"
+											value={selectedPermissionMode}
+											disabled={!sessionId || configPending}
+											onChange={handlePermissionModeChange}
+										/>
+										</>}
+
+										{/* Quick toggles for the two panels used most —
+									    team (who is working) and plan (what they are
+									    doing) — then the full list behind the menu. An
+									    open panel's toggle keeps a grey fill. */}
+										<Button
+											variant="ghost"
+											size="icon"
+											aria-label={t('common.team')}
+											title={t('common.team')}
+											aria-pressed={isPanelOpen('team')}
+											className="aria-pressed:bg-[var(--cue-bg-subtle,var(--accent))]"
+											onClick={() => togglePanel('team')}
+										>
+											<SquareUser className="size-5" />
+										</Button>
+										<Button
+											variant="ghost"
+											size="icon"
+											aria-label={t('panel.plan.title')}
+											title={t('panel.plan.title')}
+											aria-pressed={isPanelOpen('plan')}
+											className="aria-pressed:bg-[var(--cue-bg-subtle,var(--accent))]"
+											onClick={() => togglePanel('plan')}
+										>
+											<ListTodo className="size-5" />
+										</Button>
+										<DropdownMenu>
+											<DropdownMenuTrigger asChild>
+												<Button
+													variant="ghost"
+													size="icon"
+													aria-label={t('chat.header.panels')}
+													title={t('chat.header.panels')}
+													className={
+														panelLayout.length > 0
+															? 'bg-[var(--cue-bg-subtle,var(--accent))]'
+															: undefined
+													}
+												>
+													<PanelRight className="size-5" />
+												</Button>
+											</DropdownMenuTrigger>
+											<DropdownMenuContent align="end" className="w-auto">
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('plan')}
+													onCheckedChange={() => togglePanel('plan')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<ListTodo />
+													{t('panel.plan.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('mcp')}
+													onCheckedChange={() => togglePanel('mcp')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<MCPSvg className="size-4" />
+													MCP
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('skill')}
+													onCheckedChange={() => togglePanel('skill')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<BookText />
+													{t('panel.skill.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('permission')}
+													onCheckedChange={() =>
+														togglePanel('permission')
+													}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<ShieldCheck />
+													{t('panel.permission.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('knowledge')}
+													onCheckedChange={() => togglePanel('knowledge')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<Database />
+													{t('panel.knowledge.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('team')}
+													onCheckedChange={() => togglePanel('team')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<UsersRound />
+													{t('common.team')}
+												</DropdownMenuCheckboxItem>
+											</DropdownMenuContent>
+										</DropdownMenu>
+									</div>
+								</div>
+								<div className="relative flex min-h-0 flex-1 overflow-hidden">
+									<ChatContent
+										className="w-full"
+										showWorkspace={!isTicketView}
+										composerPlaceholder={isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
+										agentName={agentName}
+										msgs={msgs}
+										loading={messagesLoading}
+										agentId={agentId}
+										sessionId={sessionId}
+										cwd={view?.session.config.cwd ?? null}
+										onCwdChange={handleCwdChange}
+										git={isTicketView ? null : workspaceStatus?.git ?? null}
+										mentions={mentions}
+										onRefreshGit={refetchWorkspaceStatus}
+										phase={phase}
+										disabled={selectedModel === null}
+										onSend={send}
+										autoComplete={completeTeamMention}
+										onUserConfirm={onUserConfirm}
+										onInterrupt={interrupt}
+										// cwd={
+										// 	{cwd: view?.session.config.cwd, git: {
+										// 		branch: 'main',
+										// 		deletion: 0,
+										// 		addition: 0,
+										// 	}}
+										// }
+										footerSlot={
+											subagentHitl.length > 0 ? (
+												<SubagentHitlCard
+													key={`${subagentHitl[0].worker_session_id}:${subagentHitl[0].reply_id}`}
+													entry={subagentHitl[0]}
+													onConfirm={(toolCall, confirm, rules) =>
+														onSubagentConfirm(
+															subagentHitl[0],
+															toolCall,
+															confirm,
+															rules,
+														)
+													}
+												/>
+											) : null
+										}
+										allowedInputTypes={(
+											selectedModelCard?.input_types ?? []
+										).filter(
+											(t) =>
+												/^(image|video|audio|text)\/.+/.test(t) ||
+												t === 'application/pdf' ||
+												t.startsWith('application/vnd.') ||
+												t.startsWith('application/msword') ||
+												t.startsWith('application/vnd.openxmlformats'),
+										)}
+										fileProcessor={async (file) => {
+											const filePath = (file as File & { path?: string })
+												.path;
+											if (filePath) {
+												return {
+													id: crypto.randomUUID(),
+													type: 'data' as const,
+													source: {
+														type: 'url' as const,
+														url: `file://${filePath}`,
+														media_type:
+															file.type || 'application/octet-stream',
+													},
+													name: file.name,
+													created_at: new Date().toISOString(),
+												};
+											}
+											if (file.type === 'text/plain') {
+												const text = await file.text();
+												return {
+													id: crypto.randomUUID(),
+													type: 'text' as const,
+													text: `[File: ${file.name}]\n${text}`,
+													created_at: new Date().toISOString(),
+												};
+											}
+											const buffer = await file.arrayBuffer();
+											const bytes = new Uint8Array(buffer);
+											let binary = '';
+											for (let i = 0; i < bytes.byteLength; i++) {
+												binary += String.fromCharCode(bytes[i]);
+											}
+											const base64 = btoa(binary);
 											return {
 												id: crypto.randomUUID(),
 												type: 'data' as const,
 												source: {
-													type: 'url' as const,
-													url: `file://${filePath}`,
+													type: 'base64' as const,
 													media_type:
 														file.type || 'application/octet-stream',
+													data: base64,
 												},
 												name: file.name,
 												created_at: new Date().toISOString(),
 											};
-										}
-										if (file.type === 'text/plain') {
-											const text = await file.text();
-											return {
-												id: crypto.randomUUID(),
-												type: 'text' as const,
-												text: `[File: ${file.name}]\n${text}`,
-												created_at: new Date().toISOString(),
-											};
-										}
-										const buffer = await file.arrayBuffer();
-										const bytes = new Uint8Array(buffer);
-										let binary = '';
-										for (let i = 0; i < bytes.byteLength; i++) {
-											binary += String.fromCharCode(bytes[i]);
-										}
-										const base64 = btoa(binary);
-										return {
-											id: crypto.randomUUID(),
-											type: 'data' as const,
-											source: {
-												type: 'base64' as const,
-												media_type: file.type || 'application/octet-stream',
-												data: base64,
-											},
-											name: file.name,
-											created_at: new Date().toISOString(),
-										};
-									}}
-								/>
-								)}
+										}}
+									/>
+								</div>
 							</div>
-						</div>
-					</ResizablePanel>
-					{panelLayout.length > 0 && (
-						<ResizableHandle withHandle className="bg-transparent w-1.5" />
-					)}
-					<PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />
-				</ResizablePanelGroup>
-			</main>
+						</ResizablePanel>
+						{/* The side panels push the chat narrower rather than
+					    covering it; a 1px rule separates them. */}
+						{panelLayout.length > 0 && (
+							<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
+						)}
+						<PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />
+					</ResizablePanelGroup>
+				</main>
+			</SessionWorkspace>
 			<CreateCredentialDialog
 				open={credentialOpen}
 				onOpenChange={setCredentialOpen}
 				onCreated={() => setCredentialRefetchTrigger((n) => n + 1)}
 			/>
-		</>
+		</RoomContext.Provider>
+		</TeamRosterContext.Provider>
+		</TicketViewContext.Provider>
 	);
 }

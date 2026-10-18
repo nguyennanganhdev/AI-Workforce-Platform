@@ -1,13 +1,5 @@
 import type { ContentBlock, TextBlock } from '@agentscope-ai/agentscope/message';
-import {
-	Paperclip,
-	Loader2,
-	Square,
-	type LucideIcon,
-	XIcon,
-	FileText,
-	ArrowUp,
-} from 'lucide-react';
+import { Plus, Loader2, Square, type LucideIcon, XIcon, FileText, ArrowUp } from 'lucide-react';
 import mime from 'mime';
 import React, {
 	useState,
@@ -20,6 +12,7 @@ import React, {
 } from 'react';
 
 import { Button } from '../ui/button';
+import { ClayAvatar } from '../ui/clay-avatar';
 import { Kbd } from '../ui/kbd';
 import {
 	Attachment,
@@ -53,6 +46,11 @@ interface TextInputProps {
 	onSend: (blocks: ContentBlock[]) => void;
 	placeholder?: string;
 	autoComplete?: (input: string) => string | null;
+	/**
+	 * Agents a leading `@` can address. Typing `@` lists them; picking one
+	 * writes its handle, and the message goes to that agent.
+	 */
+	mentions?: MentionOption[];
 	disabled?: boolean;
 	className?: string;
 	/**
@@ -99,21 +97,28 @@ interface TextInputProps {
 	headerSlot?: React.ReactNode;
 }
 
+export interface MentionOption {
+	id: string;
+	name: string;
+	/** What the message starts with to reach this agent, e.g. `@KyThuat `. */
+	insert: string;
+}
+
 export interface TextInputRef {
 	focus: () => void;
 }
 
-/** One line box of textarea text: ``text-sm`` (14px) at a 1.5 line-height. */
-const LINE_HEIGHT_PX = 21;
+/** One line box of textarea text: 15px at Cue's 22px line-height. */
+const LINE_HEIGHT_PX = 22;
 /** Height of the input in its collapsed, single-line state. */
-const COLLAPSED_HEIGHT_PX = 52;
+const COLLAPSED_HEIGHT_PX = 46;
 /**
  * Padding rather than height: a textarea top-aligns its text, so forcing the
  * height would leave dead space under the caret instead of centring the line.
  */
 const TEXTAREA_PADDING_Y_PX = (COLLAPSED_HEIGHT_PX - LINE_HEIGHT_PX) / 2;
-/** Growth stops after six lines of text; the textarea scrolls beyond that. */
-const MAX_HEIGHT_PX = LINE_HEIGHT_PX * 6 + TEXTAREA_PADDING_Y_PX * 2;
+/** Growth stops after eight lines of text; the textarea scrolls beyond that. */
+const MAX_HEIGHT_PX = LINE_HEIGHT_PX * 8 + TEXTAREA_PADDING_Y_PX * 2;
 /** Horizontal padding of the textarea, mirrored by the overlay and the ghost. */
 const TEXTAREA_PADDING_X_PX = 12;
 
@@ -134,6 +139,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			onSend,
 			placeholder,
 			autoComplete,
+			mentions,
 			disabled = false,
 			className,
 			allowedInputTypes,
@@ -203,7 +209,41 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			return '';
 		}, [value, autoComplete, isFocused]);
 
+		// A leading `@` still being typed lists the agents it may address.
+		const [mentionIndex, setMentionIndex] = useState(0);
+		const [mentionClosed, setMentionClosed] = useState(false);
+		const mentionMatches = useMemo(() => {
+			const typed = /^@([^\s@]*)$/.exec(value);
+			if (!typed || !mentions?.length || mentionClosed) return [];
+			const query = typed[1].toLocaleLowerCase();
+			return mentions.filter((option) => option.name.toLocaleLowerCase().includes(query));
+		}, [value, mentions, mentionClosed]);
+		const pickMention = (option: MentionOption) => {
+			setValue(option.insert);
+			setMentionIndex(0);
+			textareaRef.current?.focus();
+		};
+
 		const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+			if (mentionMatches.length > 0) {
+				const index = Math.min(mentionIndex, mentionMatches.length - 1);
+				if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+					e.preventDefault();
+					const step = e.key === 'ArrowDown' ? 1 : -1;
+					setMentionIndex((index + step + mentionMatches.length) % mentionMatches.length);
+					return;
+				}
+				if ((e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) {
+					e.preventDefault();
+					pickMention(mentionMatches[index]);
+					return;
+				}
+				if (e.key === 'Escape') {
+					e.preventDefault();
+					setMentionClosed(true);
+					return;
+				}
+			}
 			// Tab key to select autocomplete
 			if (e.key === 'Tab' && suggestion) {
 				e.preventDefault();
@@ -328,11 +368,42 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		};
 
 		return (
-			<div className={cn('flex flex-col', className)}>
+			<div className={cn('relative flex flex-col', className)}>
+				{mentionMatches.length > 0 && isFocused && (
+					<div
+						role="listbox"
+						aria-label={t('textInput.mentionList', { defaultValue: 'Gọi agent' })}
+						className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-64 overflow-y-auto rounded-2xl border border-[var(--cue-border,var(--border))] bg-popover p-1.5 shadow-lg"
+					>
+						{mentionMatches.map((option, index) => (
+							<button
+								key={option.id}
+								type="button"
+								role="option"
+								aria-selected={index === Math.min(mentionIndex, mentionMatches.length - 1)}
+								// Before the textarea's blur closes the list.
+								onMouseDown={(event) => {
+									event.preventDefault();
+									pickMention(option);
+								}}
+								className="flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-sm aria-selected:bg-[var(--cue-bg-subtle,var(--accent))] hover:bg-[var(--cue-bg-hover,var(--accent))]"
+							>
+								<ClayAvatar id={option.id} label={option.name} size={24} />
+								<span className="truncate">{option.name}</span>
+							</button>
+						))}
+					</div>
+				)}
 				{headerSlot}
 				<div
 					id="tour-chat-input"
-					className="flex w-full flex-col rounded-[28px] border bg-background px-2"
+					// Cue's composer: a 48px white pill with a hairline and the
+					// faintest shadow. Once it grows past one line (or holds
+					// attachments) the corners relax from 24px to 20px.
+					className={cn(
+						'flex w-full flex-col border border-[var(--cue-border,var(--border))] bg-background px-1 shadow-[var(--cue-shadow-composer,none)] transition-[border-radius]',
+						isStacked || files.length > 0 ? 'rounded-[20px]' : 'rounded-[24px]',
+					)}
 					data-tour="chat-input"
 				>
 					{files.length > 0 && (
@@ -403,7 +474,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 								    match the textarea; padding-y is left off on purpose. */}
 								<span
 									ref={measureRef}
-									className="block text-sm"
+									className="block text-[15px]"
 									style={{
 										paddingLeft: `${TEXTAREA_PADDING_X_PX}px`,
 										paddingRight: `${TEXTAREA_PADDING_X_PX}px`,
@@ -417,9 +488,9 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							</div>
 							{/* Stands in for the button cluster below — keep the count, the
 							    gap and the ``size-9`` footprint in step with it. */}
-							<div className="flex shrink-0 gap-2">
-								<div className="size-9" />
-								<div className="size-9" />
+							<div className="flex shrink-0 gap-1">
+								<div className="size-8" />
+								<div className="size-8" />
 							</div>
 						</div>
 
@@ -433,14 +504,18 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							<textarea
 								ref={textareaRef}
 								value={value}
-								onChange={(e) => setValue(e.target.value)}
+								onChange={(e) => {
+									setValue(e.target.value);
+									setMentionClosed(false);
+									setMentionIndex(0);
+								}}
 								onKeyDown={handleKeyDown}
 								onFocus={() => setIsFocused(true)}
 								onBlur={() => setIsFocused(false)}
 								placeholder={defaultPlaceholder}
 								disabled={disabled}
 								rows={1}
-								className="block w-full resize-none rounded-md border-0 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+								className="block w-full resize-none rounded-md border-0 bg-transparent px-3 text-[15px] outline-none placeholder:text-[var(--cue-text-tertiary,var(--muted-foreground))] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 								style={{
 									minHeight: `${COLLAPSED_HEIGHT_PX}px`,
 									maxHeight: `${MAX_HEIGHT_PX}px`,
@@ -456,7 +531,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							    textarea's, or the suggestion drifts off the real text. */}
 							{suggestion && isFocused && (
 								<div
-									className="pointer-events-none absolute left-0 top-0 px-3 text-sm"
+									className="pointer-events-none absolute left-0 top-0 px-3 text-[15px]"
 									style={{
 										lineHeight: `${LINE_HEIGHT_PX}px`,
 										paddingTop: `${TEXTAREA_PADDING_Y_PX}px`,
@@ -480,7 +555,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 						{/* Collapsed-height box centring the buttons, so a single line still
 						    reads as centred while the row bottom-aligns them. */}
 						<div
-							className="flex shrink-0 items-center gap-2"
+							className="flex shrink-0 items-center gap-1 pr-1"
 							style={{ height: `${COLLAPSED_HEIGHT_PX}px` }}
 						>
 							{/* Attachment button */}
@@ -489,12 +564,13 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 									<Button
 										type="button"
 										variant="ghost"
-										size="icon-lg"
+										size="icon"
 										onClick={() => fileInputRef.current?.click()}
 										disabled={attachDisabled}
-										className="shrink-0 rounded-full"
+										aria-label={t('textInput.attach')}
+										className="shrink-0 rounded-full!"
 									>
-										<Paperclip className="size-4" />
+										<Plus className="size-5" />
 									</Button>
 								</TooltipTrigger>
 								<TooltipContent>
@@ -511,8 +587,11 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 										type="button"
 										onClick={sendButton.onClick}
 										disabled={sendButton.disabled}
-										size="icon-lg"
-										className="shrink-0 rounded-full"
+										size="icon"
+										aria-label={sendButton.tooltip}
+										// A 32px circle: black with a white arrow when there is
+										// something to send, a pale grey disc while empty.
+										className="shrink-0 rounded-full! bg-primary text-primary-foreground hover:bg-primary/85 disabled:bg-[var(--cue-disabled,var(--muted))] disabled:text-[var(--cue-text-tertiary,var(--muted-foreground))] disabled:opacity-100"
 									>
 										<sendButton.icon className="h-4 w-4" />
 									</Button>

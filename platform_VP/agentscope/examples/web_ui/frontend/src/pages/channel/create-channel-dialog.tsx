@@ -15,12 +15,12 @@ import {
 } from '@/components/ui/dialog';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
+import { ChannelForm } from '@/pages/channel/channel-form';
 import {
-	ChannelForm,
 	defaultChannelForm,
 	isChannelFormValid,
 	toCreateRequest,
-} from '@/pages/channel/channel-form';
+} from '@/pages/channel/channel-form-utils';
 
 interface Props {
 	open: boolean;
@@ -92,7 +92,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 					<DialogDescription>{t('channel.create.description')}</DialogDescription>
 				</DialogHeader>
 
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4 pt-1">
+				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6 pt-1">
 					<ChannelForm
 						mode="create"
 						value={form}

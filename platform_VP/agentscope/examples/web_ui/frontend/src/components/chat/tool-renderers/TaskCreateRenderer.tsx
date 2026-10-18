@@ -1,4 +1,5 @@
-import { getResultText, parseInput, toolArgClass, toolLabelClass } from './_shared';
+import { toolArgClass, toolLabelClass } from './_shared';
+import { getResultText, parseInput } from './_shared-utils';
 import type { ToolCallWithResult, ToolRenderer } from './types';
 
 /**
@@ -14,12 +15,12 @@ export const TaskCreateRenderer: ToolRenderer = {
 	getDisplayName: (_call, t) => t('tool.taskCreate.name'),
 
 	// Trigger line: "Create task #{id} {subject}"
-	renderHeader: (pair) => {
-		const subject = (parseInput(pair.call.input).subject as string) || '(untitled)';
+	renderHeader: (pair, t) => {
+		const subject = (parseInput(pair.call.input).subject as string) || t('tool.taskCreate.untitled');
 		const taskId = getTaskId(pair);
 		return (
 			<>
-				<span className={toolLabelClass}>Create task</span>
+				<span className={toolLabelClass}>{t('tool.taskCreate.title')}</span>
 				<span className={toolArgClass}>
 					{taskId && <span className="text-muted-foreground font-mono">#{taskId} </span>}
 					{subject}

@@ -12,9 +12,9 @@ import { useTranslation } from 'react-i18next';
 
 import { workforceApi } from '@/api';
 import type { AgentToolSettings, AgentView, ContextConfig, InviteConfig, ReActConfig } from '@/api';
+import { defaultAgentFormValues } from '@/components/form/agent-form-utils';
 import {
 	AgentFormFields,
-	defaultAgentFormValues,
 	type AgentFormValues,
 	type AgentSection,
 } from '@/components/form/AgentFormFields';

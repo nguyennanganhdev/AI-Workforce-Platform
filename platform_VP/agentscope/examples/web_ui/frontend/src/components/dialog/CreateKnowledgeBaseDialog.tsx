@@ -8,11 +8,8 @@ import type {
 	EmbeddingModelConfig,
 	JSONSchema,
 } from '@/api';
-import {
-	type SchemaFormValue,
-	SchemaForm,
-	defaultValuesFromSchema,
-} from '@/components/form/SchemaForm';
+import { defaultValuesFromSchema } from '@/components/form/schema-form-utils';
+import { type SchemaFormValue, SchemaForm } from '@/components/form/SchemaForm';
 import { ChunkerSelect } from '@/components/select/ChunkerSelect';
 import { DimensionSelect } from '@/components/select/DimensionSelect';
 import { EmbeddingSelect } from '@/components/select/EmbeddingSelect';

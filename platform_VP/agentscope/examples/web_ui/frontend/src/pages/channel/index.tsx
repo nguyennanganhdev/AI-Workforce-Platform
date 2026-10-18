@@ -195,13 +195,13 @@ export function ChannelPage() {
 	const selected = channels.find((c) => c.id === selectedId) ?? null;
 
 	return (
-		<div className="flex size-full p-2">
+		<div className="flex size-full">
 			<ResizablePanelGroup orientation="horizontal">
 				<ResizablePanel minSize="24rem">
-					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
-						<div className="px-6 pt-5 pb-4">
-							<div className="text-2xl font-semibold">{t('channel.title')}</div>
-							<div className="mt-1 text-sm text-muted-foreground">
+					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+						<div className="px-4 pt-3 pb-3">
+							<div className="text-[17px]/6 font-semibold">{t('channel.title')}</div>
+							<div className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
 								{t('channel.subtitle')}
 							</div>
 						</div>
@@ -283,7 +283,7 @@ export function ChannelPage() {
 				</ResizablePanel>
 				{selected && (
 					<>
-						<ResizableHandle withHandle className="w-2 bg-transparent" />
+						<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 						<ResizablePanel defaultSize="26rem" minSize="22rem">
 							<ChannelDetailPanel
 								channel={selected}

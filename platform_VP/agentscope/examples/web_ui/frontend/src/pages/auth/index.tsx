@@ -1,11 +1,11 @@
 import { CircleAlert, Loader2, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { AuthShowcase } from './AuthShowcase';
 import { authApi } from '@/api';
 import type { AreaOption, AuthUser, DomainOption } from '@/api';
 import { ApiError, getBaseUrl } from '@/api/client';
-import AgentScope from '@/assets/images/agentscope_mono.svg?react';
-import heroBackground from '@/assets/images/workforce-auth-hero.jpg';
+import { BRAND_NAME, BrandMark } from '@/components/layout/Brand';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,19 +18,19 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
 
 interface Props {
 	onAuthenticated: (user: AuthUser) => void;
+	onBack?: () => void;
 }
 
 type Mode = 'login' | 'register';
 
-const controlClassName =
-	'h-11 border-white/15 bg-white/[0.07] text-white shadow-none placeholder:text-white/35 focus-visible:border-[#ffad6a] focus-visible:ring-[#ffad6a]/25';
-
-export function AuthPage({ onAuthenticated }: Props) {
+export function AuthPage({ onAuthenticated, onBack }: Props) {
+	useCueTheme();
 	const { t } = useTranslation();
 	const [mode, setMode] = useState<Mode>('login');
 	const [identity, setIdentity] = useState('');
@@ -105,22 +105,40 @@ export function AuthPage({ onAuthenticated }: Props) {
 		setSubmitting(true);
 		setErrorMessage('');
 		try {
-			const user =
-				mode === 'login'
-					? await authApi.login({ identity: identity.trim(), password })
-					: await authApi.registerAndLogin({
-							email: email.trim(),
-							username: username.trim(),
-							password,
-							domain_id: domainId,
-							area_id: areaId,
-						});
+			if (mode !== 'login') {
+				const registered = await authApi.register({
+					email: email.trim(),
+					username: username.trim(),
+					password,
+					domain_id: domainId,
+					area_id: areaId,
+				});
+				if (registered.status === 'pending') {
+					// A BQL account waits for the platform or domain admin.
+					setMode('login');
+					setIdentity(username.trim());
+					setPassword('');
+					setErrorMessage('Đã gửi đăng ký. Tài khoản BQL của khu này đang chờ quản trị duyệt; bạn đăng nhập được sau khi được duyệt.');
+					return;
+				}
+			}
+			const user = await authApi.login({
+				identity: mode === 'login' ? identity.trim() : username.trim(),
+				password,
+			});
 			onAuthenticated(user);
 		} catch (error) {
-			if (error instanceof ApiError && error.status === 503) {
+			if (error instanceof ApiError && error.status === 403) {
+				setErrorMessage('Tài khoản đang chờ quản trị duyệt. Vui lòng thử lại sau khi được duyệt.');
+			} else if (error instanceof ApiError && error.status === 409 && mode !== 'login') {
+				setErrorMessage('Không đăng ký được: email/tên đăng nhập đã có, hoặc khu này đã có tài khoản BQL (mỗi khu một tài khoản).');
+			} else if (error instanceof ApiError && error.status === 503) {
 				setErrorMessage(t('auth.authenticationDisabled'));
 			} else {
-				setErrorMessage(formatApiErrorForAlert(error));
+				const message = formatApiErrorForAlert(error);
+				const errorKeys: Record<string, string> = {"invalid credentials":"invalidCredentials","invalid email address":"invalidEmail","username must be 3-64 lowercase letters, numbers, ., _, or -":"invalidUsername","password must be 12-1024 bytes":"invalidPassword","email or username already exists":"alreadyExists","domain_id and area_id are required":"scopeRequired","area does not belong to the selected domain":"invalidArea"};
+				const key = errorKeys[message];
+				setErrorMessage(key ? t('auth.errors.' + key) : message);
 			}
 		} finally {
 			setSubmitting(false);
@@ -128,92 +146,69 @@ export function AuthPage({ onAuthenticated }: Props) {
 	};
 
 	return (
-		<div className="dark relative min-h-[100dvh] overflow-hidden bg-[#040814] text-white">
-			<div className="pointer-events-none fixed inset-0" aria-hidden="true">
-				<img
-					src={heroBackground}
-					alt=""
-					fetchPriority="high"
-					decoding="async"
-					className="auth-backdrop h-full w-full object-cover object-center"
-				/>
-				<div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,7,18,0.96)_0%,rgba(3,7,18,0.74)_38%,rgba(3,7,18,0.34)_64%,rgba(3,7,18,0.86)_100%)]" />
-				<div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,7,18,0.18)_0%,rgba(3,7,18,0.84)_100%)]" />
-			</div>
-
-			<header className="relative z-20 mx-auto flex h-[76px] w-full max-w-[1440px] items-center justify-between px-5 sm:px-8 lg:px-12">
-				<div className="flex items-center gap-3">
-					<div className="flex size-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white shadow-[0_10px_30px_rgba(0,0,0,0.25)] backdrop-blur-md">
-						<AgentScope className="size-6" />
+		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-10">
+			{onBack && (
+				<button
+					type="button"
+					className="absolute left-5 top-5 z-10 text-sm text-muted-foreground transition-colors hover:text-foreground"
+					onClick={onBack}
+				>
+					← Về trang chủ
+				</button>
+			)}
+			<div className="relative grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_400px] lg:items-center lg:gap-14">
+				<div className="hidden space-y-6 lg:block">
+					<div className="flex items-center gap-3">
+						<BrandMark className="size-10" />
+						<p className="text-[15px]/5 font-semibold">{t('auth.brand')}</p>
 					</div>
-					<div>
-						<p className="text-sm font-semibold tracking-[0.02em]">AI Workforce</p>
-						<p className="text-[11px] text-white/50">AgentScope Platform</p>
+					<div className="space-y-2">
+						<h1 className="max-w-xl text-[30px]/[38px] font-semibold tracking-tight">
+							{t('auth.heroTitle')}
+						</h1>
+						<p className="max-w-lg text-[15px]/[22px] text-muted-foreground">
+							{t('auth.heroDescription')}
+						</p>
+					</div>
+					{/* What the platform does, played out by its own agents. */}
+					<AuthShowcase />
+					<div className="flex items-center gap-2 text-sm text-muted-foreground">
+						<ShieldCheck className="size-4 text-[var(--cue-success,currentColor)]" />
+						{t('auth.securityHint')}
 					</div>
 				</div>
-				<div className="hidden items-center gap-2 text-xs text-white/60 sm:flex">
-					<ShieldCheck className="size-4 text-[#ffad6a]" />
-					{t('auth.secureAccess')}
-				</div>
-			</header>
 
-			<main className="relative z-10 mx-auto grid min-h-[calc(100dvh-76px)] w-full max-w-[1440px] items-center gap-10 px-5 pb-12 pt-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-16 lg:px-12 lg:pb-20 lg:pt-8 xl:grid-cols-[minmax(0,1fr)_460px] xl:gap-24">
-				<section className="auth-copy max-w-2xl pt-4 lg:pt-0" aria-labelledby="auth-hero-title">
-					<p className="mb-5 text-xs font-semibold uppercase tracking-[0.24em] text-[#ffbc87] sm:text-sm">
-						{t('auth.eyebrow')}
-					</p>
-					<h1
-						id="auth-hero-title"
-						className="max-w-[760px] text-[clamp(2.65rem,6vw,5.6rem)] font-semibold leading-[0.94] tracking-[-0.055em] text-white [text-wrap:balance]"
-					>
-						{t('auth.heroTitle')}
-					</h1>
-					<p className="mt-6 max-w-xl text-base leading-7 text-white/68 sm:text-lg sm:leading-8">
-						{t('auth.heroDescription')}
-					</p>
-					<div className="mt-7 flex max-w-xl items-start gap-3 border-l-2 border-[#ffad6a]/70 pl-4 text-sm leading-6 text-white/58">
-						<ShieldCheck className="mt-1 size-4 shrink-0 text-[#ffad6a]" />
-						<span>{t('auth.securityHint')}</span>
-					</div>
-				</section>
-
-				<Card className="auth-panel w-full border-white/15 bg-[#091226]/90 py-0 text-white shadow-[0_32px_90px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
-					<CardHeader className="space-y-5 border-b border-white/10 px-5 pb-5 pt-6 sm:px-7 sm:pt-7">
+				<Card className="rounded-3xl border border-[var(--cue-border,var(--border))] bg-background p-2 shadow-[var(--cue-shadow-float,none)] ring-0">
+					<CardHeader className="space-y-4">
+						<div className="flex items-center gap-3 lg:hidden">
+							<BrandMark className="size-9" />
+							<span className="font-semibold">{BRAND_NAME}</span>
+						</div>
 						<div>
-							<CardTitle className="text-2xl font-semibold tracking-[-0.025em] text-white">
+							<CardTitle className="text-[17px]/6 font-semibold">
 								{mode === 'login' ? t('auth.loginTitle') : t('auth.registerTitle')}
 							</CardTitle>
-							<CardDescription className="mt-2 leading-6 text-white/52">
+							<CardDescription className="mt-1.5">
 								{mode === 'login'
 									? t('auth.loginDescription')
 									: t('auth.registerDescription')}
 							</CardDescription>
 						</div>
-						<div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1">
+						<div className="grid grid-cols-2 rounded-full bg-[var(--cue-bg-subtle,var(--muted))] p-1">
 							<Button
 								type="button"
-								variant="ghost"
+								variant={mode === 'login' ? 'outline' : 'ghost'}
 								size="sm"
-								aria-pressed={mode === 'login'}
-								className={
-									mode === 'login'
-										? 'bg-white/12 text-white hover:bg-white/16 hover:text-white'
-										: 'text-white/48 hover:bg-white/5 hover:text-white'
-								}
+								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
 								onClick={() => switchMode('login')}
 							>
 								{t('auth.login')}
 							</Button>
 							<Button
 								type="button"
-								variant="ghost"
+								variant={mode === 'register' ? 'outline' : 'ghost'}
 								size="sm"
-								aria-pressed={mode === 'register'}
-								className={
-									mode === 'register'
-										? 'bg-white/12 text-white hover:bg-white/16 hover:text-white'
-										: 'text-white/48 hover:bg-white/5 hover:text-white'
-								}
+								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
 								onClick={() => switchMode('register')}
 							>
 								{t('auth.register')}
@@ -221,18 +216,17 @@ export function AuthPage({ onAuthenticated }: Props) {
 						</div>
 					</CardHeader>
 
-					<CardContent className="px-5 pb-6 pt-5 sm:px-7 sm:pb-7">
+					<CardContent>
 						<form onSubmit={handleSubmit}>
 							<FieldGroup>
 								{mode === 'login' ? (
 									<Field>
-										<FieldLabel htmlFor="identity" className="text-white/78">
+										<FieldLabel htmlFor="identity">
 											{t('auth.identity')}
 										</FieldLabel>
 										<Input
 											id="identity"
 											autoComplete="username"
-											className={controlClassName}
 											value={identity}
 											onChange={(event) => setIdentity(event.target.value)}
 											required
@@ -241,52 +235,52 @@ export function AuthPage({ onAuthenticated }: Props) {
 								) : (
 									<>
 										<Field>
-											<FieldLabel htmlFor="email" className="text-white/78">
+											<FieldLabel htmlFor="email">
 												{t('auth.email')}
 											</FieldLabel>
 											<Input
 												id="email"
 												type="email"
 												autoComplete="email"
-												className={controlClassName}
 												value={email}
 												onChange={(event) => setEmail(event.target.value)}
 												required
 											/>
 										</Field>
 										<Field>
-											<FieldLabel htmlFor="username" className="text-white/78">
+											<FieldLabel htmlFor="username">
 												{t('auth.username')}
 											</FieldLabel>
 											<Input
 												id="username"
 												autoComplete="username"
 												minLength={3}
-												className={controlClassName}
 												value={username}
-												onChange={(event) => setUsername(event.target.value)}
+												onChange={(event) =>
+													setUsername(event.target.value)
+												}
 												required
 											/>
+										<FieldDescription>{t('auth.usernameHint')}</FieldDescription>
 										</Field>
 									</>
 								)}
 
 								<Field>
-									<FieldLabel htmlFor="password" className="text-white/78">
-										{t('auth.password')}
-									</FieldLabel>
+									<FieldLabel htmlFor="password">{t('auth.password')}</FieldLabel>
 									<Input
 										id="password"
 										type="password"
-										autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+										autoComplete={
+											mode === 'login' ? 'current-password' : 'new-password'
+										}
 										minLength={mode === 'register' ? 12 : 1}
-										className={controlClassName}
 										value={password}
 										onChange={(event) => setPassword(event.target.value)}
 										required
 									/>
 									{mode === 'register' && (
-										<FieldDescription className="text-white/42">
+										<FieldDescription>
 											{t('auth.passwordHint')}
 										</FieldDescription>
 									)}
@@ -295,18 +289,23 @@ export function AuthPage({ onAuthenticated }: Props) {
 								{mode === 'register' && (
 									<div className="grid gap-4 sm:grid-cols-2">
 										<Field>
-											<FieldLabel className="text-white/78">{t('auth.domain')}</FieldLabel>
+											<FieldLabel>{t('auth.domain')}</FieldLabel>
 											<Select
 												value={domainId}
 												onValueChange={setDomainId}
 												disabled={loadingDirectory}
 											>
-												<SelectTrigger className={`${controlClassName} w-full`}>
-													<SelectValue placeholder={t('auth.selectDomain')} />
+												<SelectTrigger className="w-full">
+													<SelectValue
+														placeholder={t('auth.selectDomain')}
+													/>
 												</SelectTrigger>
-												<SelectContent className="border-white/15 bg-[#0c1730] text-white">
+												<SelectContent>
 													{domains.map((domain) => (
-														<SelectItem key={domain.id} value={domain.id}>
+														<SelectItem
+															key={domain.id}
+															value={domain.id}
+														>
 															{domain.name}
 														</SelectItem>
 													))}
@@ -314,16 +313,18 @@ export function AuthPage({ onAuthenticated }: Props) {
 											</Select>
 										</Field>
 										<Field>
-											<FieldLabel className="text-white/78">{t('auth.area')}</FieldLabel>
+											<FieldLabel>{t('auth.area')}</FieldLabel>
 											<Select
 												value={areaId}
 												onValueChange={setAreaId}
 												disabled={loadingDirectory || areas.length === 0}
 											>
-												<SelectTrigger className={`${controlClassName} w-full`}>
-													<SelectValue placeholder={t('auth.selectArea')} />
+												<SelectTrigger className="w-full">
+													<SelectValue
+														placeholder={t('auth.selectArea')}
+													/>
 												</SelectTrigger>
-												<SelectContent className="border-white/15 bg-[#0c1730] text-white">
+												<SelectContent>
 													{areas.map((area) => (
 														<SelectItem key={area.id} value={area.id}>
 															{area.name}
@@ -336,10 +337,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 								)}
 
 								{errorMessage && (
-									<Alert
-										variant="destructive"
-										className="border-red-300/25 bg-red-500/10 text-red-100 [&>svg]:text-red-300"
-									>
+									<Alert variant="destructive">
 										<CircleAlert />
 										<AlertDescription>{errorMessage}</AlertDescription>
 									</Alert>
@@ -347,20 +345,24 @@ export function AuthPage({ onAuthenticated }: Props) {
 
 								<Button
 									type="submit"
-									className="h-11 w-full bg-[#ffad6a] font-semibold text-[#211107] shadow-[0_10px_30px_rgba(255,141,66,0.2)] hover:bg-[#ffc08e] focus-visible:ring-[#ffad6a]/40"
-									disabled={submitting || (mode === 'register' && (!domainId || !areaId))}
+									size="lg"
+									className="w-full"
+									disabled={
+										submitting ||
+										(mode === 'register' && (!domainId || !areaId))
+									}
 								>
 									{submitting && <Loader2 className="size-4 animate-spin" />}
 									{mode === 'login' ? t('auth.login') : t('auth.createAccount')}
 								</Button>
 							</FieldGroup>
 						</form>
-						<p className="mt-5 break-all text-center text-[11px] leading-5 text-white/34">
+						<p className="mt-5 text-center text-xs text-muted-foreground">
 							{t('auth.connectedTo')} {getBaseUrl()}
 						</p>
 					</CardContent>
 				</Card>
-			</main>
+			</div>
 		</div>
 	);
 }
