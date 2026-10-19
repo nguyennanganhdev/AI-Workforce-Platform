@@ -21,7 +21,8 @@ def browser_app():
         contexts = []
         asset_errors = []
 
-        def open_app(*, role="VIN_USER", capabilities=None, width=1280, capability_error=False, anonymous=False):
+        def open_app(*, role="VIN_USER", capabilities=None, width=1280, capability_error=False, anonymous=False,
+                     discord_verified=True):
             context = browser.new_context(viewport={"width": width, "height": 900}, reduced_motion="reduce")
             contexts.append(context)
             context.on("response", lambda response: asset_errors.append(response.url)
@@ -64,7 +65,8 @@ def browser_app():
                 elif path == "/channels/":
                     result = []
                 elif path == "/channels/discord/identity":
-                    result = {"verified": True, "discord_user_id": "100", "verified_at": 1, "revision": 1}
+                    result = ({"verified": True, "discord_user_id": "100", "verified_at": 1, "revision": 1}
+                              if discord_verified else {"verified": False})
                 elif path == "/agent/":
                     result = {"agents": []}
                 elif path == "/me/domain-links":
@@ -238,21 +240,23 @@ def test_shared_catalog_is_visible_without_configuration_mutations(browser_app, 
     assert not external
 
 
-def test_customer_discord_form_requires_owner_and_explains_empty_allowlist(browser_app):
+@pytest.mark.parametrize("discord_verified", [True, False])
+def test_customer_discord_form_shows_owner_verification_and_allowlist_policy(browser_app, discord_verified):
     from playwright.sync_api import expect
 
-    page, calls, external, _ = browser_app()
+    page, calls, external, _ = browser_app(discord_verified=discord_verified)
     page.goto(URL + "/channel")
     page.get_by_text("Discord", exact=True).first.click()
-    owner = page.get_by_label("Discord ID của chủ tài khoản (bắt buộc)", exact=True)
+    owner = page.get_by_label("Discord ID của chủ bot (tự xác minh)", exact=True)
     expect(owner).to_be_visible()
-    expect(owner).to_have_attribute("required", "")
+    expect(owner).not_to_have_attribute("required", "")
     expect(owner).to_have_attribute("readonly", "")
     assert any(path == "/channels/discord/identity" for _, path, _ in calls), calls
-    expect(owner).to_have_value("100")
-    expect(page.locator("#channel-config-allowed_user_ids")).to_have_value("100")
-    expect(page.get_by_text("Danh sách rỗng = chặn tất cả người dùng.", exact=False)).to_be_visible()
+    expect(owner).to_have_value("100" if discord_verified else "")
+    expect(page.locator("#channel-config-allowed_user_ids")).to_have_value("100" if discord_verified else "")
+    expect(page.get_by_text("Không nhập danh sách khi tạo để chỉ chủ bot được dùng.", exact=False)).to_be_visible()
+    page.locator("#channel-config-allowed_user_ids").fill("100")
     page.locator("#channel-config-allowed_user_ids").fill("")
-    expect(page.get_by_role("button", name="Tạo", exact=True)).to_be_disabled()
+    expect(page.locator("#channel-config-allowed_user_ids")).to_have_value("")
     assert not [call for call in calls if call[0] == "POST" and call[1] == "/channels/"]
     assert not external
