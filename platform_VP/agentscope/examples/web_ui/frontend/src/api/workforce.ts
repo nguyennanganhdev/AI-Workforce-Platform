@@ -109,6 +109,52 @@ export interface AgentToolSettings {
 	}>;
 }
 
+/** One case of a Builder behavioural evaluation. */
+export interface BuilderEvalCase {
+	id: string;
+	scenario: string;
+	expected: string;
+	expect_tool: string;
+	safety: boolean;
+	status: 'pending' | 'running' | 'checking' | 'judging' | 'passed' | 'failed' | 'error';
+	result?: {
+		passed: boolean;
+		checks?: Array<{ name: string; passed: boolean }>;
+		criteria?: Array<{ name: string; passed: boolean; reason: string }>;
+		summary?: string;
+		answer?: string;
+		tool_calls?: Array<{ name: string; mode: string }>;
+		latency_ms?: number;
+		error?: string;
+	};
+}
+
+export interface BuilderEvalAgent {
+	name: string;
+	stage: 'pending' | 'generating' | 'running' | 'completed' | 'error';
+	error?: string;
+	tests: BuilderEvalCase[];
+	report?: {
+		total: number;
+		passed: number;
+		errors: number;
+		pass_rate: number;
+		advisory: boolean;
+	};
+	finished_at?: string;
+}
+
+/** A Builder evaluation run: live progress, or the result saved with the proposal. */
+export interface BuilderEval {
+	status: 'idle' | 'running' | 'completed' | 'error';
+	run_id?: string;
+	proposal_id?: string;
+	revision?: number;
+	started_at?: string;
+	updated_at?: string;
+	agents: BuilderEvalAgent[];
+}
+
 export interface LeaderSession {
 	agent_id: string;
 	session_id: string;
@@ -149,6 +195,18 @@ export const workforceApi = {
 			expected_revision: expectedRevision,
 			knowledge_base_selections: knowledgeBaseSelections,
 		}),
+	evaluate: (conversationId: string, proposalId: string, expectedRevision: number) =>
+		client.post<BuilderEval>('/workforce/console/builder/evaluate', {
+			conversation_id: conversationId,
+			proposal_id: proposalId,
+			expected_revision: expectedRevision,
+		}),
+	getBuilderEval: (conversationId: string) =>
+		client.get<BuilderEval>(
+			`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}/eval`,
+			undefined,
+			{ silent: true },
+		),
 	listBuilderConversations: () =>
 		client.get<BuilderConversationSummary[]>('/workforce/console/builder/conversations'),
 	getBuilderConversation: (conversationId: string) =>
