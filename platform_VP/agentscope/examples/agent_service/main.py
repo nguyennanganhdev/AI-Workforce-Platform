@@ -111,7 +111,20 @@ blob_store = (
     else None
 )
 
-vector_store = QdrantStore(location=":memory:")
+# Knowledge base records live in Redis and survive restarts, so their vectors
+# must too: a Qdrant server (KNOWLEDGE_VECTOR_URL) or an on-disk store
+# (KNOWLEDGE_VECTOR_PATH). In-memory is only the fallback for local tries.
+vector_url = os.getenv("KNOWLEDGE_VECTOR_URL") or None
+vector_path = os.getenv("KNOWLEDGE_VECTOR_PATH") or None
+if vector_url:
+    vector_store = QdrantStore(
+        url=vector_url,
+        api_key=os.getenv("KNOWLEDGE_VECTOR_API_KEY") or None,
+    )
+elif vector_path:
+    vector_store = QdrantStore(path=vector_path)
+else:
+    vector_store = QdrantStore(location=":memory:")
 
 auth_service = None
 business_service = None
