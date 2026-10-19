@@ -61,14 +61,12 @@ export interface ShellDestination {
 /** Navigation and direct-URL guards share this table; roles never grant access. */
 export const SHELL_DESTINATIONS: ShellDestination[] = [
 	{ path: '/workforce/leader', label: 'Leader', capability: 'personal.read', kinds: ['personal'] },
-	{ path: '/workforce/leader', label: 'Leader vận hành', capability: 'management.read', kinds: ['operations'] },
 	{ path: '/chat', label: 'Chat riêng', capability: 'personal.read', kinds: ['personal'] },
 	{ path: '/packs', label: 'Thư viện gói', capability: 'personal.read', kinds: ['personal'] },
 	{ path: '/workforce/agents', label: 'Agent của tôi', capability: 'personal.read', kinds: ['personal'] },
 	{ path: '/workforce/builder', label: 'Tạo agent', capability: 'personal.create', kinds: ['personal'] },
 	{ path: '/knowledge', label: 'Knowledge', capability: 'knowledge.private.manage', kinds: ['personal'] },
 	{ path: '/schedule', label: 'Lịch trình', capability: 'personal.read', kinds: ['personal', 'operations'] },
-	{ path: '/connections', label: 'Kết nối', capability: 'personal.read', kinds: ['personal'] },
 	{ path: '/account', label: 'Tài khoản và hạn mức', capability: 'personal.read', kinds: ['personal', 'operations', 'admin'] },
 	{ path: '/admin', label: 'Tài khoản', capability: 'accounts.manage', kinds: ['personal', 'operations', 'admin'] },
 	{ path: '/credential', label: 'Provider', capability: 'personal.read', kinds: ['personal', 'operations', 'admin'] },

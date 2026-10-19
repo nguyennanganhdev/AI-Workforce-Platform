@@ -83,7 +83,6 @@ export function AccountMenu({
 				<DropdownMenuContent side="top" align="start" className="w-auto min-w-52">
 					{access?.view?.capabilities['personal.read'] && <>
 						<DropdownMenuItem onClick={() => navigate('/account')}>Tài khoản và hạn mức</DropdownMenuItem>
-						<DropdownMenuItem onClick={() => navigate('/connections')}>Kết nối Vinhomes</DropdownMenuItem>
 						<DropdownMenuSeparator />
 					</>}
 					<DropdownMenuItem

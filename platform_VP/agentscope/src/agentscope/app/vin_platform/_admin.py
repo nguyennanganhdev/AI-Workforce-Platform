@@ -1,6 +1,6 @@
 """Administrative projections; never reuse the caller's granted-resource list."""
 
-from sqlalchemy import update, func, select, table, column
+from sqlalchemy import DateTime, String, column, func, select, table, text, update
 
 from . import _tables as t
 from ._contracts import PlatformError
@@ -51,24 +51,95 @@ class VinAdministration:
         return {"items": items, "total": total, "offset": offset, "limit": limit,
                 "next_offset": offset + limit if offset + limit < total else None}
 
-    async def accounts(self, context, *, user_id=None, eligible=None, offset=0, limit=25):
+    async def accounts(self, context, *, user_id=None, eligible=None, q=None, status=None, offset=0, limit=25):
+        """Account list for the Admin: identity, state, last sign-in and this month's tokens."""
+        from datetime import datetime, UTC
+        from ._quota import VIN_TIMEZONE
         self.service.admin(context)
-        users = table("auth_users", column("id"), column("tenant_id"), column("username"), column("role"), column("status"))
+        # Typed columns: "user:" + id must compile to string concatenation.
+        users = table("auth_users", column("id", String), column("tenant_id", String), column("email", String),
+                      column("username", String), column("role", String), column("status", String),
+                      column("created_at", DateTime))
+        sessions = table("auth_sessions", column("user_id", String), column("created_at", DateTime))
+        last_login = select(func.max(sessions.c.created_at)).where(sessions.c.user_id == users.c.id).scalar_subquery()
+        window = "month:" + datetime.now(UTC).astimezone(VIN_TIMEZONE).strftime("%Y-%m")
+        month_tokens = select(func.coalesce(func.sum(t.buckets.c.used), 0)).where(
+            t.buckets.c.tenant_id == users.c.tenant_id, t.buckets.c.subject == "user:" + users.c.id,
+            t.buckets.c.window == window).scalar_subquery()
         is_eligible = func.coalesce(t.accounts.c.eligible, False)
-        query = select(users.c.id.label("user_id"), users.c.username, users.c.role, users.c.status,
+        query = select(users.c.id.label("user_id"), users.c.email, users.c.username, users.c.role, users.c.status,
+                       users.c.created_at, last_login.label("last_login_at"), month_tokens.label("month_tokens"),
                        is_eligible.label("eligible"), func.coalesce(t.accounts.c.revision, 0).label("revision"))
         query = query.select_from(users.outerjoin(t.accounts, (t.accounts.c.user_id == users.c.id) &
                                                   (t.accounts.c.tenant_id == users.c.tenant_id)))
         query = query.where(users.c.tenant_id == context.tenant_id)
+        # Deleted accounts are kept only as anonymised audit rows.
+        query = query.where(users.c.status == status) if status else query.where(users.c.status != "deleted")
         if user_id is not None:
             query = query.where(users.c.id == user_id)
         if eligible is not None:
             query = query.where(is_eligible == eligible)
+        if q:
+            pattern = "%" + q.strip().lower() + "%"
+            query = query.where(func.lower(users.c.email).like(pattern) | func.lower(users.c.username).like(pattern))
         async with self.service.engine.begin() as db:
             await self.service.assert_active(db, context, require_eligible=False)
             total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
-            rows = (await db.execute(query.order_by(users.c.id).offset(offset).limit(limit))).mappings().all()
+            rows = (await db.execute(query.order_by(users.c.created_at.desc(), users.c.id).offset(offset).limit(limit))).mappings().all()
         return self._page([dict(row) for row in rows], total, offset, limit)
+
+    async def _target(self, db, context, user_id, *, allow_deleted=False):
+        """A customer account the Admin may act on: never itself or another administrator."""
+        users = table("auth_users", column("id"), column("tenant_id"), column("role"), column("status"))
+        row = (await db.execute(select(users.c.id, users.c.role, users.c.status).where(
+            users.c.id == user_id, users.c.tenant_id == context.tenant_id).with_for_update())).mappings().first()
+        if row is None or (row["status"] == "deleted" and not allow_deleted):
+            raise PlatformError("ACCOUNT_NOT_FOUND", 404)
+        if row["id"] == context.initiator_user_id or row["role"] == "PLATFORM_ADMIN":
+            raise PlatformError("ACCOUNT_PROTECTED", 403)
+        return row
+
+    async def set_account_active(self, context, user_id, active):
+        """Lock or unlock sign-in. Locking ends every session at once."""
+        from datetime import datetime, UTC
+        self.service.admin(context)
+        async with self.service.engine.begin() as db:
+            await self.service.assert_active(db, context, require_eligible=False)
+            await self._target(db, context, user_id)
+            await db.execute(text("UPDATE auth_users SET status=:s, updated_at=:now WHERE id=:id"),
+                {"s": "active" if active else "suspended", "now": datetime.now(UTC), "id": user_id})
+            if not active:
+                await db.execute(text("UPDATE auth_sessions SET revoked_at=:now WHERE user_id=:id AND revoked_at IS NULL"),
+                    {"now": datetime.now(UTC), "id": user_id})
+            await self.service.audit(db, context, "account.reactivated" if active else "account.suspended", user_id)
+
+    async def delete_account(self, context, user_id):
+        """Close the account for good; the caller purges its stored work.
+
+        The row stays (audit, usage history) but is anonymised, so the email
+        can register again and nothing identifies the person.
+        """
+        import secrets
+        from datetime import datetime, UTC
+        from argon2 import PasswordHasher
+        self.service.admin(context)
+        now = datetime.now(UTC)
+        # A valid hash of a password nobody knows: sign-in fails as "invalid
+        # credentials" instead of crashing on a malformed hash.
+        unusable = PasswordHasher().hash(secrets.token_urlsafe(32))
+        async with self.service.engine.begin() as db:
+            await self.service.assert_active(db, context, require_eligible=False)
+            if (await self._target(db, context, user_id, allow_deleted=True))["status"] == "deleted":
+                return  # a retry only re-runs the caller's purge
+            await db.execute(text("""UPDATE auth_users SET status='deleted', email=:email, username=:name,
+                password_hash=:hash, updated_at=:now WHERE id=:id"""),
+                {"email": f"deleted+{user_id}@invalid", "name": f"deleted-{user_id[:8]}", "hash": unusable,
+                 "now": now, "id": user_id})
+            await db.execute(text("UPDATE auth_sessions SET revoked_at=:now WHERE user_id=:id AND revoked_at IS NULL"),
+                {"now": now, "id": user_id})
+            await db.execute(update(t.accounts).where(t.accounts.c.user_id == user_id,
+                t.accounts.c.tenant_id == context.tenant_id).values(eligible=False, revision=t.accounts.c.revision + 1))
+            await self.service.audit(db, context, "account.deleted", user_id)
 
     async def remove_policy(self, context, subject, expected_revision):
         self.service.admin(context)

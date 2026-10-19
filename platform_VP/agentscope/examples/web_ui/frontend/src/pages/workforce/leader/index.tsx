@@ -3,7 +3,6 @@ import { Bot, FlaskConical, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-import { CustomerCases } from './CustomerCases';
 import { sessionApi, workforceApi } from '@/api';
 import type { LeaderSession, SessionView } from '@/api';
 import { sessionTime } from '@/components/chat/session-row-utils';
@@ -15,7 +14,6 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { Spinner } from '@/components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AudioProvider } from '@/context/AudioContext';
-import { useCurrentUser } from '@/context/CurrentUserContext';
 import { usePlatformAccess } from '@/context/platform-access';
 import { useSessions } from '@/hooks/useSessions';
 import { ChatViewport } from '@/pages/chat/ChatViewport';
@@ -43,7 +41,6 @@ function rowPreview(view: SessionView): string {
  * each, and the selected session's chat (and its room) beside them.
  */
 function LeaderPageInner() {
-	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
 	const access = usePlatformAccess();
 	const queryClient = useQueryClient();
 	const personal = access?.workspace?.kind === 'personal';
@@ -206,7 +203,6 @@ function LeaderPageInner() {
 
 			<main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				{isTest && <div className="flex shrink-0 items-start gap-2 border-b px-4 py-2 text-xs text-muted-foreground"><FlaskConical className="mt-0.5 size-3.5 shrink-0" /><p>Phiên thử để trao đổi với Leader, không liên kết phiếu cư dân.</p></div>}
-				{privateAccount && selectedSessionId && <CustomerCases key={selectedSessionId} agentId={leader.agent_id} sessionId={selectedSessionId} />}
 				<div className="flex min-h-0 flex-1 overflow-hidden">
 				<ChatViewport
 					agentId={leader.agent_id}

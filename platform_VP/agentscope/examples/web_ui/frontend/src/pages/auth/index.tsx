@@ -43,15 +43,8 @@ export function AuthPage({ onAuthenticated }: Props) {
 		setErrorMessage('');
 		try {
 			if (mode !== 'login') {
-				// Everyone signs up as a personal account; staff accounts are made by an admin.
-				const registered = await authApi.registerPersonal({ email: email.trim(), username: username.trim(), password });
-				if (registered.status === 'pending') {
-					setMode('login');
-					setIdentity(username.trim());
-					setPassword('');
-					setErrorMessage('Đã gửi đăng ký. Tài khoản đang chờ quản trị duyệt.');
-					return;
-				}
+				// Everyone signs up as a customer account and can use the platform at once.
+				await authApi.registerPersonal({ email: email.trim(), username: username.trim(), password });
 			}
 			const user = await authApi.login({
 				identity: mode === 'login' ? identity.trim() : username.trim(),
@@ -60,7 +53,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 			onAuthenticated(user);
 		} catch (error) {
 			if (error instanceof ApiError && error.status === 403) {
-				setErrorMessage('Tài khoản đang chờ quản trị duyệt. Vui lòng thử lại sau khi được duyệt.');
+				setErrorMessage('Tài khoản đã bị khoá. Liên hệ quản trị viên.');
 			} else if (error instanceof ApiError && error.status === 409 && mode !== 'login') {
 				setErrorMessage('Email hoặc tên đăng nhập đã được sử dụng.');
 			} else if (error instanceof ApiError && error.status === 503) {
@@ -113,7 +106,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 							<CardDescription className="mt-1.5">
 								{mode === 'login'
 									? t('auth.loginDescription')
-									: 'Tạo tài khoản để dựng đội agent của riêng bạn. Gói như Vinhomes hay Travelling được thêm sau khi đăng nhập.'}
+									: 'Tạo tài khoản để dựng đội agent của riêng bạn. Thêm key provider và gói mẫu sau khi đăng nhập.'}
 							</CardDescription>
 						</div>
 						<div className="grid grid-cols-2 rounded-full bg-[var(--cue-bg-subtle,var(--muted))] p-1">
