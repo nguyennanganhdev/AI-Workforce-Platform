@@ -4,15 +4,11 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
 from pydantic import Field, SecretStr
-from sqlalchemy import select
 
 from ..auth import AuthPrincipal
 from ..deps import get_current_principal
-from . import _tables as t
-from ._contracts import CapabilityView, CatalogPage, CatalogEntry, Contract, DomainProvider, Pack, QuotaPolicy, ResourceGrant, ServiceRequest, SourceIntent, WorkspaceState
-from ._domain import DomainAdapter
+from ._contracts import CapabilityView, CatalogPage, CatalogEntry, Contract, Pack, QuotaPolicy, ResourceGrant, WorkspaceState
 from ._contracts import AdminPage, PolicyView, AdminCatalogView, GrantView, MembershipView, AccountView, LibraryDocumentView, DocumentReview
 
 router = APIRouter(tags=["vin-platform"])
@@ -211,9 +207,42 @@ async def admin_memberships(user_id: str | None = None, group_id: str | None = N
 
 @router.get("/admin/vin/accounts", response_model=AdminPage[AccountView])
 async def admin_accounts(user_id: str | None = None, eligible: bool | None = None,
+                         q: str | None = Query(None, max_length=200),
+                         status: Literal["active", "suspended", "deleted"] | None = None,
                          offset: int = Query(0, ge=0), limit: int = Query(25, ge=1, le=100), who=Depends(caller)):
     authority, context = who
-    return await authority.administration.accounts(context, user_id=user_id, eligible=eligible, offset=offset, limit=limit)
+    return await authority.administration.accounts(context, user_id=user_id, eligible=eligible, q=q, status=status,
+        offset=offset, limit=limit)
+
+
+@router.post("/admin/vin/accounts/{user_id}/suspend", status_code=204)
+async def suspend_account(user_id: str, who=Depends(caller)):
+    authority, context = who
+    await authority.administration.set_account_active(context, user_id, False)
+
+
+@router.post("/admin/vin/accounts/{user_id}/reactivate", status_code=204)
+async def reactivate_account(user_id: str, who=Depends(caller)):
+    authority, context = who
+    await authority.administration.set_account_active(context, user_id, True)
+
+
+@router.delete("/admin/vin/accounts/{user_id}", status_code=204)
+async def delete_account(user_id: str, request: Request, who=Depends(caller)):
+    """Close the account, then remove its channels and stored work (agents,
+    sessions, keys, MCPs, skills, knowledge). Safe to repeat."""
+    authority, context = who
+    await authority.administration.delete_account(context, user_id)
+    storage = authority.storage
+    channels = getattr(request.app.state, "channel_service", None)
+    for record in await storage.list_channels(user_id):
+        if channels is not None:
+            await channels.delete(record.id)
+        else:
+            await storage.delete_channel(record.id, None)
+    purge = getattr(storage, "purge_user", None)
+    if purge is not None:
+        await purge(user_id)
 
 
 @router.get("/admin/vin/catalog/{catalog_id}/documents", response_model=AdminPage[LibraryDocumentView])
@@ -232,130 +261,6 @@ async def library_review(catalog_id: str, document_id: str, body: DocumentReview
 class SecretInput(Contract):
     value: SecretStr = Field(min_length=16, max_length=65536)
     purpose: str = Field(pattern=r"^(domain-client|channel|signing)$")
-
-
-@router.post("/admin/vin/secrets", status_code=201)
-async def secret(body: SecretInput, who=Depends(caller)):
-    authority, context = who
-    return {"secret_ref": await authority.secret_put(context, body.value.get_secret_value(), body.purpose)}
-
-
-@router.put("/admin/vin/domain-providers/{ident}")
-async def provider(ident: str, body: DomainProvider, who=Depends(caller)):
-    if ident != body.id:
-        raise HTTPException(422, detail="PROVIDER_ID_MISMATCH")
-    authority, context = who
-    await DomainAdapter(authority).configure(context, body)
-    return {"updated": True}
-
-
-@router.post("/me/domain-links/{provider_id}/start")
-async def link_start(provider_id: str, who=Depends(caller)):
-    authority, context = who
-    return await DomainAdapter(authority).start(context, provider_id)
-
-
-class CompleteLink(Contract):
-    transaction_id: str
-    state: str = Field(min_length=32, max_length=255)
-    code: str = Field(min_length=32, max_length=255)
-
-
-@router.post("/me/domain-links/{provider_id}/complete")
-async def link_complete(provider_id: str, body: CompleteLink, who=Depends(caller)):
-    authority, context = who
-    return await DomainAdapter(authority).complete(context, provider_id, **body.model_dump())
-
-
-@router.get("/me/domain-links")
-async def link_list(who=Depends(caller)):
-    authority, context = who
-    async with authority.engine.begin() as db:
-        await authority.assert_active(db, context, require_eligible=False)
-        rows = (await db.execute(select(t.links.c.id, t.links.c.provider_id, t.links.c.status, t.links.c.scopes,
-            t.links.c.revision).where(t.links.c.tenant_id == context.tenant_id,
-                t.links.c.user_id == context.initiator_user_id))).mappings().all()
-    return {"items": [dict(r) for r in rows]}
-
-
-@router.delete("/me/domain-links/{ident}", status_code=204)
-async def unlink(ident: str, who=Depends(caller)):
-    authority, context = who
-    await DomainAdapter(authority).revoke(context, ident)
-
-
-@router.get("/me/domain-links/{ident}/context")
-async def linked_context(ident: str, who=Depends(caller)):
-    authority, context = who
-    return await DomainAdapter(authority).request(context, ident, "GET", "/me")
-
-
-@router.post("/service-cases", status_code=201)
-async def create_case(body: ServiceRequest, who=Depends(caller)):
-    authority, context = who
-    return await DomainAdapter(authority).create_case(context, body)
-
-
-@router.get("/service-cases")
-async def list_cases(offset: int = 0, limit: int = 25, who=Depends(caller)):
-    authority, context = who
-    if offset < 0 or not 1 <= limit <= 100:
-        raise HTTPException(422, detail="INVALID_PAGINATION")
-    async with authority.engine.begin() as db:
-        await authority.assert_active(db, context, require_eligible=False)
-        rows = (await db.execute(select(t.cases.c.id, t.cases.c.state, t.cases.c.revision).where(
-            t.cases.c.tenant_id == context.tenant_id, t.cases.c.user_id == context.initiator_user_id,
-        ).order_by(t.cases.c.id).offset(offset).limit(limit))).mappings().all()
-    return {"items": [dict(r) for r in rows]}
-
-
-@router.get("/service-cases/{ident}")
-async def get_case(ident: str, refresh: bool = False, who=Depends(caller)):
-    authority, context = who
-    return await DomainAdapter(authority).get_case(context, ident, refresh=refresh)
-
-
-class Materialize(Contract):
-    category_id: str
-    expected_version: int = Field(ge=1)
-    idempotency_key: str = Field(min_length=16, max_length=128)
-
-
-@router.get("/service-cases/{ident}/photos/{file_id}")
-async def photo(ident: str, file_id: str, who=Depends(caller)):
-    authority, context = who
-    result = await DomainAdapter(authority).photo(context, ident, file_id)
-    return Response(result["content"], media_type=result["content_type"], headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
-
-
-@router.post("/service-cases/{ident}/tickets", status_code=201)
-async def materialize(ident: str, body: Materialize, who=Depends(caller)):
-    authority, context = who
-    return await DomainAdapter(authority).materialize(context, ident, **body.model_dump())
-
-
-@router.get("/service-cases/{ident}/events")
-async def case_events(ident: str, after: int = 0, limit: int = 50, sync: bool = True, who=Depends(caller)):
-    authority, context = who
-    if after < 0 or not 1 <= limit <= 100:
-        raise HTTPException(422, detail="INVALID_PAGINATION")
-    adapter = DomainAdapter(authority)
-    await adapter.get_case(context, ident)
-    status = await adapter.sync_events(context, ident) if sync else {}
-    async with authority.engine.begin() as db:
-        rows = (await db.execute(select(t.events.c.data).where(t.events.c.tenant_id == context.tenant_id,
-            t.events.c.case_id == ident, t.events.c.audience == "customer", t.events.c.sequence > after,
-        ).order_by(t.events.c.sequence).limit(limit + 1))).scalars().all()
-    return {**status, "items": rows[:limit], "next_cursor": rows[min(len(rows), limit) - 1]["sequence"] if rows else after,
-        "has_more": len(rows) > limit or status.get("has_more", False)}
-
-
-@router.post("/service-cases/{ident}/decisions")
-async def decide(ident: str, body: SourceIntent, who=Depends(caller)):
-    if ident != body.case_id:
-        raise HTTPException(422, detail="CASE_ID_MISMATCH")
-    authority, context = who
-    return await DomainAdapter(authority).decide(context, body)
 
 
 @router.get("/me/packs")

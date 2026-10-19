@@ -1451,6 +1451,25 @@ class RedisStorage(StorageBase):
             return None
         return ChannelRecord.model_validate_json(raw)
 
+    async def purge_user(self, user_id: str) -> int:
+        """Delete every record stored under ``user_id`` (account deletion).
+
+        All per-user keys share the ``agentscope:user:<id>:`` prefix; channel
+        records are global and are removed through the channel service first.
+        """
+        if not user_id or any(ch in user_id for ch in "*?[]:"):
+            raise ValueError("invalid user id")
+        deleted = 0
+        batch: list = []
+        async for key in self._client.scan_iter(f"agentscope:user:{user_id}:*", count=500):
+            batch.append(key)
+            if len(batch) >= 500:
+                deleted += await self._client.delete(*batch)
+                batch.clear()
+        if batch:
+            deleted += await self._client.delete(*batch)
+        return deleted
+
     async def list_channels(self, user_id: str) -> list[ChannelRecord]:
         """Return all channel records owned by the given user.
 

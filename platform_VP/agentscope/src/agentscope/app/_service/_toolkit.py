@@ -199,12 +199,6 @@ time or interval"
         "shared_context_service": shared_context_service,
         "peer_collaboration": peer_collaboration,
     }
-    if is_leader:
-        from ._catalog_resources import catalog_authority
-        authority = catalog_authority(storage)
-        if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
-            from .._tool._customer_service import CustomerService
-            tools.append(CustomerService(**team_tool_kwargs))
     if session_record.config.personal_chat is not None and session_record.config.personal_chat.kind == "group" and session_record.team_id:
         tools.append(TeamSay(**team_tool_kwargs, role=team_role or "worker", management_group=True))
     elif session_record.config.personal_chat is not None:
@@ -358,13 +352,6 @@ time or interval"
             storage, user_id, "skill", permission="execute",
         )}
         skills = [item for item in skills if getattr(item, "name", None) in granted_skills]
-        if (await catalog_authority(storage).context(user_id)).role == "VIN_USER":
-            from ._customer_mcp import customer_tools
-            mcps, delegated = await customer_tools(storage, user_id, mcps, granted)
-            tools.extend(delegated)
-    if any(t.get("tool_name", "").startswith("vh_management_") for t in (agent_record.data.spec or {}).get("tools", [])):
-        from ._management_mcp import manager_clients
-        mcps = await manager_clients(storage, management_auth_service, user_id, agent_record, mcps)
     return Toolkit(
         tools=tools,
         skills_or_loaders=skills,
