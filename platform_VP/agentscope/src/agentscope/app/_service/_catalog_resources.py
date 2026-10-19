@@ -46,6 +46,8 @@ async def resolve_catalog_resource(storage, user_id: str, kind: Kind, ident: str
     if kind in {"mcp", "skill"} and environment == "production":
         own = await getattr(storage, f"get_{kind}")(user_id, ident)
         if own is not None and own.user_id == user_id:
+            if kind == "mcp" and permission != "view":
+                await assert_customer_mcp(storage, user_id, own.client, check_host=False)
             if kind == "skill" and permission != "view" and (not own.enabled or own.review_status != "approved"):
                 raise HTTPException(409, "RESOURCE_REVOKED")
             return own
@@ -72,3 +74,50 @@ async def require_catalog_management(storage, user_id: str, *, private_kind: Kin
         private_kind and capabilities.get(f"{private_kind}s.private.manage") is True
     ):
         raise HTTPException(403, "CATALOG_READ_ONLY")
+
+
+async def is_operator(storage, user_id: str) -> bool:
+    """Only platform operators (catalog managers) may run code on the server.
+
+    Without the Vin authority there are no self-registered accounts, so the
+    single-tenant deployment keeps its full local toolset.
+    """
+    authority = catalog_authority(storage)
+    if authority is None:
+        return True
+    from ..vin_platform._contracts import PlatformError
+
+    try:
+        view = await authority.capabilities(await authority.context(user_id))
+    except PlatformError:
+        return False
+    return view["capabilities"].get("catalog.manage") is True
+
+
+def _remote_url(client) -> str | None:
+    config = client.mcp_config
+    return config.url if getattr(config, "type", None) == "http_mcp" else None
+
+
+async def assert_customer_mcp(storage, user_id: str, client, *, check_host: bool = True) -> None:
+    """A customer's MCP is a remote HTTP server on a public host.
+
+    A stdio MCP spawns its command inside the platform, and a private URL
+    is a request from inside the platform network. The host is checked when
+    the MCP is written; runtime only re-checks the transport (no DNS).
+    """
+    if await is_operator(storage, user_id):
+        return
+    url = _remote_url(client)
+    if url is None:
+        raise HTTPException(403, "STDIO_MCP_NOT_ALLOWED")
+    if not check_host:
+        return
+    from ..vin_platform._contracts import PlatformError
+    from ..vin_platform._egress import assert_public_endpoint
+
+    try:
+        await assert_public_endpoint(url)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+

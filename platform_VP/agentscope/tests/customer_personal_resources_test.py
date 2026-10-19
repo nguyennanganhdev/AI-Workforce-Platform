@@ -183,3 +183,21 @@ async def test_plaintext_legacy_copy_of_platform_key_is_listed_read_only(authori
     with pytest.raises(HTTPException) as denied:
         await access.resolve_for_edit("alice", ResourceKind.CREDENTIAL, "copy")
     assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_clearing_an_optional_provider_field_removes_it_and_keeps_the_key():
+    from agentscope.app._router._credential import update_credential
+    from agentscope.app._router._schema._credential import UpdateCredentialRequest
+
+    original = CredentialRecord(id="personal", user_id="alice", data={
+        "type": "openai_credential", "name": "Mine", "api_key": "offline-private-key",
+        "base_url": "https://8.8.8.8/v1",
+    })
+    storage = SimpleNamespace(upsert_credential=AsyncMock(), get_credential=AsyncMock(return_value=original))
+    access = SimpleNamespace(resolve_for_edit=AsyncMock(return_value=("alice", original)))
+    await update_credential("personal", UpdateCredentialRequest(data={"type": "openai_credential", "base_url": None}),
+                            "alice", storage, access)
+    credential = storage.upsert_credential.call_args.args[1]
+    assert credential.base_url is None
+    assert credential.api_key.get_secret_value() == "offline-private-key"

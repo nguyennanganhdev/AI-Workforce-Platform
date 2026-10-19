@@ -69,6 +69,9 @@ export function EditCredentialDialog({ open, onOpenChange, credential, onUpdated
 				if (key === 'id' || key === 'type' || prop.const !== undefined) continue;
 				const val = values[key];
 				if (val !== undefined && val !== '') data[key] = val;
+				// Clearing a plain field removes it (the provider default applies);
+				// an empty secret field keeps the stored write-only value.
+				else if (val === '' && !prop.writeOnly && prop.format !== 'password' && credential.data[key]) data[key] = null;
 			}
 			await update(credential.id, { data });
 			onOpenChange(false);

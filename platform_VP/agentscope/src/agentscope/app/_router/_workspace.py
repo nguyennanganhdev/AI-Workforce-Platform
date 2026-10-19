@@ -4,7 +4,8 @@ import mimetypes
 from urllib.parse import quote
 
 from .._service._catalog_resources import (
-    catalog_authority, list_catalog_resources, require_catalog_management, resolve_catalog_resource,
+    assert_customer_mcp, catalog_authority, list_catalog_resources, require_catalog_management,
+    resolve_catalog_resource,
 )
 from ._schema._workspace import SafeMCPClientStatus
 
@@ -131,6 +132,7 @@ async def add_mcp(
     silently redefine it.
     """
     await require_catalog_management(storage, user_id, private_kind="mcp")
+    await assert_customer_mcp(storage, user_id, mcp)
     workspace = await workspace_service.resolve(
         user_id,
         agent_id,

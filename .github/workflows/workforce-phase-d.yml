@@ -165,6 +165,8 @@ jobs:
           tests/customer_workspace_http_test.py
           tests/customer_personal_channels_test.py
           tests/vin_provider_boundary_test.py
+          tests/customer_host_isolation_test.py
+          tests/room_context_metrics_test.py
           -q -rs --junitxml=.artifacts/phase-d/collaboration.xml
       - name: Build D7 release-candidate report
         if: always()
