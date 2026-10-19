@@ -410,6 +410,327 @@
       "title": "PartnerAudience",
       "type": "object"
     },
+    "CustomerAssetUploadRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "external_management_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Management Ref",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "residence_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residence Id"
+        },
+        "filename": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "content_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_size": {
+          "exclusiveMinimum": 0,
+          "maximum": 20971520,
+          "title": "Byte Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "external_management_ref",
+        "external_user_id",
+        "external_conversation_id",
+        "filename",
+        "content_type",
+        "byte_size"
+      ],
+      "title": "CustomerAssetUploadRequest",
+      "type": "object"
+    },
+    "ProviderAssetUploadRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "client_reference": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Reference"
+        },
+        "external_job_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Job Id"
+        },
+        "filename": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "content_type": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_size": {
+          "exclusiveMinimum": 0,
+          "maximum": 20971520,
+          "title": "Byte Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "filename",
+        "content_type",
+        "byte_size"
+      ],
+      "title": "ProviderAssetUploadRequest",
+      "type": "object"
+    },
+    "AssetUploadSession": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "upload_method": {
+          "default": "PUT",
+          "pattern": "^PUT$",
+          "title": "Upload Method",
+          "type": "string"
+        },
+        "upload_url": {
+          "minLength": 1,
+          "title": "Upload Url",
+          "type": "string"
+        },
+        "required_headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Required Headers",
+          "type": "object"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "complete_url": {
+          "minLength": 1,
+          "title": "Complete Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "upload_url",
+        "required_headers",
+        "expires_at",
+        "complete_url"
+      ],
+      "title": "AssetUploadSession",
+      "type": "object"
+    },
+    "AssetProjection": {
+      "$defs": {
+        "AssetOrigin": {
+          "enum": [
+            "customer",
+            "provider"
+          ],
+          "title": "AssetOrigin",
+          "type": "string"
+        },
+        "AssetStatus": {
+          "enum": [
+            "pending_upload",
+            "active",
+            "rejected",
+            "deleted"
+          ],
+          "title": "AssetStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/AssetOrigin"
+        },
+        "status": {
+          "$ref": "#/$defs/AssetStatus"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "content_type": {
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_size": {
+          "exclusiveMinimum": 0,
+          "title": "Byte Size",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "origin",
+        "status",
+        "filename",
+        "content_type",
+        "byte_size",
+        "created_at"
+      ],
+      "title": "AssetProjection",
+      "type": "object"
+    },
+    "AssetDownloadGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "content_type": {
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_size": {
+          "exclusiveMinimum": 0,
+          "title": "Byte Size",
+          "type": "integer"
+        },
+        "download_url": {
+          "minLength": 1,
+          "title": "Download Url",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "filename",
+        "content_type",
+        "byte_size",
+        "download_url",
+        "expires_at"
+      ],
+      "title": "AssetDownloadGrant",
+      "type": "object"
+    },
     "RouteConfirmation": {
       "additionalProperties": false,
       "properties": {
@@ -2490,6 +2811,23 @@
     },
     "PartnerRequestEnvelope": {
       "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "PartnerCommandType": {
           "enum": [
             "start_workflow",
@@ -2511,6 +2849,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             }
           },
           "required": [
@@ -2629,6 +2976,23 @@
     },
     "InboundReceipt": {
       "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "AssistantMessage": {
           "additionalProperties": false,
           "properties": {
@@ -2655,6 +3019,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             },
             "created_at": {
               "format": "date-time",
@@ -3008,6 +3381,23 @@
     },
     "ConversationSnapshot": {
       "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "AssistantMessage": {
           "additionalProperties": false,
           "properties": {
@@ -3034,6 +3424,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             },
             "created_at": {
               "format": "date-time",
@@ -3735,6 +4134,25 @@
       "type": "object"
     },
     "ProviderEventEnvelope": {
+      "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "schema_version": {
@@ -3804,6 +4222,15 @@
           "additionalProperties": true,
           "title": "Data",
           "type": "object"
+        },
+        "attachments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssetReferenceInput"
+          },
+          "maxItems": 10,
+          "title": "Attachments",
+          "type": "array"
         }
       },
       "required": [

@@ -216,6 +216,7 @@ class MCPTool(ToolBase):
         | None = None,
         session: Any | None = None,
         timeout: float | None = None,
+        force_confirmation: bool = False,
         middlewares: list[ToolMiddlewareBase] | None = None,
     ) -> None:
         """Initialize the MCPTool.
@@ -282,6 +283,10 @@ class MCPTool(ToolBase):
                 )
             )
 
+        self._force_confirmation = force_confirmation
+        if force_confirmation:
+            self.is_read_only = False
+
         # Store MCP tool and connection info
         self._tool = tool
         self._client_gen = client_gen
@@ -310,6 +315,7 @@ class MCPTool(ToolBase):
             self._tool.name,
             self._tool.annotations,
             self.input_schema,
+            force_confirmation=self._force_confirmation,
         )
 
     async def call(

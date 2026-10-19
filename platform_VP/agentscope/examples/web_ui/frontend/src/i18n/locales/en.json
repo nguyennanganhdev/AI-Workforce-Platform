@@ -135,6 +135,7 @@
 			"authentication": "Authentication failed — check the model's API key or credential.",
 			"permission": "Request not allowed — the credential lacks permission for this model or endpoint.",
 			"rate_limit": "Rate limit or quota exceeded — please try again later.",
+			"quota": "The model provider account has no credit left — top up the API key or switch the credential.",
 			"invalid_request": "The request to the model was rejected as invalid.",
 			"upstream": "The upstream model service returned an error.",
 			"connection": "Could not reach the model service — network error or timeout.",
@@ -142,8 +143,7 @@
 			"context_budget": "The required conversation context exceeds its token budget. No source history was deleted. Review context size and repeated tool calls.",
 			"collaboration_limit": "Internal coordination reached its processing limit. This assignment is incomplete; the conversation remains open.",
 			"setup": "The session could not be prepared — check the agent's model, tools and knowledge bases.",
-			"unknown": "The reply failed with an unknown error.",
-			"quota": "The model provider account has no credit left — top up the API key or switch the credential."
+			"unknown": "The reply failed with an unknown error."
 		},
 		"copy": "Copy"
 	},
@@ -213,12 +213,99 @@
 			"chatsOf": "Chats with {{name}}"
 		}
 	},
+	"shell": {
+		"backToChat": "Back to chat",
+		"groupWorkforce": "Workforce",
+		"leader": "Leader",
+		"builder": "Builder",
+		"packs": "Pack library",
+		"agentStudio": "Agent management",
+		"groupOperations": "Operations",
+		"groupCapabilities": "What agents can use",
+		"account": "Account"
+	},
+	"agents": {
+		"list": {
+			"noDescription": "No description yet",
+			"chat": "Open chat",
+			"edit": "Edit"
+		},
+		"graph": {
+			"agentCount": "Agents: {{count}}",
+			"running": "{{count}} tickets in {{days}} days",
+			"fullscreen": "Full screen",
+			"exitFullscreen": "Exit full screen",
+			"zoomIn": "Zoom in",
+			"zoomOut": "Zoom out",
+			"fit": "Fit to view",
+			"legendLive": "replied in the last 15 minutes",
+			"legendIdle": "configured, idle",
+			"resident": "Residents",
+			"residentNote": "send requests through a partner",
+			"you": "You",
+			"youNote": "chat directly",
+			"leader": "Leader",
+			"leaderNote": "Picks the agents for each request",
+			"sessionCount": "{{count}} tickets",
+			"idle": "idle",
+			"invitable": "Leader can pick",
+			"notInvitable": "Invites off",
+			"notInvitableShort": "Not invitable",
+			"invitableHelp": "The Leader can bring this agent into a session when a request needs it.",
+			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
+			"inspectorSessions": "Tickets",
+			"inspectorRunning": "Replies",
+			"inspectorResponse": "Last active"
+		},
+		"office": {
+			"loading": "Loading the 3D office…",
+			"controls": "Office view controls",
+			"rotateLeft": "Rotate left",
+			"rotateRight": "Rotate right",
+			"zoomIn": "Zoom in",
+			"zoomOut": "Zoom out",
+			"team": "Agent team",
+			"mock": "Simulated session",
+			"emptyLog": "No activity in this session yet.",
+			"resetView": "Reset view",
+			"noWebgl": "The 3D office is unavailable. You can still select agents in Agent team and continue chatting.",
+			"phase": {
+				"idle": "Everyone at their desks",
+				"request": "New request",
+				"call": "Leader calls a meeting",
+				"meeting": "In a meeting",
+				"return": "Heading back to desks",
+				"work": "Working",
+				"collab": "Collaborating",
+				"approval": "Waiting for your approval",
+				"done": "Done"
+			},
+			"log": "Activity",
+			"rooms": {
+				"meeting": "Meeting room",
+				"approval": "Your office · Approval",
+				"reception": "Reception",
+				"workspace": "Workspace"
+			},
+			"status": {
+				"idle": "Idle at desk",
+				"working": "Working on a task",
+				"off": "Not invitable, skips meetings",
+				"walking": "Walking"
+			},
+			"live": "Session activity"
+		}
+	},
 	"dialog-agent-create": {
 		"title": "Create agent",
 		"description": "Define a new agent's identity and behaviour.",
 		"submit": "Create agent"
 	},
 	"agent-form": {
+		"advanced": {
+			"legend": "Advanced settings",
+			"description": "The defaults work. Open a section when you need to change it."
+		},
 		"identity": {
 			"legend": "Agent Identity",
 			"description": "Name and instructions that define this agent's behaviour.",
@@ -241,6 +328,9 @@
 			"reserve-ratio": {
 				"label": "Reserve ratio"
 			},
+			"context-buffer-ratio": {
+				"label": "Context buffer ratio"
+			},
 			"tool-result-limit": {
 				"label": "Tool result limit"
 			},
@@ -252,9 +342,6 @@
 			},
 			"max-image-num": {
 				"label": "Max images"
-			},
-			"context-buffer-ratio": {
-				"label": "Context buffer ratio"
 			}
 		},
 		"react-config": {
@@ -289,10 +376,6 @@
 				"label": "Invite description",
 				"placeholder": "Briefly describe this agent's expertise; required when invitable is on."
 			}
-		},
-		"advanced": {
-			"legend": "Advanced settings",
-			"description": "The defaults work. Open a section when you need to change it."
 		}
 	},
 	"dialog-agent-edit": {
@@ -624,6 +707,22 @@
 		"heroTitle": "Build and operate agents for your area",
 		"heroDescription": "Create an Area Manager account, manage your agents, and receive requests routed to the correct domain and area.",
 		"securityHint": "Short-lived access tokens and rotating secure sessions",
+		"showcase": {
+			"live": "Live",
+			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
+			"statusIdle": "Waiting",
+			"statusBusy": "In progress",
+			"statusDone": "Done",
+			"resident": "Resident",
+			"routed": "Routed: Ocean Park 1 · Plumbing",
+			"request": "A pipe burst in my flat, please send a plumber.",
+			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
+			"agents": {
+				"reception": "Reception",
+				"technical": "Technical",
+				"hotel": "Hotel"
+			}
+		},
 		"loginTitle": "Welcome back",
 		"loginDescription": "Sign in with your email address or username.",
 		"registerTitle": "Create your account",
@@ -643,22 +742,6 @@
 		"createAccount": "Create account",
 		"connectedTo": "Service:",
 		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it.",
-		"showcase": {
-			"live": "Live",
-			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
-			"statusIdle": "Waiting",
-			"statusBusy": "In progress",
-			"statusDone": "Done",
-			"resident": "Resident",
-			"routed": "Routed: Ocean Park 1 · Plumbing",
-			"request": "A pipe burst in my flat, please send a plumber.",
-			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
-			"agents": {
-				"reception": "Reception",
-				"technical": "Technical",
-				"hotel": "Hotel"
-			}
-		},
 		"brand": "VAgents Platform",
 		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
 		"errors": {
@@ -795,7 +878,6 @@
 		},
 		"loading": "Loading…",
 		"team": {
-			"membersHeading": "Members",
 			"noMembers": "The Leader invites the right agents when the ticket needs them.",
 			"emptyTitle": "No team",
 			"emptyDescription": "This session has no room yet. The Leader opens one when a ticket needs several agents.",
@@ -816,7 +898,7 @@
 			"retry": "Try again"
 		},
 		"title": "Channels",
-		"subtitle": "Connect external platforms like Feishu and Discord so agents work in group chats",
+		"subtitle": "Connect Telegram, Zalo OA and Discord so agents can receive and reply to messages",
 		"status": "Status",
 		"connected": "Connected",
 		"enable": "Enable",
@@ -829,7 +911,7 @@
 		"rules": "{{count}} rules",
 		"empty": {
 			"title": "No channels",
-			"description": "Create a channel to connect your agent to external platforms like Feishu, DingTalk, etc."
+			"description": "Create a Telegram, Zalo OA or Discord channel to start receiving messages."
 		},
 		"create": {
 			"title": "Create Channel",
@@ -989,88 +1071,6 @@
 		"pressEnter": "Press Enter to check this path first",
 		"gitTooltip": "{{staged}} staged · {{unstaged}} modified · {{untracked}} untracked\nLine counts exclude untracked files"
 	},
-	"shell": {
-		"backToChat": "Back to chat",
-		"groupWorkforce": "Workforce",
-		"leader": "Leader",
-		"builder": "Builder",
-		"agentStudio": "Agent management",
-		"groupOperations": "Operations",
-		"groupCapabilities": "What agents can use",
-		"account": "Account"
-	},
-	"agents": {
-		"list": {
-			"noDescription": "No description yet",
-			"chat": "Open chat",
-			"edit": "Edit"
-		},
-		"graph": {
-			"agentCount": "Agents: {{count}}",
-			"running": "{{count}} tickets in {{days}} days",
-			"fullscreen": "Full screen",
-			"exitFullscreen": "Exit full screen",
-			"zoomIn": "Zoom in",
-			"zoomOut": "Zoom out",
-			"fit": "Fit to view",
-			"legendLive": "replied in the last 15 minutes",
-			"legendIdle": "configured, idle",
-			"resident": "Residents",
-			"residentNote": "send requests through a partner",
-			"you": "You",
-			"youNote": "chat directly",
-			"leader": "Leader",
-			"leaderNote": "Picks the agents for each request",
-			"sessionCount": "{{count}} tickets",
-			"idle": "idle",
-			"invitable": "Leader can pick",
-			"notInvitable": "Invites off",
-			"notInvitableShort": "Not invitable",
-			"invitableHelp": "The Leader can bring this agent into a session when a request needs it.",
-			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
-			"inspectorSessions": "Tickets",
-			"inspectorRunning": "Replies",
-			"inspectorResponse": "Last active"
-		},
-		"office": {
-			"loading": "Loading the 3D office…",
-			"controls": "Office view controls",
-			"rotateLeft": "Rotate left",
-			"rotateRight": "Rotate right",
-			"zoomIn": "Zoom in",
-			"zoomOut": "Zoom out",
-			"team": "Agent team",
-			"mock": "Simulated session",
-			"emptyLog": "No activity in this session yet.",
-			"resetView": "Reset view",
-			"noWebgl": "The 3D office is unavailable. You can still select agents in Agent team and continue chatting.",
-			"phase": {
-				"idle": "Everyone at their desks",
-				"request": "New request",
-				"call": "Leader calls a meeting",
-				"meeting": "In a meeting",
-				"return": "Heading back to desks",
-				"work": "Working",
-				"collab": "Collaborating",
-				"approval": "Waiting for your approval",
-				"done": "Done"
-			},
-			"log": "Activity",
-			"rooms": {
-				"meeting": "Meeting room",
-				"approval": "Your office · Approval",
-				"reception": "Reception",
-				"workspace": "Workspace"
-			},
-			"status": {
-				"idle": "Idle at desk",
-				"working": "Working on a task",
-				"off": "Not invitable, skips meetings",
-				"walking": "Walking"
-			},
-			"live": "Session activity"
-		}
-	},
 	"quickAgent": {
 		"title": "Quick agent with the Agent Builder",
 		"description": "Describe what the agent should do. The Agent Builder drafts it (instructions, tools, knowledge, test cases); you adjust and publish it in agent management.",
@@ -1128,35 +1128,5 @@
 		"kickoff": "This is the group chat “{{name}}”.{{goal}} Use TeamCreate to form the team with you as its leader, then AgentInvite to bring in: {{members}}. Once everyone has joined, briefly introduce the team and wait for my request.",
 		"kickoffGoal": " Goal: {{goal}}.",
 		"headerNote": "Led by {{leader}} · {{count}} agents"
-	},
-	"agentManagement": {
-		"title": "Agent management",
-		"description": "Configure existing agents, tools and knowledge bases.",
-		"configure": "Configure agent",
-		"openChat": "Open chat",
-		"create": "Create agent",
-		"search": "Search agents…",
-		"empty": "No agents yet. Create one or use Agent Builder.",
-		"missing": "Agent not found or access denied.",
-		"governedPrompt": "The platform manages the Leader system prompt.",
-		"resourcesSaved": "Tools and knowledge bases were saved; agent configuration was not saved.",
-		"publish": "Publish",
-		"withdraw": "Move to draft",
-		"saved": "Agent updated.",
-		"modelNote": "Models are configured per chat session. Open chat to choose the coordinator model and the shared subagent model.",
-		"coordinatorModel": "Coordinator model",
-		"subagentModel": "Shared subagent model",
-		"inheritModel": "No shared subagent model override",
-		"readOnly": "Read only",
-		"tools": "Tools",
-		"knowledge": "Knowledge bases",
-		"prompt": "System instructions",
-		"advanced": "Advanced configuration",
-		"details": "Agent details",
-		"retry": "Retry",
-		"draft": "Draft",
-		"published": "Published",
-		"withdrawn": "Withdrawn",
-		"panels": "Show side panels"
 	}
 }

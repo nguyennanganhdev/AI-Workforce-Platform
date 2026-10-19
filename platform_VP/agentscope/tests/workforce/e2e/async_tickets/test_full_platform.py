@@ -10,8 +10,6 @@ import asyncio
 import importlib
 import os
 
-import pytest
-
 from async_partners import CustomerBackend
 
 FACTORY = os.environ.get(

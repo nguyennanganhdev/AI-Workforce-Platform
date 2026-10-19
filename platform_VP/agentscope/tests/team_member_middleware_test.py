@@ -171,24 +171,6 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
         )
 
-    async def test_pause_during_model_call_streams_the_tool_blocker(self):
-        checks = 0
-
-        async def question():
-            nonlocal checks
-            checks += 1
-            return None if checks == 1 else "awaiting_user_input"
-
-        items = await self._run(
-            [_call("TeamSay", to="Peer", kind="question", content="Find options")],
-            pending_question=question,
-        )
-        self.assertEqual([], self.team_say.calls)
-        self.assertTrue(any(
-            "waiting for customer input" in str(event.delta)
-            for event in items if isinstance(event, ToolResultTextDeltaEvent)
-        ))
-
     async def test_progress_is_not_a_terminal_report(self):
         items = await self._run(
             [
@@ -256,37 +238,12 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_registered_customer_question_is_emitted_without_model_text(
-        self,
-    ) -> None:
+    async def test_untargeted_result_is_a_routed_report(self) -> None:
+        """Workers omit ``to`` for results; the runtime routes them to the
+        reply owner, so a successful untargeted result ends the reply."""
         items = await self._run(
             [
-                _call(
-                    "TeamSay",
-                    to="null",
-                    kind="requires_user_input",
-                    content="Bạn xuất phát từ đâu và có bao nhiêu người?",
-                ),
-                _text("Đã đăng ký câu hỏi."),
-            ],
-        )
-
-        self.assertIn(
-            "Bạn xuất phát từ đâu và có bao nhiêu người?",
-            [item.delta for item in items if isinstance(item, TextBlockDeltaEvent)],
-        )
-        self.assertEqual(
-            ReplyFinishedReason.COMPLETED,
-            self._end_events(items)[0].finished_reason,
-        )
-
-    async def test_broadcast_report_is_not_accepted(self) -> None:
-        """A worker broadcast cannot satisfy the final-report contract."""
-        items = await self._run(
-            [
-                _call("TeamSay", content="done"),
-                _text("broadcast was rejected"),
-                _call("TeamSay", to="Leader", content="done"),
+                _call("TeamSay", kind="result", content="done"),
                 _text("reported"),
             ],
         )
@@ -296,10 +253,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         )
         self.assertListEqual(
             self.team_say.calls,
-            [
-                {"to": None, "content": "done"},
-                {"to": "Leader", "content": "done"},
-            ],
+            [{"to": None, "kind": "result", "content": "done"}],
         )
 
     async def test_report_to_other_member_is_not_accepted(self) -> None:
@@ -323,17 +277,6 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 {"to": "Leader", "content": "done"},
             ],
         )
-
-    async def test_explicit_peer_answer_result_and_error_end_without_leader_report(self):
-        for kind in ("answer", "result", "error"):
-            with self.subTest(kind=kind):
-                self.team_say = _FakeTeamSay()
-                await self._run([
-                    _call("TeamSay", to="Peer", kind=kind, content="Bounded response"),
-                    _call("TeamSay", to="Leader", content="Must not repeat the peer report"),
-                ])
-                self.assertEqual(len(self.team_say.calls), 1)
-                self.assertEqual(self.team_say.calls[0]["to"], "Peer")
 
     async def test_failed_report_is_not_accepted(self) -> None:
         """A ``TeamSay`` that errored does not count as a report."""
@@ -374,44 +317,6 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         self.assertEqual(len(self.team_say.calls), 1)
         self.assertEqual(ends[-1].finished_reason, ReplyFinishedReason.ERROR)
         self.assertIn("fresh worker turn", ends[-1].error.message)
-
-    async def test_successful_report_prevents_another_model_round(self) -> None:
-        """A successful report releases the run before another tool is planned."""
-        note = _OtherTool()
-        items = await self._run(
-            [
-                _call("TeamSay", to="Leader", content="done"),
-                _call("Note", content="afterthought"),
-                _text("finished"),
-                _call("TeamSay", to="Leader", content="really done"),
-                _text("reported"),
-            ],
-            extra_tools=[note],
-        )
-        self.assertListEqual(
-            [_.finished_reason for _ in self._end_events(items)],
-            [ReplyFinishedReason.COMPLETED],
-        )
-        self.assertEqual(len(self.team_say.calls), 1)
-        self.assertEqual(self.model.cnt, 1)
-
-    async def test_partial_peer_batch_ends_without_retrying_or_losing_requests(self):
-        class _PartialTeamSay(_FakeTeamSay):
-            async def __call__(self, content, to=None, kind=None):
-                result = await super().__call__(content, to, kind)
-                if to == "Missing":
-                    result.state = ToolResultState.ERROR
-                return result
-
-        self.team_say = _PartialTeamSay()
-        batch = ChatResponse(content=[
-            *_call("TeamSay", to="Peer", kind="question", content="Find options").content,
-            *_call("TeamSay", to="Missing", kind="question", content="Find alternatives").content,
-        ], is_last=True)
-        items = await self._run([batch, _text("should not run")])
-        self.assertEqual(self.model.cnt, 1)
-        self.assertEqual(len(self.team_say.calls), 2)
-        self.assertEqual(self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED)
 
     async def test_silent_worker_is_failed_after_max_nudges(self) -> None:
         """A worker that never reports fails instead of looping."""
@@ -480,3 +385,94 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 "team_say_calls": [{"to": "Leader", "content": "done"}],
             },
         )
+
+    async def test_registered_customer_question_is_emitted_without_model_text(
+        self,
+    ) -> None:
+        items = await self._run(
+            [
+                _call(
+                    "TeamSay",
+                    to="null",
+                    kind="requires_user_input",
+                    content="Bạn xuất phát từ đâu và có bao nhiêu người?",
+                ),
+                _text("Đã đăng ký câu hỏi."),
+            ],
+        )
+
+        self.assertIn(
+            "Bạn xuất phát từ đâu và có bao nhiêu người?",
+            [item.delta for item in items if isinstance(item, TextBlockDeltaEvent)],
+        )
+        self.assertEqual(
+            ReplyFinishedReason.COMPLETED,
+            self._end_events(items)[0].finished_reason,
+        )
+
+    async def test_partial_peer_batch_ends_without_retrying_or_losing_requests(self):
+        class _PartialTeamSay(_FakeTeamSay):
+            async def __call__(self, content, to=None, kind=None):
+                result = await super().__call__(content, to, kind)
+                if to == "Missing":
+                    result.state = ToolResultState.ERROR
+                return result
+
+        self.team_say = _PartialTeamSay()
+        batch = ChatResponse(content=[
+            *_call("TeamSay", to="Peer", kind="question", content="Find options").content,
+            *_call("TeamSay", to="Missing", kind="question", content="Find alternatives").content,
+        ], is_last=True)
+        items = await self._run([batch, _text("should not run")])
+        self.assertEqual(self.model.cnt, 1)
+        self.assertEqual(len(self.team_say.calls), 2)
+        self.assertEqual(self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED)
+
+    async def test_successful_report_prevents_another_model_round(self) -> None:
+        """A successful report releases the run before another tool is planned."""
+        note = _OtherTool()
+        items = await self._run(
+            [
+                _call("TeamSay", to="Leader", content="done"),
+                _call("Note", content="afterthought"),
+                _text("finished"),
+                _call("TeamSay", to="Leader", content="really done"),
+                _text("reported"),
+            ],
+            extra_tools=[note],
+        )
+        self.assertListEqual(
+            [_.finished_reason for _ in self._end_events(items)],
+            [ReplyFinishedReason.COMPLETED],
+        )
+        self.assertEqual(len(self.team_say.calls), 1)
+        self.assertEqual(self.model.cnt, 1)
+
+    async def test_explicit_peer_answer_result_and_error_end_without_leader_report(self):
+        for kind in ("answer", "result", "error"):
+            with self.subTest(kind=kind):
+                self.team_say = _FakeTeamSay()
+                await self._run([
+                    _call("TeamSay", to="Peer", kind=kind, content="Bounded response"),
+                    _call("TeamSay", to="Leader", content="Must not repeat the peer report"),
+                ])
+                self.assertEqual(len(self.team_say.calls), 1)
+                self.assertEqual(self.team_say.calls[0]["to"], "Peer")
+
+    async def test_pause_during_model_call_streams_the_tool_blocker(self):
+        checks = 0
+
+        async def question():
+            nonlocal checks
+            checks += 1
+            return None if checks == 1 else "awaiting_user_input"
+
+        items = await self._run(
+            [_call("TeamSay", to="Peer", kind="question", content="Find options")],
+            pending_question=question,
+        )
+        self.assertEqual([], self.team_say.calls)
+        self.assertTrue(any(
+            "waiting for customer input" in str(event.delta)
+            for event in items if isinstance(event, ToolResultTextDeltaEvent)
+        ))

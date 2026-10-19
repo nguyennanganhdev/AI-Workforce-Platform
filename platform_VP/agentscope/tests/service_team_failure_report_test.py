@@ -356,8 +356,8 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
                     "type whether to retry — with this member or a fresh "
                     "one — or to raise it with the user: invalid "
                     "credentials or an exhausted quota will fail the "
-                    "same way again. No successful tool result was "
-                    "preserved for this run."
+                    "same way again. Assume no usable output unless the "
+                    "member reported partial results earlier."
                     "</system-reminder>"
                 ),
                 "source": json.dumps(
@@ -390,8 +390,7 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
                     "Do not silently re-dispatch it: ask the user what "
                     "should happen to the task, or ask the member how "
                     "far it got. Left unresolved, the member is stranded "
-                    "with work nobody is tracking. No successful tool "
-                    "result was preserved for this run.</system-reminder>"
+                    "with work nobody is tracking.</system-reminder>"
                 ),
                 "source": json.dumps(
                     {"label": "System", "sublabel": "Reminder"},
@@ -445,8 +444,9 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
                     "Judge from the error type whether to retry — with "
                     "this member or a fresh one — or to raise it with "
                     "the user: invalid credentials or an exhausted quota "
-                    "will fail the same way again. No successful tool "
-                    "result was preserved for this run.</system-reminder>"
+                    "will fail the same way again. Assume no usable "
+                    "output unless the member reported partial results "
+                    "earlier.</system-reminder>"
                 ),
                 "source": json.dumps(
                     {"label": "System", "sublabel": "Reminder"},

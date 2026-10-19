@@ -67,6 +67,8 @@ class ChannelGateway:
     async def process(
         self,
         event: ChannelEvent | ChannelConfirmationResultEvent,
+        *,
+        raise_errors: bool = False,
     ) -> None:
         """Handle one inbound event (message or confirmation decision).
 
@@ -80,6 +82,8 @@ class ChannelGateway:
             else:
                 await self._handle_message(event)
         except Exception:  # pylint: disable=broad-except
+            if raise_errors:
+                raise
             logger.exception(
                 "ChannelGateway.process failed for channel %s",
                 event.channel_id,
@@ -120,6 +124,8 @@ class ChannelGateway:
 
         if await self._resume(record.user_id, guess, event):
             return
+        if event.agent_id and event.session_id:
+            return  # A pinned approval must never answer for a different session.
 
         # A card that reports nothing but the click cannot name its run,
         # and routing only guesses at one: a platform that identifies the
@@ -194,6 +200,11 @@ class ChannelGateway:
             return
         if not record.enabled:
             return  # stale event from a since-disabled channel
+
+        from .._service._personal_jobs import enqueue_channel, personal_context
+        if await personal_context(self._storage, record.user_id) is not None:
+            await enqueue_channel(self._storage, record, event)
+            return
 
         agent_id, session_id, scope = resolve(event, record)
         if event.chat_id:

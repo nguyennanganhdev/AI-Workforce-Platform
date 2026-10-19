@@ -14,7 +14,6 @@ from ._ollama import OllamaCredential
 from ._openai import OpenAICredential
 from ._xai import XAICredential
 from ._volcengine import VolcengineCredential
-from ._typesafe import TypeSafeCredential
 from ._base import CredentialBase
 
 
@@ -47,7 +46,6 @@ class CredentialFactory:
         OpenAICredential,
         XAICredential,
         VolcengineCredential,
-        TypeSafeCredential,
     ]
     _adapter: TypeAdapter[CredentialBase] | None = None
 

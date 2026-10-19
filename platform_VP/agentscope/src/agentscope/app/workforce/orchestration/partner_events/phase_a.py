@@ -10,6 +10,7 @@ from pydantic import AwareDatetime, BeforeValidator, Field
 from ...contracts import (
     AssetReferenceInput,
     ConversationEvent,
+    JsonObject,
     OpaqueId,
     ShortCode,
     WorkflowState,
@@ -63,10 +64,20 @@ class AssistantMessagePayload(WorkforceModel):
     attachments: tuple[AssetReferenceInput, ...] = ()
 
 
+class ApprovalSummary(WorkforceModel):
+    text: str = Field(min_length=1, max_length=2000)
+    items: tuple[JsonObject, ...] = Field(default=(), max_length=50)
+    total: int | None = None
+
+
 class ApprovalRequiredPayload(WorkforceModel):
     approval_id: OpaqueId
-    summary: str = Field(min_length=1, max_length=2000)
+    summary: str | ApprovalSummary = Field(union_mode="left_to_right")
     expires_at: PublicTimestamp
+    # What the partner sends back with its decision (contract 9.8).
+    arguments_hash: str | None = Field(default=None, max_length=200)
+    expected_revision: int | None = Field(default=None, ge=1)
+    quote_ref: OpaqueId | None = None
 
 
 class ApprovalResolvedPayload(WorkforceModel):
@@ -92,6 +103,7 @@ class WorkflowNeedsAttentionPayload(WorkforceModel):
 
 
 class WorkflowClosedPayload(WorkforceModel):
+    stop_tracking_only: bool = False
     state: Literal["closed"]
     revision: int = Field(ge=1, strict=True)
     reason: str = Field(min_length=1, max_length=200)

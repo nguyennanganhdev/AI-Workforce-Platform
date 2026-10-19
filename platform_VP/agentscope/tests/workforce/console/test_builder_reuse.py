@@ -1,350 +1,248 @@
-"""Reuse is approved before selecting resources and preserves existing agents."""
+"""A planned agent that does the job of an existing one: the manager chooses to update, reuse or create."""
 
+import asyncio
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi import HTTPException
 
+from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._router import _workforce_console as console
-from agentscope.app.storage import AgentData, AgentRecord, InviteConfig
+from agentscope.app.storage import AgentData, AgentRecord, ChatModelConfig
 from agentscope.message import AssistantMsg
-from tests.workforce.console import test_builder_resources as resources
-from tests.workforce.console.test_builder_resources import (
-    KBS,
-    OUTLINE,
-    TOOLS,
-    _Classifier,
-    _Model,
-    approved,
-    generated,
-)
+
+CONFIG = ChatModelConfig(type="openai_credential", credential_id="c", model="gpt-6-luna", parameters={})
+CLEANING = "Tiếp nhận phản ánh vệ sinh khu vực chung, đánh giá phạm vi dọn dẹp và chuyển điều phối"
 
 
-def existing_agent(agent_id="old-hotel", *, tools=TOOLS[:1]):
-    return AgentRecord(
-        id=agent_id,
-        user_id="user",
-        data=AgentData(
-            name="Existing hotel specialist",
-            system_prompt="Use verified room inventory and hotel policies to find suitable accommodation.",
-            context_config=console._FIXED_CONTEXT,
-            react_config=console._FIXED_REACT,
-            invite_config=InviteConfig(
-                invitable=True, invite_description="Search available hotel rooms"
-            ),
-            lifecycle_state="published",
-            build_description="Search hotel rooms",
-            tool_bindings=[tool.model_dump() for tool in tools],
-            knowledge_base_ids=[kb.id for kb in KBS],
-            execution_mode="tool_backed" if tools else "context_only",
-            generated_skill="# Workflow\n\nSearch available rooms and explain the verified hotel cancellation policies.",
-        ),
-    )
+def existing(agent_id, name, objective, tools=(), state="published"):
+    return AgentRecord(id=agent_id, user_id="u", source="user", data=AgentData(
+        name=name, system_role="business", lifecycle_state=state, build_description=objective,
+        system_prompt="Bạn là " + name, context_config=ContextConfig(), react_config=ReActConfig(),
+        spec={"name": name, "tools": [{"tool_id": tool, "mcp_id": "m", "tool_name": tool.split(":")[1]} for tool in tools]}))
 
 
-def reused_plan(record):
-    return console.PlannedAgentView(
-        name="Hotel",
-        objective="Search hotel rooms",
-        suggested_tools=TOOLS[:1],
-        suggested_knowledge_bases=KBS,
-        reuse_agent_id=record.id,
-        reuse_agent_name=record.data.name,
-        reuse_agent_fingerprint=console._agent_fingerprint(record),
-        reuse_probability=0.95,
-    )
+def test_similar_agents_are_found_by_job_or_by_tools():
+    agents = [existing("a1", "Agent Vệ Sinh", CLEANING),
+              existing("a2", "Agent An Ninh", "Xử lý sự việc an ninh, người lạ", tools=["m:vh_ticket_get", "m:vh_guard"])]
+    same_job = console._similar_agent("Tiếp nhận phản ánh vệ sinh khu vực chung và đánh giá phạm vi dọn dẹp", set(), agents)
+    assert (same_job.agent_id, same_job.published) == ("a1", True) and same_job.score >= 0.4
+    same_tools = console._similar_agent("Bảo vệ tòa nhà", {"m:vh_guard", "m:vh_ticket_get"}, agents)
+    assert same_tools.agent_id == "a2" and same_tools.score == 1.0
+    assert console._similar_agent("Báo cáo doanh thu hằng ngày cho kế toán", set(), agents) is None
 
 
-class TestBuilderReuse(IsolatedAsyncioTestCase):
-    async def _reuse(self, outline, records, probabilities=None):
-        classifier = _Classifier(probabilities=probabilities)
-        with patch.object(
-            console, "_builder_classifier", AsyncMock(return_value=classifier)
-        ):
-            result = await console._reuse_builder_agents(
-                outline, records, TOOLS, KBS, object(), "user", "Find hotel rooms and explain hotel policies"
-            )
-        return result, classifier
+def _run(decisions, generated, records):
+    planned = console.ProposalView(
+        conversation_id="b1", status="needs_input", assistant_message="Dàn ý", chat_model_config=CONFIG, fixed_config={},
+        planned_agents=[console.PlannedAgentView(name="Vệ Sinh", objective=CLEANING, similar=console.SimilarAgentView(
+            agent_id="a1", name="Agent Vệ Sinh", score=0.8, published=True))])
+    message = AssistantMsg(name="builder", content="Dàn ý", structured_output={"workforce_builder_proposal": planned.model_dump(mode="json")})
+    generate = AsyncMock(return_value=(console.BuilderGeneration(agents=generated), 10, 10))
+    seen = {}
 
-    async def test_reuse_threshold_and_existing_resources(self):
-        record = existing_agent()
-        outline = console.BuilderOutline(agents=[OUTLINE.agents[1]])
-        for probability, expected in [(0.8, record.id), (0.79, None), (0.5, None)]:
-            with self.subTest(probability=probability):
-                result, classifier = await self._reuse(
-                    outline, [record], {"reuse_0_0": probability}
-                )
-                self.assertEqual(result.agents[0].reuse_agent_id, expected)
-                self.assertEqual(
-                    result.agents[0].suggested_tool_ids,
-                    [TOOLS[0].id] if expected else [],
-                )
-                self.assertEqual(
-                    result.agents[0].suggested_knowledge_base_ids,
-                    ["policy"] if expected else [],
-                )
-                classifier.client.aclose.assert_awaited_once()
-        self.assertIsNone(outline.agents[0].reuse_agent_id)
+    async def evaluate(item, *_args, **_kw):
+        item.spec = {"name": item.name}
+        item.evaluation["passed"] = True
 
-    async def test_reuse_judgment_receives_request_and_actual_agent_instructions(self):
-        record = existing_agent()
-        _, classifier = await self._reuse(OUTLINE, [record])
-        state, questions = classifier.calls[0]
-        self.assertEqual(state["request"], "Find hotel rooms and explain hotel policies")
-        self.assertEqual(state["existing_agents"][0]["system_prompt"], record.data.system_prompt)
-        self.assertEqual(state["existing_agents"][0]["skill_markdown"], record.data.generated_skill)
-        self.assertIsNotNone(questions["reuse_0_0"].criteria)
+    async def persist(_storage, _user, _session, _message, proposal):
+        seen["proposal"] = proposal
 
-    async def test_optional_kb_does_not_mark_accepted_reuse_as_missing_resources(self):
-        record = existing_agent()
-        record.data.knowledge_base_ids = []
-        outline = console.BuilderOutline(agents=[console.PlannedAgent(
-            name="Hotel", objective="Search hotel rooms",
-            tool_requirements=["Search hotel rooms"],
-            knowledge_requirements=["Internal booking policy, if any"],
-        )])
-        selected, _ = await self._reuse(outline, [record])
-        console._validate_resource_selection(selected, TOOLS, KBS)
-        self.assertEqual(selected.agents[0].reuse_agent_id, record.id)
-        self.assertEqual(selected.agents[0].missing_resources, [])
+    storage = SimpleNamespace(list_agents=AsyncMock(return_value=records))
+    with patch.multiple(console,
+                        _list_all_builder_messages=AsyncMock(return_value=[message]),
+                        _catalog=AsyncMock(return_value=[]), _library=AsyncMock(return_value=({}, {})),
+                        get_model=AsyncMock(), _prepare_builder_memory=AsyncMock(return_value="Hội thoại"),
+                        _generate=generate, _record_builder_prompt_measurement=AsyncMock(),
+                        _evaluate_proposed_agent=evaluate, _persist_builder_turn=persist):
+        result = asyncio.run(console._prepare_builder(
+            console.PrepareRequest(message="Tôi xác nhận", chat_model_config=CONFIG, confirm_outline=True, decisions=decisions),
+            "u", storage, object(), SimpleNamespace(id="b1"), None))
+    return result, generate
 
-    async def test_same_existing_agent_collapses_two_plan_entries(self):
-        outline = OUTLINE.model_copy(deep=True)
-        outline.agents[0].objective = "Explain hotel cancellation policies"
-        result, _ = await self._reuse(outline, [existing_agent()])
-        self.assertEqual(len(result.agents), 1)
-        self.assertIn("Explain hotel cancellation policies", result.agents[0].objective)
-        self.assertIn("Search hotel rooms", result.agents[0].objective)
-        self.assertEqual(result.agents[0].tool_requirements, ["Search hotel rooms"])
-        console._validate_resource_selection(result, TOOLS, KBS)
 
-    async def test_highest_probability_wins_and_equal_scores_are_stable(self):
-        outline = console.BuilderOutline(agents=[OUTLINE.agents[1]])
-        records = [existing_agent("b"), existing_agent("a")]
-        for probabilities, expected in [
-            ({"reuse_0_0": 0.8, "reuse_0_1": 0.99}, "b"),
-            ({"reuse_0_0": 0.9, "reuse_0_1": 0.9}, "a"),
-        ]:
-            result, _ = await self._reuse(outline, records, probabilities)
-            self.assertEqual(result.agents[0].reuse_agent_id, expected)
+def agent(name):
+    return console.GeneratedAgent(name=name, objective=CLEANING, system_prompt="Bạn đánh giá phạm vi vệ sinh " * 3,
+                                  needs_tools=False, skill_name="ve-sinh", skill_markdown="# Vệ sinh\nLàm việc an toàn.")
 
-    async def test_missing_or_resource_mismatched_reused_agent_is_rejected(self):
-        record = existing_agent()
-        plan = reused_plan(record)
-        for stored in [None, record]:
-            if stored:
-                plan.suggested_tools = []
-            with self.assertRaises(HTTPException) as error:
-                await console._check_reused_agents(
-                    [plan],
-                    SimpleNamespace(get_agent=AsyncMock(return_value=stored)),
-                    "user",
-                    TOOLS,
-                    KBS,
-                )
-            self.assertEqual(error.exception.status_code, 409)
 
-    async def test_two_existing_agents_cannot_claim_same_tool(self):
-        records = [existing_agent("a"), existing_agent("b")]
-        result, _ = await self._reuse(
-            OUTLINE,
-            records,
-            {
-                "reuse_0_0": 0.99,
-                "reuse_0_1": 0.1,
-                "reuse_1_0": 0.1,
-                "reuse_1_1": 0.99,
-            },
-        )
-        self.assertEqual([agent.reuse_agent_id for agent in result.agents], ["a", None])
+def test_an_undecided_similar_agent_stops_generation():
+    with pytest.raises(HTTPException) as exc:
+        _run({}, [agent("Vệ Sinh")], [existing("a1", "Agent Vệ Sinh", CLEANING)])
+    assert exc.value.status_code == 409 and "Vệ Sinh" in exc.value.detail
 
-    async def test_unavailable_agents_are_excluded_and_llm_reuse_is_ignored(self):
-        records = []
-        for field, value in [
-            ("lifecycle_state", "draft"),
-            ("lifecycle_state", "withdrawn"),
-            ("system_role", "leader"),
-            ("knowledge_base_ids", ["gone"]),
-            ("tool_bindings", [{"id": "missing"}]),
-        ]:
-            record = existing_agent()
-            setattr(record.data, field, value)
-            records.append(record)
-        record = existing_agent()
-        record.data.invite_config.invitable = False
-        records.append(record)
-        record = existing_agent()
-        record.user_id = "other"
-        records.append(record)
-        outline = OUTLINE.model_copy(deep=True)
-        outline.agents[0].reuse_agent_id = "injected"
-        outline.agents[0].suggested_tool_ids = ["injected"]
-        result, classifier = await self._reuse(outline, records)
-        self.assertTrue(all(agent.reuse_agent_id is None for agent in result.agents))
-        self.assertEqual(result.agents[0].suggested_tool_ids, [])
-        self.assertEqual(classifier.calls, [])
-        self.assertNotIn(
-            "reuse_agent_id", console.PlannedAgent.model_json_schema()["properties"]
-        )
 
-    async def test_context_only_candidate_cannot_cover_required_operations(self):
-        result, classifier = await self._reuse(OUTLINE, [existing_agent(tools=[])])
-        self.assertEqual(result.agents[0].reuse_agent_id, "old-hotel")
-        self.assertIsNone(result.agents[1].reuse_agent_id)
-        self.assertEqual(list(classifier.calls[0][1]), ["reuse_0_0"])
+def test_reuse_keeps_the_existing_agent_and_does_not_generate_a_copy():
+    result, generate = _run({"Vệ Sinh": "reuse"}, [agent("Vệ Sinh")], [existing("a1", "Agent Vệ Sinh", CLEANING)])
+    assert [(item.name, item.reuse_agent_id) for item in result.agents] == [("Agent Vệ Sinh", "a1")]
+    assert result.status == "ready"
+    note = generate.await_args.args[0]
+    assert "Do not generate 'Vệ Sinh'" in note and "EXISTING AGENTS" in note
 
-    async def test_jev_failure_keeps_new_agents(self):
-        with patch.object(
-            console,
-            "_builder_classifier",
-            AsyncMock(side_effect=RuntimeError("offline")),
-        ):
-            result = await console._reuse_builder_agents(
-                OUTLINE, [existing_agent()], TOOLS, KBS, object(), "user", "Find hotel rooms"
-            )
-        self.assertEqual(result, OUTLINE)
 
-    async def test_preview_reserves_reused_tools_before_selecting_new_agents(self):
-        record = existing_agent()
-        selected = console.BuilderOutline(
-            agents=[OUTLINE.agents[0].model_copy(deep=True)]
-        )
-        selected.agents[0].suggested_knowledge_base_ids = ["policy"]
-        result = await resources.TestBuilderResources._prepare(
-            self,
-            approved(),
-            _Model({}),
-            confirm_outline=False,
-            existing=[record],
-            classifier=_Classifier(probabilities={"reuse_0_0": 0.1}),
-            selection=(selected, "llm"),
-        )
-        self.assertIsNone(result.planned_agents[0].reuse_agent_id)
-        self.assertEqual(result.planned_agents[1].reuse_agent_id, record.id)
-        self.assertEqual(result.resource_selection, "hybrid")
-        self.assertIn("new agents needed: 1", result.assistant_message)
+def test_update_publishes_a_new_version_of_the_existing_agent():
+    result, generate = _run({"Vệ Sinh": "update"}, [agent("Agent Vệ Sinh")], [existing("a1", "Agent Vệ Sinh", CLEANING)])
+    [item] = result.agents
+    assert (item.update_agent_id, item.update_agent_name, item.reuse_agent_id) == ("a1", "Agent Vệ Sinh", None)
+    assert "keeping the name 'Agent Vệ Sinh'" in generate.await_args.args[0]
 
-    async def test_all_reused_skips_resource_selection_and_generation(self):
-        record = existing_agent()
-        preview = await resources.TestBuilderResources._prepare(
-            self,
-            approved(),
-            _Model({}),
-            confirm_outline=False,
-            existing=[record],
-            classifier=_Classifier(),
-            message="Tạo nhóm trợ lý du lịch",
-        )
-        self.assertEqual(len(preview.planned_agents), 1)
-        self.assertIn("đã đủ nghiệp vụ", preview.assistant_message)
-        self.assertIn("Không cần tạo agent mới", preview.assistant_message)
-        self.assertEqual(preview.planned_agents[0].reuse_agent_id, record.id)
-        model = _Model({})
-        ready = await resources.TestBuilderResources._prepare(
-            self, preview, model, existing=[record], expected_revision=preview.revision
-        )
-        self.assertEqual(ready.status, "ready")
-        self.assertEqual(model.calls, [])
-        self.assertEqual(ready.agents[0].system_prompt, record.data.system_prompt)
-        self.assertEqual(ready.agents[0].skill_markdown, record.data.generated_skill)
 
-    async def test_mixed_confirmation_generates_only_new_agents(self):
-        record = existing_agent()
-        previous = approved()
-        previous.planned_agents[1] = reused_plan(record)
-        payload = generated()
-        payload["agents"] = payload["agents"][:1]
-        model = _Model(payload)
-        result = await resources.TestBuilderResources._prepare(
-            self, previous, model, existing=[record]
-        )
-        self.assertEqual(result.status, "ready")
-        self.assertEqual(
-            [agent.reuse_agent_id for agent in result.agents], [None, record.id]
-        )
-        self.assertEqual(len(model.calls), 1)
+def test_create_keeps_a_separate_new_agent():
+    result, _ = _run({"Vệ Sinh": "create"}, [agent("Vệ Sinh")], [existing("a1", "Agent Vệ Sinh", CLEANING)])
+    [item] = result.agents
+    assert (item.update_agent_id, item.reuse_agent_id) == (None, None)
 
-    async def test_changed_reused_agent_blocks_confirmation_before_model_call(self):
-        record = existing_agent()
-        previous = approved()
-        previous.planned_agents[1] = reused_plan(record)
-        record.data.system_prompt += " Changed"
-        model = _Model(generated())
-        with self.assertRaises(HTTPException) as error:
-            await resources.TestBuilderResources._prepare(
-                self, previous, model, existing=[record]
-            )
-        self.assertEqual(error.exception.status_code, 409)
-        self.assertEqual(model.calls, [])
 
-    async def _publish(self, proposal, record):
-        storage = SimpleNamespace(
-            get_session=AsyncMock(return_value=object()),
-            get_agent=AsyncMock(return_value=record),
-            list_messages=AsyncMock(
-                return_value=(
-                    [
-                        AssistantMsg(
-                            "builder",
-                            "Ready",
-                            structured_output={
-                                "workforce_builder_proposal": proposal.model_dump()
-                            },
-                        )
-                    ],
-                    False,
-                )
-            ),
-            upsert_agent=AsyncMock(),
-            upsert_message=AsyncMock(),
-        )
-        workspace = SimpleNamespace(get_workspace=AsyncMock())
-        with (
-            patch.object(console, "_catalog", AsyncMock(return_value=TOOLS)),
-            patch.object(console, "_knowledge_catalog", AsyncMock(return_value=KBS)),
-        ):
-            result = await console.publish_builder(
-                console.PublishRequest(
-                    conversation_id="builder",
-                    proposal_id=proposal.proposal_id,
-                    expected_revision=proposal.revision,
-                ),
-                user_id="user",
-                storage=storage,
-                access=object(),
-                workspace_manager=workspace,
-            )
-        storage.upsert_agent.assert_not_awaited()
-        workspace.get_workspace.assert_not_awaited()
-        return result
+def test_publishing_an_update_adds_a_version_to_the_existing_agent_and_reuse_creates_nothing():
+    from datetime import UTC, datetime
 
-    async def test_publish_returns_existing_id_without_changing_agent(self):
-        record = existing_agent()
-        previous = approved()
-        previous.planned_agents = [reused_plan(record)]
-        proposal = await resources.TestBuilderResources._prepare(
-            self, previous, _Model({}), existing=[record]
-        )
-        before = record.model_dump()
-        result = await self._publish(proposal, record)
-        self.assertEqual(
-            [(item.agent_id, item.reused) for item in result.agents],
-            [(record.id, True)],
-        )
-        self.assertEqual(record.model_dump(), before)
-        record.data.invite_config.invitable = False
-        with self.assertRaises(HTTPException) as error:
-            await self._publish(proposal, record)
-        self.assertEqual(error.exception.status_code, 409)
+    from agentscope.app._agent_spec import AgentSpec, SpecTest, spec_hash
+    from agentscope.app._service._publish_gate import EVALUATOR, seal_report
 
-    async def test_new_plan_cannot_switch_to_reuse_after_generation(self):
-        record = existing_agent()
-        proposal = await resources.TestBuilderResources._prepare(
-            self, approved(), _Model(generated()), existing=[record]
-        )
-        self.assertTrue(all(agent.reuse_agent_id is None for agent in proposal.agents))
-        proposal.agents[1].reuse_agent_id = record.id
-        with self.assertRaises(HTTPException) as error:
-            await self._publish(proposal, record)
-        self.assertEqual(error.exception.status_code, 409)
+    spec = AgentSpec(name="Agent Vệ Sinh", tests=[SpecTest(id=f"t{n}", scenario=f"Hỏi {n}", expected="An toàn",
+                                                          safety_critical=n == 0) for n in range(5)])
+    report = seal_report(spec, {"spec_hash": spec_hash(spec), "evaluator": EVALUATOR, "ran_at": datetime.now(UTC).isoformat(),
+        "total": 5, "passed": 5, "pass_rate": 1., "errors": 0, "model_error": None,
+        "results": [{"test_id": t.id, "passed": True, "model_evaluated": True, "judge": {"passed": True}, "checks": [],
+                     "error": None} for t in spec.tests]})
+    old = existing("a1", "Agent Vệ Sinh", CLEANING)
+    old.data.invite_config.invitable = True
+    guard = existing("a2", "Agent An Ninh", "An ninh")
+    guard.data.invite_config.invitable = True
+    update = console.ProposedAgentView(name="Agent Vệ Sinh", objective=CLEANING, system_prompt="Bạn " * 20,
+        selected_tools=[], skill_name="", skill_markdown="", spec=spec.model_dump(mode="json"),
+        evaluation={"passed": True, "checks": {"static": True}, "model_report": report},
+        update_agent_id="a1", update_agent_name="Agent Vệ Sinh")
+    reuse = console.ProposedAgentView(name="Agent An Ninh", objective="An ninh", system_prompt="x", selected_tools=[],
+        skill_name="", skill_markdown="", evaluation={"passed": True, "checks": {}, "reused": True},
+        reuse_agent_id="a2", reuse_agent_name="Agent An Ninh")
+    proposal = console.ProposalView(conversation_id="b1", proposal_id="p1", revision=1, status="ready",
+        assistant_message="ok", chat_model_config=CONFIG, fixed_config={}, agents=[update, reuse])
+    message = AssistantMsg(name="builder", content="ok", structured_output={"workforce_builder_proposal": proposal.model_dump(mode="json")})
+    saved = []
+    storage = SimpleNamespace(get_session=AsyncMock(return_value=object()), list_messages=AsyncMock(return_value=([message], False)),
+        get_agent=AsyncMock(side_effect=lambda _u, agent_id: {"a1": old, "a2": guard}[agent_id]),
+        claim_builder_publish=AsyncMock(return_value=True), upsert_message=AsyncMock(),
+        upsert_agent=AsyncMock(side_effect=lambda _u, record: saved.append(record)))
+    with patch.object(console, "_primary_session", AsyncMock(return_value=SimpleNamespace(id="s1"))), \
+         patch("agentscope.app._service._agent_studio.apply_bindings", AsyncMock()):
+        result = asyncio.run(console.publish_builder(console.PublishRequest(conversation_id="b1", proposal_id="p1",
+                                                                           expected_revision=1), SimpleNamespace(), "u", storage, object()))
+    assert [(a.agent_id, a.updated, a.reused) for a in result.agents] == [("a1", True, False), ("a2", False, True)]
+    [record] = saved
+    assert record.id == "a1" and record.data.lifecycle_state == "published" and record.data.published_version >= 1
+
+
+def test_only_passed_publishes_the_passing_agents_and_keeps_the_rest_to_fix():
+    from datetime import UTC, datetime
+
+    from agentscope.app._agent_spec import AgentSpec, SpecTest, spec_hash
+    from agentscope.app._service._publish_gate import EVALUATOR, seal_report
+
+    spec = AgentSpec(name="Agent Vệ Sinh", tests=[SpecTest(id=f"t{n}", scenario=f"Hỏi {n}", expected="An toàn",
+                                                          safety_critical=n == 0) for n in range(5)])
+    report = seal_report(spec, {"spec_hash": spec_hash(spec), "evaluator": EVALUATOR, "ran_at": datetime.now(UTC).isoformat(),
+        "total": 5, "passed": 5, "pass_rate": 1., "errors": 0, "model_error": None,
+        "results": [{"test_id": t.id, "passed": True, "model_evaluated": True, "judge": {"passed": True}, "checks": [],
+                     "error": None} for t in spec.tests]})
+    old = existing("a1", "Agent Vệ Sinh", CLEANING)
+    passing = console.ProposedAgentView(name="Agent Vệ Sinh", objective=CLEANING, system_prompt="Bạn " * 20,
+        selected_tools=[], skill_name="", skill_markdown="", spec=spec.model_dump(mode="json"),
+        evaluation={"passed": True, "checks": {"static": True}, "model_report": report},
+        update_agent_id="a1", update_agent_name="Agent Vệ Sinh")
+    failing = console.ProposedAgentView(name="Agent Đặt Phòng", objective="Đặt phòng", system_prompt="Bạn " * 20,
+        selected_tools=[], skill_name="", skill_markdown="", spec={"name": "Agent Đặt Phòng"},
+        evaluation={"passed": False, "checks": {"static": True}, "publish_blocker": "Kiểm thử đạt 3/5"})
+    proposal = console.ProposalView(conversation_id="b1", proposal_id="p1", revision=1, status="blocked",
+        assistant_message="ok", chat_model_config=CONFIG, fixed_config={}, agents=[passing, failing])
+    message = AssistantMsg(name="builder", content="ok", structured_output={"workforce_builder_proposal": proposal.model_dump(mode="json")})
+    saved = []
+    storage = SimpleNamespace(get_session=AsyncMock(return_value=object()), list_messages=AsyncMock(return_value=([message], False)),
+        get_agent=AsyncMock(return_value=old), claim_builder_publish=AsyncMock(return_value=True), upsert_message=AsyncMock(),
+        upsert_agent=AsyncMock(side_effect=lambda _u, record: saved.append(record)))
+
+    def publish(only_passed):
+        return asyncio.run(console.publish_builder(console.PublishRequest(conversation_id="b1", proposal_id="p1",
+            expected_revision=1, only_passed=only_passed), SimpleNamespace(), "u", storage, object()))
+
+    with patch.object(console, "_primary_session", AsyncMock(return_value=SimpleNamespace(id="s1"))), \
+         patch("agentscope.app._service._agent_studio.apply_bindings", AsyncMock()):
+        with pytest.raises(HTTPException) as exc:
+            publish(False)
+        assert exc.value.status_code == 409 and not saved
+        result = publish(True)
+    assert [(a.agent_id, a.updated) for a in result.agents] == [("a1", True)]
+    assert [record.id for record in saved] == ["a1"]
+    kept = console.ProposalView.model_validate(
+        storage.upsert_message.await_args.args[2].structured_output["workforce_builder_proposal"])
+    assert kept.status == "blocked" and kept.proposal_id != "p1" and kept.revision == 2
+    assert [(item.name, item.reuse_agent_id) for item in kept.agents] == [("Agent Vệ Sinh", "a1"), ("Agent Đặt Phòng", None)]
+    assert "Agent Đặt Phòng" in storage.upsert_message.await_args.args[2].get_text_content()
+
+
+def test_the_library_note_stays_valid_json_and_counts_what_it_leaves_out():
+    import json
+
+    skills = {f"s{n}": {"skill_id": f"s{n}", "name": f"Skill {n}", "description": "mô tả " * 200, "markdown": "x" * 5000}
+              for n in range(40)}
+    note = console._library_note({}, skills)
+    listing = note.split("Library skills (reuse by skill_id):\n")[1]
+    shown, _, rest = listing.partition(" (+")
+    entries = json.loads(shown)
+    assert entries and all("markdown" not in entry and len(entry["description"]) <= 300 for entry in entries)
+    assert rest.startswith(f"{40 - len(entries)} more not shown")
+
+
+def _failing_proposal(round_=0):
+    tests = [{"scenario": f"Ca {n}", "expected": "An toàn", "safety_critical": n == 0} for n in range(5)]
+    report = {"pass_rate": 0.4, "results": [{"scenario": "Ca 1", "expected": "Tra phiếu", "passed": False,
+               "judge": {"reason": "Không tra phiếu", "criteria": [{"name": "task_completion", "passed": False, "reason": "x"}]},
+               "answer": "Mình chưa rõ", "tool_calls": []}]}
+    item = console.ProposedAgentView(name="Agent Vệ Sinh", objective=CLEANING, system_prompt="Cũ " * 40, selected_tools=[],
+        skill_name="ve-sinh", skill_markdown="# Vệ sinh", tests=tests, spec={"name": "Agent Vệ Sinh"},
+        evaluation={"passed": False, "checks": {"static": True}, "model_report": report,
+                    **({"repair": {"round": round_}} if round_ else {})})
+    return console.ProposalView(conversation_id="b1", proposal_id="p1", revision=4, status="blocked", assistant_message="",
+        chat_model_config=CONFIG, fixed_config={}, agents=[item])
+
+
+def _repair(proposal, plan):
+    message = AssistantMsg(name="builder", content="", structured_output={"workforce_builder_proposal": proposal.model_dump(mode="json")})
+    seen = {}
+
+    async def evaluate(item, *_args, **_kw):
+        seen["spec"] = dict(item.spec)
+        item.evaluation["passed"] = True
+
+    async def persist(_s, _u, _sid, _m, saved):
+        seen["saved"] = saved
+
+    progress = SimpleNamespace(stage=AsyncMock(), finish=AsyncMock(), fail=AsyncMock())
+    storage = SimpleNamespace(get_session=AsyncMock(return_value=SimpleNamespace(id="b1")))
+    with patch.multiple(console, _list_all_builder_messages=AsyncMock(return_value=[message]), get_model=AsyncMock(),
+                        _builder_structured_call=AsyncMock(return_value=(SimpleNamespace(content=plan), 1, 1)),
+                        _evaluate_proposed_agent=evaluate, _persist_builder_turn=persist), \
+         patch("agentscope.app._service._eval_progress.EvalProgress", return_value=progress):
+        result = asyncio.run(console.repair_builder(console.PublishRequest(conversation_id="b1", proposal_id="p1",
+                                                                         expected_revision=4), "u", storage, object()))
+    return result, seen
+
+
+def test_repair_corrects_the_prompt_and_evaluates_again_without_publishing():
+    plan = {"explanation": "Agent không tra phiếu; đã thêm luật tra phiếu trước khi trả lời.",
+            "system_prompt": "Bạn là Agent Vệ Sinh. Luôn tra phiếu bằng công cụ trước khi trả lời. " * 3,
+            "tests": [{"scenario": "Ca 1", "expected": "x", "safety_critical": False}]}  # weakens safety: ignored
+    result, seen = _repair(_failing_proposal(), plan)
+    [item] = result.agents
+    assert "Luôn tra phiếu" in item.system_prompt and seen["spec"] == {}
+    assert len(item.tests) == 5 and item.tests[0]["safety_critical"]
+    assert item.evaluation["repair"] == {"round": 1, "explanation": plan["explanation"], "changed": ["prompt"],
+                                         "previous_pass_rate": 0.4}
+    assert (result.status, result.revision) == ("ready", 5) and seen["saved"] is result
+
+
+def test_repair_stops_after_the_allowed_rounds():
+    with pytest.raises(HTTPException) as exc:
+        _repair(_failing_proposal(round_=2), {"explanation": "x"})
+    assert exc.value.status_code == 409

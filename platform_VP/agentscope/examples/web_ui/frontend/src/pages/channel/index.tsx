@@ -1,6 +1,7 @@
 import { Cable, Plus } from 'lucide-react';
 import * as React from 'react';
 
+import { DiscordIdentityPanel } from './discord-identity';
 import type { ChannelRecord, ChannelStatus, ChannelTypeSchema } from '@/api';
 import { channelApi } from '@/api';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -23,6 +24,8 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { useCurrentUser } from '@/context/CurrentUserContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useAgents } from '@/hooks/useAgents';
 import { useChannels } from '@/hooks/useChannels';
 import { useTranslation } from '@/i18n/useI18n';
@@ -131,9 +134,11 @@ function ChannelTypeCard({ type, onPick }: { type: ChannelTypeSchema; onPick: ()
 }
 
 export function ChannelPage() {
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
+	const isMobile = useIsMobile();
 	const { t } = useTranslation();
 	const { channels, loading, refetch, enable, disable, remove } = useChannels();
-	const { agents } = useAgents();
+	const { runnable: agents } = useAgents();
 	const [types, setTypes] = React.useState<ChannelTypeSchema[]>([]);
 	const [createType, setCreateType] = React.useState<string | null>(null);
 	const [editTarget, setEditTarget] = React.useState<ChannelRecord | null>(null);
@@ -193,19 +198,29 @@ export function ChannelPage() {
 		`${typeOf(ch.channel_type)?.display_name ?? ch.channel_type} · ${ch.id.slice(0, 8)}`;
 	// Derived from the live list so an edited/deleted selection stays in sync.
 	const selected = channels.find((c) => c.id === selectedId) ?? null;
+	const detail = selected && <ChannelDetailPanel
+		channel={selected}
+		type={typeOf(selected.channel_type)}
+		status={statuses[selected.id]}
+		agentName={agentName}
+		onEdit={() => setEditTarget(selected)}
+		onDelete={() => setDeleteTarget(selected)}
+		onClose={() => setSelectedId(null)}
+	/>;
 
 	return (
-		<div className="flex size-full p-2">
-			<ResizablePanelGroup orientation="horizontal">
-				<ResizablePanel minSize="24rem">
-					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
-						<div className="px-6 pt-5 pb-4">
-							<div className="text-2xl font-semibold">{t('channel.title')}</div>
-							<div className="mt-1 text-sm text-muted-foreground">
+		<div className="flex size-full">
+			{isMobile && selected ? <div className="min-w-0 flex-1">{detail}</div> : <ResizablePanelGroup orientation="horizontal">
+				<ResizablePanel minSize={isMobile ? '0' : '24rem'}>
+					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+						<div className="px-4 pt-3 pb-3">
+							<div className="text-[17px]/6 font-semibold">{t('channel.title')}</div>
+							<div className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
 								{t('channel.subtitle')}
 							</div>
 						</div>
 						<Separator />
+						{privateAccount && <DiscordIdentityPanel />}
 
 						<div className="flex-1 overflow-y-auto px-6 py-6">
 							{loading ? (
@@ -281,23 +296,15 @@ export function ChannelPage() {
 						</div>
 					</main>
 				</ResizablePanel>
-				{selected && (
+				{selected && !isMobile && (
 					<>
-						<ResizableHandle withHandle className="w-2 bg-transparent" />
+						<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 						<ResizablePanel defaultSize="26rem" minSize="22rem">
-							<ChannelDetailPanel
-								channel={selected}
-								type={typeOf(selected.channel_type)}
-								status={statuses[selected.id]}
-								agentName={agentName}
-								onEdit={() => setEditTarget(selected)}
-								onDelete={() => setDeleteTarget(selected)}
-								onClose={() => setSelectedId(null)}
-							/>
+							{detail}
 						</ResizablePanel>
 					</>
 				)}
-			</ResizablePanelGroup>
+			</ResizablePanelGroup>}
 
 			<CreateChannelDialog
 				open={createType !== null}

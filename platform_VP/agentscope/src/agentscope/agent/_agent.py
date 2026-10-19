@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The unified agent class in AgentScope library."""
+from ..model._call_observer import usage_purpose
 import asyncio
 import collections
 import json
@@ -487,6 +488,7 @@ class Agent:
             state=ToolResultState.SUCCESS,
         )
 
+    @usage_purpose("private_summary")
     async def _compress_context_impl(
         self,
         context_config: ContextConfig | None = None,
@@ -3220,9 +3222,6 @@ class Agent:
         # Skill related instructions
         skill_instructions = await self.toolkit.get_skill_instructions(
             self.state.tool_context.activated_groups,
-            loaded_skills=self.state.middle_context.get(
-                "skill_viewer.loaded_skills", [],
-            ),
         )
         if skill_instructions:
             prompt.append(skill_instructions)

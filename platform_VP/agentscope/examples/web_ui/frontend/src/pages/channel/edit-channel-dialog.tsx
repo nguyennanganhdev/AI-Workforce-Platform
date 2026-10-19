@@ -15,13 +15,13 @@ import {
 } from '@/components/ui/dialog';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
+import { ChannelForm } from '@/pages/channel/channel-form';
 import {
-	ChannelForm,
 	channelFormFromRecord,
 	defaultChannelForm,
 	isChannelFormValid,
 	toUpdateRequest,
-} from '@/pages/channel/channel-form';
+} from '@/pages/channel/channel-form-utils';
 
 interface Props {
 	channel: ChannelRecord | null;
@@ -32,7 +32,7 @@ interface Props {
 
 export function EditChannelDialog({ channel, open, onOpenChange, onUpdated }: Props) {
 	const { t } = useTranslation();
-	const { agents } = useAgents();
+	const { runnable: agents } = useAgents();
 	const [form, setForm] = React.useState(defaultChannelForm);
 	const [channelTypes, setChannelTypes] = React.useState<ChannelTypeSchema[]>([]);
 	const [loading, setLoading] = React.useState(false);
@@ -68,13 +68,13 @@ export function EditChannelDialog({ channel, open, onOpenChange, onUpdated }: Pr
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[560px] !max-w-[560px]">
+			<DialogContent className="w-[calc(100%-2rem)] max-w-[560px]">
 				<DialogHeader>
 					<DialogTitle>{t('channel.edit.title')}</DialogTitle>
 					<DialogDescription>{t('channel.edit.description')}</DialogDescription>
 				</DialogHeader>
 
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4 pt-1">
+				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6 pt-1">
 					<ChannelForm
 						mode="edit"
 						value={form}

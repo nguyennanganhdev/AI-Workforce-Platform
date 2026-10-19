@@ -2,7 +2,7 @@
 """Session router — create, list, update, delete, stream, and get messages."""
 import asyncio
 import json
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -31,6 +31,7 @@ from ._schema import (
     TeamMemberView,
     UpdateSessionRequest,
 )
+from ._personal_chat import personal_chat_router
 from ..message_bus import MessageBus, MessageBusKeys
 from .._service import (
     AgentView,
@@ -54,6 +55,7 @@ from ..storage import (
 from ...message import ToolCallState
 from ...state import ToolContext
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
+from ..storage._model._session import PersonalChatConfig
 from ...event import CustomEvent
 from ..workspace_manager import WorkspaceManagerBase
 
@@ -197,6 +199,7 @@ async def list_sessions(
     storage: StorageBase = Depends(get_storage),
     access: ResourceAccessService = Depends(get_resource_access_service),
     message_bus: MessageBus = Depends(get_message_bus),
+    scope: Literal["leader", "leader_tests"] | None = Query(default=None),
 ) -> ListSessionsResponse:
     """Return all sessions for an agent as enriched
     :class:`SessionView` entries.
@@ -241,6 +244,13 @@ async def list_sessions(
     sessions = await storage.list_sessions(user_id, agent_id)
     views: list[SessionView] = []
     for session in sessions:
+        if session.state.middle_context.get("management_case_session_id"):
+            continue
+        if scope in {"leader", "leader_tests"}:
+            from .._session_scope import is_leader_case_session, is_leader_test_session
+            predicate = is_leader_case_session if scope == "leader" else is_leader_test_session
+            if not predicate(session):
+                continue
         team_detail = None
         if session.team_id:
             team_record = await storage.get_team(user_id, session.team_id)
@@ -251,26 +261,6 @@ async def list_sessions(
                     user_id,
                     team_record,
                 )
-                if team_record.session_id != session.id:
-                    leader_session = await storage.get_session(
-                        user_id,
-                        "",
-                        team_record.session_id,
-                    )
-                    if leader_session is not None:
-                        shared_model = (
-                            leader_session.config.sub_agent_chat_model_config
-                        )
-                        if shared_model is not None:
-                            session = session.model_copy(
-                                update={
-                                    "config": session.config.model_copy(
-                                        update={
-                                            "chat_model_config": shared_model,
-                                        }
-                                    ),
-                                }
-                            )
         is_running = await message_bus.is_locked(
             MessageBusKeys.session_lock(session.id),
         )
@@ -345,18 +335,7 @@ async def create_session(
     # Agent must be visible to the caller (own or shared).
     agent_record = await access.resolve_agent(user_id, body.agent_id)
 
-    knowledge_config = body.knowledge_config
-    default_knowledge_ids = getattr(agent_record.data, "knowledge_base_ids", [])
-    if "knowledge_config" not in body.model_fields_set and default_knowledge_ids:
-        knowledge_config = SessionKnowledgeConfig(
-            knowledge_base_ids=default_knowledge_ids,
-            parameters={"mode": "agentic"},
-        )
-
     await _ensure_credential_exists(access, user_id, body.chat_model_config)
-    await _ensure_credential_exists(
-        access, user_id, body.sub_agent_chat_model_config
-    )
     await _ensure_credential_exists(
         access,
         user_id,
@@ -366,13 +345,16 @@ async def create_session(
     await _ensure_knowledge_bases_exist(
         access,
         user_id,
-        knowledge_config,
+        body.knowledge_config,
     )
 
     # Builder bindings belong to the agent; MCP clients belong to each session.
     mcps: list[MCPClient] | None = None
     if (
-        getattr(agent_record.data, "execution_mode", None) is not None
+        (
+            getattr(agent_record.data, "execution_mode", None) is not None
+            or bool(getattr(agent_record.data, "spec", None))
+        )
         and agent_record.data.system_role == "business"
         and agent_record.source == "user"
     ):
@@ -408,11 +390,11 @@ async def create_session(
         agent_id=body.agent_id,
         config=SessionConfig(
             workspace_id=resolved_workspace_id,
+            personal_chat=PersonalChatConfig() if body.personal else None,
             chat_model_config=body.chat_model_config,
-            sub_agent_chat_model_config=body.sub_agent_chat_model_config,
             fallback_chat_model_config=body.fallback_chat_model_config,
             tts_model_config=body.tts_model_config,
-            knowledge_config=knowledge_config,
+            knowledge_config=body.knowledge_config,
             # A caller that named the session owns that name; anything
             # else starts on the creation timestamp and is the server's
             # to replace once the conversation says what it is about.
@@ -459,6 +441,7 @@ async def delete_session(
     agent_id: str = Query(description="Agent the session belongs to."),
     user_id: str = Depends(get_current_user_id),
     session_service: SessionService = Depends(get_session_service),
+    storage: StorageBase = Depends(get_storage),
 ) -> None:
     """Permanently delete a session and all its associated state.
 
@@ -478,6 +461,12 @@ async def delete_session(
         `HTTPException`: 404 if the session does not exist or does not belong
             to the authenticated user.
     """
+    existing = await storage.get_session(user_id, agent_id, session_id)
+    if existing is not None and existing.config.personal_chat is not None:
+        if existing.agent_id != agent_id or existing.user_id != user_id:
+            raise HTTPException(404, "Personal conversation not found")
+        if existing.config.personal_chat.kind == "group":
+            raise HTTPException(409, "Delete the personal group through its group endpoint")
     deleted = await session_service.delete_session(
         user_id,
         agent_id,
@@ -589,30 +578,7 @@ async def update_session(
             ),
         )
 
-    if (
-        "sub_agent_chat_model_config" in body.model_fields_set
-        and existing.team_id
-    ):
-        team = await storage.get_team(user_id, existing.team_id)
-        if team is not None:
-            if team.session_id != session_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Change the shared sub-agent model from the leader session.",
-                )
-            for member in await _ensure_team_members(storage, user_id, team):
-                if await message_bus.is_locked(
-                    MessageBusKeys.session_lock(member.session_id),
-                ):
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="Cannot modify the sub-agent model while a team member is running.",
-                    )
-
     await _ensure_credential_exists(access, user_id, body.chat_model_config)
-    await _ensure_credential_exists(
-        access, user_id, body.sub_agent_chat_model_config
-    )
     await _ensure_credential_exists(
         access,
         user_id,
@@ -1035,3 +1001,7 @@ async def stream_session_events(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# Personal routes use independent sessions, never operational team routing.
+session_router.include_router(personal_chat_router)

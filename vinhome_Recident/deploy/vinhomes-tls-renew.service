@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew Vinhomes TLS certificate and reload gateway after renewal
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vinhomes-renew-tls renew
+TimeoutStartSec=1800
+UMask=0077

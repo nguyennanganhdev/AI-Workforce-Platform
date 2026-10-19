@@ -160,85 +160,103 @@ class _TeamSayParams(ParamsBase):
     )
 
 
-_LEADER_DESCRIPTION = """Send a message to a specific team member or \
-broadcast to all members.
+_LEADER_DESCRIPTION = """Coordinate your team. Two kinds:
 
-## When to Use This Tool
-- Pass **new** requirements or context from the user to a specific member.
-- Broadcast an update or coordination message to all members.
-- Ask a member a follow-up question when you need clarification.
+- kind="handoff": give a member (to=<roster handle>) a new or changed task.
+  Write a self-contained brief in content and put the acceptance criteria in
+  done_when. Not needed right after AgentInvite: the invite already carries
+  the first task and members report back automatically.
+- kind="review": judge a member's report against its done_when.
+  decision="accept" (the runtime attaches the evidence), "challenge" (content
+  says exactly what is missing or wrong; the member redoes only that part) or
+  "stop" (content says what stays incomplete). Never closes the ticket.
 
-## When NOT to Use This Tool
-- DO NOT repeatedly call this to check on a member's progress — members \
-will automatically notify you via ``TeamSay`` when they finish their task. \
-Wait for their message instead of polling.
-- DO NOT repeat the primary assignment right after ``AgentInvite``. The primary \
-specialist receives its ``prompt`` as its task and reports back when done. \
-Other members receive role briefings and wait for a concrete TeamSay request. \
-- The session is not in a team yet (call ``TeamCreate`` first).
-- You want to talk to yourself — use your own reasoning.
-
-## Important
-- AgentInvite registers the full batch roster, then starts only the primary
-  specialist. Other members remain dormant until a concrete TeamSay question
-  or handoff wakes them. Check invitation results before relying on a member.
-- **DO NOT** reply to a member's report message unless you have further \
-questions or requirements. ``TeamSay`` is for coordination, not chit-chat — \
-your top priority is to complete the overall task.
-- The fixed Workforce Leader never asks for task-specific missing information.
-  Delegate intake to the responsible specialist; that specialist can ask the
-  customer directly and returns completed work for final synthesis.
-- Normal team work uses ``context_mode="task"`` and
-  ``result_scope="shared"`` so later members receive important results.
-  Use ``isolated`` only for an independent side question; it defaults to a
-  caller-only result. Use ``references`` with explicit source event ids when
-  the recipient needs only those sources. Put relevant facts/decisions and
-  superseded item ids in ``context_delta``; never put private reasoning there.
-- Use ``kind="handoff"`` for assignments and ``question``/``answer`` for a
-  linked peer exchange. Preserve ``thread_id`` and ``in_reply_to``; the runtime
-  caps one chain at 12 hops.
-- For ``requires_user_input``, you may provide a stable ``question_key``
-  describing the missing information. Otherwise the runtime deduplicates from
-  the normalized question text.
+Do not poll members or send chit-chat; reports arrive in your inbox.
+AgentInvite starts only the primary member; the others stay dormant until a
+teammate's question or your handoff wakes them. You never ask the customer
+task-specific questions: the responsible specialist asks the customer itself
+and returns completed work for your final synthesis.
 """
 
-_WORKER_DESCRIPTION = """Send an internal message to one team member.
+_WORKER_DESCRIPTION = """Talk to your team. You MUST end your assignment
+with kind="result" (your finished work) or kind="error" (what blocked you).
 
-## When to Use This Tool
-- When you finish, report to the assignment requester identified by the incoming
-  team-message, using its exact roster handle and original handoff_id when provided.
-  A peer question needs kind=answer with in_reply_to=that question's handoff_id.
-  A completed handoff needs kind=result/error. Report to Leader when Leader
-  assigned that work; do not send an extra copy just because Leader owns the
-  customer reply. Important outputs remain available through Shared Context.
-- A received answer/result supplies input to your original assignment. Continue
-  that work; do not acknowledge the response or change its requester to the
-  latest respondent.
-- If the runtime says the customer directly addressed you, you own the customer
-  reply. Ask capable peers for bounded dependencies, then answer the customer
-  directly. Do not send your terminal result/error to Leader in that turn.
-- Share intermediate findings with one specific collaborator.
-- Use ``kind="question"`` when your own work needs the peer's answer; you will
-  wait for it. A peer may ask you back for clarification, and the runtime will
-  wake you to answer before you return to your existing wait.
-- Use ``kind="handoff"`` for a bounded peer contribution required by your own
-  assignment. Overall team assignment and synthesis belong to Leader; do not
-  manage the whole group or take over another sub-agent's business role.
-- If genuinely customer-owned information is missing, call this exactly once
-  with ``to=null`` and ``kind="requires_user_input"``. This makes you the
-  temporary customer-facing owner for the clarification. Ask the same concise
-  question naturally in your final reply. After the customer answers, finish
-  your task and report to its original requester. Leader owns final synthesis.
-
-## When NOT to Use This Tool
-- You want to talk to yourself — use your own reasoning.
-- The message is a transient internal thought with no value to others.
-- Never omit ``to``. Worker broadcast is rejected by the runtime.
-- Normal task results should remain ``context_mode="task"`` and
-  ``result_scope="shared"``. Use ``isolated`` for a truly independent side
-  question, and publish a caller-only result into shared state later only when
-  it becomes relevant to the group. Never share private reasoning.
+- kind="result" / "error": goes back to whoever gave you the work (omit to).
+  Never send "I am working on it" as a result.
+- kind="question": ask ONE teammate (to=<roster handle>) for data or a
+  decision they own, or challenge their result (start with "Phản biện:").
+  Your assignment pauses until they answer; do not poll.
+- kind="answer": reply to the teammate who asked you (omit to). A received
+  answer is input: continue your own assignment, then report its result to
+  its requester; never send acknowledgement-only replies.
+- kind="requires_user_input": when information only the customer has is
+  genuinely missing, call this once (omit to). You become the temporary
+  customer-facing owner: ask the same concise question in your final reply,
+  finish your task after the customer answers, then report the result.
 """
+
+_LEADER_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": ["handoff", "review"],
+        },
+        "to": {
+            "type": "string",
+            "description": "Exact roster handle of the member (handoff, review).",
+        },
+        "content": {
+            "type": "string",
+            "description": (
+                "handoff: the task brief. review: what is missing/wrong, or why "
+                "you accept/stop."
+            ),
+        },
+        "done_when": {
+            "type": "string",
+            "description": "handoff only: acceptance criteria for the result.",
+        },
+        "decision": {
+            "type": "string",
+            "enum": ["accept", "challenge", "stop"],
+            "description": "review only.",
+        },
+    },
+    "required": ["kind", "content"],
+}
+
+_WORKER_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": ["result", "error", "question", "answer", "requires_user_input"],
+        },
+        "to": {
+            "type": "string",
+            "description": (
+                "Only for kind=question: the roster handle of the teammate who "
+                "owns the data. Omit for every other kind."
+            ),
+        },
+        "content": {"type": "string"},
+    },
+    "required": ["kind", "content"],
+}
+
+_DECISION_TO_RESOLUTION = {
+    "accept": "complete",
+    "challenge": "verify",
+    "stop": "stop",
+}
+
+
+def _derived_question_key(content: str) -> str:
+    """Stable key for a customer question when the model gave none."""
+
+    from .._customer_questions import question_key
+    return question_key(content)
 
 
 class TeamSay(_TeamToolBase):
@@ -272,6 +290,7 @@ class TeamSay(_TeamToolBase):
         self,
         *args: Any,
         role: str = "leader",
+        management_group: bool = False,
         is_reply_owner: bool | None = None,
         **kwargs: Any,
     ) -> None:
@@ -294,15 +313,29 @@ class TeamSay(_TeamToolBase):
         self.description = (
             _LEADER_DESCRIPTION if role == "leader" else _WORKER_DESCRIPTION
         )
-        self.input_schema = deepcopy(type(self).input_schema)
+        # The model sees only what it must decide. Routing ids, threads,
+        # hops, idempotency, context modes and evidence references are
+        # filled by the runtime; the legacy keyword arguments stay accepted
+        # for recovery replays and direct callers.
+        self.input_schema = (
+            _LEADER_INPUT_SCHEMA if role == "leader" else _WORKER_INPUT_SCHEMA
+        )
+        if management_group:
+            self.input_schema = json.loads(json.dumps(self.input_schema))
+            self.input_schema["properties"]["report_type"] = {
+                "type": "string", "enum": ["verified", "analysis"],
+                "description": "result/answer: analysis for clearly labelled proposals; verified for operational facts backed by tools.",
+            }
+            self.description = self.description.replace("customer", "BQL user").replace("ticket", "group")
         if is_reply_owner is None:
             is_reply_owner = role == "leader"
         if not is_reply_owner:
+            self.input_schema = json.loads(json.dumps(self.input_schema))
             self.input_schema["properties"].pop("resolution", None)
-            self.description += (
-                "\nReport answers/results without resolution; only the current "
-                "customer reply owner resolves assignments."
-            )
+            self.input_schema["properties"].pop("decision", None)
+            kinds = self.input_schema["properties"]["kind"].get("enum")
+            if kinds and "review" in kinds:
+                self.input_schema["properties"]["kind"]["enum"] = [k for k in kinds if k != "review"]
 
     async def __call__(
         self,
@@ -331,6 +364,9 @@ class TeamSay(_TeamToolBase):
         hop_count: int = 1,
         question_key: str | None = None,
         resolution: Literal["complete", "stop", "verify"] | None = None,
+        decision: Literal["accept", "challenge", "stop"] | None = None,
+        done_when: str | None = None,
+        report_type: Literal["verified", "analysis"] = "verified",
     ) -> ToolChunk:
         """Deliver the message directly via storage + message bus.
 
@@ -355,7 +391,30 @@ class TeamSay(_TeamToolBase):
                 error chunk on failure.
         """
         intent = None
+        delta_feedback = ""
         try:
+            if kind == "ask_customer":
+                kind, to = "requires_user_input", None
+            elif kind == "need_customer_info":
+                kind = "requires_user_input"
+            elif kind == "review":
+                if decision not in _DECISION_TO_RESOLUTION or not to:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: review needs to=<member> and "
+                                    "decision=accept|challenge|stop."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                kind, resolution = "handoff", _DECISION_TO_RESOLUTION[decision]
+            if kind == "handoff" and done_when and done_when.strip():
+                content = content.rstrip() + "\n\nDone when: " + done_when.strip()
+            if kind == "requires_user_input" and not question_key:
+                question_key = _derived_question_key(content)
             if (
                 kind == "requires_user_input"
                 and isinstance(to, str)
@@ -367,6 +426,14 @@ class TeamSay(_TeamToolBase):
             if context_delta is not None:
                 context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
+            analysis_report = report_type == "analysis" and team.data.purpose == "platform_group" and kind in {"result", "answer"}
+            if report_type == "analysis" and team.data.purpose != "platform_group":
+                raise ValueError("Analysis reports are only supported in BQL groups")
+            if analysis_report:
+                notice = "[PROPOSAL / UNVERIFIED ANALYSIS - NOT OPERATIONAL FACT]\n"
+                if not content.startswith(notice):
+                    content = notice + content
+                context_delta = None
             shared_context = self._shared_context or SharedContextService(
                 self._storage,
                 self._message_bus,
@@ -511,6 +578,27 @@ class TeamSay(_TeamToolBase):
                 team_id=team.id,
                 task_id=effective_task_id,
             )
+            names_by_session = {sid: name for name, (sid, _aid) in directory.items()}
+            if kind == "answer" and (to is None or in_reply_to is None):
+                asked = await shared_context.pending_question_for(
+                    self._user_id,
+                    team.id,
+                    self._session_id,
+                )
+                if asked is not None:
+                    asker_session, question_id = asked
+                    to = to or names_by_session.get(asker_session)
+                    in_reply_to = in_reply_to or question_id
+            if (
+                resolution == "complete"
+                and not reference_event_ids
+                and to in directory
+            ):
+                reference_event_ids = await shared_context.assignment_evidence(
+                    self._user_id,
+                    team.id,
+                    directory[to][0],
+                )
             try:
                 (
                     hop_count,
@@ -542,6 +630,7 @@ class TeamSay(_TeamToolBase):
                         "to": to,
                         "kind": kind,
                         "content": content,
+                        "report_type": report_type,
                         "task_id": effective_task_id,
                         "context_mode": context_mode,
                         "result_scope": effective_scope,
@@ -578,6 +667,33 @@ class TeamSay(_TeamToolBase):
                     leader.name,
                 )
 
+            if (
+                self._role == "worker"
+                and to is None
+                and kind
+                in {
+                    "result",
+                    "error",
+                    "conflict",
+                    "answer",
+                }
+                and not is_reply_owner
+            ):
+                to = reply_owner_name
+            elif (
+                self._role == "worker"
+                and to is None
+                and kind in {"result", "error"}
+                and turn is not None
+                and turn.mode == "specialist_question"
+                and turn.reply_owner_session_id == self._session_id
+            ):
+                # The customer's answer only unblocked this specialist; its
+                # finished work still goes back to the Leader for synthesis.
+                to = leader.name
+
+            # Workers propose; only the current customer-facing owner can
+            # approve a question and freeze the group awaiting user input.
             # A worker may take temporary reply ownership solely to obtain
             # customer-owned information. Addressing the current owner keeps
             # the legacy proposal/review path for non-Workforce callers.
@@ -628,6 +744,18 @@ class TeamSay(_TeamToolBase):
                 # continue until it sends a concrete result/question/error.
                 kind = "progress"
 
+            if kind == "requires_user_input" and (is_reply_owner or direct_specialist_question):
+                from .._customer_questions import known_inputs, question_fields
+                snapshot = await shared_context.storage.get_team_shared_context(self._user_id, team.id)
+                known = known_inputs(e for e in snapshot.state.events
+                                     if e.task_id == effective_task_id) if snapshot else {}
+                fields = question_fields(content)
+                if fields and all(field in known for field in fields):
+                    return ToolChunk(state=ToolResultState.ERROR, content=[TextBlock(text=(
+                        "Customer already supplied these inputs: "
+                        + json.dumps({field: known[field] for field in fields}, ensure_ascii=False)
+                        + ". Use them. Ask only for a different required detail that is still missing."
+                    ))])
             if kind == "requires_user_input" and (
                 is_reply_owner or direct_specialist_question
             ):
@@ -878,6 +1006,22 @@ class TeamSay(_TeamToolBase):
                     )
                 wake = first_question and turn.status == "running"
 
+            if self._role == "worker" and kind in {"result", "answer"} and context_delta is not None:
+                proposed_claims = (*context_delta.add_confirmed_facts, *context_delta.add_outputs)
+                if proposed_claims:
+                    delta_validation = await shared_context.validate_customer_reply_claims(
+                        self._user_id,
+                        team.id,
+                        "\n".join(proposed_claims),
+                        task_id=effective_task_id,
+                    )
+                    if delta_validation.unsupported:
+                        context_delta = None
+                        delta_feedback = (
+                            "Unsupported context_delta details were omitted; the report is still processed. "
+                            "Submit a corrected delta using the current task evidence."
+                        )
+
             handoff_id = _handoff_id()
             # Journal before changing dependencies. The existing dispatcher
             # replays this intent after a crash between reservation and delivery.
@@ -924,6 +1068,7 @@ class TeamSay(_TeamToolBase):
                                 "artifact_refs": artifact_refs,
                                 "question_key": question_key,
                                 "resolution": resolution,
+                                "report_type": report_type,
                             },
                         }
                     },
@@ -958,6 +1103,7 @@ class TeamSay(_TeamToolBase):
                 resolution=resolution,
                 based_on_revision=based_on_revision,
                 share_report=effective_scope == "shared",
+                analysis_report=analysis_report,
                 # A direct peer answer already wakes its requester and remains
                 # durable in Shared Context. Sending the same answer to the
                 # Leader inbox duplicates model work before the requesting worker's
@@ -969,8 +1115,15 @@ class TeamSay(_TeamToolBase):
                 ),
             )
             kind, content = coordination["kind"], coordination["content"]
-            # Carry server-owned dependency lineage into synthesized results
-            # without requiring the model to reproduce opaque event IDs.
+            if coordination.get("partial_result"):
+                # The proposed delta belongs to the original report. Applying
+                # it after pruning would reintroduce its rejected facts/state.
+                # A repaired report may submit a fresh, matching delta.
+                context_delta = None
+            # The server records which peer reports released this worker's
+            # dependencies. Carry that lineage into a synthesized result so
+            # evidence validation does not depend on an LLM reproducing opaque
+            # event IDs from shared context.
             reference_event_ids = tuple(
                 coordination.get("reference_event_ids", reference_event_ids),
             )
@@ -1004,6 +1157,8 @@ class TeamSay(_TeamToolBase):
                     based_on_revision=based_on_revision,
                     reference_event_ids=reference_event_ids,
                     delta=context_delta,
+                    recipient_session_ids=tuple(sid for sid, _aid in recipients),
+                    report_type="analysis" if analysis_report else "verified",
                 )
                 if shared_event.stale:
                     if kind == "requires_user_input":
@@ -1075,14 +1230,14 @@ class TeamSay(_TeamToolBase):
             if kind in {"question", "handoff"} and resolution not in {"complete", "stop"}:
                 response_kind = "answer" if kind == "question" else "result"
                 reply_instruction = (
-                    f"Respond to {sender_name!r} using kind={response_kind} "
-                    f"and in_reply_to={handoff_id} when this assigned work is finished."
+                    f"Respond to {sender_name!r} with kind={response_kind} "
+                    "when this work is finished; the runtime links the reply."
                 )
             elif kind in {"answer", "result", "error"}:
                 reply_instruction = (
                     "This is a response, not a new request. Resume your original assignment "
-                    "using this output/blocker, then report to that assignment's requester "
-                    "with its original request id. Do not send acknowledgement-only replies."
+                    "using this output/blocker, then report its result to that assignment's "
+                    "requester. Do not send acknowledgement-only replies."
                 )
             else:
                 reply_instruction = "This is an update; do not send acknowledgement-only replies."
@@ -1223,33 +1378,46 @@ class TeamSay(_TeamToolBase):
                     )
                     count += 1
             await shared_context.mark_handoff(intent, "consumed")
+            # A report (or a Leader decision) may complete the last
+            # dependency of a queued assignment; start it now.
+            released = await shared_context.deliver_ready_assignments(
+                self._user_id,
+                team.id,
+            )
             target = "broadcast" if to is None else f"member {to!r}"
             return ToolChunk(
                 content=[
                     TextBlock(
-                        text=(f"Delivered to {count} recipient(s) ({target})."),
+                        text=(
+                            f"Delivered to {count} recipient(s) ({target})."
+                            + (" " + coordination["claim_feedback"] if coordination.get("partial_result") else "")
+                            + (" " + delta_feedback if delta_feedback else "")
+                        ),
                     ),
                 ],
                 metadata={
                     "handoff_id": handoff_id,
                     "kind": kind,
                     "collaboration_status": coordination["status"],
+                    **({"partial_result": True, "claim_feedback": coordination["claim_feedback"]}
+                       if coordination.get("partial_result") else {}),
+                    **({"delta_feedback": delta_feedback} if delta_feedback else {}),
+                    **({"released_assignments": released} if released else {}),
                 },
             )
         except Exception as e:  # noqa: BLE001 - tool returns structured error
+            retryable = not isinstance(
+                e,
+                (ValueError, CollaborationStoppedError, SharedContextConcurrencyError),
+            )
+            if intent is not None and not retryable:
+                # A rejected report needs an agent repair. Recovery must not
+                # replay it as a second attempt against the evidence budget.
+                await shared_context.mark_handoff(intent, "cancelled", error=str(e))
             return ToolChunk(
                 content=[TextBlock(text=f"TeamSay failed: {e}")],
                 state=ToolResultState.ERROR,
-                metadata={
-                    "retryable": not isinstance(
-                        e,
-                        (
-                            ValueError,
-                            CollaborationStoppedError,
-                            SharedContextConcurrencyError,
-                        ),
-                    )
-                }
+                metadata={"retryable": retryable}
                 if intent is not None
                 else {},
             )

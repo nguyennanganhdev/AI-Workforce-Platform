@@ -13,14 +13,15 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
+import { ChannelForm } from '@/pages/channel/channel-form';
 import {
-	ChannelForm,
 	defaultChannelForm,
 	isChannelFormValid,
 	toCreateRequest,
-} from '@/pages/channel/channel-form';
+} from '@/pages/channel/channel-form-utils';
 
 interface Props {
 	open: boolean;
@@ -32,7 +33,8 @@ interface Props {
 
 export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType }: Props) {
 	const { t } = useTranslation();
-	const { agents } = useAgents();
+	const user = useCurrentUser();
+	const { runnable: agents } = useAgents();
 	const [form, setForm] = React.useState(defaultChannelForm);
 	const [channelTypes, setChannelTypes] = React.useState<ChannelTypeSchema[]>([]);
 	const [loading, setLoading] = React.useState(false);
@@ -42,7 +44,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 		if (open) {
 			setForm({
 				...defaultChannelForm(agents[0]?.id ?? ''),
-				channelType: initialType ?? 'feishu',
+				channelType: initialType ?? 'telegram',
 			});
 			setError('');
 			channelApi
@@ -61,9 +63,11 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 		}
 	}, [open, agents, initialType]);
 
-	const valid = isChannelFormValid(form, 'create');
 	// The platform is chosen in the gallery, so name the dialog after it.
 	const picked = channelTypes.find((ct) => ct.channel_type === form.channelType);
+	const required = (picked?.credentials_schema as { required?: string[] } | undefined)?.required ?? [];
+	const valid = isChannelFormValid(form, 'create', user?.role === 'VIN_USER') && Boolean(picked) &&
+		(form.credentialMode === 'binding' || required.every((key) => Boolean(form.credentials[key]?.trim())));
 
 	const handleSubmit = async () => {
 		setError('');
@@ -82,7 +86,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[560px] !max-w-[560px]">
+			<DialogContent className="w-[calc(100%-2rem)] max-w-[560px]">
 				<DialogHeader>
 					<DialogTitle>
 						{picked
@@ -92,7 +96,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 					<DialogDescription>{t('channel.create.description')}</DialogDescription>
 				</DialogHeader>
 
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4 pt-1">
+				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6 pt-1">
 					<ChannelForm
 						mode="create"
 						value={form}

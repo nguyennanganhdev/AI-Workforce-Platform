@@ -1,4 +1,5 @@
-import { getResultText, parseInput, toolLabelClass } from './_shared';
+import { toolLabelClass } from './_shared';
+import { getResultText, parseInput } from './_shared-utils';
 import type { ToolRenderer } from './types';
 
 function getCommand(input: string): string {
@@ -33,17 +34,17 @@ export const BashRenderer: ToolRenderer = {
 		</>
 	),
 
-	renderBody: (pair) => {
+	renderBody: (pair, t) => {
 		if (!pair.result) return null;
 
 		const shellRes = getResultText(pair.result);
 		return (
 			<div className="flex flex-col border bg-background rounded-sm p-2 text-xs">
-				<div className="text-muted-foreground">Input</div>
+				<div className="text-muted-foreground">{t('tool.input')}</div>
 				<pre className="overflow-x-auto p-2 border rounded bg-secondary ">
 					{JSON.stringify(parseInput(pair.call.input), null, 2)}
 				</pre>
-				<div className="text-muted-foreground mt-2">Output</div>
+				<div className="text-muted-foreground mt-2">{t('tool.output')}</div>
 				<pre className="overflow-auto p-2 border rounded bg-secondary max-h-[200px]">
 					{shellRes}
 				</pre>

@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from ..auth import (
+    AccountPendingError,
+    AreaTakenError,
     AuthPrincipal,
     AuthService,
     AuthTokens,
@@ -47,8 +49,8 @@ class UserResponse(BaseModel):
     username: str
     status: str
     role: str
-    domain_id: str
-    area_id: str
+    domain_id: str | None = None
+    area_id: str | None = None
     created_at: datetime
     updated_at: datetime
     last_login_at: datetime | None = None
@@ -101,7 +103,7 @@ async def register(
             tenant_id=service.default_tenant_id,
             **body.model_dump(),
         )
-    except UserAlreadyExistsError as exc:
+    except (UserAlreadyExistsError, AreaTakenError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -122,6 +124,8 @@ async def login(
             user_agent=request.headers.get("user-agent"),
             ip_address=request.client.host if request.client else None,
         )
+    except AccountPendingError as exc:
+        raise HTTPException(status_code=403, detail="pending_approval") from exc
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=401, detail="invalid credentials") from exc
     _set_refresh_cookie(response, service, tokens.refresh_token)

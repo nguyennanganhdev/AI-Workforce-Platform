@@ -7,6 +7,7 @@ import type { ScheduleRecord, SessionRecord } from '@/api';
 import { scheduleApi } from '@/api';
 import { StatusBadge } from '@/components/badge/StatusBadge';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { PersonalRuns } from '@/components/PersonalRuns';
 import { Button } from '@/components/ui/button';
 import {
 	Drawer,
@@ -121,6 +122,16 @@ export function ScheduleDetailDrawer({
 			title: t('schedule.stateful'),
 			content: data.stateful ? t('common.yes') : t('common.no'),
 		},
+		{
+			title: 'Gửi kết quả vào',
+			content: data.deliver_channel_id ? `Kênh · ${data.deliver_chat_id}` : 'Phiên của agent',
+		},
+		{
+			title: 'Lần chạy gần nhất',
+			content: data.last_fired_at
+				? `${new Date(data.last_fired_at).toLocaleString()}${data.last_error ? ` · lỗi: ${data.last_error}` : ''}`
+				: 'Chưa chạy',
+		},
 	];
 
 	return (
@@ -153,6 +164,7 @@ export function ScheduleDetailDrawer({
 							</div>
 						</div>
 						<Separator />
+						<PersonalRuns kind="schedule" sourceId={schedule.id} />
 						<div className="space-y-2 flex flex-col flex-1 overflow-hidden">
 							<h3 className="text-sm font-semibold">
 								{t('schedule.executionHistory')}

@@ -52,6 +52,7 @@ class SharedContextEvent(BaseModel):
         "context_update",
     ]
     content: str = Field(min_length=1, max_length=100_000)
+    report_type: Literal["verified", "analysis"] = "verified"
     source_message_id: str | None = Field(default=None, max_length=255)
     source_agent_id: str | None = Field(default=None, max_length=255)
     source_session_id: str | None = Field(default=None, max_length=255)
@@ -64,6 +65,8 @@ class SharedContextEvent(BaseModel):
     hop_count: int = Field(default=1, ge=1, le=12)
     reference_event_ids: tuple[str, ...] = Field(default=(), max_length=50)
     payload_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    # Who a TeamSay was addressed to (sessions); empty: the reply owner/all.
+    recipient_session_ids: tuple[str, ...] = Field(default=(), max_length=50)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -85,6 +88,45 @@ class SharedContextItem(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+AssignmentStatus = Literal[
+    "queued",
+    "assigned",
+    "reported",
+    "verified",
+    "accepted",
+    "challenged",
+    "stopped",
+    "failed",
+]
+
+
+class TaskAssignment(BaseModel):
+    """One entry of the Leader's task ledger, owned by the runtime.
+
+    The Leader writes the brief once (goal, expected output, done_when and
+    dependencies). The runtime then tracks the status from the members'
+    reports and the Leader's review decisions, and releases a queued
+    assignment when every dependency has reported. Models never have to
+    remember routing ids to keep this ledger correct.
+    """
+
+    agent_id: str = Field(default="", max_length=255)
+    agent_name: str = Field(default="", max_length=255)
+    goal: str = Field(min_length=1, max_length=20_000)
+    expected_output: str = Field(default="", max_length=4_000)
+    done_when: str = Field(default="", max_length=4_000)
+    depends_on: tuple[str, ...] = Field(default=(), max_length=20)
+    """Session ids of the assignments that must report first."""
+    status: AssignmentStatus = "assigned"
+    challenges: int = Field(default=0, ge=0)
+    last_report_event_id: str | None = Field(default=None, max_length=255)
+    last_feedback: str = Field(default="", max_length=4_000)
+    pending_payload: dict[str, Any] | None = None
+    """Inbox payload held back until dependencies report (never in packets)."""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class SharedTaskState(BaseModel):
     """Durable lifecycle of one logical task inside a ticket/group."""
 
@@ -99,6 +141,10 @@ class SharedTaskState(BaseModel):
     pending_question_ids: tuple[str, ...] = Field(default=(), max_length=20)
     pending_operation_ids: tuple[str, ...] = Field(default=(), max_length=50)
     collaboration: dict[str, "CollaborationBranch"] = Field(default_factory=dict)
+    assignments: dict[str, TaskAssignment] = Field(default_factory=dict)
+    """The Leader's task ledger keyed by the member's team session id."""
+    learned_revision: int = Field(default=0, ge=0)
+    """Last event revision the learning loop has processed for this task."""
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -123,11 +169,17 @@ class CollaborationBranch(BaseModel):
     model_calls: int = 0
     paging_model_calls: int = 0
     paging_call_ids: tuple[str, ...] = ()
-    source_read_progress: dict[str, tuple[int, int]] = Field(default_factory=dict)
-    """Per section: contiguous characters read and pages already credited."""
+    source_read_progress: dict[str, tuple[int, int]] = Field(
+        default_factory=dict
+    )
     measured_tokens: int = 0
     active_seconds: float = 0
     verifications: int = 0
+    evidence_rejections: int = 0
+    supported_partial: str = Field(default="", max_length=100_000)
+    """Validated report text retained while unsupported claims are repaired."""
+    needs_claim_review: bool = False
+    """Partial output must be explicitly reviewed, never auto-completed."""
     signatures: dict[str, int] = Field(default_factory=dict)
     receipts: dict[str, dict] = Field(default_factory=dict)
 
@@ -144,8 +196,29 @@ class SharedContextSummary(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class ProviderUsage(BaseModel):
+    """Provider-reported usage for one agent in a team (billing-shaped).
+
+    Unlike the counters below, these numbers come from the provider's
+    ``usage`` block, so ``cached_input_tokens`` shows how much of the prompt
+    was served from the provider's prompt cache.
+    """
+
+    agent_name: str = Field(default="", max_length=255)
+    model: str = Field(default="", max_length=255)
+    calls: int = Field(default=0, ge=0)
+    calls_with_usage: int = Field(default=0, ge=0)
+    input_tokens: int = Field(default=0, ge=0)
+    cached_input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+
+
 class SharedContextMetrics(BaseModel):
     """Auditable measurements from the selected model's token counter."""
+
+    provider_usage: dict[str, ProviderUsage] = Field(default_factory=dict)
+    provider_usage_by_model: dict[str, ProviderUsage] = Field(default_factory=dict)
+    """Provider usage keyed by agent id."""
 
     packets_built: int = Field(default=0, ge=0)
     compactions: int = Field(default=0, ge=0)
@@ -183,6 +256,7 @@ class TeamSharedContextState(BaseModel):
     """One source of shared truth for a team/ticket."""
 
     revision: int = Field(default=0, ge=0)
+    purpose: Literal["operational", "platform_group"] = "operational"
     active_task_id: str | None = Field(default=None, max_length=255)
     tasks: dict[str, SharedTaskState] = Field(default_factory=dict)
     items: list[SharedContextItem] = Field(default_factory=list)
@@ -317,6 +391,7 @@ __all__ = [
     "SharedContextSummary",
     "SharedTaskState",
     "SharedTaskStatus",
+    "TaskAssignment",
     "TeamHandoffRecord",
     "TeamSharedContextRecord",
     "TeamSharedContextState",

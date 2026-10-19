@@ -1,0 +1,33 @@
+# Use with compose.yaml; TLS terminates at the host reverse proxy.
+# Add compose.partner-network.yaml only when the partner is on this host.
+x-release-logging: &release-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    logging: *release-logging
+    # Replace the migration shell with Python so SIGTERM reaches the service.
+    command: ["/bin/sh", "-c", "python -m alembic -c /app/src/agentscope/app/storage/_sql/_alembic/alembic.ini upgrade head && exec python main.py"]
+    image: ${APP_IMAGE:?set APP_IMAGE to the immutable release tag}
+    environment:
+      AUTH_ENABLED: "true"
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      CORS_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN to the browser origin}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:?set the public HTTPS S3 origin}
+  web:
+    logging: *release-logging
+    image: ${WEB_IMAGE:?set WEB_IMAGE to the immutable release tag}
+    build:
+      args:
+        VITE_API_BASE_URL: /api
+  postgres:
+    logging: *release-logging
+  redis:
+    logging: *release-logging
+  minio:
+    logging: *release-logging
+  minio-init:
+    logging: *release-logging

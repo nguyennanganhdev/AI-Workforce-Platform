@@ -1,5 +1,5 @@
 import { Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import type {
 	ChatModelConfig,
@@ -258,7 +258,10 @@ export function ModelParametersPopover({
 	onTTSChange,
 	disabled: locked = false,
 }: Props) {
-	const [values, setValues] = useState<Record<string, unknown>>({});
+	const [values, setValues] = useState<Record<string, unknown>>(
+		selectedModel?.parameters ?? {},
+	);
+	const [valuesModel, setValuesModel] = useState(selectedModel?.model);
 	const { t } = useTranslation();
 	const { groups } = useAvailableModels();
 	const { groups: ttsGroups } = useAvailableTTSModels();
@@ -268,9 +271,10 @@ export function ModelParametersPopover({
 	const required = schema?.required ?? [];
 	const entries = Object.entries(properties);
 
-	useEffect(() => {
+	if (selectedModel?.model !== valuesModel) {
+		setValuesModel(selectedModel?.model);
 		setValues(selectedModel?.parameters ?? {});
-	}, [selectedModel?.model]);
+	}
 
 	const handleChange = useCallback(
 		(key: string, value: unknown) => {

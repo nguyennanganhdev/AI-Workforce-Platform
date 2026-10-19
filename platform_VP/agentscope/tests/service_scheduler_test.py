@@ -529,3 +529,41 @@ class TestSchedulerFlag(TestCase):
     def test_enabled_process_starts_the_scheduler(self) -> None:
         """The default keeps a single-process deployment working."""
         self.assertTrue(self._boot(True)._scheduler.running)
+
+
+class TestSchedulerFireRecordsAndDelivers(_SchedulerFireTestBase):
+    """A fire keeps its last run visible, routes results, and ends a one-time schedule."""
+
+    async def test_last_run_is_recorded_and_a_one_time_schedule_disables(self) -> None:
+        record = _make_record()
+        record.data.once = True
+        record.data.deliver_channel_id = "channel-1"
+        record.data.deliver_chat_id = "chat-9"
+        await self.storage.upsert_schedule(record.user_id, record)
+        notified = []
+
+        async def notify(schedule_id):
+            notified.append(schedule_id)
+
+        self.manager.notify_changed = notify
+        await self.manager._build_trigger(record)()
+
+        session = (await self.storage.list_sessions(record.user_id, record.agent_id))[0]
+        self.assertEqual(
+            session.origin,
+            ScheduleOrigin(schedule_id=record.id, deliver_channel_id="channel-1", deliver_chat_id="chat-9"),
+        )
+        stored = await self.storage.get_schedule(record.user_id, record.id)
+        self.assertIsNotNone(stored.data.last_fired_at)
+        self.assertEqual(stored.data.last_session_id, session.id)
+        self.assertEqual(stored.data.last_error, "")
+        self.assertFalse(stored.data.enabled)
+        self.assertEqual(notified, [record.id])
+
+    async def test_a_recurring_schedule_stays_enabled(self) -> None:
+        record = _make_record()
+        await self.storage.upsert_schedule(record.user_id, record)
+        await self.manager._build_trigger(record)()
+        stored = await self.storage.get_schedule(record.user_id, record.id)
+        self.assertTrue(stored.data.enabled)
+        self.assertIsNotNone(stored.data.last_fired_at)

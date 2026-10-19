@@ -1,0 +1,12 @@
+{
+  "profile": "op3-simulation-v1",
+  "data_mode": "synthetic_test",
+  "operator_approval": false,
+  "site_code": "ocean-park-3",
+  "operator_code": "SIM-OP3-OPERATOR",
+  "template": "../op2-simulation/template.json",
+  "builder": "vinhomes_api.synthetic_op2.build",
+  "builder_arguments": {"site_code": "ocean-park-3"},
+  "expected": {"residents": 6, "staff": 24, "units": 6, "buildings": 3, "shifts": 336, "services": 10, "sop_documents": 20},
+  "excluded": ["admin", "tickets", "workflows", "payments", "sessions", "grants", "outbound_queue", "integration_credentials"]
+}

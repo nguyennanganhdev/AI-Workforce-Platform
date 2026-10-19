@@ -9,7 +9,6 @@ from ...state import AgentState
 from ...tool import ParamsBase, ToolChunk
 from ._team_tool_base import _TeamToolBase, _TeamToolError
 
-
 class _SharedContextReadParams(ParamsBase):
     source_ref: str = Field(pattern=r"^[0-9a-f]{64}$")
     offset: int = Field(default=0, ge=0)
@@ -73,7 +72,9 @@ class SharedContextRead(_TeamToolBase):
             )
             snapshot = grant["sources"][source_ref]
             page["snapshot_revision"] = snapshot["revision"]
-            page["is_current_snapshot"] = source_ref in grant["current_references"]
+            page["is_current_snapshot"] = (
+                source_ref in grant["current_references"]
+            )
             return ToolChunk(
                 content=[TextBlock(text=json.dumps(page, ensure_ascii=False))],
                 state=ToolResultState.SUCCESS,

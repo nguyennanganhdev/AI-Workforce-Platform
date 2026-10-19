@@ -135,13 +135,13 @@
 			"authentication": "鉴权失败 —— 请检查模型的 API key 或凭证。",
 			"permission": "请求被拒绝 —— 当前凭证没有访问该模型或端点的权限。",
 			"rate_limit": "触发限流或额度用尽 —— 请稍后重试。",
+			"quota": "模型服务账户余额不足 —— 请为 API Key 充值或更换凭据。",
 			"invalid_request": "发往模型的请求被判定为非法。",
 			"upstream": "上游模型服务返回了错误。",
 			"connection": "无法连接模型服务 —— 网络错误或超时。",
 			"internal": "发生了未预期的内部错误。",
 			"setup": "会话准备失败 —— 请检查该智能体的模型、工具和知识库配置。",
-			"unknown": "回复因未知错误失败。",
-			"quota": "模型服务账户余额不足 —— 请为 API Key 充值或更换凭据。"
+			"unknown": "回复因未知错误失败。"
 		},
 		"copy": "复制"
 	},
@@ -211,12 +211,99 @@
 			"chatsOf": "与 {{name}} 的对话"
 		}
 	},
+	"shell": {
+		"backToChat": "返回对话",
+		"groupWorkforce": "Workforce",
+		"leader": "Leader",
+		"builder": "Builder",
+		"packs": "扩展包",
+		"agentStudio": "智能体管理",
+		"groupOperations": "运行",
+		"groupCapabilities": "智能体可用的能力",
+		"account": "账户"
+	},
+	"agents": {
+		"list": {
+			"noDescription": "暂无描述",
+			"chat": "打开对话",
+			"edit": "编辑"
+		},
+		"graph": {
+			"agentCount": "{{count}} 个智能体",
+			"running": "{{days}} 天内 {{count}} 个工单",
+			"fullscreen": "全屏",
+			"exitFullscreen": "退出全屏",
+			"zoomIn": "放大",
+			"zoomOut": "缩小",
+			"fit": "适应视图",
+			"legendLive": "最近 15 分钟内有回复",
+			"legendIdle": "已配置，空闲",
+			"resident": "住户",
+			"residentNote": "通过合作方发送请求",
+			"you": "你",
+			"youNote": "直接对话",
+			"leader": "Leader",
+			"leaderNote": "为每个请求挑选智能体",
+			"sessionCount": "{{count}} 个工单",
+			"idle": "空闲",
+			"invitable": "Leader 可选用",
+			"notInvitable": "未开启邀请",
+			"notInvitableShort": "未开启邀请",
+			"invitableHelp": "当请求需要时，Leader 可以把这个智能体加入会话。",
+			"notInvitableHelp": "该智能体未开启“允许被邀请”，Leader 无法将其加入会话。请在编辑的“邀请配置”中开启。",
+			"inspectorSessions": "工单",
+			"inspectorRunning": "回复",
+			"inspectorResponse": "最近活动"
+		},
+		"office": {
+			"loading": "正在加载 3D 办公室…",
+			"controls": "办公室视角控制",
+			"rotateLeft": "向左旋转",
+			"rotateRight": "向右旋转",
+			"zoomIn": "放大",
+			"zoomOut": "缩小",
+			"team": "智能体团队",
+			"mock": "模拟会话",
+			"emptyLog": "此会话暂无活动。",
+			"resetView": "重置视角",
+			"noWebgl": "3D 办公室暂不可用。您仍可在智能体团队中选择智能体并继续聊天。",
+			"phase": {
+				"idle": "大家都在工位",
+				"request": "新请求",
+				"call": "Leader 召集开会",
+				"meeting": "会议中",
+				"return": "回到工位",
+				"work": "处理中",
+				"collab": "协作中",
+				"approval": "等待你审批",
+				"done": "已完成"
+			},
+			"log": "动态",
+			"rooms": {
+				"meeting": "会议室",
+				"approval": "你的办公室 · 审批",
+				"reception": "接待台",
+				"workspace": "办公区"
+			},
+			"status": {
+				"idle": "在工位空闲",
+				"working": "正在处理任务",
+				"off": "未开启可被邀请，不参加会议",
+				"walking": "走动中"
+			},
+			"live": "会话动态"
+		}
+	},
 	"dialog-agent-create": {
 		"title": "创建智能体",
 		"description": "定义新智能体的身份与行为。",
 		"submit": "创建智能体"
 	},
 	"agent-form": {
+		"advanced": {
+			"legend": "高级设置",
+			"description": "可保持默认。需要调整时再展开对应部分。"
+		},
 		"identity": {
 			"legend": "智能体身份",
 			"description": "定义此智能体行为的名称和指令。",
@@ -239,6 +326,9 @@
 			"reserve-ratio": {
 				"label": "保留比例"
 			},
+			"context-buffer-ratio": {
+				"label": "上下文缓冲比例"
+			},
 			"tool-result-limit": {
 				"label": "工具结果限制"
 			},
@@ -250,9 +340,6 @@
 			},
 			"max-image-num": {
 				"label": "最大图片数"
-			},
-			"context-buffer-ratio": {
-				"label": "上下文缓冲比例"
 			}
 		},
 		"react-config": {
@@ -287,10 +374,6 @@
 				"label": "邀请说明",
 				"placeholder": "简要描述此智能体的专长；允许被邀请时必填。"
 			}
-		},
-		"advanced": {
-			"legend": "高级设置",
-			"description": "可保持默认。需要调整时再展开对应部分。"
 		}
 	},
 	"dialog-agent-edit": {
@@ -622,6 +705,22 @@
 		"heroTitle": "为您的区域构建和运营智能体",
 		"heroDescription": "创建区域管理员账户，管理智能体，并接收正确路由到所属业务域和区域的请求。",
 		"securityHint": "短期访问令牌和自动轮换的安全会话",
+		"showcase": {
+			"live": "实时",
+			"caption": "示意：住户的请求由 Leader 路由到合适的智能体并完成处理",
+			"statusIdle": "等待请求",
+			"statusBusy": "处理中",
+			"statusDone": "已完成",
+			"resident": "住户",
+			"routed": "已路由：Ocean Park 1 · 水电",
+			"request": "我家水管爆了，请帮忙叫维修师傅。",
+			"reply": "已预约师傅今天 14:00 上门，工单号 SC-1042。",
+			"agents": {
+				"reception": "前台",
+				"technical": "技术",
+				"hotel": "酒店"
+			}
+		},
 		"loginTitle": "欢迎回来",
 		"loginDescription": "使用邮箱或用户名登录。",
 		"registerTitle": "创建账户",
@@ -641,22 +740,6 @@
 		"createAccount": "创建账户",
 		"connectedTo": "服务地址：",
 		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。",
-		"showcase": {
-			"live": "实时",
-			"caption": "示意：住户的请求由 Leader 路由到合适的智能体并完成处理",
-			"statusIdle": "等待请求",
-			"statusBusy": "处理中",
-			"statusDone": "已完成",
-			"resident": "住户",
-			"routed": "已路由：Ocean Park 1 · 水电",
-			"request": "我家水管爆了，请帮忙叫维修师傅。",
-			"reply": "已预约师傅今天 14:00 上门，工单号 SC-1042。",
-			"agents": {
-				"reception": "前台",
-				"technical": "技术",
-				"hotel": "酒店"
-			}
-		},
 		"brand": "VAgents Platform",
 		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
 		"errors": {
@@ -793,7 +876,6 @@
 		},
 		"loading": "加载中…",
 		"team": {
-			"membersHeading": "成员",
 			"noMembers": "工单需要时，Leader 会邀请合适的智能体。",
 			"emptyTitle": "没有团队",
 			"emptyDescription": "此会话还没有房间。工单需要多个智能体时，Leader 会建立房间。",
@@ -814,7 +896,7 @@
 			"retry": "重新生成"
 		},
 		"title": "频道",
-		"subtitle": "接入飞书、Discord 等外部平台，让智能体在群聊里工作",
+		"subtitle": "接入 Telegram、Zalo OA 和 Discord，让智能体接收并回复消息",
 		"status": "状态",
 		"connected": "已连接",
 		"enable": "启用",
@@ -827,7 +909,7 @@
 		"rules": "{{count}} 条规则",
 		"empty": {
 			"title": "暂无频道",
-			"description": "创建一个频道，将智能体连接到飞书、钉钉等外部平台。"
+			"description": "创建 Telegram、Zalo OA 或 Discord 频道以开始接收消息。"
 		},
 		"create": {
 			"title": "创建频道",
@@ -987,88 +1069,6 @@
 		"pressEnter": "先按回车校验该路径",
 		"gitTooltip": "{{staged}} 已暂存 · {{unstaged}} 已修改 · {{untracked}} 未跟踪\n行数不含未跟踪文件"
 	},
-	"shell": {
-		"backToChat": "返回对话",
-		"groupWorkforce": "Workforce",
-		"leader": "Leader",
-		"builder": "Builder",
-		"agentStudio": "Agent management",
-		"groupOperations": "运行",
-		"groupCapabilities": "智能体可用的能力",
-		"account": "账户"
-	},
-	"agents": {
-		"list": {
-			"noDescription": "暂无描述",
-			"chat": "打开对话",
-			"edit": "编辑"
-		},
-		"graph": {
-			"agentCount": "{{count}} 个智能体",
-			"running": "{{days}} 天内 {{count}} 个工单",
-			"fullscreen": "全屏",
-			"exitFullscreen": "退出全屏",
-			"zoomIn": "放大",
-			"zoomOut": "缩小",
-			"fit": "适应视图",
-			"legendLive": "最近 15 分钟内有回复",
-			"legendIdle": "已配置，空闲",
-			"resident": "住户",
-			"residentNote": "通过合作方发送请求",
-			"you": "你",
-			"youNote": "直接对话",
-			"leader": "Leader",
-			"leaderNote": "为每个请求挑选智能体",
-			"sessionCount": "{{count}} 个工单",
-			"idle": "空闲",
-			"invitable": "Leader 可选用",
-			"notInvitable": "未开启邀请",
-			"notInvitableShort": "未开启邀请",
-			"invitableHelp": "当请求需要时，Leader 可以把这个智能体加入会话。",
-			"notInvitableHelp": "该智能体未开启“允许被邀请”，Leader 无法将其加入会话。请在编辑的“邀请配置”中开启。",
-			"inspectorSessions": "工单",
-			"inspectorRunning": "回复",
-			"inspectorResponse": "最近活动"
-		},
-		"office": {
-			"loading": "正在加载 3D 办公室…",
-			"controls": "办公室视角控制",
-			"rotateLeft": "向左旋转",
-			"rotateRight": "向右旋转",
-			"zoomIn": "放大",
-			"zoomOut": "缩小",
-			"team": "智能体团队",
-			"mock": "模拟会话",
-			"emptyLog": "此会话暂无活动。",
-			"resetView": "重置视角",
-			"noWebgl": "3D 办公室暂不可用。您仍可在智能体团队中选择智能体并继续聊天。",
-			"phase": {
-				"idle": "大家都在工位",
-				"request": "新请求",
-				"call": "Leader 召集开会",
-				"meeting": "会议中",
-				"return": "回到工位",
-				"work": "处理中",
-				"collab": "协作中",
-				"approval": "等待你审批",
-				"done": "已完成"
-			},
-			"log": "动态",
-			"rooms": {
-				"meeting": "会议室",
-				"approval": "你的办公室 · 审批",
-				"reception": "接待台",
-				"workspace": "办公区"
-			},
-			"status": {
-				"idle": "在工位空闲",
-				"working": "正在处理任务",
-				"off": "未开启可被邀请，不参加会议",
-				"walking": "走动中"
-			},
-			"live": "会话动态"
-		}
-	},
 	"quickAgent": {
 		"title": "用 Agent Builder 快速创建智能体",
 		"description": "描述智能体要做什么。Agent Builder 生成草稿（指令、工具、知识、测试用例），你在智能体管理中调整并发布。",
@@ -1126,35 +1126,5 @@
 		"kickoff": "这是群聊“{{name}}”。{{goal}}请使用 TeamCreate 创建团队并由你担任组长，然后使用 AgentInvite 邀请成员：{{members}}。成员到齐后，请简要介绍团队并等待我的请求。",
 		"kickoffGoal": "目标：{{goal}}。",
 		"headerNote": "组长 {{leader}} · {{count}} 个智能体"
-	},
-	"agentManagement": {
-		"title": "Agent management",
-		"description": "Configure existing agents, tools and knowledge bases.",
-		"configure": "Configure agent",
-		"openChat": "Open chat",
-		"create": "Create agent",
-		"search": "Search agents…",
-		"empty": "No agents yet. Create one or use Agent Builder.",
-		"missing": "Agent not found or access denied.",
-		"governedPrompt": "The platform manages the Leader system prompt.",
-		"resourcesSaved": "Tools and knowledge bases were saved; agent configuration was not saved.",
-		"publish": "Publish",
-		"withdraw": "Move to draft",
-		"saved": "Agent updated.",
-		"modelNote": "Models are configured per chat session. Open chat to choose the coordinator model and the shared subagent model.",
-		"coordinatorModel": "Coordinator model",
-		"subagentModel": "Shared subagent model",
-		"inheritModel": "No shared subagent model override",
-		"readOnly": "Read only",
-		"tools": "Tools",
-		"knowledge": "Knowledge bases",
-		"prompt": "System instructions",
-		"advanced": "Advanced configuration",
-		"details": "Agent details",
-		"retry": "Retry",
-		"draft": "Draft",
-		"published": "Published",
-		"withdrawn": "Withdrawn",
-		"panels": "Show side panels"
 	}
 }

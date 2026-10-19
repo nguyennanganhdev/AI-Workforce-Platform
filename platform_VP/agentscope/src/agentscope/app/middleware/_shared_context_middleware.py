@@ -7,12 +7,17 @@ from collections.abc import Awaitable, Callable
 
 from ..._logging import logger
 from ...agent import Agent, ContextConfig
-from ...message import Msg, TextBlock, ToolCallBlock, ToolResultState, UserMsg
+from ...message import Msg, ToolCallBlock, ToolResultState, UserMsg
 from ...middleware import MiddlewareBase
 from ...model import ChatResponse, ChatModelBase
 from ...tool import ToolResponse
 from .._shared_context import SharedContextBudgetError, SharedContextService
 from ..storage import ContextMode, StorageBase
+
+SHARED_CONTEXT_MSG_NAME = "shared_context"
+"""Name of the trailing message that carries the ticket's shared packet."""
+MEMORY_RECALL_MSG_NAME = "memory_recall"
+"""Name of the message, just before the packet, with this turn's recalled memory."""
 
 
 class SharedContextIsolationMiddleware(MiddlewareBase):
@@ -34,14 +39,22 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         *,
         task_id: str | None = None,
         membership_storage: StorageBase | None = None,
+        agent_id: str | None = None,
+        summary_model: object | None = None,
+        project_private_history: bool = False,
         allow_source_references: bool = False,
         reference_event_ids: tuple[str, ...] = (),
     ) -> None:
         self._mode = mode
+        self._summary_model = summary_model
+        self._project_private_history = project_private_history
+        self._agent_id = agent_id
         self._service = service
         self._user_id = user_id
         self._team_id = team_id
         self._packet_attachment = packet_attachment
+        # This turn's recalled long-term memory, sent after the history.
+        self.recall = ""
         self._task_id = task_id
         self._membership_storage = membership_storage or service.storage
         self._event_revision: int | None = None
@@ -50,7 +63,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         self._packet_budget: int | None = None
         self._packet_model: ChatModelBase | None = None
         self._paging_call_ids: set[str] = set()
-        self._paging_model_call_id: str | None = None
+        self._paging_model_call_id = None
         self._paging_reads: dict[str, dict | None] = {}
         prior_context = prior_context or []
         self._prior_message_ids = {message.id for message in prior_context}
@@ -112,6 +125,15 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 ],
                 None,
             )
+            if self.recall:
+                wrapper_tokens += await model.count_tokens(
+                    [
+                        UserMsg(
+                            name=MEMORY_RECALL_MSG_NAME, content=self.recall
+                        )
+                    ],
+                    None,
+                )
             packet_budget = min(
                 self._service.config.packet_max_tokens,
                 model.context_size
@@ -199,6 +221,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             ):
                 packet, tokens = await self._service.prepare_packet(
                     model=model,
+                    summary_model=self._summary_model,
                     allow_source_references=self._allow_source_references,
                     max_tokens=packet_budget,
                     user_id=self._user_id,
@@ -226,7 +249,10 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         value["recent_events"],
                         value["summary"],
                     ):
-                        if isinstance(section, dict) and "source_ref" in section:
+                        if (
+                            isinstance(section, dict)
+                            and "source_ref" in section
+                        ):
                             grant["sources"][section["source_ref"]] = {
                                 **section,
                                 "revision": value["revision"],
@@ -240,28 +266,27 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
 
     def _model_messages(self, agent: Agent, messages: list[Msg]) -> list[Msg]:
         messages = list(messages)
-        if self._packet_attachment:
-            if not messages:
-                raise SharedContextBudgetError(
-                    "Cannot attach shared context because the model input has "
-                    "no system message.",
-                )
-            messages[0] = messages[0].model_copy(
-                update={
-                    "content": [
-                        *messages[0].get_content_blocks(),
-                        TextBlock(text=self._packet_attachment),
-                    ],
-                },
-                deep=True,
+        if self._packet_attachment and not messages:
+            raise SharedContextBudgetError(
+                "Cannot attach shared context without a system message"
             )
-        if self._mode in {"isolated", "references"}:
-            # ``messages[1]`` may be the agent's old private summary and is
-            # intentionally excluded. Only the system prompt (which carries a
-            # references packet when requested) and this turn's context delta
-            # are visible.
-            return [messages[0], *self._current_turn_context(agent)]
-        return messages
+        filtered = (
+            [messages[0], *self._current_turn_context(agent)]
+            if self._mode in {"isolated", "references"}
+            or self._project_private_history
+            else messages
+        )
+        if self.recall:
+            filtered = [*filtered, UserMsg(name=MEMORY_RECALL_MSG_NAME, content=self.recall)]
+        if self._packet_attachment:
+            filtered = [
+                *filtered,
+                UserMsg(
+                    name=SHARED_CONTEXT_MSG_NAME,
+                    content=self._packet_attachment,
+                ),
+            ]
+        return filtered
 
     async def _compression_config(
         self,
@@ -281,6 +306,11 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             if self._packet_attachment
             else 0
         )
+        if self.recall:
+            attachment_tokens += await model.count_tokens(
+                [UserMsg(name=MEMORY_RECALL_MSG_NAME, content=self.recall)],
+                None,
+            )
         private_limit = (
             model.context_size
             - attachment_tokens
@@ -386,8 +416,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         reserved_output_tokens = max(
             1,
             int(
-                current_model.context_size
-                * self._service.config.output_reserve_ratio,
+                current_model.context_size * self._service.config.output_reserve_ratio,
             ),
         )
         budget_exceeded = (
@@ -441,6 +470,23 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         started = time.monotonic()
         output_tokens = 0
 
+        usage = None
+
+        async def record_usage() -> None:
+            # Provider usage is observability, not a budget input: a failure
+            # here must never fail the agent's turn.
+            try:
+                await self._service.record_provider_usage(
+                    user_id=self._user_id,
+                    team_id=self._team_id,
+                    agent_id=self._agent_id or agent.name,
+                    agent_name=agent.name,
+                    model=str(getattr(current_model, "model", "") or ""),
+                    usage=usage,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Could not record provider usage")
+
         async def charge(*, elapsed_floor: float = 0.0):
             await self._service.measure_collaboration(
                 self._user_id,
@@ -469,17 +515,13 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             await charge()
             raise
         if not hasattr(response, "__aiter__"):
+            usage = response.usage
+            await record_usage()
             output_tokens = (
                 response.usage.output_tokens
                 if response.usage
                 else await current_model.count_tokens(
-                    [
-                        Msg(
-                            name=agent.name,
-                            role="assistant",
-                            content=response.content,
-                        )
-                    ],
+                    [Msg(name=agent.name, role="assistant", content=response.content)],
                     None,
                 )
             )
@@ -488,7 +530,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             return response
 
         async def measured_stream():
-            nonlocal output_tokens
+            nonlocal output_tokens, usage
             partial_content = []
             complete = False
             try:
@@ -500,6 +542,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         if chunk.is_last:
                             complete = True
                             self._track_paging_call(chunk)
+                            usage = chunk.usage
                             output_tokens = (
                                 chunk.usage.output_tokens
                                 if chunk.usage
@@ -530,13 +573,15 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         ],
                         None,
                     )
+                await record_usage()
                 await charge()
 
         return measured_stream()
 
     def _track_paging_call(self, response: ChatResponse) -> None:
         calls = [
-            block for block in response.content
+            block
+            for block in response.content
             if isinstance(block, ToolCallBlock)
         ]
         if calls and all(call.name == "SharedContextRead" for call in calls):
@@ -556,7 +601,9 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             and agent.state.get_awaiting_tool_calls(agent.name)
         ):
             agent.react_config = agent.react_config.model_copy(
-                update={"max_iters": max_iters + grant.get("iteration_credits", 0)},
+                update={
+                    "max_iters": max_iters + grant.get("iteration_credits", 0)
+                },
             )
         try:
             async for event in next_handler(**input_kwargs):
@@ -580,9 +627,8 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         try:
             async with asyncio.timeout(remaining):
                 async for result in next_handler(**input_kwargs):
-                    if (
-                        call_id in self._paging_call_ids
-                        and isinstance(result, ToolResponse)
+                    if call_id in self._paging_call_ids and isinstance(
+                        result, ToolResponse
                     ):
                         self._paging_reads[call_id] = (
                             result.metadata.get("shared_context_read")
@@ -593,9 +639,14 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                             self._paging_call_ids = set()
                             if all(self._paging_reads.values()):
                                 credited = await self._service.credit_source_read(
-                                    self._user_id, self._team_id, session_id,
-                                    task_id=self._task_id, customer_revision=epoch,
-                                    source_reads=list(self._paging_reads.values()),
+                                    self._user_id,
+                                    self._team_id,
+                                    session_id,
+                                    task_id=self._task_id,
+                                    customer_revision=epoch,
+                                    source_reads=list(
+                                        self._paging_reads.values()
+                                    ),
                                     paging_call_id=self._paging_model_call_id,
                                 )
                                 if credited:
@@ -607,7 +658,8 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                                     )
                                     agent.react_config = agent.react_config.model_copy(
                                         update={
-                                            "max_iters": agent.react_config.max_iters + 1,
+                                            "max_iters": agent.react_config.max_iters
+                                            + 1,
                                         },
                                     )
                     yield result
@@ -629,7 +681,10 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
     ) -> None:
         """Do not rewrite private memory for a context-isolated handoff."""
 
-        if self._mode in {"isolated", "references"}:
+        if (
+            self._mode in {"isolated", "references"}
+            or self._project_private_history
+        ):
             return
         await self._refresh_packet(agent, agent.model)
         config = await self._compression_config(

@@ -194,7 +194,37 @@ class SchedulerManager:
                 )
                 return
 
+            from ..._service._personal_jobs import personal_context
             try:
+                if await personal_context(storage, record.user_id) is not None:
+                    await self._fire_personal(record)
+                    return
+            except Exception:
+                logger.exception("[Schedule:%s] Personal durable enqueue failed", record.id)
+                return
+
+            origin = ScheduleOrigin(
+                schedule_id=record.id,
+                deliver_channel_id=record.data.deliver_channel_id or None,
+                deliver_chat_id=record.data.deliver_chat_id or None,
+            )
+            session = None
+            try:
+                if record.data.once:
+                    # The existing single scheduler owner consumes once before
+                    # dispatch. C09 supplies the multi-worker atomic claim.
+                    current = await storage.get_schedule(record.user_id, record.id)
+                    if current is None or not current.data.enabled:
+                        return
+                    data = current.data.model_copy(update={
+                        "enabled": False,
+                        "last_fired_at": datetime.now().astimezone(),
+                        "last_error": "DISPATCH_OUTCOME_PENDING",
+                    })
+                    await storage.upsert_schedule(
+                        record.user_id, current.model_copy(update={"data": data}),
+                    )
+                    await self.notify_changed(record.id)
                 if record.data.stateful:
                     stateful_session_id = f"{record.id}_stateful"
                     logger.info(
@@ -236,7 +266,7 @@ class SchedulerManager:
                             config=session_config,
                             state=state,
                             session_id=stateful_session_id,
-                            origin=ScheduleOrigin(schedule_id=record.id),
+                            origin=origin,
                         )
                     else:
                         logger.info(
@@ -271,7 +301,7 @@ class SchedulerManager:
                             chat_model_config=record.data.chat_model_config,
                         ),
                         state=state,
-                        origin=ScheduleOrigin(schedule_id=record.id),
+                        origin=origin,
                     )
 
                 logger.info(
@@ -314,15 +344,66 @@ class SchedulerManager:
                     record.data.name,
                     session.id,
                 )
+                await _record_fire(session.id, "")
 
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 # pylint: disable=broad-except - a failed fire must not stop the job
                 logger.exception(
                     "[Schedule:%s(%s)] Trigger failed",
                     record.id,
                     record.data.name,
                 )
+                await _record_fire(session.id if session else "", type(exc).__name__)
+
+        async def _record_fire(session_id: str, error: str) -> None:
+            """Keep the last run visible; a one-time schedule disables itself."""
+            try:
+                current = await storage.get_schedule(record.user_id, record.id)
+                if current is None:
+                    return
+                done = current.data.once and current.data.enabled
+                data = current.data.model_copy(update={
+                    "last_fired_at": datetime.now().astimezone(),
+                    "last_session_id": session_id,
+                    "last_error": error,
+                    **({"enabled": False} if done else {}),
+                })
+                await storage.upsert_schedule(
+                    record.user_id, current.model_copy(update={"data": data}),
+                )
+                if done:
+                    await self.notify_changed(record.id)
+            except Exception:  # pylint: disable=broad-except
+                logger.exception("[Schedule:%s] Could not record the run", record.id)
 
         return _trigger
+
+    async def _fire_personal(self, record):
+        from datetime import timedelta, timezone
+        from ..._service._personal_jobs import enqueue_schedule
+        current = await self._storage.get_schedule(record.user_id, record.id)
+        if current is None or not current.data.enabled:
+            return
+        at = datetime.now(timezone.utc)
+        if current.data.once:
+            slot = "once"
+        else:
+            trigger = self.validate_schedule(current)
+            fire = trigger.get_next_fire_time(None, at - timedelta(seconds=300))
+            due = None
+            while fire is not None and fire <= at:
+                due = fire
+                fire = trigger.get_next_fire_time(fire, fire + timedelta(microseconds=1))
+            if due is None:
+                return
+            slot = due.astimezone(timezone.utc).isoformat()
+        await enqueue_schedule(self._storage, current, slot)
+        # Queue durability precedes consuming a once schedule. Concurrent
+        # timers enqueue the same logical key; only the C09 claimant runs it.
+        data = current.data.model_copy(update={"last_fired_at": at, "last_error": "DISPATCH_OUTCOME_PENDING",
+            **({"enabled": False} if current.data.once else {})})
+        await self._storage.upsert_schedule(current.user_id, current.model_copy(update={"data": data}))
+        if current.data.once:
+            await self.notify_changed(current.id)
 
     # ------------------------------------------------------------------
     # Schedule management

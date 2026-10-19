@@ -1,267 +1,272 @@
-import { ArrowLeft, MessageSquare, Plus, Power, Settings2, Trash2, Users } from 'lucide-react';
-import { useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+	Bot,
+	Copy,
+	FilePlus2,
+	LayoutTemplate,
+	List,
+	Plus,
+	Sparkles,
+	Workflow,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
-import { workforceApi } from '@/api';
-import type { AgentView } from '@/api';
-import { AgentDialog } from '@/components/dialog/AgentDialog';
+import { ActivityDialog } from './activity';
+import { AgentMapView, AgentTable } from './map-view';
+import { PartnerRoutesDialog } from './partner-routes';
+import { studioApi } from '@/api';
+import type { AgentSummary, AgentTemplate } from '@/api';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
-import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ClayAvatar } from '@/components/ui/clay-avatar';
-import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
-import { useAgents } from '@/hooks/useAgents';
-import { useTranslation } from '@/i18n/useI18n';
-import { formatApiErrorForAlert } from '@/lib/api-error';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { refreshStudio, useStudioAgents } from '@/hooks/useStudioAgents';
 
-export function AgentManagementPage() {
-	const { t } = useTranslation();
+export { AgentDetailPage } from './detail';
+
+function CreateAgentDialog({
+	open,
+	onOpenChange,
+	agents,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	agents: AgentSummary[];
+}) {
 	const navigate = useNavigate();
-	const { agentId } = useParams<{ agentId?: string }>();
-	const [params, setParams] = useSearchParams();
-	const { agents, loading, error, refetch, remove } = useAgents();
-	const [search, setSearch] = useState('');
-	const [deleting, setDeleting] = useState<AgentView | null>(null);
-	const [pending, setPending] = useState<string | null>(null);
-	const [mutationError, setMutationError] = useState('');
-	const selected = agents.find((agent) => agent.id === agentId);
-	const visible = agentId
-		? selected
-			? [selected]
-			: []
-		: agents.filter((agent) =>
-				`${agent.data.name} ${agent.data.build_description ?? ''}`
-					.toLocaleLowerCase()
-					.includes(search.toLocaleLowerCase()),
-			);
+	const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+	const [description, setDescription] = useState('');
+	const [templateId, setTemplateId] = useState<string | undefined>();
+	const [allowTeam, setAllowTeam] = useState(true);
+	const [runTests, setRunTests] = useState(false);
+	const [busy, setBusy] = useState(false);
 
-	const changeLifecycle = async (agent: AgentView) => {
-		if (!agent.editable || pending) return;
-		setPending(agent.id);
-		setMutationError('');
+	useEffect(() => {
+		if (open) studioApi.templates().then(setTemplates).catch(() => setTemplates([]));
+	}, [open]);
+
+	const go = async (task: () => Promise<{ agent_id: string }>) => {
+		setBusy(true);
 		try {
-			await workforceApi.setLifecycle(
-				agent.id,
-				agent.data.lifecycle_state === 'published' ? 'draft' : 'published',
-			);
-			await refetch();
-		} catch (failure) {
-			setMutationError(formatApiErrorForAlert(failure));
+			const agent = await task();
+			onOpenChange(false);
+			navigate(`/workforce/agents/${agent.agent_id}`);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : String(error));
 		} finally {
-			setPending(null);
+			setBusy(false);
 		}
 	};
 
 	return (
-		<div className="h-full overflow-y-auto bg-background">
-			<header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-4 md:px-8">
-				<div className="flex items-center gap-3">
-					{agentId ? (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>Tạo agent</DialogTitle>
+					<DialogDescription>
+						Agent mới luôn là bản nháp. Bạn xem lại trên form, chạy kiểm thử rồi mới phát hành.
+					</DialogDescription>
+				</DialogHeader>
+				<Tabs defaultValue="describe">
+					<TabsList>
+						<TabsTrigger value="describe"><Sparkles /> Mô tả bằng lời</TabsTrigger>
+						<TabsTrigger value="template"><LayoutTemplate /> Từ mẫu ngành</TabsTrigger>
+						<TabsTrigger value="clone"><Copy /> Nhân bản</TabsTrigger>
+					</TabsList>
+					<TabsContent value="describe" className="space-y-3 pt-2">
+						<Textarea
+							value={description}
+							rows={6}
+							placeholder="Ví dụ: Agent tìm chuyến bay theo ngày và số khách. So sánh giá, nói rõ điều kiện vé, chưa đặt vé khi khách chưa đồng ý…"
+							onChange={(event) => setDescription(event.target.value)}
+						/>
+						<div className="flex flex-wrap items-center gap-1.5 text-xs">
+							<span className="text-muted-foreground">Dựa trên mẫu (tuỳ chọn):</span>
+							{templates.map((template) => (
+								<Button
+									key={template.id}
+									size="xs"
+									variant={templateId === template.id ? 'default' : 'outline'}
+									onClick={() => setTemplateId(templateId === template.id ? undefined : template.id)}
+								>
+									{template.title}
+								</Button>
+							))}
+						</div>
+						<div className="flex flex-wrap gap-4 text-xs">
+							<label className="flex items-center gap-2">
+								<Checkbox checked={allowTeam} onCheckedChange={(value) => setAllowTeam(value === true)} />
+								Cho Builder chia thành nhóm agent nếu việc gồm nhiều chuyên môn
+							</label>
+							<label className="flex items-center gap-2">
+								<Checkbox checked={runTests} onCheckedChange={(value) => setRunTests(value === true)} />
+								Chạy kiểm thử ngay (gọi model thật)
+							</label>
+						</div>
 						<Button
-							variant="ghost"
-							size="icon"
-							aria-label={t('agentManagement.title')}
-							onClick={() => navigate('/workforce/agents')}
+							disabled={busy || description.trim().length < 3}
+							onClick={() =>
+								go(async () => {
+									const result = await studioApi.compose(description.trim(), templateId, { allowTeam, runTests });
+									if (result.agents.length > 1) {
+										toast.success(result.reply.assistant_message);
+									}
+									const failed = Object.values(result.test_reports).find((report) => report.errors);
+									if (failed) toast.error(`Chưa kiểm thử được: ${failed.model_error}`);
+									return result.agent;
+								})
+							}
 						>
-							<ArrowLeft />
+							{busy ? <Spinner /> : <Sparkles />} Để Builder soạn bản nháp
 						</Button>
-					) : (
-						<Users className="size-5 text-muted-foreground" />
-					)}
+					</TabsContent>
+					<TabsContent value="template" className="grid gap-2 pt-2 md:grid-cols-2">
+						{templates.map((template) => (
+							<button
+								key={template.id}
+								type="button"
+								disabled={busy}
+								onClick={() => go(() => studioApi.create({ template_id: template.id }))}
+								className="space-y-1 rounded-xl border border-border/70 p-3 text-left transition-colors hover:bg-muted"
+							>
+								<Badge variant="outline">{template.domain}</Badge>
+								<p className="text-sm font-medium">{template.title}</p>
+								<p className="text-xs text-muted-foreground">{template.spec.description}</p>
+								<p className="text-xs text-muted-foreground">
+									{template.spec.rules.length} luật · {template.spec.tests.length} kịch bản kiểm thử
+								</p>
+							</button>
+						))}
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => go(() => studioApi.create({}))}
+							className="flex items-center gap-2 rounded-xl border border-dashed p-3 text-left text-sm hover:bg-muted"
+						>
+							<FilePlus2 className="size-4" /> Agent trống
+						</button>
+					</TabsContent>
+					<TabsContent value="clone" className="space-y-2 pt-2">
+						{agents.map((agent) => (
+							<button
+								key={agent.agent_id}
+								type="button"
+								disabled={busy}
+								onClick={() => go(() => studioApi.create({ clone_from: agent.agent_id }))}
+								className="flex w-full items-center gap-2 rounded-xl border border-border/70 p-3 text-left text-sm hover:bg-muted"
+							>
+								<Bot className="size-4" /> {agent.name}
+							</button>
+						))}
+						{agents.length === 0 && <p className="text-xs text-muted-foreground">Chưa có agent để nhân bản.</p>}
+					</TabsContent>
+				</Tabs>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+const VIEWS = [
+	{ key: 'map', label: 'Sơ đồ 3D', icon: Workflow },
+	{ key: 'list', label: 'Danh sách', icon: List },
+] as const;
+
+/**
+ * Agent management: opens on the 3D map with the list beside it; the table
+ * view adds versions, tests and rules. Both read one cache, so a change in
+ * either shows in both. The view is in the URL (`?view=list`).
+ */
+export function AgentManagementPage() {
+	const [params, setParams] = useSearchParams();
+	const view = params.get('view') === 'list' ? 'list' : 'map';
+	const client = useQueryClient();
+	const { data: agents, isError } = useStudioAgents();
+	const [creating, setCreating] = useState(false);
+	const [removing, setRemoving] = useState<AgentSummary | null>(null);
+
+	useEffect(() => {
+		if (isError) toast.error('Không tải được danh sách agent.');
+	}, [isError]);
+
+	return (
+		<div className="flex size-full">
+			<main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+				<div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-3 pb-3">
 					<div>
-						<h1 className="text-lg font-semibold">
-							{selected?.data.name ?? t('agentManagement.title')}
-						</h1>
-						<p className="text-sm text-muted-foreground">
-							{t('agentManagement.description')}
+						<h1 className="text-[17px]/6 font-semibold">Quản lý agent</h1>
+						<p className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
+							Sơ đồ và danh sách đồng bộ với nhau; mọi thay đổi agent được kiểm thử và lưu thành phiên bản.
 						</p>
 					</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<Tabs value={view} onValueChange={(next) => setParams(next === 'list' ? { view: 'list' } : {}, { replace: true })}>
+							<TabsList>
+								{VIEWS.map(({ key, label, icon: Icon }) => (
+									<TabsTrigger key={key} value={key} className="px-2.5">
+										<Icon /> {label}
+									</TabsTrigger>
+								))}
+							</TabsList>
+						</Tabs>
+						<ActivityDialog />
+						<PartnerRoutesDialog />
+						<Button onClick={() => setCreating(true)}>
+							<Plus /> Tạo agent
+						</Button>
+					</div>
 				</div>
-				<AgentDialog onCreated={refetch}>
-					<Button>
-						<Plus />
-						{t('agentManagement.create')}
-					</Button>
-				</AgentDialog>
-			</header>
-			<div className="mx-auto max-w-6xl space-y-4 p-4 md:p-8">
-				{!agentId && (
-					<Input
-						aria-label={t('agentManagement.search')}
-						placeholder={t('agentManagement.search')}
-						value={search}
-						onChange={(event) => setSearch(event.target.value)}
-						className="max-w-sm"
-					/>
-				)}
-				{(error || mutationError) && (
-					<Alert variant="destructive">
-						<AlertDescription>
-							{mutationError || formatApiErrorForAlert(error)}
-							<Button variant="ghost" size="sm" onClick={refetch}>
-								{t('agentManagement.retry')}
-							</Button>
-						</AlertDescription>
-					</Alert>
-				)}
-				{loading ? (
-					<div className="flex justify-center p-12">
-						<Spinner />
-					</div>
-				) : visible.length === 0 ? (
-					<p className="py-12 text-center text-sm text-muted-foreground">
-						{t(agentId ? 'agentManagement.missing' : 'agentManagement.empty')}
-					</p>
-				) : (
-					<div
-						className={
-							agentId ? 'space-y-4' : 'grid gap-4 md:grid-cols-2 xl:grid-cols-3'
-						}
-					>
-						{visible.map((agent) => (
-							<article
-								key={agent.id}
-								className="rounded-2xl border border-border/70 bg-card p-5"
-							>
-								<div className="flex items-start gap-3">
-									<ClayAvatar id={agent.id} label={agent.data.name} size={44} />
-									<div className="min-w-0 flex-1">
-										<button
-											type="button"
-											className="max-w-full truncate text-left text-[15px] font-semibold hover:underline"
-											onClick={() =>
-												navigate(`/workforce/agents/${agent.id}`)
-											}
-										>
-											{agent.data.name}
-										</button>
-										<div className="mt-1 flex flex-wrap gap-1">
-											<Badge variant="secondary">
-												{agent.data.system_role === 'leader'
-													? 'Leader'
-													: t(
-															`agentManagement.${agent.data.lifecycle_state ?? 'draft'}`,
-														)}
-											</Badge>
-											{!agent.editable && (
-												<Badge variant="outline">
-													{t('agentManagement.readOnly')}
-												</Badge>
-											)}
-										</div>
-									</div>
-								</div>
-								<p className="mt-3 line-clamp-3 text-sm text-muted-foreground">
-									{agent.data.build_description ||
-										agent.data.invite_config?.invite_description}
-								</p>
-								{agent.data.execution_mode != null && (
-									<p className="mt-2 text-xs text-muted-foreground">
-										{agent.data.tool_bindings?.length ?? 0}{' '}
-										{t('agentManagement.tools')}
-									</p>
-								)}
-								{agentId && (
-									<>
-										<p className="mt-4 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
-											{t('agentManagement.modelNote')}
-										</p>
-										{agent.data.system_role === 'leader' ? (
-											<p className="mt-4 text-sm text-muted-foreground">
-												{t('agentManagement.governedPrompt')}
-											</p>
-										) : (
-											<details className="mt-4 text-sm">
-												<summary className="cursor-pointer font-medium">
-													{t('agentManagement.prompt')}
-												</summary>
-												<pre className="mt-2 whitespace-pre-wrap break-words font-sans text-muted-foreground">
-													{agent.data.system_prompt}
-												</pre>
-											</details>
-										)}
-									</>
-								)}
-								<div className="mt-5 flex flex-wrap gap-2">
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() => navigate(`/chat/${agent.id}`)}
-									>
-										<MessageSquare />
-										{t('agentManagement.openChat')}
-									</Button>
-									{agent.editable && (
-										<>
-											<Button
-												variant="outline"
-												size="sm"
-												onClick={() =>
-													navigate(`/workforce/agents/${agent.id}?edit=1`)
-												}
-											>
-												<Settings2 />
-												{t('agentManagement.configure')}
-											</Button>
-											{agent.data.system_role !== 'leader' &&
-												agent.data.execution_mode != null && (
-													<Button
-														variant="ghost"
-														size="sm"
-														disabled={pending !== null}
-														onClick={() => void changeLifecycle(agent)}
-													>
-														<Power />
-														{t(
-															agent.data.lifecycle_state ===
-																'published'
-																? 'agentManagement.withdraw'
-																: 'agentManagement.publish',
-														)}
-													</Button>
-												)}
-											<Button
-												variant="ghost"
-												size="icon-sm"
-												className="text-destructive"
-												aria-label={t('agent-menu.delete')}
-												onClick={() => setDeleting(agent)}
-											>
-												<Trash2 />
-											</Button>
-										</>
-									)}
-								</div>
-							</article>
-						))}
-					</div>
-				)}
-			</div>
-			{selected?.editable && (
-				<EditAgentDialog
-					key={selected.id}
-					agent={selected}
-					open={params.get('edit') === '1'}
-					onOpenChange={(open) => setParams(open ? { edit: '1' } : {})}
-					onUpdated={refetch}
-				/>
-			)}
+				<Separator />
+				<div className="min-h-0 flex-1">
+					{agents === undefined ? (
+						<div className="flex flex-col gap-2 p-4" aria-busy="true">
+							{[0, 1, 2, 3].map((row) => (
+								<Skeleton key={row} className="h-14 w-full" />
+							))}
+						</div>
+					) : agents.length === 0 ? (
+						<Empty className="h-full border-none">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<Bot />
+								</EmptyMedia>
+								<EmptyTitle>Chưa có agent</EmptyTitle>
+								<EmptyDescription>Tạo agent đầu tiên bằng mô tả, từ mẫu ngành hoặc agent trống.</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
+					) : view === 'map' ? (
+						<AgentMapView agents={agents} onRemove={setRemoving} />
+					) : (
+						<AgentTable agents={agents} onRemove={setRemoving} />
+					)}
+				</div>
+			</main>
+			<CreateAgentDialog open={creating} onOpenChange={setCreating} agents={agents ?? []} />
 			<DeleteDialog
-				open={deleting !== null}
-				onOpenChange={(open) => !open && setDeleting(null)}
-				title={t('common.deleteTitle', {
-					entity: t('dialog-agent-delete.entity'),
-					name: deleting?.data.name ?? '',
-				})}
-				description={t('common.deleteDescription')}
-				confirmLabel={t('dialog-agent-delete.confirm')}
+				open={removing !== null}
+				onOpenChange={(open) => !open && setRemoving(null)}
+				title={`Gỡ agent "${removing?.name ?? ''}"?`}
+				description="Agent bị gỡ khỏi platform, Leader không mời agent này nữa. Lịch sử phiếu đã xử lý vẫn giữ nguyên."
+				confirmLabel="Gỡ agent"
 				onConfirm={async () => {
-					if (!deleting?.editable) return;
-					await remove(deleting.id);
-					if (deleting.id === agentId) navigate('/workforce/agents', { replace: true });
+					if (!removing) return;
+					await studioApi.remove(removing.agent_id);
+					toast.success(`Đã gỡ ${removing.name}.`);
+					await refreshStudio(client);
 				}}
 			/>
 		</div>

@@ -1,0 +1,2 @@
+# Shell scripts run under Linux also from a Windows checkout: CRLF stops them at the first line.
+*.sh text eol=lf

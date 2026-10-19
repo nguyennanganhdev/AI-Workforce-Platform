@@ -3,7 +3,19 @@ import { toast } from 'sonner';
 const DEFAULT_API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
 export const AUTH_EXPIRED_EVENT = 'agentscope:auth-expired';
-export const getBaseUrl = () => localStorage.getItem('server_url') ?? DEFAULT_API_URL;
+// A bundled same-origin deployment owns its API route. Saved standalone URLs
+// must not redirect login, refresh cookies or uploads to a previous server.
+export const getBaseUrl = () =>
+	DEFAULT_API_URL.startsWith('/')
+		? DEFAULT_API_URL
+		: (localStorage.getItem('server_url') ?? DEFAULT_API_URL);
+
+/** Preserve a reverse proxy prefix such as /api for requests and uploads. */
+export const getApiUrl = (path: string, baseUrl = getBaseUrl()) => {
+	const base = new URL(baseUrl, window.location.origin);
+	base.pathname = `${base.pathname.replace(/\/+$/, '')}/`;
+	return new URL(path.replace(/^\/+/, ''), base);
+};
 
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
@@ -66,7 +78,7 @@ async function refreshAccessToken(baseUrl: string): Promise<boolean> {
 	if (!refreshPromise) {
 		refreshPromise = (async () => {
 			try {
-				const response = await fetch(new URL('/auth/refresh', baseUrl), {
+				const response = await fetch(getApiUrl('/auth/refresh', baseUrl), {
 					method: 'POST',
 					credentials: 'include',
 				});
@@ -95,7 +107,7 @@ async function refreshAccessToken(baseUrl: string): Promise<boolean> {
 async function streamRequest(path: string, options: RequestOptions = {}): Promise<Response> {
 	const { method = 'GET', body, params, signal, silent = false, baseUrl, timeoutMs } = options;
 	const requestBaseUrl = baseUrl ?? getBaseUrl();
-	const url = new URL(path, requestBaseUrl);
+	const url = getApiUrl(path, requestBaseUrl);
 	if (params) {
 		Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 	}
@@ -175,6 +187,12 @@ export const client = {
 		params?: Record<string, string>,
 		options?: { silent?: boolean },
 	) => request<T>(path, { method: 'PATCH', body, params, silent: options?.silent }),
+	put: <T>(
+		path: string,
+		body?: unknown,
+		params?: Record<string, string>,
+		options?: { silent?: boolean },
+	) => request<T>(path, { method: 'PUT', body, params, silent: options?.silent }),
 	delete: <T = void>(path: string, params?: Record<string, string>) =>
 		request<T>(path, { method: 'DELETE', params }),
 	stream: (path: string, options?: RequestOptions) => streamRequest(path, options),

@@ -15,10 +15,9 @@ backed by ``fakeredis``. They assert:
   of raising.
 """
 from contextlib import AsyncExitStack
-from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 from utils import AnyString, FakeWorkspaceManager
@@ -41,21 +40,17 @@ from agentscope.app.access import (
     ResourceKind,
     ResourceRef,
 )
-from agentscope.app.message_bus import RedisMessageBus, MessageBusKeys
+from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.storage import (
     AgentData,
     AgentRecord,
-    ChatModelConfig,
-    MCPRecord,
     RedisStorage,
     SessionConfig,
     StorageBase,
     TeamOrigin,
     UserOrigin,
 )
-from agentscope.mcp import HttpMCPConfig, MCPClient
-from agentscope.workspace import LocalWorkspace
-from agentscope.message import ToolResultState, UserMsg
+from agentscope.message import ToolResultState
 from agentscope.permission import (
     AdditionalWorkingDirectory,
     PermissionBehavior,
@@ -190,7 +185,6 @@ class TestTeamCreate(_TeamToolsTestBase):
             session_id=self.leader_session.id,
             agent_id=self.leader_agent.id,
         )
-
         chunk = await tool(name="alpha", description="t-desc")
 
         self.assertDictEqual(
@@ -233,39 +227,8 @@ class TestTeamCreate(_TeamToolsTestBase):
             },
         )
 
-    async def test_team_charter_is_not_semantically_validated(self) -> None:
-        await self.storage.upsert_message(
-            self.user_id,
-            self.leader_session.id,
-            UserMsg(
-                "user",
-                "Tôi muốn đi Phú Quốc 2 ngày 1 đêm.",
-            ),
-        )
-        tool = TeamCreate(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-        )
-
-        result = await tool(
-            name="Tư vấn Phú Quốc",
-            description="Lập kế hoạch Phú Quốc cho 2 người trong 2 ngày 1 đêm.",
-        )
-
-        self.assertEqual(result.state, ToolResultState.RUNNING)
-        session = await self.storage.get_session(
-            self.user_id,
-            self.leader_agent.id,
-            self.leader_session.id,
-        )
-        self.assertIsNotNone(session.team_id)
-
-    async def test_repeat_call_is_idempotent_for_the_leader(self) -> None:
-        """Re-issuing TeamCreate keeps the existing team and succeeds."""
+    async def test_rejects_when_session_already_in_team(self) -> None:
+        """A session can lead at most one team."""
         tool = TeamCreate(
             storage=self.storage,
             message_bus=self.bus,
@@ -276,10 +239,24 @@ class TestTeamCreate(_TeamToolsTestBase):
         )
         await tool(name="first", description="d")
         chunk = await tool(name="second", description="d")
-        self.assertNotEqual(chunk.state, ToolResultState.ERROR, chunk.content)
-        self.assertIn("already exists", chunk.content[0].text)
-        teams = await self.storage.list_teams(self.user_id)
-        self.assertEqual([t.data.name for t in teams], ["first"])
+        self.assertDictEqual(
+            chunk.model_dump(),
+            {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": AnyString(),
+                        "id": AnyString(),
+                        "created_at": AnyString(),
+                        "finished_at": None,
+                    },
+                ],
+                "state": "error",
+                "is_last": True,
+                "metadata": {},
+                "id": AnyString(),
+            },
+        )
 
 
 class TestAgentCreate(_TeamToolsTestBase):
@@ -343,7 +320,6 @@ class TestAgentCreate(_TeamToolsTestBase):
         )
         team = await self.storage.get_team(self.user_id, sess.team_id)
         self.assertEqual(len(team.data.member_ids), 1)
-        self.assertEqual(team.data.members[0].description, "does research")
         worker_agent_id = team.data.member_ids[0]
 
         # Worker agent exists with source=team.
@@ -403,49 +379,6 @@ class TestAgentCreate(_TeamToolsTestBase):
                 "input": None,
             },
         )
-
-    async def test_new_worker_uses_shared_model_instead_of_coordinator_model(
-        self,
-    ):
-        shared_model = ChatModelConfig(
-            type="test",
-            credential_id="worker-cred",
-            model="workers",
-            parameters={},
-        )
-        config = self.leader_session.config.model_copy(
-            update={
-                "chat_model_config": shared_model.model_copy(
-                    update={"model": "coordinator"}
-                ),
-                "sub_agent_chat_model_config": shared_model,
-            }
-        )
-        await self.storage.upsert_session(
-            user_id=self.user_id,
-            agent_id=self.leader_agent.id,
-            session_id=self.leader_session.id,
-            config=config,
-        )
-        result = await AgentCreate(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-        )(name="worker", description="research", prompt="look up X")
-        self.assertEqual(result.state, ToolResultState.RUNNING)
-        leader = await self.storage.get_session(
-            self.user_id, self.leader_agent.id, self.leader_session.id
-        )
-        team = await self.storage.get_team(self.user_id, leader.team_id)
-        member = team.data.members[0]
-        worker = await self.storage.get_session(
-            self.user_id, member.agent_id, member.session_id
-        )
-        self.assertEqual(worker.config.chat_model_config, shared_model)
-        self.assertEqual(leader.config.chat_model_config.model, "coordinator")
 
     async def _spawn_worker_with_template(
         self,
@@ -1504,174 +1437,10 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
 
-    async def test_legacy_session_mcps_replace_defaults_without_duplicates(self):
-        with TemporaryDirectory() as workdir:
-            browser = MCPClient(
-                name="playwright", is_stateful=False,
-                mcp_config=HttpMCPConfig(url="https://example.test/browser"),
-                enable_tools=["navigate"],
-            )
-            async with LocalWorkspace(workdir=workdir, default_mcps=[browser]) as workspace:
-                await workspace.add_mcp(
-                    MCPClient(
-                        name="travel", is_stateful=False,
-                        mcp_config=HttpMCPConfig(url="https://example.test/travel"),
-                        enable_tools=["search_hotels"],
-                    ),
-                    agent_id=self.monday_agent.id, session_id=self.monday_session.id,
-                )
-                source = [m.model_dump() for m in await workspace.list_mcps(
-                    agent_id=self.monday_agent.id, session_id=self.monday_session.id,
-                )]
-                self.workspace_manager.get_workspace.return_value = workspace
-                result = await AgentInvite(
-                    storage=self.storage, message_bus=self.bus,
-                    workspace_manager=self.workspace_manager, user_id=self.user_id,
-                    session_id=self.leader_session.id, agent_id=self.leader_agent.id,
-                    invitable_pool=[self.monday_agent],
-                )(target=f"Monday@{self.monday_agent.id[:8]}", prompt="Compare the supplied options.")
-                self.assertEqual(result.state, ToolResultState.RUNNING, result.content)
-                leader = await self.storage.get_session(
-                    self.user_id, self.leader_agent.id, self.leader_session.id,
-                )
-                team = await self.storage.get_team(self.user_id, leader.team_id)
-                borrowed = await workspace.list_mcps(
-                    agent_id=self.monday_agent.id, session_id=team.data.members[0].session_id,
-                )
-                self.assertEqual([m.model_dump() for m in borrowed], source)
-                self.assertEqual([m.model_dump() for m in await workspace.list_mcps(
-                    agent_id=self.monday_agent.id, session_id=self.monday_session.id,
-                )], source)
-
-    async def test_legacy_copy_ignores_previous_failed_team_sessions(self):
-        orphan = await self.storage.upsert_session(
-            self.user_id, self.monday_agent.id,
-            SessionConfig(workspace_id="failed-borrow"), origin=TeamOrigin(),
-        )
-        with patch.object(self.storage, "list_sessions", AsyncMock(
-            return_value=[orphan, self.monday_session],
-        )):
-            result = await AgentInvite(
-                storage=self.storage, message_bus=self.bus,
-                workspace_manager=self.workspace_manager, user_id=self.user_id,
-                session_id=self.leader_session.id, agent_id=self.leader_agent.id,
-                invitable_pool=[self.monday_agent],
-            )(target=f"Monday@{self.monday_agent.id[:8]}", prompt="Compare the supplied options.")
-        self.assertEqual(result.state, ToolResultState.RUNNING, result.content)
-        self.invite_workspace.list_mcps.assert_awaited_once_with(
-            agent_id=self.monday_agent.id, session_id=self.monday_session.id,
-        )
-
-    async def test_invited_worker_uses_shared_model_without_changing_primary(
-        self,
-    ):
-        shared_model = ChatModelConfig(
-            type="test",
-            credential_id="worker-cred",
-            model="workers",
-            parameters={},
-        )
-        await self.storage.upsert_session(
-            user_id=self.user_id,
-            agent_id=self.leader_agent.id,
-            session_id=self.leader_session.id,
-            config=self.leader_session.config.model_copy(
-                update={
-                    "chat_model_config": shared_model.model_copy(
-                        update={"model": "coordinator"}
-                    ),
-                    "sub_agent_chat_model_config": shared_model,
-                }
-            ),
-        )
-        builder_model = shared_model.model_copy(update={"model": "builder"})
-        await self.storage.upsert_session(
-            user_id=self.user_id,
-            agent_id=self.monday_agent.id,
-            session_id=self.monday_session.id,
-            config=self.monday_session.config.model_copy(
-                update={"chat_model_config": builder_model}
-            ),
-        )
-        result = await AgentInvite(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent],
-        )(target=f"Monday@{self.monday_agent.id[:8]}", prompt="look up X")
-        self.assertEqual(result.state, ToolResultState.RUNNING)
-        leader = await self.storage.get_session(
-            self.user_id, self.leader_agent.id, self.leader_session.id
-        )
-        team = await self.storage.get_team(self.user_id, leader.team_id)
-        member = team.data.members[0]
-        borrowed = await self.storage.get_session(
-            self.user_id, member.agent_id, member.session_id
-        )
-        primary = await self.storage.get_session(
-            self.user_id, self.monday_agent.id, self.monday_session.id
-        )
-        self.assertEqual(borrowed.config.chat_model_config, shared_model)
-        self.assertEqual(primary.config.chat_model_config, builder_model)
-        self.assertEqual(leader.config.chat_model_config.model, "coordinator")
-
-    async def test_assignment_is_not_semantically_validated(self):
-        leader = await self.storage.get_session(
-            self.user_id,
-            self.leader_agent.id,
-            self.leader_session.id,
-        )
-        shared = SharedContextService(self.storage, self.bus)
-        await shared.append_event(
-            user_id=self.user_id,
-            team_id=leader.team_id,
-            kind="customer_message",
-            content="Tôi muốn đi Phú Quốc 2 ngày 1 đêm.",
-        )
-        tool = AgentInvite(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent],
-            shared_context_service=shared,
-        )
-
-        result = await tool(
-            target=f"Monday@{self.monday_agent.id[:8]}",
-            prompt="Lập kế hoạch chuyến đi cho 2 người.",
-        )
-
-        self.assertEqual(result.state, ToolResultState.RUNNING)
-        team = await self.storage.get_team(self.user_id, leader.team_id)
-        self.assertEqual(len(team.data.members), 1)
-
-    async def test_builder_tools_materialized_without_primary_session(self):
-        await self.storage.delete_session(
-            self.user_id,
-            self.monday_agent.id,
-            self.monday_session.id,
-        )
-        mcp = MCPRecord(
-            user_id=self.user_id,
-            client=MCPClient(
-                name="travel",
-                is_stateful=False,
-                mcp_config=HttpMCPConfig(url="https://example.test/mcp"),
-            ),
-        )
-        await self.storage.upsert_mcp(self.user_id, mcp)
-        self.monday_agent.data.execution_mode = "tool_backed"
-        self.monday_agent.data.tool_bindings = [
-            {"mcp_id": mcp.id, "tool_name": "search_flights"},
-        ]
+    async def test_context_only_builder_agent_drops_default_mcps(self):
+        self.monday_agent.data.execution_mode = "context_only"
         await self.storage.upsert_agent(self.user_id, self.monday_agent)
-        self.invite_workspace.default_mcps = [SimpleNamespace(name="default")]
+        self.invite_workspace.default_mcps = [SimpleNamespace(name="demo")]
         tool = AgentInvite(
             storage=self.storage,
             message_bus=self.bus,
@@ -1684,29 +1453,12 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
 
         result = await tool(
             target=f"Monday@{self.monday_agent.id[:8]}",
-            prompt="Find an available flight.",
+            prompt="Summarize the supplied context.",
         )
 
         self.assertEqual(result.state, ToolResultState.RUNNING)
-        leader = await self.storage.get_session(
-            self.user_id,
-            self.leader_agent.id,
-            self.leader_session.id,
-        )
-        team = await self.storage.get_team(self.user_id, leader.team_id)
-        borrowed = team.data.members[0]
-        self.invite_workspace.remove_mcp.assert_awaited_once_with(
-            "default",
-            agent_id=self.monday_agent.id,
-            session_id=borrowed.session_id,
-        )
-        self.invite_workspace.list_mcps.assert_not_awaited()
-        self.invite_workspace.add_mcp.assert_awaited_once()
-        call = self.invite_workspace.add_mcp.await_args
-        self.assertEqual(call.args[0].name, "travel")
-        self.assertEqual(call.args[0].enable_tools, ["search_flights"])
-        self.assertEqual(call.kwargs["agent_id"], self.monday_agent.id)
-        self.assertEqual(call.kwargs["session_id"], borrowed.session_id)
+        self.invite_workspace.remove_mcp.assert_awaited_once()
+        self.invite_workspace.add_mcp.assert_not_awaited()
 
     async def test_invited_session_inherits_agent_knowledge_bases(self) -> None:
         self.monday_agent.data.knowledge_base_ids = ["kb-monday"]
@@ -1746,132 +1498,35 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             borrowed.config.knowledge_config.parameters["mode"],
             "agentic",
         )
+    async def test_invitation_preserves_server_consent_and_ignores_borrowed_primary(self):
+        from agentscope.app.storage import MCPRecord
+        from agentscope.mcp import HttpMCPConfig, MCPClient
 
-    async def test_context_only_builder_agent_drops_default_mcps(self):
-        self.monday_agent.data.execution_mode = "context_only"
+        mcp = MCPRecord(user_id=self.user_id, client=MCPClient(name="registered", is_stateful=False,
+            mcp_config=HttpMCPConfig(url="http://unused.test/mcp"), confirm_tools=["flagged"]),
+            discovered_tools=[{"name": "read", "read_only": True}, {"name": "write", "read_only": False},
+                              {"name": "flagged", "read_only": True}])
+        await self.storage.upsert_mcp(self.user_id, mcp)
+        self.monday_agent.data.tool_bindings = [
+            {"mcp_id": mcp.id, "tool_name": name, "requires_consent": False}
+            for name in ["read", "write", "flagged", "unknown"]]
         await self.storage.upsert_agent(self.user_id, self.monday_agent)
-        self.invite_workspace.default_mcps = [SimpleNamespace(name="demo")]
-        tool = AgentInvite(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent],
-        )
+        await self.storage.upsert_session(user_id=self.user_id, agent_id=self.monday_agent.id,
+            config=SessionConfig(workspace_id="wrong-borrowed-workspace"), origin=TeamOrigin())
+        answer = await AgentInvite(storage=self.storage, message_bus=self.bus,
+            workspace_manager=self.workspace_manager, user_id=self.user_id,
+            session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent])(
+                target=f"Monday@{self.monday_agent.id[:8]}", prompt="Inspect safely")
+        self.assertNotEqual(answer.state, ToolResultState.ERROR)
+        client = self.invite_workspace.add_mcp.call_args.args[0]
+        # Only the server/owner consent list is forced; book/cancel/pay/writes are
+        # asked by the runtime risk policy, reads and searches run.
+        self.assertEqual(client.confirm_tools, ["flagged"])
+        sessions = await self.storage.list_sessions(self.user_id, self.monday_agent.id)
+        self.assertEqual(sessions[0].config.workspace_id, "ws-monday")
 
-        result = await tool(
-            target=f"Monday@{self.monday_agent.id[:8]}",
-            prompt="Summarize the supplied context.",
-        )
-
-        self.assertEqual(result.state, ToolResultState.RUNNING)
-        self.invite_workspace.remove_mcp.assert_awaited_once()
-        self.invite_workspace.add_mcp.assert_not_awaited()
-
-    async def test_explicit_cost_request_requires_available_calculator(self):
-        """An incomplete invite batch cannot silently omit cost calculation."""
-        calculator = _make_agent_record(self.user_id, "Cost Calculation Agent")
-        calculator.data.lifecycle_state = "published"
-        calculator.data.invite_config = (
-            self.monday_agent.data.invite_config.model_copy(
-                update={"invite_description": "Cost calculation expert."},
-            )
-        )
-        calculator.data.build_description = "Calculate and balance total costs."
-        await self.storage.upsert_agent(self.user_id, calculator)
-        await self.storage.upsert_session(
-            user_id=self.user_id,
-            agent_id=calculator.id,
-            config=SessionConfig(workspace_id="ws-calculator"),
-        )
-        leader = await self.storage.get_session(
-            self.user_id,
-            self.leader_agent.id,
-            self.leader_session.id,
-        )
-        shared = SharedContextService(self.storage, self.bus)
-        await shared.append_event(
-            user_id=self.user_id,
-            team_id=leader.team_id,
-            kind="customer_message",
-            content=(
-                "Tính chi phí ba dịch vụ trong ngân sách 4 triệu và chừa "
-                "lại 500 nghìn."
-            ),
-        )
-        tool = AgentInvite(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent, calculator],
-            shared_context_service=shared,
-        )
-
-        result = await tool(
-            target=f"Monday@{self.monday_agent.id[:8]}",
-            prompt="Coordinate the provider results.",
-        )
-
-        self.assertEqual(result.state, ToolResultState.ERROR)
-        self.assertIn("omits the available calculation specialist", result.content[0].text)
-        team = await self.storage.get_team(self.user_id, leader.team_id)
-        self.assertEqual(team.data.members, [])
-
-    async def test_total_budget_requires_available_calculator(self):
-        calculator = _make_agent_record(self.user_id, "Cost Calculation Agent")
-        calculator.data.lifecycle_state = "published"
-        calculator.data.invite_config = (
-            self.monday_agent.data.invite_config.model_copy(
-                update={"invite_description": "Cost calculation expert."},
-            )
-        )
-        calculator.data.build_description = "Calculate and balance total costs."
-        await self.storage.upsert_agent(self.user_id, calculator)
-        await self.storage.upsert_session(
-            user_id=self.user_id,
-            agent_id=calculator.id,
-            config=SessionConfig(workspace_id="ws-calculator"),
-        )
-        leader = await self.storage.get_session(
-            self.user_id,
-            self.leader_agent.id,
-            self.leader_session.id,
-        )
-        shared = SharedContextService(self.storage, self.bus)
-        await shared.append_event(
-            user_id=self.user_id,
-            team_id=leader.team_id,
-            kind="customer_message",
-            content="Tôi có ngân sách 10 triệu cho chuyến đi.",
-        )
-        tool = AgentInvite(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent, calculator],
-            shared_context_service=shared,
-        )
-
-        result = await tool(
-            target=f"Monday@{self.monday_agent.id[:8]}",
-            prompt="Coordinate the provider results.",
-        )
-
-        self.assertEqual(result.state, ToolResultState.ERROR)
-        self.assertIn(
-            "omits the available calculation specialist",
-            result.content[0].text,
-        )
-
-    async def test_batch_starts_only_primary_after_full_roster(self):
+    async def test_batch_preserves_all_four_members_and_dispatches_once(self):
         pool = [self.monday_agent]
         for name in ("Search specialist", "Resource specialist", "Calculator"):
             record = _make_agent_record(self.user_id, name)
@@ -1886,121 +1541,54 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             invitable_pool=pool,
         )
         names = [f"{a.data.name}@{a.id[:8]}" for a in pool]
-        from agentscope.app._tool._agent_invite import enqueue_run_trigger
-
-        async def wake_after_roster(bus, **kwargs):
-            leader = await self.storage.get_session(self.user_id, "", self.leader_session.id)
-            registered = await self.storage.get_team(self.user_id, leader.team_id)
-            self.assertEqual(len(registered.data.members), len(pool))
-            await enqueue_run_trigger(bus, **kwargs)
-
-        tasks = ["Review supplied findings", "Find requested records", "Verify resources", "Calculate supplied totals"]
-        with patch("agentscope.app._tool._agent_invite.enqueue_run_trigger", side_effect=wake_after_roster) as wake:
-            result = await tool(
-                target=names[0], prompt=tasks[0],
-                additional_assignments=[{"target": name, "prompt": task}
-                                        for name, task in zip(names[1:], tasks[1:])],
-            )
-        self.assertEqual(wake.await_count, 1)
+        result = await tool(
+            target=names[0], prompt="Coordinate verified findings",
+            additional_assignments=[{"target": name, "prompt": "Your distinct task"}
+                                    for name in names[1:]],
+        )
         self.assertEqual(result.state, ToolResultState.SUCCESS)
         self.assertEqual(result.metadata["invited_targets"], names)
-        self.assertEqual(result.metadata["started_targets"], names[:1])
         session = await self.storage.get_session(self.user_id, "", self.leader_session.id)
         team = await self.storage.get_team(self.user_id, session.team_id)
         self.assertEqual({m.agent_id for m in team.data.members}, {a.id for a in pool})
         self.assertEqual(len({m.session_id for m in team.data.members}), 4)
         wakeups = await self.bus.dequeue_wakeups(max_count=10)
-        primary = next(member for member in team.data.members if member.agent_id == pool[0].id)
         self.assertEqual(
             {item["session_id"] for item in wakeups},
-            {primary.session_id},
+            {member.session_id for member in team.data.members},
         )
-        task_by_agent = dict(zip((agent.id for agent in pool), tasks))
-        for member in team.data.members:
-            inbox = await self.bus.inbox_drain(member.session_id, max_count=10)
-            self.assertEqual(len(inbox), 1)
-            self.assertIn(task_by_agent[member.agent_id], inbox[0][1]["hint"])
-            if member.session_id == primary.session_id:
-                self.assertNotIn("dormant", inbox[0][1]["hint"])
-            else:
-                self.assertIn("dormant roster member", inbox[0][1]["hint"])
 
-        peer = next(member for member in team.data.members if member.agent_id == pool[1].id)
-        question = await TeamSay(
-            storage=self.storage, message_bus=self.bus,
-            workspace_manager=self.workspace_manager, user_id=self.user_id,
-            session_id=primary.session_id, agent_id=primary.agent_id,
-            shared_context_service=SharedContextService(self.storage, self.bus),
-            role="worker",
-        )(to=names[1], kind="question", content="Find the requested records.")
-        self.assertNotEqual(question.state, ToolResultState.ERROR, question.content)
-        wakeups = await self.bus.dequeue_wakeups(max_count=10)
-        self.assertEqual([peer.session_id], [item["session_id"] for item in wakeups])
-        inbox = await self.bus.inbox_drain(peer.session_id, max_count=10)
-        self.assertEqual(1, len(inbox))
-        self.assertIn("Find the requested records.", inbox[0][1]["hint"])
-
-    async def test_existing_primary_batch_does_not_claim_a_worker_started(
-        self,
-    ):
-        other = _make_agent_record(self.user_id, "Reviewer")
-        other.data.lifecycle_state = "published"
-        other.data.invite_config = (
-            self.monday_agent.data.invite_config.model_copy()
-        )
-        await self.storage.upsert_agent(self.user_id, other)
-        names = [
-            f"{a.data.name}@{a.id[:8]}" for a in (self.monday_agent, other)
-        ]
+    async def test_standby_members_are_briefed_but_only_the_coordinator_starts(self):
+        pool = [self.monday_agent]
+        for name in ("Flights", "Hotels"):
+            record = _make_agent_record(self.user_id, name)
+            record.data.lifecycle_state = "published"
+            record.data.invite_config = self.monday_agent.data.invite_config.model_copy()
+            await self.storage.upsert_agent(self.user_id, record)
+            pool.append(record)
         tool = AgentInvite(
-            storage=self.storage,
-            message_bus=self.bus,
-            workspace_manager=self.workspace_manager,
-            user_id=self.user_id,
-            session_id=self.leader_session.id,
-            agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent, other],
-        )
-        first = await tool(target=names[0], prompt="Review source records")
-        self.assertNotEqual(first.state, ToolResultState.ERROR)
-        await self.bus.queue_drain(MessageBusKeys.wakeup_queue(), max_count=10)
-        with patch(
-            "agentscope.app._tool._agent_invite.enqueue_run_trigger"
-        ) as wake:
-            result = await tool(
-                target=names[0],
-                prompt="Review updated records",
-                additional_assignments=[
-                    {"target": names[1], "prompt": "Review policy"}
-                ],
-            )
-        self.assertEqual(result.state, ToolResultState.SUCCESS)
-        self.assertEqual(result.metadata["started_targets"], [])
-        self.assertEqual(result.metadata["invited_targets"], names)
-        wake.assert_not_awaited()
-        self.assertIn("Use TeamSay", result.content[0].text)
-
-    async def test_batch_keeps_peers_dormant_when_primary_invite_fails(self):
-        other = _make_agent_record(self.user_id, "Reviewer")
-        other.data.lifecycle_state = "published"
-        other.data.invite_config = self.monday_agent.data.invite_config.model_copy()
-        await self.storage.upsert_agent(self.user_id, other)
-        await self.storage.upsert_session(self.user_id, other.id, SessionConfig(workspace_id="ws-other"))
-        self.workspace_manager.get_workspace.side_effect = [RuntimeError("initialization failed"), self.invite_workspace]
-        names = [f"{a.data.name}@{a.id[:8]}" for a in (self.monday_agent, other)]
-        result = await AgentInvite(
             storage=self.storage, message_bus=self.bus,
             workspace_manager=self.workspace_manager, user_id=self.user_id,
             session_id=self.leader_session.id, agent_id=self.leader_agent.id,
-            invitable_pool=[self.monday_agent, other],
-        )(target=names[0], prompt="Review source records", additional_assignments=[
-            {"target": names[1], "prompt": "Review the supplied policy"},
-        ])
-        self.assertEqual(result.state, ToolResultState.ERROR)
-        self.assertEqual(result.metadata["failed_targets"], names[:1])
-        self.assertEqual(result.metadata["started_targets"], [])
+            invitable_pool=pool,
+        )
+        names = [f"{a.data.name}@{a.id[:8]}" for a in pool]
+        result = await tool(
+            target=names[0], prompt="Plan the whole trip within the total budget",
+            additional_assignments=[{"target": name, "prompt": "Owns this capability", "standby": True}
+                                    for name in names[1:]],
+        )
+        self.assertEqual(result.state, ToolResultState.SUCCESS)
+        self.assertIn("On standby", " ".join(block.text for block in result.content))
+        session = await self.storage.get_session(self.user_id, "", self.leader_session.id)
+        team = await self.storage.get_team(self.user_id, session.team_id)
+        by_agent = {m.agent_id: m.session_id for m in team.data.members}
+        self.assertEqual(set(by_agent), {a.id for a in pool})
         wakeups = await self.bus.dequeue_wakeups(max_count=10)
-        self.assertEqual(wakeups, [])
+        self.assertEqual({item["session_id"] for item in wakeups}, {by_agent[self.monday_agent.id]})
+        for record in pool[1:]:
+            briefing = await self.bus.inbox_drain(by_agent[record.id], max_count=10)
+            self.assertTrue(any("STANDBY" in str(item) for item in briefing))
 
     async def test_duplicate_batch_is_rejected_before_any_invite(self):
         target = f"Monday@{self.monday_agent.id[:8]}"
@@ -2075,7 +1663,6 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
         self.assertEqual(member.role, "invited")
         self.assertEqual(member.agent_id, self.monday_agent.id)
         self.assertEqual(member.owner_id, self.user_id)
-        self.assertEqual(member.description, "Expert on X.")
 
         # The borrowed session is distinct from Monday's primary
         # session but inherits its workspace_id.
@@ -2375,8 +1962,8 @@ class TestAgentInviteRejections(_AgentInviteTestBase):
         )
         self.assertDictEqual(chunk.model_dump(), self._EXPECTED_ERROR_CHUNK)
 
-    async def test_duplicate_borrow_is_idempotent(self) -> None:
-        """One team, one borrow per agent; re-inviting is a no-op success."""
+    async def test_rejects_duplicate_borrow(self) -> None:
+        """One team, one borrow per agent."""
         tool = self._tool()
         await tool(
             target=f"Monday@{self.monday_agent.id[:8]}",
@@ -2386,10 +1973,7 @@ class TestAgentInviteRejections(_AgentInviteTestBase):
             target=f"Monday@{self.monday_agent.id[:8]}",
             prompt="task 2",
         )
-        self.assertNotEqual(chunk.state, ToolResultState.ERROR, chunk.content)
-        self.assertIn("already a member", chunk.content[0].text)
-        (team,) = await self.storage.list_teams(self.user_id)
-        self.assertEqual(len(team.data.members), 1)
+        self.assertDictEqual(chunk.model_dump(), self._EXPECTED_ERROR_CHUNK)
 
 
 class TestTeamSayInvitedRouting(_AgentInviteTestBase):

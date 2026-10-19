@@ -5,11 +5,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agentscope-local:latest
+    image: ${APP_IMAGE:-agentscope-local:latest}
     restart: unless-stopped
     environment:
       AGENTSCOPE_SQL_URL: ${AGENTSCOPE_SQL_URL:-postgresql+asyncpg://agentscope:agentscope@postgres:5432/agentscope}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      VIN_PLATFORM_ENABLED: ${VIN_PLATFORM_ENABLED:-false}
+      VIN_PLATFORM_ENCRYPTION_KEY: ${VIN_PLATFORM_ENCRYPTION_KEY:-}
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set}
       AUTH_REFRESH_PEPPER: ${AUTH_REFRESH_PEPPER:?AUTH_REFRESH_PEPPER must be set}
       AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-agentscope}
@@ -40,10 +42,49 @@ services:
       CLAWHUB_API_TOKEN: ${CLAWHUB_API_TOKEN:-}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WORKFORCE_MODEL_NAME: ${WORKFORCE_MODEL_NAME:-}
+      WORKFORCE_MAX_OUTPUT_TOKENS: ${WORKFORCE_MAX_OUTPUT_TOKENS:-16384}
+      WORKFORCE_MODEL_CREDENTIAL_ID: ${WORKFORCE_MODEL_CREDENTIAL_ID:-}
+      WORKFORCE_LEADER_MODEL_NAME: ${WORKFORCE_LEADER_MODEL_NAME:-}
+      WORKFORCE_PROMPT_CACHE_KEY: ${WORKFORCE_PROMPT_CACHE_KEY:-false}
+      OPENAI_CHAT_API: ${OPENAI_CHAT_API:-responses}
+      WORKFORCE_REASONING_EFFORT_LEADER: ${WORKFORCE_REASONING_EFFORT_LEADER:-}
+      WORKFORCE_REASONING_EFFORT_AGENT: ${WORKFORCE_REASONING_EFFORT_AGENT:-}
+      WORKFORCE_REASONING_EFFORT_BUILDER: ${WORKFORCE_REASONING_EFFORT_BUILDER:-}
+      WORKFORCE_REASONING_EFFORT_JUDGE: ${WORKFORCE_REASONING_EFFORT_JUDGE:-}
+      WORKFORCE_PRIVATE_CONTEXT_TOKENS: ${WORKFORCE_PRIVATE_CONTEXT_TOKENS:-8000}
+      SHARED_CONTEXT_PACKET_MAX_TOKENS: ${SHARED_CONTEXT_PACKET_MAX_TOKENS:-48000}
+      SHARED_CONTEXT_HISTORY_BUDGET_TOKENS: ${SHARED_CONTEXT_HISTORY_BUDGET_TOKENS:-4000}
+      SHARED_CONTEXT_SUMMARY_TRIGGER_RATIO: ${SHARED_CONTEXT_SUMMARY_TRIGGER_RATIO:-0.80}
+      SHARED_CONTEXT_RECENT_HISTORY_RATIO: ${SHARED_CONTEXT_RECENT_HISTORY_RATIO:-0.10}
+      SHARED_CONTEXT_SUMMARY_MAX_RATIO: ${SHARED_CONTEXT_SUMMARY_MAX_RATIO:-0.40}
+      SHARED_CONTEXT_SUMMARY_ATTEMPTS: ${SHARED_CONTEXT_SUMMARY_ATTEMPTS:-2}
+      SHARED_CONTEXT_OUTPUT_RESERVE_RATIO: ${SHARED_CONTEXT_OUTPUT_RESERVE_RATIO:-0.10}
+      SHARED_CONTEXT_PREFLIGHT_MARGIN_TOKENS: ${SHARED_CONTEXT_PREFLIGHT_MARGIN_TOKENS:-256}
+      COLLABORATION_MAX_EXCHANGES: ${COLLABORATION_MAX_EXCHANGES:-60}
+      COLLABORATION_MAX_MODEL_CALLS: ${COLLABORATION_MAX_MODEL_CALLS:-40}
+      COLLABORATION_MAX_TOKENS: ${COLLABORATION_MAX_TOKENS:-1000000}
+      COLLABORATION_MAX_ACTIVE_SECONDS: ${COLLABORATION_MAX_ACTIVE_SECONDS:-600}
+      COLLABORATION_MAX_VERIFICATIONS: ${COLLABORATION_MAX_VERIFICATIONS:-2}
+      WORKFORCE_BACKGROUND_SERVICE_TIER: ${WORKFORCE_BACKGROUND_SERVICE_TIER:-flex}
+      WORKFORCE_PLATFORM_OPENAI_API_KEY: ${WORKFORCE_PLATFORM_OPENAI_API_KEY:-}
+      WORKFORCE_BUILDER_TIMEOUT_SECONDS: ${WORKFORCE_BUILDER_TIMEOUT_SECONDS:-180}
+      WORKFORCE_EVAL_SANDBOXES: ${WORKFORCE_EVAL_SANDBOXES:-}
+      CHANNEL_CREDENTIALS_KEY: ${CHANNEL_CREDENTIALS_KEY:-}
+      WORKFORCE_PLATFORM_OPENAI_BASE_URL: ${WORKFORCE_PLATFORM_OPENAI_BASE_URL:-}
+      WORKFORCE_LEADER_WAIT_SECONDS: ${WORKFORCE_LEADER_WAIT_SECONDS:-240}
+      WORKFORCE_LEARNING: ${WORKFORCE_LEARNING:-true}
+      WORKFORCE_LEDGER_STARTED_AT: ${WORKFORCE_LEDGER_STARTED_AT:-}
+      WORKFORCE_PRICE_CATALOG: /run/workforce/model-prices.json
+      KNOWLEDGE_VECTOR_URL: ${KNOWLEDGE_VECTOR_URL:-}
+      KNOWLEDGE_VECTOR_API_KEY: ${KNOWLEDGE_VECTOR_API_KEY:-}
+      KNOWLEDGE_VECTOR_PATH: ${KNOWLEDGE_VECTOR_PATH:-}
+      WORKFORCE_PARTNER_API: ${WORKFORCE_PARTNER_API:-false}
     ports:
-      - "${AGENTSCOPE_PORT:-8000}:8000"
+      - "${BIND_HOST:-127.0.0.1}:${AGENTSCOPE_PORT:-8000}:8000"
     volumes:
       - agentscope_workspaces:/app/examples/agent_service/workspaces
+      - ${WORKFORCE_PRICE_CATALOG_FILE:-./deploy/vps/model-prices.example.json}:/run/workforce/model-prices.json:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -67,12 +108,38 @@ services:
       retries: 10
       start_period: 30s
 
+  web:
+    build:
+      context: ./examples/web_ui
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${WEB_API_BASE_URL:-/api}
+        VITE_VIN_EXPERIENCE_ENABLED: ${VITE_VIN_EXPERIENCE_ENABLED:-false}
+    image: ${WEB_IMAGE:-agentscope-web-local:latest}
+    restart: unless-stopped
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${WEB_PORT:-5173}:80"
+    depends_on:
+      - app
+
+  # DEMO-only MCP server (fake hotels/cars/building data) for the test guide.
+  # Start with `--profile demo`; add it in the MCP page as
+  # http://demo-mcp:8765/mcp.
+  demo-mcp:
+    image: ${APP_IMAGE:-agentscope-local:latest}
+    profiles: ["demo"]
+    restart: unless-stopped
+    working_dir: /app
+    command: ["python", "scripts/workforce/demo_mcp_server.py", "--host", "0.0.0.0", "--port", "8765"]
+    depends_on:
+      - app
+
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -82,14 +149,14 @@ services:
       retries: 10
 
   postgres:
-    image: pgvector/pgvector:pg17
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg17}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-agentscope}
       POSTGRES_USER: ${POSTGRES_USER:-agentscope}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentscope}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -103,34 +170,33 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # minio/minio is no longer pullable from Docker Hub; the Chainguard build
+    # ships the same server plus `mc`. Override with MINIO_IMAGE if needed.
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${BIND_HOST:-127.0.0.1}:${MINIO_API_PORT:-9000}:9000"
+      - "${BIND_HOST:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
       test:
         [
-          "CMD",
-          "curl",
-          "--fail",
-          "--silent",
-          "http://localhost:9000/minio/health/live",
+          "CMD-SHELL",
+          "mc --config-dir /tmp/mc-health alias set self http://127.0.0.1:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" >/dev/null && mc --config-dir /tmp/mc-health ready self",
         ]
       interval: 5s
       timeout: 3s
       retries: 10
 
   minio-init:
-    # The pinned MinIO server image also ships /usr/bin/mc. Reusing it keeps
-    # local bucket provisioning independent of the retired minio/mc registry.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # The MinIO server image also ships `mc`. Reusing it keeps local bucket
+    # provisioning independent of the retired minio/mc registry.
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
     restart: "no"
     depends_on:
       minio:
@@ -142,8 +208,8 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
-        mc mb --ignore-existing "local/$${S3_BUCKET}"
+        mc --config-dir /tmp/mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc --config-dir /tmp/mc mb --ignore-existing "local/$${S3_BUCKET}"
 
 volumes:
   agentscope_workspaces:

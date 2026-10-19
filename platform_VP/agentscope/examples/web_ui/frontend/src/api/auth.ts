@@ -7,8 +7,8 @@ export interface AuthUser {
 	username: string;
 	status: string;
 	role: string;
-	domain_id: string;
-	area_id: string;
+	domain_id: string | null;
+	area_id: string | null;
 }
 
 export interface DomainOption {
@@ -35,6 +35,8 @@ export interface RegisterRequest {
 	domain_id: string;
 	area_id: string;
 }
+
+export type PersonalRegisterRequest = Pick<RegisterRequest, 'email' | 'username' | 'password'>;
 
 export interface LoginRequest {
 	identity: string;
@@ -63,6 +65,10 @@ export const authApi = {
 
 	register: (body: RegisterRequest) =>
 		client.post<AuthUser>('/auth/register', body, undefined, { silent: true }),
+	registerPersonal: (body: PersonalRegisterRequest) =>
+		client.post<AuthUser>('/auth/register-personal', {
+			email: body.email, username: body.username, password: body.password,
+		}, undefined, { silent: true }),
 
 	login: async (body: LoginRequest) => {
 		const tokens = await client.post<TokenResponse>(

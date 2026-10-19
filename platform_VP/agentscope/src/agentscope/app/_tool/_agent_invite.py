@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import copy
 import json
-import unicodedata
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ValidationError
@@ -30,6 +29,7 @@ from .._bus_ops import deliver_to_inbox, enqueue_run_trigger
 from ..storage import (
     SessionConfig,
     SessionKnowledgeConfig,
+    TaskAssignment,
     TeamMember,
     TeamOrigin,
 )
@@ -67,83 +67,32 @@ def _display_name(agent_name: str, agent_id: str) -> str:
     return f"{agent_name}@{_display_handle(agent_id)}"
 
 
-def _fold_text(value: str) -> str:
-    """Return an accent-insensitive form for deterministic capability checks."""
-
-    decomposed = unicodedata.normalize("NFKD", value.casefold()).replace("đ", "d")
-    return " ".join(
-        "".join(char for char in decomposed if not unicodedata.combining(char)).split()
-    )
-
-
-def _requests_calculation(value: str) -> bool:
-    """Detect an explicit cross-item calculation/reserve deliverable."""
-
-    folded = _fold_text(value)
-    return any(
-        marker in folded
-        for marker in (
-            "tinh chi phi",
-            "tinh toan",
-            "tong chi phi",
-            "can doi chi phi",
-            "ngan sach",
-            "chua lai",
-            "de du",
-            "du phong",
-            "calculate",
-            "calculation",
-            "total cost",
-            "cost breakdown",
-            "budget",
-            "budget remaining",
-            "reserve",
-        )
-    )
-
-
-def _has_calculation_capability(agent: AgentRecord) -> bool:
-    """Identify a published calculation specialist from declared capability."""
-
-    tool_names = {
-        _fold_text(str(binding.get("tool_name") or ""))
-        for binding in agent.data.tool_bindings
-    }
-    if any(
-        name.startswith("calculate")
-        or "calculator" in name
-        or "arithmetic" in name
-        for name in tool_names
-    ):
-        return True
-    declared = _fold_text(
-        " ".join(
-            (
-                agent.data.name,
-                agent.data.invite_config.invite_description or "",
-                agent.data.build_description or "",
-            )
-        )
-    )
-    return any(
-        marker in declared
-        for marker in (
-            "cost calculation",
-            "calculator",
-            "tinh toan",
-            "can doi chi phi",
-        )
-    )
+_DONE_WHEN_DESCRIPTION = (
+    "Acceptance criteria the result must meet, e.g. 'at least two available "
+    "options with total price'. The Leader reviews the report against it."
+)
+_DEPENDS_ON_DESCRIPTION = (
+    "Targets (same batch or existing members) whose results this task needs. "
+    "The runtime starts this task only after they report, so it never has to "
+    "chase them; leave empty for independent work."
+)
 
 
 class _AdditionalAssignment(BaseModel):
     target: str = Field(min_length=1)
-    prompt: str = Field(
-        min_length=1,
+    prompt: str = Field(min_length=1)
+    done_when: str = Field(default="", description=_DONE_WHEN_DESCRIPTION)
+    depends_on: list[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description=_DEPENDS_ON_DESCRIPTION,
+    )
+    standby: bool = Field(
+        default=False,
         description=(
-            "Team-role briefing for a dormant roster member. Adding this "
-            "member does not start its run; a specialist wakes it later with "
-            "a concrete TeamSay question or handoff."
+            "Join without starting: prompt is a role briefing, the member "
+            "waits until a teammate asks it for work with TeamSay. Use for "
+            "the specialists a coordinator will call."
         ),
     )
 
@@ -174,14 +123,19 @@ class _AgentInviteParams(ParamsBase):
             "internal wait, not a request for the customer to supply peer results."
         ),
     )
+    done_when: str = Field(default="", description=_DONE_WHEN_DESCRIPTION)
+    depends_on: list[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description=_DEPENDS_ON_DESCRIPTION,
+    )
     additional_assignments: list[_AdditionalAssignment] = Field(
         default_factory=list,
         max_length=32,
         description=(
-            "Other required specialists to add to the roster without starting "
-            "them. Use prompt only as a short role briefing. The primary target "
-            "is the single starting agent and chooses which peer to wake through "
-            "TeamSay as dependencies emerge. Each target must be different."
+            "Other required specialists and their distinct tasks. Use one "
+            "batch for a multi-capability request, not just a general planner. "
+            "Each target must be a different published agent in the catalog."
         ),
     )
 
@@ -343,78 +297,40 @@ class AgentInvite(_TeamToolBase):
         schema = copy.deepcopy(_AgentInviteParams.model_json_schema())
         schema["properties"]["target"]["enum"] = enum_values
         schema["$defs"]["_AdditionalAssignment"]["properties"]["target"]["enum"] = enum_values
+        schema["properties"]["depends_on"]["items"]["enum"] = enum_values
+        schema["$defs"]["_AdditionalAssignment"]["properties"]["depends_on"][
+            "items"
+        ]["enum"] = enum_values
         self.input_schema = schema
-
-    async def _calculation_coverage_error(
-        self,
-        assignments: list[tuple[str, str]],
-        selected_agents: list[AgentRecord],
-    ) -> str | None:
-        """Require an available calculator for an explicit calculation task."""
-
-        request_text = "\n".join(prompt for _target, prompt in assignments)
-        if self._shared_context is not None:
-            team = await self._require_leader_team("invite members")
-            await self._bootstrap_customer_history(team)
-            record = await self._shared_context.storage.get_team_shared_context(
-                self._user_id,
-                team.id,
-            )
-            if record is not None:
-                customer_events = [
-                    event
-                    for event in record.state.events
-                    if event.kind == "customer_message"
-                    and (
-                        record.state.active_task_id is None
-                        or event.task_id == record.state.active_task_id
-                    )
-                ]
-                if customer_events:
-                    request_text += "\n" + max(
-                        customer_events,
-                        key=lambda event: event.revision,
-                    ).content
-        if not _requests_calculation(request_text) or any(
-            _has_calculation_capability(agent) for agent in selected_agents
-        ):
-            return None
-        candidates = [
-            _display_name(agent.data.name, agent.id)
-            for agent in self._pool_by_id.values()
-            if _has_calculation_capability(agent)
-        ]
-        if not candidates:
-            return None
-        return (
-            "AgentInvite: the request explicitly requires calculation, cost "
-            "balancing or a reserved amount, but this batch omits the available "
-            "calculation specialist. Retry one batch including one of: "
-            + ", ".join(sorted(candidates))
-            + ". Give it the total budget/reserve and make it depend on the "
-            "verified provider results."
-        )
 
     async def __call__(
         self,
         target: str,
         prompt: str,
         additional_assignments: list[dict] | None = None,
+        done_when: str = "",
+        depends_on: list[str] | None = None,
     ) -> ToolChunk:
         """Validate the complete batch before inviting; keep single-call compatibility."""
         try:
             request = _AgentInviteParams.model_validate({
                 "target": target, "prompt": prompt,
+                "done_when": done_when, "depends_on": depends_on or [],
                 "additional_assignments": additional_assignments or [],
             })
         except ValidationError as exc:
             return _error(f"AgentInvite: invalid assignments: {exc}")
-        assignments = [(request.target, request.prompt), *(
-            (a.target, a.prompt) for a in request.additional_assignments
-        )]
+        briefs = [
+            _AdditionalAssignment(
+                target=request.target,
+                prompt=request.prompt,
+                done_when=request.done_when,
+                depends_on=request.depends_on,
+            ),
+            *request.additional_assignments,
+        ]
         selected: set[str] = set()
-        selected_agents: list[AgentRecord] = []
-        for name, _ in assignments:
+        for name in (b.target for b in briefs):
             record, error = _resolve_target(self._pool_by_id, name)
             if error:
                 return _error(error)
@@ -422,66 +338,174 @@ class AgentInvite(_TeamToolBase):
             if record.id in selected:
                 return _error("AgentInvite: duplicate agent in assignment batch")
             selected.add(record.id)
-            selected_agents.append(record)
-        try:
-            coverage_error = await self._calculation_coverage_error(
-                assignments,
-                selected_agents,
-            )
-        except Exception as exc:  # pylint: disable=broad-except
-            return _error(f"AgentInvite: capability validation failed: {exc}")
-        if coverage_error is not None:
-            return _error(coverage_error)
-        if not request.additional_assignments:
-            return await self._invite_one(request.target, request.prompt)
+        if len(briefs) == 1:
+            return await self._invite_single(briefs[0])
         content = []
         invited_targets = []
         failed_targets = []
-        started_targets = []
-        staged_workers: list[tuple[str, str]] = []
-        # Build the complete roster first, but start only the primary target.
-        # Dormant peers are awakened later by the first relevant TeamSay.
-        for index, (name, task) in enumerate(assignments):
-            staged_count = len(staged_workers)
+        invited: dict[str, dict] = {}
+        # Invite without delivering. The full batch roster and the task
+        # ledger must be durable before any member wakes, addresses a peer
+        # with TeamSay or reports against its assignment.
+        for brief in briefs:
             result = await self._invite_one(
-                name,
-                task,
-                wake=False,
-                staged_workers=staged_workers,
-                start_task=index == 0,
+                brief.target,
+                _brief_text(brief),
+                deliver=False,
             )
             content.extend(result.content)
             if result.state == ToolResultState.ERROR:
-                failed_targets.append(name)
+                failed_targets.append(brief.target)
             else:
-                invited_targets.append(name)
-            if len(staged_workers) > staged_count:
-                started_targets.append(name)
-        for session_id, agent_id in staged_workers:
+                invited_targets.append(brief.target)
+                invited[brief.target] = result.metadata
+        queued = await self._record_ledger(
+            [brief for brief in briefs if not brief.standby], invited,
+        )
+        standby = [brief.target for brief in briefs if brief.standby and brief.target in invited]
+        for brief in briefs:
+            meta = invited.get(brief.target)
+            if meta is None or brief.target in queued:
+                continue
+            await deliver_to_inbox(
+                self._message_bus,
+                user_id=self._user_id,
+                session_id=meta["session_id"],
+                agent_id=meta["agent_id"],
+                payload=meta["payload"],
+                wake=False,
+            )
+            if brief.standby:
+                # Briefed, not started: a teammate's TeamSay wakes it.
+                continue
             await enqueue_run_trigger(
                 self._message_bus,
                 user_id=self._user_id,
-                session_id=session_id,
-                agent_id=agent_id,
+                session_id=meta["session_id"],
+                agent_id=meta["agent_id"],
+            )
+        if standby:
+            content.append(
+                TextBlock(
+                    text=(
+                        "On standby until a teammate asks them with TeamSay: "
+                        + ", ".join(standby)
+                        + "."
+                    ),
+                ),
+            )
+        if queued:
+            content.append(
+                TextBlock(
+                    text=(
+                        "Queued until their dependencies report: "
+                        + ", ".join(sorted(queued))
+                        + ". The runtime starts them automatically."
+                    ),
+                ),
             )
         return ToolChunk(
             content=content,
             state=(ToolResultState.ERROR if failed_targets else ToolResultState.SUCCESS),
             metadata={
                 "invited_targets": invited_targets,
-                "started_targets": started_targets,
                 "failed_targets": failed_targets,
+                "queued_targets": sorted(queued),
             },
         )
+
+    async def _invite_single(self, brief: _AdditionalAssignment) -> ToolChunk:
+        """One assignment: same result shape as before the task ledger."""
+
+        result = await self._invite_one(brief.target, _brief_text(brief), deliver=False)
+        if result.state == ToolResultState.ERROR:
+            return result
+        meta = result.metadata
+        queued = await self._record_ledger([brief], {brief.target: meta})
+        content = list(result.content)
+        if queued:
+            content.append(
+                TextBlock(
+                    text="Queued until its dependencies report; the runtime starts it.",
+                ),
+            )
+        else:
+            await deliver_to_inbox(
+                self._message_bus,
+                user_id=self._user_id,
+                session_id=meta["session_id"],
+                agent_id=meta["agent_id"],
+                payload=meta["payload"],
+                wake=True,
+            )
+        return ToolChunk(content=content)
+
+    async def _record_ledger(
+        self,
+        briefs: list[_AdditionalAssignment],
+        invited: dict[str, dict],
+    ) -> set[str]:
+        """Write the task ledger; return the targets that must wait."""
+
+        if self._shared_context is None or not invited:
+            return set()
+        team = await self._require_leader_team("invite members")
+        sessions = {target: meta["session_id"] for target, meta in invited.items()}
+        record = await self._shared_context.storage.get_team_shared_context(
+            self._user_id,
+            team.id,
+        )
+        task = (
+            record.state.tasks.get(record.state.active_task_id)
+            if record and record.state.active_task_id
+            else None
+        )
+        existing = task.assignments if task is not None else {}
+        for member in await _ensure_team_members(self._storage, self._user_id, team):
+            agent = self._pool_by_id.get(member.agent_id)
+            if agent is not None:
+                sessions.setdefault(
+                    _display_name(agent.data.name, agent.id),
+                    member.session_id,
+                )
+        settled = {"reported", "verified", "accepted", "stopped", "failed"}
+        ledger: dict[str, TaskAssignment] = {}
+        queued: set[str] = set()
+        for brief in briefs:
+            meta = invited.get(brief.target)
+            if meta is None:
+                continue
+            dependencies = tuple(
+                dict.fromkeys(
+                    sessions[name]
+                    for name in brief.depends_on
+                    if name in sessions and sessions[name] != meta["session_id"]
+                ),
+            )
+            waiting = any(
+                dep not in existing or existing[dep].status not in settled
+                for dep in dependencies
+            )
+            if waiting:
+                queued.add(brief.target)
+            ledger[meta["session_id"]] = TaskAssignment(
+                agent_id=meta["agent_id"],
+                agent_name=brief.target,
+                goal=brief.prompt,
+                done_when=brief.done_when,
+                depends_on=dependencies,
+                status="queued" if waiting else "assigned",
+                pending_payload=meta["payload"] if waiting else None,
+            )
+        await self._shared_context.record_assignments(self._user_id, team.id, ledger)
+        return queued
 
     async def _invite_one(
         self,
         target: str,
         prompt: str,
         *,
-        wake: bool = True,
-        staged_workers: list[tuple[str, str]] | None = None,
-        start_task: bool = True,
+        deliver: bool = True,
     ) -> ToolChunk:
         """Mint a team-scoped session on top of an existing agent record.
 
@@ -558,6 +582,14 @@ class AgentInvite(_TeamToolBase):
                     f"longer invitable as a published business agent.",
                 )
             invited = fresh
+            leader_for_pin = await self._storage.get_session(self._user_id, self._agent_id, self._session_id)
+            contract_versions = (leader_for_pin.state.middle_context.get("partner_agent_versions") or {}) if leader_for_pin else {}
+            if contract_versions:
+                version = contract_versions.get(invited.id)
+                if version is None:
+                    return _error("AgentInvite: agent is outside this ticket's frozen team contract.")
+                from .._service._agent_studio import pinned_view
+                invited = pinned_view(invited, int(version))
 
             # Duplicate-borrow guard — one team, one borrow per agent.
             existing_members = await _ensure_team_members(
@@ -566,18 +598,10 @@ class AgentInvite(_TeamToolBase):
                 team,
             )
             if any(m.agent_id == invited.id for m in existing_members):
-                # Idempotent: re-inviting a member is a no-op, not a failure.
-                return ToolChunk(
-                    content=[
-                        TextBlock(
-                            text=(
-                                f"AgentInvite: agent {invited.data.name!r} is "
-                                f"already a member of team "
-                                f"{team.data.name!r} — nothing was done. "
-                                "Use TeamSay to give it new instructions."
-                            ),
-                        ),
-                    ],
+                return _error(
+                    f"AgentInvite: agent {invited.data.name!r} is "
+                    f"already a member of team "
+                    f"{team.data.name!r}.",
                 )
 
             # Leader session — needed for chat-model / workspace fallback
@@ -608,12 +632,12 @@ class AgentInvite(_TeamToolBase):
             # model. The lookup is caller-scoped, so a cross-owner borrow
             # never reuses the owner's session, MCPs, skills, or cache.
             # The workspace is created lazily on first chat.
-            invited_sessions = [
-                session for session in await self._storage.list_sessions(
-                    self._user_id, invited.id,
-                )
-                if not isinstance(session.origin, TeamOrigin)
-            ]
+            invited_sessions = await self._storage.list_sessions(
+                self._user_id,
+                invited.id,
+            )
+            invited_sessions = [session for session in invited_sessions
+                                if session.origin.type == "user" and not session.team_id]
             if invited_sessions:
                 primary = invited_sessions[0]
                 borrowed_workspace_id = primary.config.workspace_id
@@ -657,6 +681,15 @@ class AgentInvite(_TeamToolBase):
                 # session — the invited agent's main-session state
                 # stays with its own session.
             )
+            # Accounting metadata only; permissions and conversation stay private.
+            if leader_for_pin and leader_for_pin.state.middle_context.get("workflow_id"):
+                worker_state.middle_context["workflow_id"] = leader_for_pin.state.middle_context["workflow_id"]
+            if invited.data.published_version:
+                # Pin the Agent Studio version for this ticket: a version
+                # published while the ticket runs applies to new tickets only.
+                worker_state.middle_context["agent_version"] = (
+                    invited.data.published_version
+                )
 
             invited_display = _display_name(
                 invited.data.name,
@@ -669,17 +702,15 @@ class AgentInvite(_TeamToolBase):
                 config=SessionConfig(
                     workspace_id=borrowed_workspace_id,
                     name=f"team:{team.id}/invited:{invited_handle}",
-                    chat_model_config=(
-                        leader_session.config.sub_agent_chat_model_config
-                        or borrowed_chat_model
-                    ),
+                    chat_model_config=borrowed_chat_model,
                     fallback_chat_model_config=borrowed_fallback_model,
                     knowledge_config=(
                         SessionKnowledgeConfig(
                             knowledge_base_ids=invited.data.knowledge_base_ids,
                             parameters={"mode": "agentic"},
                         )
-                        if invited.data.knowledge_base_ids
+                        if not invited.data.spec
+                        and invited.data.knowledge_base_ids
                         else None
                     ),
                 ),
@@ -687,30 +718,44 @@ class AgentInvite(_TeamToolBase):
                 origin=TeamOrigin(),
             )
 
-            # MCP declarations are session-scoped. Builder agents rebuild
-            # their saved allowlist; legacy agents copy an existing session.
-            if invited.data.execution_mode is not None or invited_sessions:
+            # MCP declarations are session-scoped even when two sessions use
+            # the same per-agent workspace. Builder attaches the validated
+            # tool subset to the agent's primary session, so copy those
+            # declarations into this fresh team session before it can run.
+            # Skills need no copy: they are partitioned by ``agent_id`` in
+            # the shared workspace and therefore remain visible here.
+            if invited_sessions:
                 workspace = await self._workspace_manager.get_workspace(
                     self._user_id,
                     invited.id,
                     borrowed.id,
                     borrowed_workspace_id,
                 )
-                # Both saved allowlists and legacy session copies replace defaults.
-                for default_mcp in workspace.default_mcps:
-                    await workspace.remove_mcp(
-                        default_mcp.name,
-                        agent_id=invited.id,
-                        session_id=borrowed.id,
-                    )
+                # A borrowed Builder agent has an explicit tool allowlist.
+                # Materialise the new team session without deployment-wide
+                # default MCPs before adding those selected declarations.
+                if (
+                    invited.data.tool_bindings
+                    or invited.data.spec
+                    or invited.data.execution_mode is not None
+                ):
+                    for default_mcp in workspace.default_mcps:
+                        await workspace.remove_mcp(
+                            default_mcp.name,
+                            agent_id=invited.id,
+                            session_id=borrowed.id,
+                        )
                 mcp_specs: list[MCPClient] = []
-                if invited.data.execution_mode is not None:
+                if invited.data.tool_bindings:
                     selected: dict[str, list[str]] = {}
+                    confirm: dict[str, list[str]] = {}
                     for binding in invited.data.tool_bindings:
                         mcp_id = str(binding.get("mcp_id") or "")
                         tool_name = str(binding.get("tool_name") or "")
                         if mcp_id and tool_name:
                             selected.setdefault(mcp_id, []).append(tool_name)
+                            if binding.get("requires_consent"):
+                                confirm.setdefault(mcp_id, []).append(tool_name)
                     for mcp_id, enabled_tools in selected.items():
                         record = await self._storage.get_mcp(
                             self._user_id,
@@ -724,8 +769,15 @@ class AgentInvite(_TeamToolBase):
                             record.client.model_dump(mode="json"),
                         )
                         spec.enable_tools = list(dict.fromkeys(enabled_tools))
+                        # Owner-marked consent only; the runtime asks for
+                        # sensitive operations (book, cancel, pay, writes).
+                        required = set(spec.confirm_tools or []) | set(confirm.get(mcp_id) or [])
+                        spec.confirm_tools = sorted(required.intersection(enabled_tools)) or None
                         mcp_specs.append(spec)
-                else:
+                elif (
+                    not invited.data.spec
+                    and invited.data.execution_mode is None
+                ):
                     # Compatibility for manually-authored invitable agents
                     # created before Builder persisted exact tool bindings.
                     mcp_specs = await workspace.list_mcps(
@@ -753,36 +805,23 @@ class AgentInvite(_TeamToolBase):
                     agent_id=invited.id,
                     session_id=borrowed.id,
                     role="invited",
-                    description=(
-                        invited.data.invite_config.invite_description or ""
-                    ).strip(),
                 ),
             ]
             await self._storage.upsert_team(self._user_id, team)
 
-            reminder = (
-                "<system-reminder>You're now invited into a team named "
-                f"'{team.data.name}' led by an agent named "
-                f"'{leader_name}' in this session. All team members "
-                "can **ONLY** communicate through the `TeamSay` tool. "
-                "Read the current team roster and Shared Context before "
-                "choosing a collaborator.</system-reminder>\n"
-            )
-            if start_task:
-                message = (
+            hint = HintBlock(
+                hint=(
+                    "<system-reminder>You're now invited into a team named "
+                    f"'{team.data.name}' led by an agent named "
+                    f"'{leader_name}' in this session. All team members "
+                    f"can **ONLY** communicate through the `TeamSay` tool. "
+                    f"Once you finished the given tasks, or want to "
+                    f"communicate with the leader or team members, "
+                    f"use `TeamSay`.</system-reminder>\n"
                     f'<team-message from="{leader_name}">\n'
                     f"{prompt}\n"
-                    "</team-message>"
-                )
-            else:
-                message = (
-                    "<system-reminder>You are a dormant roster member. Do not "
-                    "start work from this membership notice. Wait until a team "
-                    "member sends you a concrete TeamSay request. Your roster "
-                    f"briefing is: {prompt}</system-reminder>"
-                )
-            hint = HintBlock(
-                hint=reminder + message,
+                    f"</team-message>"
+                ),
                 source=json.dumps(
                     {
                         "label": "team_message",
@@ -791,37 +830,59 @@ class AgentInvite(_TeamToolBase):
                     ensure_ascii=False,
                 ),
             )
-            await deliver_to_inbox(
-                self._message_bus,
-                user_id=self._user_id,
-                session_id=borrowed.id,
-                agent_id=invited.id,
-                payload=hint.model_dump(mode="json"),
-                wake=wake and start_task,
-            )
-            if staged_workers is not None and start_task:
-                staged_workers.append((borrowed.id, invited.id))
+            payload = hint.model_dump(mode="json")
+            if deliver:
+                await deliver_to_inbox(
+                    self._message_bus,
+                    user_id=self._user_id,
+                    session_id=borrowed.id,
+                    agent_id=invited.id,
+                    payload=payload,
+                    wake=True,
+                )
 
             return ToolChunk(
                 content=[
                     TextBlock(
                         text=(
                             f"Invited {invited_display!r} into team "
-                            f"{team.data.name!r}"
-                            + (
-                                " and started its assignment."
-                                if start_task
-                                else " as a dormant roster member."
-                            )
+                            f"{team.data.name!r}."
                         ),
                     ),
                 ],
+                metadata={
+                    "session_id": borrowed.id,
+                    "agent_id": invited.id,
+                    "payload": payload,
+                },
             )
         except Exception as e:  # pylint: disable=broad-except
             return ToolChunk(
                 content=[TextBlock(text=f"AgentInvite failed: {e}")],
                 state=ToolResultState.ERROR,
             )
+
+
+def _brief_text(brief: _AdditionalAssignment) -> str:
+    """Render the first task with its acceptance criteria and dependencies."""
+
+    if brief.standby:
+        return (
+            "STANDBY. Do not start work and do not reply now. Your role in this "
+            "team: " + brief.prompt.strip() + "\nWhen a teammate asks you with "
+            "TeamSay, do that bounded piece with your own tools and answer that "
+            "teammate (kind=answer); ask a teammate yourself if you need their input."
+        )
+    text = brief.prompt.strip()
+    if brief.done_when.strip():
+        text += "\n\nDone when: " + brief.done_when.strip()
+    if brief.depends_on:
+        text += (
+            "\nInputs from teammates: "
+            + ", ".join(brief.depends_on)
+            + " (their verified results are in the shared context when you start)."
+        )
+    return text
 
 
 def _resolve_target(

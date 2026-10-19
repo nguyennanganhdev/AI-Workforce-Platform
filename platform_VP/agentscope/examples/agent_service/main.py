@@ -15,12 +15,21 @@ from agentscope.app.channel import (
     DingTalkChannel,
     DiscordChannel,
     FeishuChannel,
+    TelegramChannel,
+    ZaloOAChannel,
 )
 from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
 from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.rag.blob_store import S3BlobStore
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
 from agentscope.app.storage import AsyncSQLAlchemyStorage, RedisStorage
+from agentscope.app.workforce.integrations.async_runtime import WorkforceBootstrap
+from agentscope.app.workforce.integrations.unified import (
+    ChatLeaderTurnRunner,
+    build_unified_runtime,
+    resolve_signing_secret,
+    unified_mode_enabled,
+)
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 from agentscope.credential import OpenAICredential
 from agentscope.embedding import OpenAIEmbeddingModel
@@ -110,7 +119,27 @@ blob_store = (
     else None
 )
 
-vector_store = QdrantStore(location=":memory:")
+# Knowledge-base vectors must survive a restart, otherwise every uploaded
+# document silently stops being searchable. Use a Qdrant server when
+# KNOWLEDGE_VECTOR_URL is set; otherwise an on-disk Qdrant next to the agent
+# workspaces (a mounted volume in compose). KNOWLEDGE_VECTOR_PATH=:memory:
+# restores the old throwaway behaviour for local experiments.
+_vector_url = os.getenv("KNOWLEDGE_VECTOR_URL", "").strip()
+_vector_path = os.getenv("KNOWLEDGE_VECTOR_PATH", "").strip() or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "workspaces",
+    "_knowledge_vectors",
+)
+if _vector_url:
+    vector_store = QdrantStore(
+        url=_vector_url,
+        api_key=os.getenv("KNOWLEDGE_VECTOR_API_KEY") or None,
+    )
+elif _vector_path == ":memory:":
+    vector_store = QdrantStore(location=":memory:")
+else:
+    os.makedirs(_vector_path, exist_ok=True)
+    vector_store = QdrantStore(path=_vector_path)
 
 auth_service = None
 business_service = None
@@ -129,6 +158,9 @@ if os.getenv("AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
             days=int(os.getenv("AUTH_REFRESH_TTL_DAYS", "30")),
         ),
         cookie_secure=os.getenv("AUTH_COOKIE_SECURE", "true").lower()
+        in {"1", "true", "yes"},
+        # New BQL accounts wait for an administrator; one per area.
+        require_approval=os.getenv("AUTH_REGISTRATION_APPROVAL", "true").lower()
         in {"1", "true", "yes"},
     )
     memory_embedding_model = None
@@ -162,20 +194,59 @@ if os.getenv("AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
         ),
     )
 
+# Inbox, wake-up, context-mode directives and their distributed locks
+# must survive process boundaries; the same Redis deployment may back
+# StorageBase while these keys remain transport-only and namespaced.
+message_bus = RedisMessageBus(
+    host=os.getenv("REDIS_HOST", "localhost"),
+    port=int(os.getenv("REDIS_PORT", "6379")),
+    db=int(os.getenv("REDIS_DB", "0")),
+    password=os.getenv("REDIS_PASSWORD") or None,
+)
+
+# Partner API (/workforce/v1) in unified mode: partner tickets are answered by
+# the same Leader and Agent Studio agents as the web console. Needs the SQL
+# database and partner API keys (AUTH_ENABLED=true).
+workforce_bootstrap = None
+partner_runner: dict = {}
+if unified_mode_enabled():
+    if business_service is None or not os.getenv("AGENTSCOPE_SQL_URL"):
+        raise RuntimeError(
+            "WORKFORCE_PARTNER_API=true requires AUTH_ENABLED=true and AGENTSCOPE_SQL_URL",
+        )
+
+    def _unified_runtime(foundation):
+        runner = ChatLeaderTurnRunner(foundation.uows)
+        partner_runner["runner"] = runner
+        # Partner photos live in the same S3/MinIO store as knowledge documents.
+        return build_unified_runtime(foundation, runner, asset_store=blob_store)
+
+    workforce_bootstrap = WorkforceBootstrap(
+        database_url=os.environ["AGENTSCOPE_SQL_URL"],
+        message_bus=message_bus,
+        runtime_factory=_unified_runtime,
+        # Provider events (contract section 10): API key + HMAC signing key.
+        authenticate_provider_api_key=business_service.authenticate_partner_api_key,
+        resolve_provider_signing_secret=resolve_signing_secret,
+    )
+
+
+async def _partner_case_middlewares(user_id, agent_id, session_id):
+    """Case tools for sessions of partner workflows; nothing elsewhere."""
+    runner = partner_runner.get("runner")
+    if runner is None:
+        return []
+    return await runner.case_middlewares(user_id, agent_id, session_id)
+
+
 app = create_app(
     storage=storage,
     shared_context_storage=shared_context_storage,
     auth_service=auth_service,
     business_service=business_service,
-    # Inbox, wake-up, context-mode directives and their distributed locks
-    # must survive process boundaries; the same Redis deployment may back
-    # StorageBase while these keys remain transport-only and namespaced.
-    message_bus=RedisMessageBus(
-        host=os.getenv("REDIS_HOST", "localhost"),
-        port=int(os.getenv("REDIS_PORT", "6379")),
-        db=int(os.getenv("REDIS_DB", "0")),
-        password=os.getenv("REDIS_PASSWORD") or None,
-    ),
+    message_bus=message_bus,
+    workforce_bootstrap=workforce_bootstrap,
+    extra_agent_middlewares=_partner_case_middlewares,
     workspace_manager=LocalWorkspaceManager(
         basedir=os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
@@ -184,7 +255,7 @@ app = create_app(
         # The default MCP servers that will be added into the workspace
         default_mcps=default_mcps,
     ),
-    # Knowledge base feature — backed by an in-memory Qdrant store. The
+    # Knowledge base feature — backed by a persistent Qdrant store. The
     # CollectionPerKbManager allocates one collection per knowledge base,
     # so any embedding dimension is allowed.
     knowledge_base_manager=CollectionPerKbManager(
@@ -216,8 +287,12 @@ app = create_app(
         DingTalkChannel,
         DiscordChannel,
         FeishuChannel,
+        TelegramChannel,
+        ZaloOAChannel,
     ],
 )
+if "runner" in partner_runner:
+    partner_runner["runner"].bind(app)
 
 
 if __name__ == "__main__":

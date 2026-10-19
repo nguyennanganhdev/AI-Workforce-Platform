@@ -27,8 +27,8 @@ from .._tool import (
     SubmitVerdict,
     TeamCreate,
     TeamDelete,
-    TeamSay,
     SharedContextRead,
+    TeamSay,
 )
 from .._types import AgentToolFactory, SubAgentTemplate
 from ..access import ResourceKind
@@ -54,10 +54,10 @@ async def get_toolkit(
     extra_factory: AgentToolFactory | None = None,
     sub_agent_templates: dict[str, SubAgentTemplate] | None = None,
     team_role: Literal["leader", "worker"] | None = None,
-    is_reply_owner: bool | None = None,
     channel_tools: list[ToolBase] | None = None,
     sop_dispatch: str | None = None,
     shared_context_service: SharedContextService | None = None,
+    management_auth_service=None,
 ) -> Toolkit:
     """Assemble the complete :class:`Toolkit` for one chat turn.
 
@@ -73,10 +73,9 @@ async def get_toolkit(
        :meth:`SchedulerManager.list_tools`). Only attached when the
        session has a model configured (Schedule tools need a model to
        fire new chats with).
-    5. Team tools — only the fixed Workforce Leader can create/delete a team
-       and invite published business agents. A business agent receives only
-       ``TeamSay`` while participating in a team, and no team tools while
-       standalone. Chat runtime never creates agents.
+    5. Team tools — by caller-resolved ``team_role``: a worker gets only
+       ``TeamSay``; anyone else can create a team and invite existing
+       published business agents. Chat runtime never creates agents.
     6. Caller-supplied extras (``extra_factory``)
     7. Channel platform tools — the caller resolves them (once, shared
        with the system-prompt attachment) and passes ``channel_tools``.
@@ -126,9 +125,6 @@ optional):
         team_role (`Literal["leader", "worker"] | None`, optional):
             The session's team role, resolved once by the caller.
             ``None`` means not in any team.
-        is_reply_owner (`bool | None`, optional):
-            Current turn ownership, including directly mentioned specialists.
-            Controls the advertised TeamSay resolution parameter only.
         sop_dispatch (`str | None`, optional):
             ``"<run id>:<step index>"`` when this turn is a SOP
             step's, which gives it a submit tool.
@@ -145,13 +141,12 @@ optional):
     # Builder agents operate through their validated MCP bindings. Coding,
     # shell/task/cron tools add schemas and encourage unrelated planning loops.
     is_leader = agent_record.data.system_role == "leader"
-    # The Builder execution contract identifies authored business agents even
-    # when their intentional effective MCP set is empty (for example a planner
-    # or a knowledge-base answerer). Keep them inside the restricted runtime.
     business_runtime = (
         is_leader
         or bool(agent_record.data.tool_bindings)
+        or bool(agent_record.data.spec)
         or agent_record.data.execution_mode is not None
+        or session_record.config.personal_chat is not None
     )
     tools = [] if business_runtime else await workspace.list_tools()
     if not business_runtime:
@@ -187,9 +182,8 @@ time or interval"
             ),
         )
 
-    # Team creation and membership management belong only to the fixed
-    # Workforce Leader. Business agents may communicate only after they have
-    # joined a team; standalone business agents receive no team tools.
+    # Team tools by caller-resolved role; non-team sessions get the
+    # leader set (each leader tool rechecks its precondition at call time).
     team_tool_kwargs: dict[str, Any] = {
         "storage": storage,
         "message_bus": message_bus,
@@ -199,11 +193,23 @@ time or interval"
         "agent_id": agent_record.id,
         "shared_context_service": shared_context_service,
     }
-    team_say_kwargs = {**team_tool_kwargs, "is_reply_owner": is_reply_owner}
     if is_leader:
+        from ._catalog_resources import catalog_authority
+        authority = catalog_authority(storage)
+        if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
+            from .._tool._customer_service import CustomerService
+            tools.append(CustomerService(**team_tool_kwargs))
+    if session_record.config.personal_chat is not None and session_record.config.personal_chat.kind == "group" and session_record.team_id:
+        tools.append(TeamSay(**team_tool_kwargs, role=team_role or "worker", management_group=True))
+    elif session_record.config.personal_chat is not None:
+        # Participant selection belongs to the user; no autonomous delegation.
+        pass
+    elif team_role == "worker":
+        tools.append(TeamSay(**team_tool_kwargs, role="worker"))
+    else:
         tools += [
             TeamCreate(**team_tool_kwargs),
-            TeamSay(**team_say_kwargs, role="leader"),
+            TeamSay(**team_tool_kwargs, role="leader"),
             TeamDelete(**team_tool_kwargs),
         ]
         # Conditionally attach AgentInvite. Skipping construction when
@@ -239,10 +245,16 @@ time or interval"
                     resource_access_service=resource_access_service,
                 ),
             )
-    elif team_role is not None:
-        tools.append(TeamSay(**team_say_kwargs, role="worker"))
 
-    if shared_context_service is not None and (is_leader or team_role is not None):
+    # A member reads back sources its team packet archived for size.
+    if (
+        shared_context_service is not None
+        and (is_leader or session_record.team_id)
+        and not (
+            session_record.config.personal_chat is not None
+            and session_record.config.personal_chat.kind == "direct"
+        )
+    ):
         tools.append(SharedContextRead(**team_tool_kwargs))
 
     # A step's turn gets one submit tool: handover until something has
@@ -284,35 +296,72 @@ time or interval"
     if channel_tools:
         tools += channel_tools
 
-    workspace_mcps = [] if is_leader else await workspace.list_mcps(
-        agent_id=agent_record.id,
-        session_id=session_record.id,
-    )
-    if agent_record.data.execution_mode is not None:
+    mcps = [] if is_leader else await workspace.list_mcps(agent_id=agent_record.id, session_id=session_record.id)
+    if agent_record.data.spec or agent_record.data.execution_mode is not None:
         allowed_by_mcp: dict[str, list[str]] = {}
         for binding in agent_record.data.tool_bindings:
             mcp_name = str(binding.get("mcp_name") or "")
             tool_name = str(binding.get("tool_name") or "")
+            if not mcp_name and binding.get("mcp_id"):
+                from ._catalog_resources import resolve_catalog_resource
+
+                record = await resolve_catalog_resource(
+                    storage,
+                    user_id,
+                    "mcp",
+                    binding["mcp_id"],
+                    permission="execute",
+                )
+                mcp_name = record.client.name
             if mcp_name and tool_name:
                 allowed_by_mcp.setdefault(mcp_name, []).append(tool_name)
-        workspace_mcps = [
+        mcps = [
             client.model_copy(
                 update={
                     "enable_tools": list(
-                        dict.fromkeys(allowed_by_mcp[client.name]),
-                    ),
+                        dict.fromkeys(allowed_by_mcp[client.name])
+                    )
                 },
                 deep=True,
             )
-            for client in workspace_mcps
+            for client in mcps
             if client.name in allowed_by_mcp
         ]
+    skills = [] if is_leader else await workspace.list_skills(agent_id=agent_record.id)
+    from ._catalog_resources import catalog_authority, list_catalog_resources
 
+    if catalog_authority(storage) is not None and not is_leader:
+        # A workspace snapshot is a selection, never an execution grant.
+        # Rehydrate from authority, rather than trust cached config/headers.
+        granted = {item.name: item for item in await list_catalog_resources(
+            storage, user_id, "mcp", permission="execute",
+        )}
+        current = []
+        for client in mcps:
+            record = granted.get(client.name)
+            if record is None:
+                continue
+            fresh = record.client.model_copy(deep=True)
+            allowed = set(fresh.enable_tools) if fresh.enable_tools is not None else None
+            if client.enable_tools is not None:
+                fresh.enable_tools = [name for name in client.enable_tools if allowed is None or name in allowed]
+            fresh.confirm_tools = sorted(set(fresh.confirm_tools or []) | set(client.confirm_tools or [])) or None
+            current.append(fresh)
+        mcps = current
+        granted_skills = {item.name for item in await list_catalog_resources(
+            storage, user_id, "skill", permission="execute",
+        )}
+        skills = [item for item in skills if getattr(item, "name", None) in granted_skills]
+        if (await catalog_authority(storage).context(user_id)).role == "VIN_USER":
+            from ._customer_mcp import customer_tools
+            mcps, delegated = await customer_tools(storage, user_id, mcps, granted)
+            tools.extend(delegated)
+    if any(t.get("tool_name", "").startswith("vh_management_") for t in (agent_record.data.spec or {}).get("tools", [])):
+        from ._management_mcp import manager_clients
+        mcps = await manager_clients(storage, management_auth_service, user_id, agent_record, mcps)
     return Toolkit(
         tools=tools,
-        skills_or_loaders=[] if is_leader else await workspace.list_skills(
-            agent_id=agent_record.id,
-        ),
-        mcps=workspace_mcps,
+        skills_or_loaders=skills,
+        mcps=mcps,
         tool_groups=tool_groups,
     )

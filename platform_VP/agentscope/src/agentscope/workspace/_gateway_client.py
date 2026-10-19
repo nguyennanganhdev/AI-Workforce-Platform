@@ -76,6 +76,7 @@ class GatewayMCPTool(ToolBase):
         gateway: "GatewayClient",
         agent_id: str = "",
         session_id: str = "",
+        force_confirmation: bool = False,
     ) -> None:
         """Build a gateway-backed MCP tool.
 
@@ -124,6 +125,9 @@ class GatewayMCPTool(ToolBase):
                 )
             )
 
+        self._force_confirmation = force_confirmation
+        if force_confirmation:
+            self.is_read_only = False
         self._tool = tool
         self._gateway = gateway
 
@@ -137,6 +141,7 @@ class GatewayMCPTool(ToolBase):
             self._tool.name,
             self._tool.annotations,
             self.input_schema,
+            force_confirmation=self._force_confirmation,
         )
 
     async def __call__(self, **kwargs: Any) -> ToolChunk:
@@ -443,6 +448,7 @@ class GatewayMCPClient(MCPClient):
             gateway=self._gateway,
             agent_id=self._agent_id,
             session_id=self._session_id,
+            force_confirmation=tool.name in (self.confirm_tools or ()),
         )
 
 

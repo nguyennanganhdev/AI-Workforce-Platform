@@ -1,0 +1,68 @@
+# Host TLS proxy. Replace PLATFORM_DOMAIN and S3_DOMAIN, issue certificates,
+# and run nginx -t before enabling. Internal ports remain loopback-only.
+server {
+    listen 80;
+    server_name PLATFORM_DOMAIN S3_DOMAIN;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+server {
+    listen 443 ssl;
+    server_name PLATFORM_DOMAIN;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_certificate /etc/letsencrypt/live/PLATFORM_DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/PLATFORM_DOMAIN/privkey.pem;
+    client_max_body_size 100m;
+    location = /health {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+    }
+    # Canonical partner contract remains /workforce/v1 (without the UI prefix).
+    location /workforce/v1/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+        add_header X-Accel-Buffering no always;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+    }
+}
+server {
+    listen 443 ssl;
+    server_name S3_DOMAIN;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    # One SAN certificate covers PLATFORM_DOMAIN and S3_DOMAIN.
+    ssl_certificate /etc/letsencrypt/live/PLATFORM_DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/PLATFORM_DOMAIN/privkey.pem;
+    client_max_body_size 100m;
+    location / {
+        # Dedicated S3 origin preserves paths/Host for presigned signatures.
+        proxy_pass http://127.0.0.1:9200;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection "";
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+}

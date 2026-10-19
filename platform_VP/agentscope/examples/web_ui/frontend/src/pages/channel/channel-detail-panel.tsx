@@ -1,5 +1,6 @@
 import {
 	ArrowRight,
+	ArrowLeft,
 	Check,
 	ChevronRight,
 	CircleAlert,
@@ -13,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { ChannelRecord, ChannelStatus, ChannelTypeSchema, SessionRecord } from '@/api';
 import { channelApi } from '@/api';
+import { PersonalRuns } from '@/components/PersonalRuns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +26,7 @@ import {
 	TableRow,
 } from '@/components/ui/table';
 import { useTranslation } from '@/i18n/useI18n';
+import { ChannelConnection } from '@/pages/channel/channel-connection';
 import { ChannelStatusBadge } from '@/pages/channel/channel-status';
 import { TypeAvatar } from '@/pages/channel/type-avatar';
 
@@ -104,7 +107,8 @@ export function ChannelDetailPanel({
 	}
 
 	return (
-		<div className="flex h-full flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
+		<div className="flex h-full flex-col overflow-hidden bg-background">
+			<Button variant="ghost" onClick={onClose} className="h-11 shrink-0 justify-start rounded-none border-b px-4 md:hidden"><ArrowLeft className="size-4" />Danh sách kênh</Button>
 			<div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4">
 				<div className="flex min-w-0 items-center gap-3">
 					<TypeAvatar type={type} className="size-10 rounded-lg" />
@@ -139,12 +143,15 @@ export function ChannelDetailPanel({
 			</div>
 
 			<div className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 pb-5">
+				<PersonalRuns kind="channels" sourceId={channel.id} />
 				{status?.last_error && (
 					<Alert variant="destructive">
 						<CircleAlert />
 						<AlertDescription>{status.last_error}</AlertDescription>
 					</Alert>
 				)}
+
+				<ChannelConnection key={channel.id} channel={channel} />
 
 				<section>
 					<div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

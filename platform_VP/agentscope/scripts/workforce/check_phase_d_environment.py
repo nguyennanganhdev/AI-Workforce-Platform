@@ -6,12 +6,11 @@ from __future__ import annotations
 import importlib
 import json
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-
 
 REQUIRED_MODULES = (
     "aiosqlite",
@@ -42,8 +41,10 @@ def main() -> int:
     )
     scripts = ScriptDirectory.from_config(config)
     heads = scripts.get_heads()
-    if heads != ["0012_workforce_assets"]:
-        failures.append(f"unexpected Alembic heads: {heads!r}")
+    # The gate protects against a forked migration chain; the head name moves
+    # with every new migration, so only the single-head invariant is pinned.
+    if len(heads) != 1:
+        failures.append(f"expected exactly one Alembic head, got {heads!r}")
 
     postgres = os.getenv("WORKFORCE_TEST_POSTGRES_URL")
     if postgres and not postgres.startswith(

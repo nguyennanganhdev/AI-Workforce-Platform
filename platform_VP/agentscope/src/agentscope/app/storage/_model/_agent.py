@@ -109,6 +109,8 @@ class AgentData(BaseModel):
     )
 
     system_role: SkipJsonSchema[Literal["business", "leader"]] = "business"
+    purpose: SkipJsonSchema[Literal["personal", "domain_service", "system"]] = "personal"
+    visibility: SkipJsonSchema[Literal["private", "entitled_catalog"]] = "private"
     """Server-owned role. The fixed leader is never authored in Builder."""
 
     lifecycle_state: SkipJsonSchema[
@@ -123,16 +125,37 @@ class AgentData(BaseModel):
     """Builder-selected, server-validated MCP tool references."""
 
     knowledge_base_ids: SkipJsonSchema[list[str]] = Field(default_factory=list)
-    """Builder-selected default knowledge bases inherited by new sessions."""
+    """Legacy Dong bindings, retained until adoption into Agent Spec."""
 
-    execution_mode: SkipJsonSchema[Literal["context_only", "tool_backed"] | None] = None
-    """Builder-owned execution contract; absent on regular user agents."""
+    execution_mode: SkipJsonSchema[
+        Literal["context_only", "tool_backed"] | None
+    ] = None
+    """Legacy Builder execution contract; an empty tool set is intentional."""
 
     generated_skill: SkipJsonSchema[str] = ""
     """Builder-generated SKILL.md body installed into the agent workspace."""
 
+
     evaluation: SkipJsonSchema[dict] = Field(default_factory=dict)
     """Latest immutable Builder readiness result shown before publish."""
+
+    spec: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Published :class:`~agentscope.app._agent_spec.AgentSpec` (JSON)."""
+
+    draft_spec: SkipJsonSchema[dict | None] = None
+    """Unpublished edits from the form, the copilot or self-improvement."""
+
+    draft_meta: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Who changed the draft, why, and the last test run tied to its hash."""
+
+    versions: SkipJsonSchema[list[dict]] = Field(default_factory=list)
+    """Immutable published versions: number, spec, prompt, author, note."""
+
+    published_version: SkipJsonSchema[int] = 0
+    """The version number the runtime currently serves (0 = none)."""
+
+    resource_workspace_id: SkipJsonSchema[str | None] = None
+    """Immutable prepared workspace activated with the published version."""
 
 
 class AgentRecord(_RecordBase):
@@ -151,6 +174,9 @@ class AgentRecord(_RecordBase):
       Team membership itself is session-level and stored on
       :class:`SessionRecord.team_id`.
     """
+
+    storage_revision: SkipJsonSchema[int] = Field(default=0, ge=0)
+    """Storage CAS token. Callers must read fresh before updating an agent."""
 
     data: AgentData
     """The agent data"""

@@ -16,7 +16,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { mergeChatEvent } from '../utils/appendChatEvent';
 import { sessionApi, takeFreshlyCreated } from '@/api';
 import { chatApi } from '@/api';
-import { useAudioManager } from '@/context/AudioContext';
+import { useAudioManager } from '@/context/audio-context';
 
 /**
  * One pending subagent HITL request, projected from a team *member*
@@ -188,7 +188,20 @@ export function useMessages(
 			// reply content — route them to callbacks and skip appendEvent.
 			if (event.type === EventType.CUSTOM) {
 				const custom = event as CustomEvent;
-				if (custom.name === 'team_updated') {
+				if (custom.name === 'message_upserted' && custom.value) {
+					const message = (custom.value as { message?: Msg }).message;
+					if (message) {
+						const exists = msgsRef.current.some((m) => m.id === message.id);
+						msgsRef.current = exists
+							? msgsRef.current.map((m) => m.id === message.id ? message : m)
+							: [...msgsRef.current, message];
+						if (message.role === 'assistant' && message.finished_at && currentReplyRef.current?.id === message.id) {
+							currentReplyRef.current = null;
+							setPhase('idle');
+						}
+						scheduleUpdate();
+					}
+				} else if (custom.name === 'team_updated') {
 					optionsRef.current?.onTeamUpdated?.();
 				} else if (custom.name === 'state_updated' && custom.value) {
 					optionsRef.current?.onStateUpdated?.(custom.value as Record<string, unknown>);
@@ -376,6 +389,8 @@ export function useMessages(
 					setMsgs([...msgsRef.current]);
 				} catch (e) {
 					if (!cancelled && (e as Error).name !== 'AbortError') setError(e as Error);
+					// Keep subscribing and reconciling after a transient history
+					// failure; otherwise this tab stays offline until a reload.
 				} finally {
 					// Marks the load done whether it succeeded or threw —
 					// an error surfaces through `error`, and leaving
@@ -437,9 +452,24 @@ export function useMessages(
 				});
 			}
 		})();
+		// Also cover the short history/subscription race and an idle reply
+		// written by another worker. Never replace an actively streamed reply.
+		const reconcile = window.setInterval(async () => {
+			if (document.hidden || currentReplyRef.current) return;
+			try {
+				const history = await sessionApi.messages(sessionId, agentId);
+				if (cancelled || currentReplyRef.current) return;
+				const byId = new Map(msgsRef.current.map((m) => [m.id, m]));
+				for (const message of history.messages) byId.set(message.id, message);
+				msgsRef.current = [...byId.values()];
+				if (!history.is_running && !hasPendingToolCall(history.messages.at(-1))) setPhase('idle');
+				scheduleUpdate();
+			} catch { /* SSE reconnect reports connection status. */ }
+		}, 5000);
 
 		return () => {
 			cancelled = true;
+			window.clearInterval(reconcile);
 			controller.abort();
 			if (pollTimer) clearTimeout(pollTimer);
 			abortRef.current = null;

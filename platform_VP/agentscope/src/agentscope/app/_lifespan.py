@@ -68,6 +68,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await stack.enter_async_context(workspace_manager)
         if auth_service is not None:
             await stack.enter_async_context(auth_service)
+        authority = getattr(app.state, "vin_platform_service", None)
+        if authority is not None:
+            await authority.check_schema()
+            from .vin_platform._reconciliation import reconciliation_worker
+            await stack.enter_async_context(reconciliation_worker(authority))
         if business_service is not None:
             await stack.enter_async_context(business_service)
         # Workforce asset routes/workers may use the same private blob store.
@@ -193,6 +198,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             custom_agent_cls=app.state.custom_agent_cls,
             channel_clients=channel_clients,
             shared_context_storage=shared_context_storage,
+            management_auth_service=app.state.auth_service,
         )
         app.state.chat_service = chat_service
 

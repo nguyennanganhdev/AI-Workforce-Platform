@@ -60,8 +60,6 @@ class SkillViewer(ToolBase):
     mcp_name: str | None = None
     """The skill viewer does not belong to any MCP server."""
 
-    _LOADED_SKILLS_KEY = "skill_viewer.loaded_skills"
-
     def __init__(
         self,
         get_skills_method: Callable[..., Awaitable[dict[str, Skill]]],
@@ -125,22 +123,5 @@ class SkillViewer(ToolBase):
                 ],
                 state=ToolResultState.ERROR,
             )
-
-        loaded_skills = _agent_state.middle_context.setdefault(
-            self._LOADED_SKILLS_KEY,
-            [],
-        )
-        if skill in loaded_skills:
-            return ToolChunk(
-                content=[
-                    TextBlock(
-                        text=(
-                            f"Skill '{skill}' is already loaded in this "
-                            "session. Reuse its previous instructions."
-                        ),
-                    ),
-                ],
-            )
-        loaded_skills.append(skill)
 
         return ToolChunk(content=[TextBlock(text=target_skill.markdown)])

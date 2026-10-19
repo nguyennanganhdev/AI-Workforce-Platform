@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """App routers."""
 from ._agent import agent_router
+from ._admin import admin_router
 from ._auth import auth_router
 from ._business import business_router
 from ._channel import channel_router
@@ -19,9 +20,12 @@ from ._model import model_router
 from ._tts_model import tts_model_router
 from ._workspace import workspace_router
 from ._workforce_console import workforce_console_router
+from ._workforce_insights import workforce_insights_router
+from ._workforce_studio import workforce_studio_router
 
 __all__ = [
     "agent_router",
+    "admin_router",
     "auth_router",
     "business_router",
     "channel_router",
@@ -40,4 +44,6 @@ __all__ = [
     "sop_router",
     "workspace_router",
     "workforce_console_router",
+    "workforce_insights_router",
+    "workforce_studio_router",
 ]

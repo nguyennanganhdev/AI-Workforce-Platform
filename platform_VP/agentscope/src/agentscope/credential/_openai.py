@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The OpenAI credential."""
+import os
 from typing import Literal, Type, TYPE_CHECKING
 
 from pydantic import ConfigDict, Field, SecretStr
@@ -45,10 +46,15 @@ class OpenAICredential(CredentialBase):
 
     @classmethod
     def get_chat_model_class(cls) -> Type["ChatModelBase"]:
-        """Return the OpenAIChatModel class."""
-        from ..model import OpenAIChatModel
+        """The Responses API model (reasoning effort works with tools there,
+        and the reply carries a reasoning summary), or Chat Completions when
+        ``OPENAI_CHAT_API=chat_completions`` (OpenAI-compatible gateways and
+        the scripted test model only speak that)."""
+        from ..model import OpenAIChatModel, OpenAIResponseModel
 
-        return OpenAIChatModel
+        if os.getenv("OPENAI_CHAT_API", "responses").strip().lower() == "chat_completions":
+            return OpenAIChatModel
+        return OpenAIResponseModel
 
     @classmethod
     def get_embedding_model_class(cls) -> Type["EmbeddingModelBase"]:

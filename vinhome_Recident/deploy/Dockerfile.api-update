@@ -1,0 +1,8 @@
+# Offline update when the VPS cannot reach Docker Hub. BASE_API_IMAGE must be a trusted deployed API image
+# with exactly the dependencies of services/vinhomes-api/pyproject.toml; no dependency changes are permitted.
+ARG BASE_API_IMAGE
+FROM ${BASE_API_IMAGE}
+USER root
+COPY services/vinhomes-api/src/vinhomes_api /usr/local/lib/python3.12/site-packages/vinhomes_api
+RUN python -m compileall -q -f /usr/local/lib/python3.12/site-packages/vinhomes_api && python -m pip check
+USER app

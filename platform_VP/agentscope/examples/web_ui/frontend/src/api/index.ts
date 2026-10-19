@@ -14,14 +14,21 @@ export { channelApi } from './channel';
 export { healthApi } from './health';
 export { authApi } from './auth';
 export { workforceApi } from './workforce';
+export { studioApi } from './studio';
+export { adminApi } from './admin';
+export type * from './studio';
 export type {
 	BuilderConversationSummary,
-	AgentToolSettings,
-	BuilderKnowledgeBase,
 	BuilderMessage,
 	BuilderProposal,
 	BuilderTool,
+	DuplicateDecision,
 	LeaderSession,
+	PlannedAgent,
+	SimilarAgent,
+	RoomEntry,
+	RoomParticipant,
+	RoomView,
 	ProposedAgent,
 	WorkforceAgent,
 } from './workforce';

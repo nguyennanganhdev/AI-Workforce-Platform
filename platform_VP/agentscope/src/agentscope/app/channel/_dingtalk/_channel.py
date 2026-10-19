@@ -83,6 +83,7 @@ _MEDIA_MESSAGE_TYPES = frozenset(
 class DingTalkChannel(ChannelBase):
     """DingTalk enterprise application robot channel."""
 
+    hidden_from_catalog = True
     channel_type = "dingtalk"
     display_name = "DingTalk"
     description = "Enterprise robot for DingTalk groups and direct messages."

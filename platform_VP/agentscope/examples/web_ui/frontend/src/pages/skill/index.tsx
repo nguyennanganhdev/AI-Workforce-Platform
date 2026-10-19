@@ -1,6 +1,7 @@
 import { Blocks, Check, Download, Plug, Trash2, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import type { HubInfo, SkillCard, SkillView } from '@/api';
 import { hubApi, skillApi } from '@/api';
@@ -19,6 +20,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from '@/components/ui/empty.tsx';
+import { Input } from '@/components/ui/input';
 import {
 	Item,
 	ItemActions,
@@ -40,6 +42,8 @@ import {
 	SidebarMenuItem,
 } from '@/components/ui/sidebar.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
+import { Textarea } from '@/components/ui/textarea';
+import { useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useResourceDrawer } from '@/hooks/useResourceDrawer.ts';
 import { useSkillHubCards } from '@/hooks/useSkillHubCards.ts';
 import { useSkillHubs } from '@/hooks/useSkillHubs.ts';
@@ -60,6 +64,7 @@ interface CardItemProps {
 }
 
 function CardItem({ card, installed, installing, now, onInstall, onOpen }: CardItemProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 
 	return (
@@ -142,7 +147,7 @@ function CardItem({ card, installed, installing, now, onInstall, onOpen }: CardI
 					) : (
 						<Button
 							className="h-7 rounded-full px-3.5 text-xs font-normal hover:opacity-86"
-							disabled={installing}
+							disabled={!canManage || installing}
 							// Installing straight from the row must not also
 							// open the drawer behind it.
 							onClick={(e) => {
@@ -168,6 +173,7 @@ interface HubPanelProps {
 }
 
 function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
 	const [installingId, setInstallingId] = useState<string | null>(null);
@@ -188,6 +194,7 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 	// A skill needs no configuration, so there is nothing to ask for —
 	// unlike an MCP install, this goes straight through without a dialog.
 	const handleInstall = async (card: SkillCard) => {
+		if (!canManage) return;
 		setInstallingId(card.id);
 		try {
 			await hubApi.skill.install(card.hub_id, card.id);
@@ -283,7 +290,7 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 				action={
 					<Button
 						disabled={
-							drawer.opened !== null &&
+							!canManage || drawer.opened !== null &&
 							(installedNames.has(drawer.opened.name) ||
 								installingId === (drawer.opened as SkillCard).id)
 						}
@@ -310,11 +317,14 @@ interface MinePanelProps {
 	skills: SkillView[];
 	loading: boolean;
 	onRemove: (skillId: string) => void;
+	onRefresh: () => Promise<void>;
 }
 
-function MinePanel({ skills, loading, onRemove }: MinePanelProps) {
+function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
+	const [saving, setSaving] = useState(false);
 	// The list view omits SKILL.md; the detail endpoint carries it.
 	const drawer = useResourceDrawer(
 		useCallback((skill) => skillApi.get((skill as SkillView).id), []),
@@ -347,6 +357,20 @@ function MinePanel({ skills, loading, onRemove }: MinePanelProps) {
 					: undefined
 			}
 		>
+			{canManage && <details className="m-4 rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">Tạo skill nội bộ để dùng lại</summary>
+				<form className="mt-3 space-y-3" onSubmit={async event => {
+					event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); setSaving(true);
+					try { await skillApi.create({ name: String(data.get('name')), description: String(data.get('description')), markdown: String(data.get('markdown')) }); form.reset(); await onRefresh(); }
+					catch (error) { toast.error(error instanceof Error ? error.message : 'Không lưu được skill'); }
+					finally { setSaving(false); }
+				}}>
+					<label className="block text-sm">Tên phiên bản<Input name="name" pattern="[a-z0-9][a-z0-9-]{1,79}" placeholder="evidence-review-v1" required /></label>
+					<label className="block text-sm">Mô tả<Input name="description" required maxLength={1000} /></label>
+					<label className="block text-sm">Hướng dẫn SKILL.md<Textarea name="markdown" required minLength={40} maxLength={100000} rows={8} /></label>
+					<p className="text-xs text-muted-foreground">Lưu thành bản chờ duyệt. Không đặt mật khẩu hoặc dữ liệu cá nhân trong skill.</p>
+					<Button size="sm" disabled={saving}>Lưu bản chờ duyệt</Button>
+				</form>
+			</details>}
 			{loading ? (
 				<div className="flex justify-center py-10">
 					<Spinner />
@@ -423,6 +447,8 @@ function MinePanel({ skills, loading, onRemove }: MinePanelProps) {
 							</ItemContent>
 
 							<ItemActions>
+								<Badge variant="outline">{skill.review_status === 'candidate' ? 'Chờ duyệt' : skill.review_status === 'revoked' ? 'Đã thu hồi' : 'Đã duyệt'}{skill.archive_cached ? ' · Đã lưu nội bộ' : ''}</Badge>
+								<Button size="sm" variant="outline" disabled={!canManage || saving} onClick={async event => { event.stopPropagation(); setSaving(true); try { await skillApi.review(skill.id, skill.review_status === 'approved' || !skill.review_status ? 'revoked' : 'approved'); await onRefresh(); } catch (error) { toast.error(error instanceof Error ? error.message : 'Không cập nhật được skill'); } finally { setSaving(false); } }}>{skill.review_status === 'approved' || !skill.review_status ? 'Thu hồi' : 'Duyệt'}</Button>
 								{skill.version && (
 									<span className="text-xs text-muted-foreground whitespace-nowrap">
 										{skill.version}
@@ -437,6 +463,7 @@ function MinePanel({ skills, loading, onRemove }: MinePanelProps) {
 										e.stopPropagation();
 										onRemove(skill.id);
 									}}
+									disabled={!canManage}
 									title={t('common.delete')}
 								>
 									<Trash2 />
@@ -456,6 +483,7 @@ function MinePanel({ skills, loading, onRemove }: MinePanelProps) {
 				action={
 					<Button
 						variant="destructive"
+						disabled={!canManage}
 						onClick={() => {
 							if (drawer.opened) onRemove((drawer.opened as SkillView).id);
 							drawer.close();
@@ -483,9 +511,9 @@ export function SkillHubPage() {
 
 	return (
 		<div className="flex size-full p-2 gap-2">
-			<Sidebar collapsible="none" className="rounded-[22px]">
+			<Sidebar collapsible="none" className="cue-column border-r border-sidebar-border">
 				<SidebarHeader className="flex flex-col p-[20px_18px_14px] gap-y-1">
-					<div className="text-xl font-medium tracking-[-0.02em] text-foreground">
+					<div className="text-[17px]/6 font-semibold text-foreground">
 						{t('common.skill-hub')}
 					</div>
 					<div className="text-text-tertiary text-xs">{t('skill.subtitle')}</div>
@@ -593,7 +621,7 @@ export function SkillHubPage() {
 				</SidebarContent>
 			</Sidebar>
 
-			<main className="flex-1 min-w-0 min-h-0 overflow-hidden rounded-[22px] bg-card shadow-panel">
+			<main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-background">
 				{hubId ? (
 					// Remount on hub change so the panel's query box resets.
 					<HubPanel
@@ -604,7 +632,7 @@ export function SkillHubPage() {
 						onInstalled={refetchSkills}
 					/>
 				) : (
-					<MinePanel skills={skills} loading={skillsLoading} onRemove={remove} />
+					<MinePanel skills={skills} loading={skillsLoading} onRemove={remove} onRefresh={refetchSkills} />
 				)}
 			</main>
 		</div>

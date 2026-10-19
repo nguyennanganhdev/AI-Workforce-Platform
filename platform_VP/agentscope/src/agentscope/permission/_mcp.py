@@ -1,4 +1,8 @@
-"""Risk-based default permission policy for partner MCP tools."""
+"""Risk-based permission policy for partner MCP tools.
+
+Reads and searches run; booking, cancellation, payment, declared writes and
+personal-data operations need the user's confirmation.
+"""
 
 import re
 import unicodedata
@@ -92,9 +96,21 @@ def mcp_tool_permission(
     tool_name: str,
     annotations: Any,
     input_schema: dict[str, Any] | None = None,
+    *,
+    force_confirmation: bool = False,
 ) -> PermissionDecision:
-    """Auto-run ordinary MCP tools and require HITL for risky operations."""
-    if mcp_tool_requires_confirmation(tool_name, annotations, input_schema):
+    """Run reads and searches; ask the user before a sensitive action.
+
+    PM decision (19/10/2026): a booking, cancellation, payment, write or
+    personal-data operation shows a confirmation card; everything else runs.
+    ``force_confirmation`` is set when the owner marked the tool as requiring
+    customer consent (Agent Spec or MCP confirm list), whatever its name says.
+    """
+    if force_confirmation or mcp_tool_requires_confirmation(
+        tool_name,
+        annotations,
+        input_schema,
+    ):
         return PermissionDecision(
             behavior=PermissionBehavior.ASK,
             message=(
@@ -104,9 +120,6 @@ def mcp_tool_permission(
             decision_reason="Sensitive MCP operation",
             bypass_immune=True,
         )
-
-    # shortcut: infer risk from standard annotations and identifiers; require
-    # an explicit risk extension if the partner contract later defines one.
     return PermissionDecision(
         behavior=PermissionBehavior.ALLOW,
         message="This MCP tool is covered by the automatic low-risk policy.",
@@ -130,6 +143,12 @@ def mcp_tool_requires_confirmation(
     destructive = bool(
         annotations and getattr(annotations, "destructiveHint", False),
     )
+    # A server that explicitly declares readOnlyHint=False says the tool
+    # writes. Unannotated tools keep the name/schema heuristics below.
+    declared_write = (
+        annotations is not None
+        and getattr(annotations, "readOnlyHint", None) is False
+    )
     sensitive_action = bool(
         action_tokens & _SENSITIVE_ACTION_IDENTIFIERS,
     ) or any(
@@ -138,4 +157,4 @@ def mcp_tool_requires_confirmation(
     pii = bool(pii_tokens & _PII_IDENTIFIERS) or any(
         phrase in pii_identifiers for phrase in _PII_PHRASES
     )
-    return destructive or sensitive_action or pii
+    return destructive or declared_write or sensitive_action or pii

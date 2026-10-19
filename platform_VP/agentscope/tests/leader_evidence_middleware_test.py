@@ -1,4 +1,4 @@
-"""Runtime coordination tests for the fixed Workforce Leader."""
+"""Runtime evidence-gate tests for the fixed Workforce Leader."""
 
 import json
 from types import SimpleNamespace
@@ -7,13 +7,14 @@ from unittest.mock import AsyncMock, patch
 
 from agentscope.agent import ReActConfig
 from agentscope.app.middleware import LeaderEvidenceMiddleware
+from agentscope.app._evidence_claims import ClaimValidation, validate_claims
 from agentscope.event import (
     ReplyEndEvent,
     TextBlockDeltaEvent,
     TextBlockEndEvent,
     TextBlockStartEvent,
 )
-from agentscope.message import HintBlock, ToolCallBlock, ToolResultBlock, ToolResultState
+from agentscope.message import TextBlock, ToolCallBlock, ToolResultBlock, ToolResultState
 from agentscope.state import AgentState
 
 
@@ -31,7 +32,6 @@ class _SharedContext:
         self.status = status
         self.seen_revision = 1
         self.latest_revision = 1
-        self.storage = SimpleNamespace(get_team_shared_context=AsyncMock(return_value=None))
 
     async def team_evidence_status(self, *args, **kwargs):
         del args, kwargs
@@ -40,8 +40,11 @@ class _SharedContext:
     async def pending_user_question(self, *args):
         return None
 
-    async def collaboration_review(self, *args):
+    async def collaboration_review(self, *args, **_kwargs):
         return []
+
+    async def validate_customer_reply_claims(self, *args):
+        return ClaimValidation((), args[-1], (), bool(args[-1]))
 
     async def active_task_id(self, *args):
         return "task-1"
@@ -51,12 +54,6 @@ class _SharedContext:
 
     async def latest_event_revision(self, *args, **kwargs):
         return self.latest_revision
-
-    async def seal_final_answer(
-        self, *args, expected_event_revision: int, **kwargs
-    ):
-        del args, kwargs
-        return expected_event_revision == self.latest_revision
 
 
 def _text_round(reply_id: str, block_id: str, text: str):
@@ -71,54 +68,27 @@ def _text_round(reply_id: str, block_id: str, text: str):
 
 
 class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
-    def test_leader_cannot_ask_task_specific_clarification(self):
+    def test_multi_question_clarification_may_end_with_polite_sentence(self):
         text = (
             "Where will you depart from? How many people are travelling? "
             "Please provide those details so I can continue."
         )
-        self.assertTrue(LeaderEvidenceMiddleware._is_customer_intake(text))
-        self.assertTrue(
-            LeaderEvidenceMiddleware._is_customer_intake(
-                "Vui lòng cung cấp thành phố xuất phát."
+        self.assertTrue(LeaderEvidenceMiddleware._safe_without_evidence(text))
+
+    def test_question_with_unverified_price_is_not_safe(self):
+        self.assertFalse(
+            LeaderEvidenceMiddleware._safe_without_evidence(
+                "Hotel A costs 2,000,000 VND. Would you like it?"
             )
         )
 
-    async def test_leader_question_is_blocked_even_with_worker_evidence(self):
-        middleware = LeaderEvidenceMiddleware(
-            _Storage(),
-            _SharedContext((1, 0, 1, False)),
-            "u",
-            "leader",
-            "session-1",
-            wait_seconds=0,
+    def test_optional_preference_deferral_is_not_safe_clarification(self):
+        self.assertFalse(
+            LeaderEvidenceMiddleware._safe_without_evidence(
+                "Bạn có muốn ưu tiên loại khách sạn nào không? "
+                "Nếu không có yêu cầu thêm, tôi sẽ bắt đầu tìm phương án."
+            )
         )
-        agent = self._agent(dispatched=False)
-
-        async def next_handler(**kwargs):
-            del kwargs
-            for event in _text_round(
-                "reply-1", "question", "Bạn xuất phát từ đâu?"
-            ):
-                yield event
-            for event in _text_round(
-                "reply-1", "answer", "Verified worker result is complete."
-            ):
-                yield event
-
-        output = [
-            event async for event in middleware.on_reply(agent, {}, next_handler)
-        ]
-        streamed = "".join(
-            event.delta
-            for event in output
-            if isinstance(event, TextBlockDeltaEvent)
-        )
-
-        self.assertEqual("Verified worker result is complete.", streamed)
-        private_text = "\n".join(
-            message.get_text_content() or "" for message in agent.state.context
-        )
-        self.assertNotIn("Bạn xuất phát từ đâu?", private_text)
 
     def test_resolution_does_not_start_another_wait_for_worker(self):
         agent = self._agent(dispatched=True)
@@ -144,20 +114,7 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             }
         self.assertEqual(LeaderEvidenceMiddleware._expected_reports(agent), 3)
 
-    def test_batch_counts_all_started_subagents_and_preserves_legacy_metadata(self):
-        targets = ["Search@1", "Reviewer@2", "Calculator@3"]
-        for started in (targets[:1], targets):
-            with self.subTest(started=started):
-                agent = self._agent(dispatched=True)
-                for block in agent.state.context[-1].get_content_blocks("tool_result"):
-                    block.metadata = {
-                        "invited_targets": targets,
-                        "started_targets": started,
-                        "failed_targets": [],
-                    }
-                self.assertEqual(len(started), LeaderEvidenceMiddleware._expected_reports(agent))
-
-    async def test_registered_specialist_question_ends_leader_silently(self):
+    async def test_registered_question_is_presented_not_internal_error(self):
         shared = _SharedContext((0, 0, 0, False))
         shared.pending_user_question = AsyncMock(
             return_value="Bạn cho mình mã yêu cầu được không?"
@@ -179,91 +136,10 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             )
         ]
         text = "".join(e.delta for e in output if isinstance(e, TextBlockDeltaEvent))
-        self.assertEqual(text, "")
-        self.assertEqual(len(output), 1)
-        self.assertIsInstance(output[0], ReplyEndEvent)
+        self.assertEqual(text, "Bạn cho mình mã yêu cầu được không?")
         self.assertIsNone(output[-1].error)
 
-    async def test_pending_specialist_question_skips_another_leader_model_call(self):
-        shared = _SharedContext((0, 0, 0, True))
-        shared.pending_user_question = AsyncMock(
-            return_value="Bạn đi mấy người và xuất phát từ đâu?",
-        )
-        middleware = LeaderEvidenceMiddleware(
-            _Storage(), shared, "u", "leader", "session-1", wait_seconds=0
-        )
-        agent = self._agent(dispatched=True)
-        called = False
-
-        async def next_handler(**kwargs):
-            nonlocal called
-            del kwargs
-            called = True
-            if False:
-                yield None
-
-        output = [
-            event
-            async for event in middleware.on_reasoning(agent, {}, next_handler)
-        ]
-
-        self.assertFalse(called)
-        self.assertEqual(len(output), 1)
-        self.assertIsInstance(output[0].content[-1], HintBlock)
-
-    async def test_dispatched_planner_ends_before_next_model_call(self):
-        shared = _SharedContext((0, 0, 0, True))
-        shared.pending_user_question = AsyncMock(
-            side_effect=[None, "Bạn đi mấy người và xuất phát từ đâu?"],
-        )
-        middleware = LeaderEvidenceMiddleware(
-            _Storage(), shared, "u", "leader", "session-1", wait_seconds=0
-        )
-        agent = self._agent(dispatched=True)
-        called = False
-
-        async def next_handler(**kwargs):
-            nonlocal called
-            del kwargs
-            called = True
-            if False:
-                yield None
-
-        output = [
-            event
-            async for event in middleware.on_reasoning(agent, {}, next_handler)
-        ]
-
-        self.assertFalse(called)
-        self.assertEqual(len(output), 1)
-        self.assertIsInstance(output[0].content[-1], HintBlock)
-
-    async def test_report_review_can_wake_leader_but_active_work_cannot(self):
-        for status, should_reason in (("review", True), ("running", False), ("waiting_peer", False)):
-            with self.subTest(status=status):
-                shared = _SharedContext((1, 0, 1, False))
-                shared.collaboration_review = AsyncMock(return_value=["worker-session"])
-                task = SimpleNamespace(latest_customer_revision=1, collaboration={
-                    "worker-session": SimpleNamespace(customer_revision=1, status=status),
-                })
-                shared.storage.get_team_shared_context.return_value = SimpleNamespace(
-                    state=SimpleNamespace(active_task_id="task", tasks={"task": task}),
-                )
-                middleware = LeaderEvidenceMiddleware(_Storage(), shared, "u", "leader", "session-1")
-                called = False
-
-                async def next_handler(**kwargs):
-                    nonlocal called
-                    called = True
-                    if False:
-                        yield None
-
-                _ = [event async for event in middleware.on_reasoning(
-                    self._agent(dispatched=False), {}, next_handler,
-                )]
-                self.assertEqual(called, should_reason)
-
-    async def test_delegation_ends_without_wait_timeout_placeholder(self):
+    async def test_worker_wait_timeout_does_not_invent_or_promise_future_result(self):
         middleware = LeaderEvidenceMiddleware(
             _Storage(),
             _SharedContext((0, 0, 0, False)),
@@ -287,7 +163,7 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         ]
         text = "".join(e.delta for e in output if isinstance(e, TextBlockDeltaEvent))
         self.assertNotIn("30 minutes", text)
-        self.assertEqual("", text)
+        self.assertIn("did not finish", text)
         self.assertNotIn("will update", text)
         self.assertIsNone(output[-1].error)
 
@@ -346,7 +222,7 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             react_config=ReActConfig(max_iters=5),
         )
 
-    async def test_delegation_placeholder_is_discarded_and_run_ends(
+    async def test_delegation_placeholder_is_replaced_after_worker_result(
         self,
     ) -> None:
         middleware = LeaderEvidenceMiddleware(
@@ -387,9 +263,7 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
         )
 
         self.assertNotIn("đang chờ", streamed)
-        self.assertNotIn("Khách sạn A", streamed)
-        self.assertEqual(len(output), 1)
-        self.assertIsInstance(output[0], ReplyEndEvent)
+        self.assertIn("Khách sạn A", streamed)
 
     async def test_evidence_arriving_during_synthesis_forces_fresh_answer(self):
         shared = _SharedContext((1, 0, 1, False))
@@ -434,127 +308,9 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             "The verified bus, hotel and meal plan is complete.",
         )
 
-    async def test_business_claim_is_not_semantically_validated(self) -> None:
-        middleware = LeaderEvidenceMiddleware(
-            _Storage(),  # type: ignore[arg-type]
-            _SharedContext((0, 0, 0, False)),  # type: ignore[arg-type]
-            "user-1",
-            "leader-agent",
-            "session-1",
-            wait_seconds=0,
-        )
-        agent = self._agent(dispatched=False)
-
-        async def next_handler(**kwargs):
-            del kwargs
-            for event in _text_round(
-                "reply-1",
-                "invented",
-                "Khách sạn A giá 2.000.000 VNĐ và còn phòng.",
-            ):
-                yield event
-
-        output = [
-            event
-            async for event in middleware.on_reply(
-                agent,  # type: ignore[arg-type]
-                {},
-                next_handler,
-            )
-        ]
-        streamed = "".join(
-            event.delta for event in output if isinstance(event, TextBlockDeltaEvent)
-        )
-
-        self.assertEqual(
-            "Khách sạn A giá 2.000.000 VNĐ và còn phòng.",
-            streamed,
-        )
-
-    async def test_named_claim_is_not_semantically_validated(self) -> None:
-        shared = _SharedContext((1, 0, 1, False))
-        middleware = LeaderEvidenceMiddleware(
-            _Storage(),  # type: ignore[arg-type]
-            shared,  # type: ignore[arg-type]
-            "user-1",
-            "leader-agent",
-            "session-1",
-            wait_seconds=0,
-        )
-        agent = self._agent(dispatched=False)
-
-        async def next_handler(**kwargs):
-            del kwargs
-            for event in _text_round(
-                "reply-1", "invented", "Invented Hotel costs 2,000,000 VND."
-            ):
-                yield event
-
-        output = [
-            event
-            async for event in middleware.on_reply(
-                agent,  # type: ignore[arg-type]
-                {},
-                next_handler,
-            )
-        ]
-        streamed = "".join(
-            event.delta for event in output if isinstance(event, TextBlockDeltaEvent)
-        )
-        self.assertEqual("Invented Hotel costs 2,000,000 VND.", streamed)
-
-    async def test_leader_customer_intake_is_blocked_before_factual_answer(
-        self,
-    ) -> None:
-        shared = _SharedContext((1, 0, 1, False))
-        middleware = LeaderEvidenceMiddleware(
-            _Storage(),  # type: ignore[arg-type]
-            shared,  # type: ignore[arg-type]
-            "user-1",
-            "leader-agent",
-            "session-1",
-            wait_seconds=0,
-        )
-        agent = self._agent(dispatched=False)
-
-        async def next_handler(**kwargs):
-            del kwargs
-            for event in _text_round(
-                "reply-1",
-                "bad-date",
-                "Xe khởi hành 16/10. Vui lòng cung cấp nơi xuất phát.",
-            ):
-                yield event
-            for event in _text_round(
-                "reply-1",
-                "grounded-date",
-                "Xe khởi hành 17/10. Vui lòng cung cấp nơi xuất phát.",
-            ):
-                yield event
-            for event in _text_round(
-                "reply-1",
-                "final-date",
-                "Xe khởi hành 17/10 theo kết quả đã xác minh.",
-            ):
-                yield event
-
-        output = [
-            event
-            async for event in middleware.on_reply(
-                agent,  # type: ignore[arg-type]
-                {},
-                next_handler,
-            )
-        ]
-        streamed = "".join(
-            event.delta for event in output if isinstance(event, TextBlockDeltaEvent)
-        )
-        self.assertNotIn("16/10", streamed)
-        self.assertEqual("Xe khởi hành 17/10 theo kết quả đã xác minh.", streamed)
-
-    async def test_useful_leader_answer_is_not_removed_only_for_question_mark(
-        self,
-    ) -> None:
+class TestLeaderLearningHook(IsolatedAsyncioTestCase):
+    async def test_verified_answer_triggers_learning_once_per_reply(self) -> None:
+        learned: list[str] = []
         middleware = LeaderEvidenceMiddleware(
             _Storage(),  # type: ignore[arg-type]
             _SharedContext((1, 0, 1, False)),  # type: ignore[arg-type]
@@ -562,43 +318,18 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
             "leader-agent",
             "session-1",
             wait_seconds=0,
+            on_verified_answer=learned.append,
         )
-        agent = self._agent(dispatched=False)
-        answer = (
-            "Xe khởi hành 17/10 đã được xác minh và phù hợp ngân sách. "
-            "Bạn muốn chọn phương án này?"
-        )
+        agent = TestLeaderEvidenceMiddleware._agent(None, dispatched=True)  # type: ignore[arg-type]
 
         async def next_handler(**kwargs):
             del kwargs
-            for event in _text_round("reply-1", "useful-question", answer):
+            for event in _text_round("reply-1", "draft", "Đang chờ."):
+                yield event
+            for event in _text_round("reply-1", "final", "Khách sạn A còn phòng theo kết quả agent."):
                 yield event
 
-        output = [
-            event
-            async for event in middleware.on_reply(
-                agent,  # type: ignore[arg-type]
-                {},
-                next_handler,
-            )
-        ]
-        streamed = "".join(
-            event.delta for event in output if isinstance(event, TextBlockDeltaEvent)
-        )
+        async for _ in middleware.on_reply(agent, {}, next_handler):  # type: ignore[arg-type]
+            pass
 
-        self.assertEqual(answer, streamed)
-
-    def test_incomplete_fallback_keeps_partial_without_future_promise(self) -> None:
-        text = LeaderEvidenceMiddleware._incomplete_text(
-            SimpleNamespace(),
-            (
-                "Đã xác minh được chuyến bay A phù hợp ngân sách. "
-                "Xin Leader cho hướng xử lý."
-            ),
-        )
-
-        self.assertIn("chuyến bay A", text)
-        self.assertIn("chưa có đủ bằng chứng", text)
-        self.assertNotIn("xin leader", text.casefold())
-        self.assertNotIn("thử lại", text.casefold())
-        self.assertNotIn("sẽ tiếp tục", text.casefold())
+        self.assertEqual(["team-1"], learned)

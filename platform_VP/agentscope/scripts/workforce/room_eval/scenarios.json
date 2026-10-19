@@ -1,0 +1,61 @@
+{
+  "about": "Room scenarios for the Vinhomes declaration. Fixtures stand in for the partner's database; checks look at what the resident receives, which partner actions ran, refused messages and cost. Start from real failures; add one scenario per new failure.",
+  "scenarios": [
+    {
+      "id": "leak-simple",
+      "title": "Rò nước bồn rửa",
+      "handover": {"Tiêu đề": "Rò nước dưới bồn rửa bếp", "Mô tả của cư dân": "Nước rỉ dưới bồn rửa bếp từ sáng, đã lau nhưng vẫn rỉ.", "Loại yêu cầu": "Sự cố - Technical", "Mức khẩn cấp do Lễ tân đánh giá": "không khẩn cấp"},
+      "fixtures": {
+        "vh_ticket_get": {"status": "open", "category": "plumbing", "urgency": "normal", "work_orders": [], "resident_photos": 0},
+        "vh_staff_available": {"staff": [{"staff_id": "st-1", "name": "Trần Bình", "skills": ["plumbing"]}]},
+        "vh_work_order_dispatch": {"status": "pending", "external_job_id": "WO-1001", "offered_to": "Trần Bình"}
+      },
+      "expect": {"states": ["awaiting_user"], "tools_called": ["vh_work_order_dispatch"], "must_not_include": ["anh/chị", "đã nhận việc", "sẽ đến trong"], "max_refused": 1}
+    },
+    {
+      "id": "two-problems",
+      "title": "Điều hoà chảy nước và mưa tràn khe cửa sổ",
+      "handover": {"Tiêu đề": "Nước chảy từ dàn lạnh điều hoà xuống tường phòng khách; mưa tràn khe cửa sổ phòng ngủ", "Mô tả của cư dân": "Nước chảy từ dàn lạnh điều hoà xuống tường phòng khách, chỗ đó tường bị mốc. Ở phòng ngủ thì nước mưa tràn qua khe cửa sổ vào bậu cửa. Không có gì nguy hiểm về điện.", "Loại yêu cầu": "Sự cố - Technical", "Mức khẩn cấp do Lễ tân đánh giá": "không khẩn cấp"},
+      "fixtures": {
+        "vh_ticket_get": {"status": "open", "category": "technical", "urgency": "normal", "work_orders": [], "resident_photos": 0},
+        "vh_staff_available": {"staff": [{"staff_id": "st-2", "name": "Lê Hùng", "skills": ["hvac", "plumbing"]}, {"staff_id": "st-3", "name": "Phạm Nam", "skills": ["waterproofing"]}]},
+        "vh_work_order_dispatch": {"status": "pending", "external_job_id": "WO-2001"}
+      },
+      "expect": {"states": ["awaiting_user"], "tools_called": ["vh_work_order_dispatch"], "must_include_any": ["điều hoà", "điều hòa"], "must_not_include": ["anh/chị"], "max_refused": 1}
+    },
+    {
+      "id": "emergency-smoke",
+      "title": "Ổ cắm bốc khói",
+      "handover": {"Tiêu đề": "Ổ cắm phòng khách bốc khói", "Mô tả của cư dân": "Ổ cắm phòng khách đang bốc khói và có mùi khét.", "Loại yêu cầu": "Sự cố - Technical", "Mức khẩn cấp do Lễ tân đánh giá": "KHẨN CẤP"},
+      "fixtures": {
+        "vh_ticket_get": {"status": "open", "category": "electrical", "urgency": "emergency", "work_orders": []},
+        "vh_knowledge_search": {"results": [{"document": "Quy trình khẩn cấp Sapphire", "text": "Chập điện, bốc khói: ngắt aptomat tổng của căn hộ, không dùng nước. Hotline kỹ thuật 24/7: 1900 6868."}]},
+        "vh_staff_available": {"staff": [{"staff_id": "st-4", "name": "Đỗ Minh", "skills": ["electrical"]}]},
+        "vh_work_order_dispatch": {"status": "pending", "external_job_id": "WO-3001"}
+      },
+      "expect": {"states": ["awaiting_user"], "tools_called": ["vh_knowledge_search", "vh_work_order_dispatch"], "must_include_any": ["aptomat"], "must_not_include": ["vui lòng chờ", "hãy chờ"], "max_refused": 1}
+    },
+    {
+      "id": "no-staff",
+      "title": "Không có nhân viên rảnh",
+      "handover": {"Tiêu đề": "Bóng đèn nhà tắm hỏng", "Mô tả của cư dân": "Bóng đèn nhà tắm không sáng nữa.", "Loại yêu cầu": "Sự cố - Technical", "Mức khẩn cấp do Lễ tân đánh giá": "không khẩn cấp"},
+      "fixtures": {
+        "vh_ticket_get": {"status": "open", "category": "electrical", "urgency": "normal", "work_orders": []},
+        "vh_staff_available": {"staff": []},
+        "vh_work_order_dispatch": {"status": "queued", "external_job_id": "WO-4001", "reason": "Chưa có nhân viên rảnh"}
+      },
+      "expect": {"states": ["awaiting_user"], "tools_called": ["vh_work_order_dispatch"], "must_not_include": ["đã nhận việc", "đã có nhân viên nhận"], "max_refused": 1}
+    },
+    {
+      "id": "cleaning",
+      "title": "Vệ sinh hành lang",
+      "handover": {"Tiêu đề": "Hành lang tầng 12 bẩn", "Mô tả của cư dân": "Hành lang trước căn hộ có vết bẩn lớn, đề nghị dọn.", "Loại yêu cầu": "Vệ sinh - Cleaning", "Mức khẩn cấp do Lễ tân đánh giá": "không khẩn cấp"},
+      "fixtures": {
+        "vh_ticket_get": {"status": "open", "category": "cleaning", "urgency": "normal", "work_orders": []},
+        "vh_staff_available": {"staff": [{"staff_id": "st-5", "name": "Ngô Lan", "skills": ["cleaning"]}]},
+        "vh_work_order_dispatch": {"status": "pending", "external_job_id": "WO-5001"}
+      },
+      "expect": {"states": ["awaiting_user"], "tools_called": ["vh_work_order_dispatch"], "must_not_include": ["anh/chị"], "max_refused": 1}
+    }
+  ]
+}

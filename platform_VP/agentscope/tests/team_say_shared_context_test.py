@@ -151,17 +151,56 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
             role="leader",
         )
 
-    def test_resolution_schema_follows_reply_ownership_without_changing_class(self):
-        for role, owner in (("worker", False), ("worker", True), ("leader", False)):
-            tool = TeamSay(
-                storage=self.storage, message_bus=self.bus,
-                workspace_manager=object(), user_id="u",
-                session_id="worker-session", agent_id="worker",
-                role=role, is_reply_owner=owner,
-            )
-            self.assertEqual("resolution" in tool.input_schema["properties"], owner)
-        self.assertIn("resolution", self.tool.input_schema["properties"])
-        self.assertIn("resolution", TeamSay.input_schema["properties"])
+    async def _worker_with_price_evidence(self):
+        task_id = await self.shared.active_task_id("u", "ticket-1")
+        await self.shared.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            task_id=task_id,
+            kind="external_event",
+            source_agent_id="worker",
+            source_session_id="worker-session",
+            content='[{"hotel":"Hotel Alpha","price":100,"currency":"USD"},'
+                    '{"hotel":"Hotel Beta","price":200,"currency":"USD"}]',
+        )
+        return TeamSay(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=object(),
+            user_id="u",
+            session_id="worker-session",
+            agent_id="worker",
+            shared_context_service=self.shared,
+            role="worker",
+        ), task_id
+
+    async def test_valid_narrative_cannot_smuggle_a_forged_structured_fact(self):
+        worker, task_id = await self._worker_with_price_evidence()
+        valid = "Hotel Alpha costs 100 USD."
+        invalid = "Hotel Beta costs 100 USD."
+        result = await worker(
+            content=valid,
+            to="Leader",
+            kind="result",
+            task_id=task_id,
+            idempotency_key="valid-report-forged-delta",
+            context_delta={"add_confirmed_facts": [invalid], "add_outputs": [invalid]},
+        )
+        self.assertNotEqual("error", result.state)
+        self.assertIn("omitted", result.metadata["delta_feedback"])
+        self.assertFalse(any(invalid in item.text for item in self.storage.context.state.items))
+        report = next(event for event in self.storage.context.state.events if event.id == "valid-report-forged-delta")
+        self.assertEqual(valid, report.content)
+        result = await worker(
+            content=valid,
+            to="Leader",
+            kind="result",
+            task_id=task_id,
+            idempotency_key="valid-report-corrected-delta",
+            context_delta={"add_confirmed_facts": [valid]},
+        )
+        self.assertNotEqual("error", result.state)
+        self.assertTrue(any(item.kind == "fact" and item.text == valid for item in self.storage.context.state.items))
 
     async def test_shared_result_is_persisted_before_recipient_wakeup(self) -> None:
         result = await self.tool(
@@ -191,21 +230,6 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
             max_count=10,
         )
         self.assertEqual(len(inbox), 1)
-
-    async def test_system_leader_result_is_not_semantically_validated(
-        self,
-    ):
-        self.storage.agents["leader"].data.system_role = "leader"
-        result = await self.tool(
-            content="Technician arrives in 30 minutes", to="Worker", kind="result"
-        )
-        self.assertNotEqual(result.state, "error")
-        self.assertTrue(self.storage.handoffs)
-        record = self.storage.context
-        self.assertEqual(
-            "Technician arrives in 30 minutes",
-            record.state.events[-1].content,
-        )
 
     async def test_isolated_defaults_to_caller_scope(self) -> None:
         result = await self.tool(

@@ -11,6 +11,7 @@ from ..credential import CredentialBase, CredentialFactory
 from ..rag import ApproxTokenChunker, ChunkerBase, ParserBase, TextParser
 from ._lifespan import lifespan
 from ._router import (
+    admin_router,
     agent_router,
     auth_router,
     business_router,
@@ -29,6 +30,8 @@ from ._router import (
     sop_router,
     tts_model_router,
     workforce_console_router,
+    workforce_insights_router,
+    workforce_studio_router,
     workspace_router,
 )
 from ._types import AgentMiddlewareFactory, AgentToolFactory, SubAgentTemplate
@@ -107,6 +110,7 @@ def create_app(
     workforce_bootstrap: Any | None = None,
     shared_context_storage: StorageBase | None = None,
     download_secret: str | None = None,
+    vin_platform_enabled: bool | None = None,
     title: str = "AgentScope",
     version: str = __version__,
     **kwargs: Any,
@@ -302,7 +306,7 @@ def create_app(
     Returns:
         `FastAPI`: A fully configured application ready to serve requests.
     """
-    from fastapi import FastAPI, Request, status
+    from fastapi import FastAPI, HTTPException, Request, status
     from fastapi.responses import JSONResponse
 
     # Register any user-supplied credential types before the app starts
@@ -353,6 +357,47 @@ def create_app(
     app.state.resource_access_policy = (
         resource_access_policy or DenyAllResourceAccessPolicy()
     )
+    from .vin_platform import enabled as vin_enabled
+    vin_mode = vin_platform_enabled if vin_platform_enabled is not None else vin_enabled()
+    app.state.vin_platform_service = None
+    if vin_mode:
+        if auth_service is None:
+            raise ValueError("VIN_PLATFORM_ENABLED requires authenticated SQL authority")
+        from .vin_platform import PlatformError, VinPlatformService
+        from .vin_platform._resources import PersistedResourcePolicy
+        from .vin_platform._router import router as vin_router
+        authority = VinPlatformService(auth_service, storage)
+        app.state.vin_platform_service = authority
+        storage.vin_platform_service = authority
+        app.state.resource_access_policy = resource_access_policy or PersistedResourcePolicy(authority)
+        app.include_router(vin_router)
+
+        @app.exception_handler(PlatformError)
+        async def platform_error_handler(request, exc):
+            return JSONResponse(status_code=exc.status, content={"detail": {"code": exc.code, **exc.details}})
+
+        @app.middleware("http")
+        async def vin_capability_boundary(request, call_next):
+            from .deps import get_current_principal
+            from .vin_platform._context import execution_scope
+            path = request.url.path.rstrip("/")
+            # Personal users manage their own MCPs (PM 19/10); credentials, skills and the
+            # hub stay admin catalog. The MCP router only touches the caller's own records.
+            catalog_mutation = request.method not in {"GET", "HEAD", "OPTIONS"} and any(
+                path == prefix or path.startswith(prefix + "/") for prefix in ("/credential", "/skill", "/hub"))
+            context = None
+            if catalog_mutation or request.headers.get("authorization"):
+                try:
+                    principal = await get_current_principal(request, authorization=request.headers.get("authorization"))
+                    context = await authority.context(principal.user_id, session_id=principal.session_id)
+                    if catalog_mutation and context.role == "VIN_USER":
+                        raise PlatformError("CAPABILITY_DENIED", 403)
+                except PlatformError as exc:
+                    return JSONResponse(status_code=exc.status, content={"detail": {"code": exc.code}})
+                except HTTPException as exc:
+                    return JSONResponse(status_code=exc.status_code, content={"detail": "AUTH_REQUIRED"})
+            with execution_scope(context):
+                return await call_next(request)
     # Channel types this service allows. A channel class self-describes
     # its credentials / config, so the registry is built straight from
     # the list — it has no lifecycle, so it lives on app.state directly
@@ -433,6 +478,7 @@ def create_app(
 
     # Built-in routers
     for router in (
+        admin_router,
         auth_router,
         business_router,
         agent_router,
@@ -452,6 +498,8 @@ def create_app(
         embedding_model_router,
         channel_router,
         workforce_console_router,
+        workforce_insights_router,
+        workforce_studio_router,
     ):
         app.include_router(router)
 

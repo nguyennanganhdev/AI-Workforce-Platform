@@ -20,7 +20,6 @@ export type AgentFormValues = {
 };
 
 interface Props {
-	governedPrompt?: boolean;
 	schema: AgentSchemaV2Response;
 	values: AgentFormValues;
 	onChange: (section: AgentSection, key: string, value: SchemaFormValue) => void;
@@ -38,7 +37,7 @@ const toKebab = (s: string) => s.replace(/_/g, '-');
  * behind its own disclosure — otherwise the first thing a new agent's author
  * meets is three ratios and a forty-line compression prompt.
  */
-export function AgentFormFields({ schema, values, onChange, governedPrompt = false }: Props) {
+export function AgentFormFields({ schema, values, onChange }: Props) {
 	const { t } = useTranslation();
 	const sections = sliceSchema(schema.schema);
 
@@ -46,7 +45,6 @@ export function AgentFormFields({ schema, values, onChange, governedPrompt = fal
 		<SchemaForm
 			schema={sections[sectionKey]}
 			values={values[sectionKey]}
-			skipFields={governedPrompt && sectionKey === 'identity' ? new Set(['id', 'type', 'system_prompt']) : undefined}
 			onChange={(k, v) => onChange(sectionKey, k, v)}
 			idPrefix={`agent-form-${sectionI18n}`}
 			labelFor={(k, prop) =>
@@ -78,7 +76,6 @@ export function AgentFormFields({ schema, values, onChange, governedPrompt = fal
 					{t(`agent-form.${IDENTITY_I18N}.legend`)}
 				</FieldLegend>
 				{form('identity', IDENTITY_I18N)}
-				{governedPrompt && <FieldDescription>{t('agentManagement.governedPrompt')}</FieldDescription>}
 			</FieldSet>
 			<FieldSeparator className="my-0" />
 			<FieldSet>

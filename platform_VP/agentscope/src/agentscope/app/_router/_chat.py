@@ -21,6 +21,7 @@ Two trigger paths, deliberately asymmetric:
   dispatcher serialises them.
 """
 from typing import Literal
+import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -31,6 +32,7 @@ from ..deps import (
     get_message_bus,
     get_storage,
     get_shared_context_storage,
+    get_resource_access_service,
 )
 from ._schema import ChatRequest, ChatTriggerResponse
 from .._manager import ChatRunRegistry
@@ -41,18 +43,16 @@ from .._service import (
 )
 from ..message_bus import MessageBus, MessageBusKeys
 from .._bus_ops import enqueue_run_trigger
-from .._chat_consent import (
-    parse_chat_consent,
-    pending_chat_actions,
-    resolve_chat_consent,
-)
+from .._bus_ops import publish_session_event
+from .._chat_consent import pending_chat_actions, resolve_chat_consent
 from .._team_turn import get_team_turn, start_team_turn
 from .._tool._constants import HANDLE_LEN
-from ..storage import StorageBase
+from ..storage import SessionNaming, StorageBase
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
-from ...event import UserConfirmResultEvent, ExternalExecutionResultEvent
+from ...event import UserConfirmResultEvent, ExternalExecutionResultEvent, CustomEvent
 from ...message import AssistantMsg, Msg
 from ..._utils._common import _generate_id
+from ...state import AgentState
 
 chat_router = APIRouter(
     prefix="/chat",
@@ -108,6 +108,7 @@ async def chat(
     message_bus: MessageBus = Depends(get_message_bus),
     storage: StorageBase = Depends(get_storage),
     shared_context_storage: StorageBase = Depends(get_shared_context_storage),
+    resource_access_service=Depends(get_resource_access_service),
 ) -> ChatTriggerResponse:
     """Trigger a chat run for the specified session.
 
@@ -151,18 +152,36 @@ async def chat(
     """
     # User prose is resolved by the server against stored ASKING calls, never
     # by an LLM or a client-supplied tool payload. Each decision grants one call.
-    if isinstance(request.input, Msg) and not request.new_task:
-        consent = parse_chat_consent(request.input.get_text_content() or "")
+    console_session = await storage.get_session(user_id, request.agent_id, request.session_id)
+    from .._service._agent_readiness import publication_issue
+    if console_session is not None:
+        config = console_session.config.personal_chat
+        roster = [m.agent_id for m in config.members] if config and config.kind == "group" else [request.agent_id]
+        for selected_id in roster:
+            selected = await storage.get_agent(user_id, selected_id)
+            if selected is None:
+                selected = await resource_access_service.resolve_agent(user_id, selected_id)
+            if issue := publication_issue(selected):
+                raise HTTPException(409, detail={"code": "AGENT_NOT_READY", "message": issue})
+    if console_session is not None and console_session.config.personal_chat is not None and console_session.config.personal_chat.kind == "group":
+        from .._personal_chat import activate_group
+        await activate_group(storage, shared_context_storage, message_bus, resource_access_service, user_id, console_session)
+        console_session = await storage.get_session(user_id, request.agent_id, request.session_id)
+    if console_session is not None and console_session.config.personal_chat is not None:
+        if console_session.user_id != user_id or console_session.agent_id != request.agent_id:
+            raise HTTPException(404, "Personal conversation not found")
+        if console_session.config.personal_chat.kind == "direct" and (request.target_agent_id is not None or request.task_id or request.new_task or request.in_reply_to):
+            raise HTTPException(400, "Select the agent's own personal conversation instead of routing a team task")
+    partner_console = bool(console_session and console_session.state.middle_context.get("workflow_id"))
+    if partner_console and isinstance(request.input, (UserConfirmResultEvent, ExternalExecutionResultEvent)):
+        raise HTTPException(status_code=403, detail="Xác nhận của cư dân phải đi qua kênh đối tác được xác thực.")
+    if isinstance(request.input, Msg) and not request.new_task and not partner_console:
         pending = await pending_chat_actions(
             storage, user_id, request.agent_id, request.session_id,
         )
-        if request.target_agent_id:
-            pending = [
-                item
-                for item in pending
-                if item.agent_id == request.target_agent_id
-            ]
         if pending:
+            if request.target_agent_id:
+                pending = [item for item in pending if item.agent_id == request.target_agent_id]
             resolved = resolve_chat_consent(request.input, pending)
             if resolved is not None:
                 action, decision = resolved
@@ -181,10 +200,20 @@ async def chat(
                 # This also prevents a normal message from entering a parked
                 # worker and causing the old "received no event" reply failure.
                 text = (
-                    "Đang có thao tác chờ quyết định và hệ thống chưa thực hiện "
-                    "thao tác đó. Vui lòng bấm “Xác nhận” hoặc “Từ chối” trên "
-                    "thẻ thao tác trước khi gửi yêu cầu khác."
+                    "Mình chưa thực hiện thao tác đang chờ xác nhận. "
+                    "Bạn hãy kiểm tra thông tin ở trên rồi nhắn “xác nhận” "
+                    "để thực hiện, hoặc “hủy” để không thực hiện. "
+                    "Nếu có nhiều thao tác, thêm mã của thao tác sau câu trả lời. "
+                    "Nếu muốn đổi phương án, hãy hủy thao tác cũ trước nhé.\n"
+                    + "\n".join(f"• {item.tool_call.name}: {item.tool_call.id[-8:]}" for item in pending)
                 )
+                if not any(ord(char) > 127 for char in request.input.get_text_content() or ""):
+                    text = (
+                        "The action has not been executed. Review its details, then type "
+                        "'confirm' or 'cancel'. For multiple actions, include its code. "
+                        "Cancel the old action before changing the option.\n"
+                        + "\n".join(f"• {item.tool_call.name}: {item.tool_call.id[-8:]}" for item in pending)
+                    )
                 answer = AssistantMsg(name="System", content=text)
                 await storage.upsert_message(user_id, request.session_id, request.input)
                 await storage.upsert_message(user_id, request.session_id, answer)
@@ -192,22 +221,6 @@ async def chat(
                     status="awaiting_confirmation", session_id=request.session_id,
                     message=answer,
                 )
-        elif consent is not None:
-            answer = AssistantMsg(
-                name="System",
-                content=(
-                    "Hiện không có thao tác nào đang chờ xác nhận hoặc từ chối. "
-                    "Hệ thống chưa thực hiện thêm nghiệp vụ nào. Vui lòng nêu rõ "
-                    "thao tác bạn muốn thực hiện."
-                ),
-            )
-            await storage.upsert_message(user_id, request.session_id, request.input)
-            await storage.upsert_message(user_id, request.session_id, answer)
-            return ChatTriggerResponse(
-                status="no_pending_confirmation",
-                session_id=request.session_id,
-                message=answer,
-            )
 
     # ------------------------------------------------------------------
     # HITL resume — route to the owning session, then enqueue.
@@ -264,11 +277,7 @@ async def chat(
         Literal["leader", "direct_mention", "specialist_question"],
         str | None,
     ] | None = None
-    session = await storage.get_session(
-        user_id,
-        request.agent_id,
-        request.session_id,
-    )
+    session = console_session
     if request.target_agent_id is not None and (
         session is None or session.team_id is None
     ):
@@ -350,9 +359,7 @@ async def chat(
                     "shared_context_task_id": selected_task_id,
                     "shared_context_in_reply_to": request.in_reply_to,
                 }
-            candidates: list[tuple[str, str, str]] = [
-                (leader.agent.id, leader.session_id, leader.name),
-            ]
+            candidates: list[tuple[str, str, str]] = []
             resolved_members = []
             for member in await _ensure_team_members(storage, user_id, team):
                 member_agent = await storage.get_agent(
@@ -410,7 +417,7 @@ async def chat(
                 (
                     candidate
                     for candidate in candidates
-                    if candidate[1] == session.id and session.id != leader.session_id
+                    if candidate[1] == session.id
                 ),
                 None,
             )
@@ -428,10 +435,7 @@ async def chat(
                 target is None
                 and previous_turn is not None
                 and previous_turn.status == "awaiting_user_input"
-                and previous_turn.mode in {
-                    "direct_mention",
-                    "specialist_question",
-                }
+                and previous_turn.mode in {"direct_mention", "specialist_question"}
                 and previous_turn.customer_session_id == request.session_id
             ):
                 target = next(
@@ -444,7 +448,6 @@ async def chat(
                     None,
                 )
                 target_mode = previous_turn.mode
-
             if (
                 target is not None
                 and previous_turn is not None
@@ -453,8 +456,8 @@ async def chat(
                 and target[1] == previous_turn.reply_owner_session_id
                 and not request.new_task
             ):
-                # Clicking Reply on the shared question is the same answer
-                # as unaddressed prose; retain the specialist's assignment.
+                # Replying to the shared question is the same answer as
+                # unaddressed prose; keep the specialist's assignment.
                 target_mode = "specialist_question"
 
             if target is not None:
@@ -491,7 +494,46 @@ async def chat(
                     selected_task_id,
                 )
 
-    existing = chat_run_registry.get(run_session_id)
+    # Console users are managers. Partner customer inputs enter through the
+    # signed partner runner, never this endpoint. Keep manager Q&A separate
+    # from the resident turn and its team ownership / approval state.
+    if session is not None and session.state.middle_context.get("workflow_id"):
+        case_session = session
+        if session.team_id:
+            case_team = await storage.get_team(user_id, session.team_id)
+            if case_team is not None:
+                case_session = await storage.get_session(user_id, "", case_team.session_id) or session
+        manager_session_id = hashlib.sha256(
+            f"management:{user_id}:{session.id}:{run_agent_id}".encode(),
+        ).hexdigest()[:32]
+        manager_session = await storage.get_session(user_id, run_agent_id, manager_session_id)
+        if manager_session is None:
+            versions = case_session.state.middle_context.get("partner_agent_versions", {})
+            manager_session = await storage.upsert_session(
+                user_id=user_id, agent_id=run_agent_id, session_id=manager_session_id,
+                config=session.config.model_copy(update={
+                    "workspace_id": manager_session_id,
+                    "name": "Trao đổi với Ban quản lý",
+                    "naming": SessionNaming(auto=False),
+                }),
+                state=AgentState(middle_context={
+                    "management_case_session_id": case_session.id,
+                    "management_output_session_id": session.id,
+                    "workflow_id": session.state.middle_context["workflow_id"],
+                    **({"agent_version": versions[run_agent_id]} if run_agent_id in versions else {}),
+                }),
+            )
+        run_session_id = manager_session.id
+        team_turn_start = None
+        customer_message = request.input if isinstance(request.input, Msg) else None
+        if customer_message is not None:
+            customer_message.metadata = {**customer_message.metadata, "actor": "management"}
+        for msg in ([run_input] if isinstance(run_input, Msg) else run_input if isinstance(run_input, list) else []):
+            msg.metadata = {**msg.metadata, "actor": "management"}
+            msg.name = "Ban quản lý"
+
+    registry_session_id = customer_session_id if partner_console else run_session_id
+    existing = chat_run_registry.get(registry_session_id)
     if existing is not None and not existing.done():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -507,6 +549,8 @@ async def chat(
                 customer_session_id,
                 customer_message,
             )
+            await publish_session_event(message_bus, customer_session_id,
+                CustomEvent(name="message_upserted", value={"message": customer_message.model_dump(mode="json")}).model_dump(mode="json"))
         if team_turn_start is not None:
             (
                 team_id,
@@ -527,18 +571,23 @@ async def chat(
                 storage=shared_context_storage,
                 user_id=user_id,
             )
-        await chat_service.run(
-            user_id=user_id,
-            session_id=run_session_id,
-            agent_id=run_agent_id,
-            input_msg=run_input,
-        )
+        async def invoke() -> None:
+            await chat_service.run(user_id=user_id, session_id=run_session_id,
+                                   agent_id=run_agent_id, input_msg=run_input)
+        if partner_console:
+            # Serialize the visible SSE conversation with resident runs. The
+            # registry uses the visible id so its Stop button cancels this run.
+            async with message_bus.acquire_lock(MessageBusKeys.session_lock(customer_session_id),
+                                                 ttl_secs=MessageBusKeys.SESSION_RUN_TTL_SECS):
+                await invoke()
+        else:
+            await invoke()
 
     run_coro = _run_chat()
     try:
         chat_run_registry.spawn(
             run_coro,
-            session_id=run_session_id,
+            session_id=registry_session_id,
         )
     except RuntimeError as e:
         run_coro.close()

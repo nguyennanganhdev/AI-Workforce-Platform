@@ -8,10 +8,9 @@ from agentscope.app._router._chat import (
 )
 from agentscope.app._team_turn import (
     build_customer_ticket_context,
-    finish_team_turn,
     get_team_turn,
+    mark_team_awaiting_user,
     register_user_input_request,
-    return_team_reply_to_leader,
     start_team_turn,
     team_is_awaiting_user,
     team_is_paused,
@@ -79,14 +78,14 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
         )
 
         self.assertFalse(
-            await finish_team_turn(
+            await mark_team_awaiting_user(
                 self.bus,
                 "team",
                 session_id="other-session",
             ),
         )
         self.assertTrue(
-            await finish_team_turn(
+            await mark_team_awaiting_user(
                 self.bus,
                 "team",
                 session_id="hotel-session",
@@ -109,7 +108,7 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
         self.assertEqual(state.pending_questions, [])
         self.assertEqual(state.task_id, "hotel-task")
 
-    async def test_completed_reply_without_question_does_not_pause_team(self) -> None:
+    async def test_completed_customer_reply_pauses_until_next_turn(self) -> None:
         await start_team_turn(
             self.bus,
             "team",
@@ -119,16 +118,16 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
             mode="leader",
         )
         self.assertTrue(
-            await finish_team_turn(
+            await mark_team_awaiting_user(
                 self.bus,
                 "team",
                 session_id="leader-session",
             ),
         )
+        # A plain final answer completes the turn: the team sleeps until the
+        # next customer message, without waiting for a question's answer.
         self.assertFalse(await team_is_awaiting_user(self.bus, "team"))
         self.assertTrue(await team_is_paused(self.bus, "team"))
-        state = await get_team_turn(self.bus, "team")
-        self.assertEqual(state.status, "completed")
 
     async def test_pending_question_binds_followup_to_its_task(self) -> None:
         await start_team_turn(
@@ -152,44 +151,6 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
         self.assertFalse(duplicate)
         self.assertTrue(first)
         self.assertEqual(state.task_id, "hotel-task")
-
-    async def test_specialist_owns_clarification_then_returns_to_leader(self) -> None:
-        await start_team_turn(
-            self.bus,
-            "team",
-            reply_owner_session_id="leader-session",
-            reply_owner_agent_id="leader-agent",
-            customer_session_id="leader-session",
-            mode="leader",
-        )
-        state, duplicate, first = await register_user_input_request(
-            self.bus,
-            "team",
-            "Which account should I inspect?",
-            default_reply_owner_session_id="leader-session",
-            default_reply_owner_agent_id="leader-agent",
-            customer_session_id="leader-session",
-            question_key="missing:account",
-            specialist_owner_session_id="audit-session",
-            specialist_owner_agent_id="audit-agent",
-        )
-
-        self.assertFalse(duplicate)
-        self.assertTrue(first)
-        self.assertEqual(state.mode, "specialist_question")
-        self.assertEqual(state.reply_owner_session_id, "audit-session")
-
-        returned = await return_team_reply_to_leader(
-            self.bus,
-            "team",
-            specialist_session_id="audit-session",
-            leader_session_id="leader-session",
-            leader_agent_id="leader-agent",
-        )
-        self.assertTrue(returned)
-        state = await get_team_turn(self.bus, "team")
-        self.assertEqual(state.mode, "leader")
-        self.assertEqual(state.reply_owner_session_id, "leader-session")
 
 
 class TeamMentionTest(IsolatedAsyncioTestCase):

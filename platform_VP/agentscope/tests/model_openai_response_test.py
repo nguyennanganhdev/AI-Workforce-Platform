@@ -10,6 +10,7 @@ import unittest
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock
 
+import openai
 from openai import APIError
 from pydantic import BaseModel
 
@@ -1101,3 +1102,43 @@ class TestOpenAIResponseFormatTools(unittest.TestCase):
         fmt_tools, fmt_choice = self.model._format_tools(_FT_TOOLS, None)
         self.assertEqual(fmt_tools, _FT_TOOLS_RESPONSE)
         self.assertIsNone(fmt_choice)
+
+
+class TestReasoningSummaryRequest(IsolatedAsyncioTestCase):
+    """What the Responses request asks for: reasoning summaries, extra body."""
+
+    def _model(self, name: str) -> Any:
+        model = OpenAIResponseModel(credential=OpenAICredential(api_key="test"), model=name, stream=False)
+        model.client = MagicMock()
+        model.client.responses.create = AsyncMock(return_value=_mock_completion(text="ok"))
+        return model
+
+    def tearDown(self) -> None:
+        OpenAIResponseModel._summary_refused = False
+
+    async def test_a_reasoning_model_is_asked_for_a_summary(self) -> None:
+        model = self._model("gpt-5.4-mini")
+        model.extra_body = {"prompt_cache_key": "workforce:a"}
+        await model([])
+        kwargs = model.client.responses.create.call_args.kwargs
+        self.assertEqual({"summary": "auto"}, kwargs["reasoning"])
+        self.assertEqual({"prompt_cache_key": "workforce:a"}, kwargs["extra_body"])
+
+    async def test_a_model_that_does_not_reason_gets_no_reasoning(self) -> None:
+        model = self._model("gpt-4o")
+        await model([])
+        self.assertNotIn("reasoning", model.client.responses.create.call_args.kwargs)
+
+    async def test_a_refused_summary_is_dropped_and_the_call_retried(self) -> None:
+        model = self._model("gpt-5.5")
+        refused = openai.BadRequestError(
+            "Your organization must be verified to generate reasoning summaries.",
+            response=MagicMock(status_code=400),
+            body=None,
+        )
+        model.client.responses.create = AsyncMock(side_effect=[refused, _mock_completion(text="ok")])
+        result = await model([])
+        self.assertEqual("ok", result.content[0].text)
+        retried = model.client.responses.create.call_args_list[1].kwargs
+        self.assertNotIn("reasoning", retried)
+        self.assertTrue(OpenAIResponseModel._summary_refused)

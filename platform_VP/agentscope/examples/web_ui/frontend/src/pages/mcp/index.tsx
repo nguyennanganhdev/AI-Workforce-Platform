@@ -54,6 +54,7 @@ import {
 	SidebarMenuItem,
 } from '@/components/ui/sidebar.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
+import { useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useMCPHubCards } from '@/hooks/useMCPHubCards.ts';
 import { useMCPHubs } from '@/hooks/useMCPHubs.ts';
 import { useMCPs } from '@/hooks/useMCPs.ts';
@@ -100,6 +101,7 @@ interface CardItemProps {
 
 function CardItem({ card, installed, now, onInstall, onOpen }: CardItemProps) {
 	const { t } = useTranslation();
+	const canManage = useCatalogManagement();
 
 	return (
 		<Item
@@ -184,6 +186,7 @@ function CardItem({ card, installed, now, onInstall, onOpen }: CardItemProps) {
 					) : (
 						<Button
 							className="h-7 rounded-full px-3.5 text-xs font-normal hover:opacity-86"
+							disabled={!canManage}
 							// Installing straight from the row must not also
 							// open the drawer behind it.
 							onClick={(e) => {
@@ -208,6 +211,7 @@ interface HubPanelProps {
 }
 
 function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
 	const [installing, setInstalling] = useState<MCPCard | null>(null);
@@ -306,7 +310,7 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 				body={<MCPDetailBody card={drawer.opened as MCPCard | null} />}
 				action={
 					<Button
-						disabled={drawer.opened !== null && installedNames.has(drawer.opened.name)}
+						disabled={!canManage || (drawer.opened !== null && installedNames.has(drawer.opened.name))}
 						onClick={() => {
 							// One overlay at a time: the install form replaces
 							// the drawer rather than stacking on top of it.
@@ -328,13 +332,13 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 				}
 			/>
 
-			<InstallMCPDialog
+			{canManage && <InstallMCPDialog
 				card={installing}
 				onOpenChange={(open) => {
 					if (!open) setInstalling(null);
 				}}
 				onInstalled={onInstalled}
-			/>
+			/>}
 		</ResourcePanel>
 	);
 }
@@ -350,6 +354,7 @@ interface MinePanelProps {
 
 function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: MinePanelProps) {
 	const { t } = useTranslation();
+	const canManage = useCatalogManagement();
 	const [query, setQuery] = useState('');
 	const [expandedMcpId, setExpandedMcpId] = useState<string | null>(null);
 
@@ -382,13 +387,13 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 		>
 			<div className="mb-3 flex items-center justify-between border-b px-4 pb-3">
 				<div>
-					<p className="text-sm font-medium">MCP Catalog của platform</p>
+					<p className="text-sm font-medium">MCP của bạn</p>
 					<p className="text-xs text-muted-foreground">
-						Cài MCP đối tác để Builder có thể chọn tool đã đăng ký.
+						Kết nối MCP riêng để Builder chọn tool. MCP của gói được cấp chỉ xem và dùng.
 					</p>
 				</div>
 				<Button size="sm" onClick={onAddDirect}>
-					<PlugZap /> Kết nối MCP đối tác
+					<PlugZap /> Kết nối MCP
 				</Button>
 			</div>
 			{loading ? (
@@ -500,7 +505,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 										{mcp.version}
 									</span>
 								)}
-								{mcp.hub_id && mcp.card_id && (
+								{canManage && mcp.hub_id && mcp.card_id && (
 									<Button
 										size="icon-sm"
 										variant="ghost"
@@ -527,6 +532,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onSync(mcp.id)}
+									disabled={!canManage && mcp.editable === false}
 									title="Đồng bộ lại tool"
 								>
 									<RefreshCw />
@@ -536,6 +542,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onRemove(mcp.id)}
+									disabled={!canManage && mcp.editable === false}
 									title={t('common.delete')}
 								>
 									<Trash2 />
@@ -550,6 +557,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 }
 
 export function MCPHubPage() {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	// No `hubId` in the URL means the "mine" tab, which is the default.
@@ -565,6 +573,8 @@ export function MCPHubPage() {
 	const [editingCard, setEditingCard] = useState<MCPCard | null>(null);
 	const [directOpen, setDirectOpen] = useState(false);
 	const syncMcp = async (mcpId: string) => {
+		// Personal users sync their own MCPs; granted ones are read-only.
+		if (!canManage && mcps.find((mcp) => mcp.id === mcpId)?.editable === false) return;
 		await mcpApi.sync(mcpId);
 		await refetchMcps();
 	};
@@ -589,9 +599,9 @@ export function MCPHubPage() {
 
 	return (
 		<div className="flex size-full p-2 gap-2">
-			<Sidebar collapsible="none" className="rounded-[22px]">
+			<Sidebar collapsible="none" className="cue-column border-r border-sidebar-border">
 				<SidebarHeader className="flex flex-col p-[20px_18px_14px] gap-y-1">
-					<div className="text-xl font-medium tracking-[-0.02em] text-foreground">
+					<div className="text-[17px]/6 font-semibold text-foreground">
 						{t('common.mcp-hub')}
 					</div>
 					<div className="text-text-tertiary text-xs">{t('mcp.subtitle')}</div>
@@ -699,7 +709,7 @@ export function MCPHubPage() {
 				</SidebarContent>
 			</Sidebar>
 
-			<main className="flex-1 min-w-0 min-h-0 overflow-hidden rounded-[22px] bg-card shadow-panel">
+			<main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-background">
 				{hubId ? (
 					// Remount on hub change so the panel's query box resets.
 					<HubPanel
@@ -721,7 +731,7 @@ export function MCPHubPage() {
 				)}
 			</main>
 
-			<InstallMCPDialog
+			{canManage && <InstallMCPDialog
 				card={editing ? editingCard : null}
 				editing={editing}
 				onOpenChange={(open) => {
@@ -731,7 +741,7 @@ export function MCPHubPage() {
 					}
 				}}
 				onInstalled={refetchMcps}
-			/>
+			/>}
 			<DirectMCPDialog
 				open={directOpen}
 				onOpenChange={setDirectOpen}

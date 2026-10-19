@@ -64,7 +64,7 @@ class OpenAIChatModel(ChatModelBase):
         )
 
         reasoning_effort: (
-            Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+            Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None
         ) = Field(
             default=None,
             title="Reasoning Effort",
@@ -72,7 +72,7 @@ class OpenAIChatModel(ChatModelBase):
                 "Controls the depth of reasoning for reasoning models "
                 "(e.g. o3, o4-mini, gpt-5.5). Supported values are "
                 "model-dependent and may include: none, minimal, low, "
-                "medium, high, xhigh, max."
+                "medium, high, xhigh."
             ),
         )
 
@@ -258,7 +258,7 @@ class OpenAIChatModel(ChatModelBase):
         if self.parameters.top_p is not None:
             kwargs["top_p"] = self.parameters.top_p
 
-        if self.parameters.reasoning_effort is not None:
+        if self.parameters.thinking_enable and self.parameters.reasoning_effort:
             kwargs["reasoning_effort"] = self.parameters.reasoning_effort
 
         if self.parameters.voice is not None:
@@ -284,6 +284,10 @@ class OpenAIChatModel(ChatModelBase):
             kwargs["tools"] = fmt_tools
             if not self.parameters.parallel_tool_calls:
                 kwargs["parallel_tool_calls"] = False
+            if "reasoning_effort" in kwargs and model_name == "gpt-6-luna":
+                # Luna function calling over Chat Completions requires
+                # effort=none; the Responses API is where it reasons.
+                kwargs["reasoning_effort"] = "none"
 
         if fmt_tool_choice is not None:
             kwargs["tool_choice"] = fmt_tool_choice
@@ -292,6 +296,8 @@ class OpenAIChatModel(ChatModelBase):
             kwargs["stream_options"] = {"include_usage": True}
 
         start_datetime = datetime.now()
+        from .._call_observer import authorize_provider_payload
+        await authorize_provider_payload(self, kwargs)
         response = await self.client.chat.completions.create(**kwargs)
 
         audio_cfg = kwargs.get("audio")
@@ -361,6 +367,8 @@ class OpenAIChatModel(ChatModelBase):
                 # Update the response ID if exists
                 response_id = getattr(chunk, "id", None) or response_id
                 delta_res.id = response_id
+                from .._call_observer import provider_metadata
+                delta_res.metadata.update(provider_metadata(chunk, stream))
 
                 if chunk.usage:
                     u = chunk.usage
@@ -567,6 +575,9 @@ class OpenAIChatModel(ChatModelBase):
         response_id = getattr(response, "id", None)
         if response_id:
             resp_kwargs["id"] = response_id
+
+        from .._call_observer import provider_metadata
+        resp_kwargs["metadata"] = provider_metadata(response)
 
         return ChatResponse(**resp_kwargs)
 

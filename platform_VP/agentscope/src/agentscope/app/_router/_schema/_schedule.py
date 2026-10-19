@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Request / response schemas for the schedule router."""
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from ...storage import (
@@ -51,6 +53,28 @@ class CreateScheduleRequest(BaseModel):
         "scheduled execution.",
     )
 
+    once: bool = Field(
+        default=False,
+        description="Fire only at the next time matching the cron "
+        "expression, then disable.",
+    )
+
+    ended_at: datetime | None = Field(
+        default=None,
+        description="Stop firing after this time (ignored when once).",
+    )
+
+    deliver_channel_id: str = Field(
+        default="",
+        description="Channel to post the result to; empty keeps it in the "
+        "run's session.",
+    )
+
+    deliver_chat_id: str = Field(
+        default="",
+        description="Chat of deliver_channel_id to post into.",
+    )
+
 
 class CreateScheduleResponse(BaseModel):
     """Response body after creating a schedule."""
@@ -99,6 +123,21 @@ class UpdateScheduleRequest(BaseModel):
     permission_mode: PermissionMode | None = Field(
         default=None,
         description="New permission mode.",
+    )
+
+    once: bool | None = Field(
+        default=None,
+        description="Fire only at the next matching time, then disable.",
+    )
+
+    deliver_channel_id: str | None = Field(
+        default=None,
+        description="Channel to post the result to; empty string clears it.",
+    )
+
+    deliver_chat_id: str | None = Field(
+        default=None,
+        description="Chat of deliver_channel_id to post into.",
     )
 
 

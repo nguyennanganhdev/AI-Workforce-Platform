@@ -6,7 +6,7 @@ every node's :class:`ChannelLifecycleDispatcher` reconciles its running
 instances against storage. Holds no channel instances.
 """
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..._utils._common import _generate_id
 from ..message_bus import MessageBus, MessageBusKeys
@@ -66,6 +66,18 @@ class ChannelService:
             session (`SessionSettings`): Derived-session settings.
             enabled (`bool`): Whether to start the channel immediately.
         """
+        platform_config = await self._discord_config(user_id, channel_type, platform_config, creating=True)
+        from pydantic import ValidationError
+
+        channel_cls = self._types.get(channel_type)
+        if channel_cls is None:
+            raise ChannelError("Loại kênh không được hỗ trợ.", 400)
+        try:
+            credentials = channel_cls.Credentials.model_validate(credentials).model_dump()
+            platform_config = channel_cls.Config.model_validate(platform_config).model_dump()
+        except ValidationError as exc:
+            fields = ", ".join(".".join(map(str, error["loc"])) or "credentials" for error in exc.errors())
+            raise ChannelError(f"Cấu hình kênh không hợp lệ. Kiểm tra: {fields}.", 400) from None
         bot_id = self._types.extract_platform_bot_id(
             channel_type,
             credentials,
@@ -88,7 +100,7 @@ class ChannelService:
             name=name,
             user_id=user_id,
             enabled=enabled,
-            credentials=credentials,
+            credentials=self._types.seal_credentials(channel_type, credentials),
             platform_config=platform_config,
             routing=routing,
             session=session,
@@ -108,6 +120,10 @@ class ChannelService:
             updates (`dict`): Field changes to apply.
         """
         record = await self._require(channel_id)
+        if "platform_config" in updates:
+            updates = {**updates, "platform_config": await self._discord_config(
+                record.user_id, record.channel_type, updates["platform_config"],
+            )}
         updates.pop("credentials", None)
         updates.pop("channel_type", None)
         updated = record.model_copy(
@@ -117,6 +133,30 @@ class ChannelService:
             updated.channel_type,
             updated.credentials,
         )
+        await self._storage.upsert_channel(updated, bot_id)
+        await self._notify(channel_id)
+        return updated
+
+    async def rotate_secrets(self, channel_id: str, changes: dict) -> ChannelRecord:
+        """Rotate a token without replacing channel/session identity."""
+        from pydantic import ValidationError
+        from ..channel._secrets import open_credentials, secret_fields
+
+        record = await self._require(channel_id)
+        channel_cls = self._types.get(record.channel_type)
+        if record.channel_type not in {"telegram", "zalo_oa"} or channel_cls is None:
+            raise ChannelError("Kênh này chưa hỗ trợ thay token tại chỗ.", 400)
+        allowed = secret_fields(channel_cls.Credentials)
+        if not changes or set(changes) - allowed or any(not isinstance(v, str) or not v.strip() for v in changes.values()):
+            raise ChannelError("Chỉ được cập nhật các trường token hoặc khóa bí mật không rỗng.", 400)
+        try:
+            credentials = channel_cls.Credentials.model_validate({**open_credentials(record.credentials), **changes}).model_dump()
+        except ValidationError:
+            raise ChannelError("Token không hợp lệ hoặc không thuộc bot đang kết nối.", 400) from None
+        version = max(datetime.now(tz=record.updated_at.tzinfo), record.updated_at + timedelta(microseconds=1))
+        updated = record.model_copy(update={"credentials": self._types.seal_credentials(record.channel_type, credentials),
+                                           "updated_at": version})
+        bot_id = self._types.extract_platform_bot_id(record.channel_type, credentials)
         await self._storage.upsert_channel(updated, bot_id)
         await self._notify(channel_id)
         return updated
@@ -207,6 +247,32 @@ class ChannelService:
         return sorted(fields.keys())
 
     # -- internals --
+
+    async def _discord_config(self, user_id, channel_type, config, *, creating=False):
+        if channel_type != "discord":
+            return config
+        from ..channel._discord._channel import DiscordChannel
+
+        options = DiscordChannel.Config.model_validate(config)
+        authority = getattr(self._storage, "vin_platform_service", None)
+        context = await authority.context(user_id) if authority is not None else None
+        if context is not None and context.role == "VIN_USER":
+            from ._discord_identity import verified_owner
+            from ..vin_platform import PlatformError
+            try:
+                owner = (await verified_owner(authority, context))["discord_user_id"]
+            except PlatformError as exc:
+                raise ChannelError(exc.code, exc.status) from exc
+            if options.owner_user_id and options.owner_user_id != owner:
+                raise ChannelError("DISCORD_OWNER_MISMATCH", 403)
+            options.owner_user_id = owner
+            if options.allowed_user_ids is None:
+                options.allowed_user_ids = [options.owner_user_id]
+            if creating and options.owner_user_id not in options.allowed_user_ids:
+                raise ChannelError("Allowed Discord user IDs must include the owner; an empty list blocks everyone.", 400)
+            if "approver_user_ids" not in options.model_fields_set:
+                options.approver_user_ids = [options.owner_user_id]
+        return options.model_dump(exclude_unset=True)
 
     async def _require(self, channel_id: str) -> ChannelRecord:
         """Load a channel record or raise a 404 ``ChannelError``.

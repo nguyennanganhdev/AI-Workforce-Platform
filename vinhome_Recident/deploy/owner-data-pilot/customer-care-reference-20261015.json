@@ -1,0 +1,30 @@
+[
+  {
+    "code": "vinbus-hospital-connection",
+    "sites": ["ocean-park-1", "ocean-park-2", "ocean-park-3"],
+    "title": "Đi VinBus đến Vinmec Ocean Park 2",
+    "text": "VinBus có thông báo điều chỉnh lộ trình OCT1/OCP1 từ 07/04/2026 để kết nối Bệnh viện Vinmec Ocean Park 2. Khi muốn đi khám hoặc thăm bệnh viện, cư dân nên mở bản đồ VinBus, chọn điểm dừng gần mình và kiểm tra tuyến/chuyến hiện tại. Thông báo lộ trình không phải cam kết thời gian xe đến. Trợ lý không đặt xe hoặc xác nhận chỗ trên tuyến công cộng. Nguồn nhà vận tải được đối chiếu 15/10/2026; xem lại thông báo và bản đồ trước chuyến đi.",
+    "sources": ["https://vinbus.vn/thong-bao-dieu-chinh-lo-trinh-mo-rong-ket-noi-toi-benh-vien-vinmec-ocean-park-2", "https://maps.vinbus.vn/"]
+  },
+  {
+    "code": "vinbus-route-lookup",
+    "sites": ["ocean-park-1", "ocean-park-2", "ocean-park-3"],
+    "title": "Tra cứu xe buýt giữa Ocean Park 1, 2 và 3",
+    "text": "Cư dân có thể tra cứu tuyến nội liên khu trên maps.vinbus.vn. Kênh nhà vận tải liệt kê OCP1 kết nối Ocean Park 1/2/3 và OCP2 cho Ocean Park 2/3. Chọn nơi đi, nơi đến và kiểm tra thông tin hiện tại ngay trên bản đồ. Không dùng dữ liệu này để khẳng định giá vé, giờ xe cuối hoặc ETA vì thông tin phụ thuộc thời điểm. Trợ lý chỉ hướng dẫn tra cứu; việc mua vé hoặc điều kiện đi xe theo nhà vận tải. Nguồn đối chiếu 15/10/2026.",
+    "sources": ["https://maps.vinbus.vn/"]
+  },
+  {
+    "code": "vinmec-benefit-eligibility",
+    "sites": ["ocean-park-2", "ocean-park-3"],
+    "title": "Kiểm tra điều kiện ưu đãi Vinmec cho cư dân OP2/OP3",
+    "text": "Vinmec công bố chương trình ưu đãi cho cư dân Ocean Park 2 và 3. Quyền lợi phụ thuộc điều kiện của chương trình, dữ liệu trong ứng dụng cư dân, loại căn, tình trạng về ở và các điều kiện liên quan; đăng nhập Domain không tự chứng minh đã đủ điều kiện. Cư dân cần mở bài chính thức của Vinmec để kiểm tra đối tượng, thời hạn và cách sử dụng, sau đó xác nhận với nhà cung cấp trước khi đặt dịch vụ. Trợ lý không tự cấp quyền lợi, không hứa mức giảm giá và không tính chi phí khám chữa bệnh. Nguồn nhà cung cấp đối chiếu 15/10/2026.",
+    "sources": ["https://www.vinmec.com/vie/bai-viet/uu-dai-den-50-danh-rieng-cho-cu-dan-vinhomes-ocean-park-2-va-3"]
+  },
+  {
+    "code": "vinwonders-venue-distinction",
+    "sites": ["ocean-park-2", "ocean-park-3"],
+    "title": "Phân biệt Wave Park OP2 và Water Park OP3",
+    "text": "Theo trang của VinWonders, Wave Park nằm tại Ocean Park 2 và Water Park tại Ocean Park 3. Khi cư dân hỏi địa điểm vui chơi, cần hỏi rõ công viên muốn đến, ngày đi và nhu cầu; hướng dẫn xem bảng giá/quy định và kênh mua vé chính thức của nhà cung cấp. Tiện ích công viên bên ngoài không đồng nghĩa tiện ích nội khu có thể đặt bằng công cụ booking của Domain. Trợ lý không hứa giữ chỗ, xuất vé hoặc xác nhận giao dịch khi chưa có API/hợp đồng tích hợp. Nguồn VinWonders đối chiếu 15/10/2026; giá và giờ cần kiểm tra lại tại thời điểm sử dụng.",
+    "sources": ["https://vinwonders.com/en/vinwonders-wave-park-water-park-price-regulations/?lang=en"]
+  }
+]

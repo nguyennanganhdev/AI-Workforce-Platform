@@ -1,0 +1,210 @@
+{
+  "date": "2026-10-18",
+  "scope": "local_owner_manual_use",
+  "status": "CONFIGURED_NOT_REAL_MODEL_TESTED",
+  "application_source_revision": "bfe38022854da050b0b45d5232913baaac26436c",
+  "app_image": "vin-n2-platform-owner:bfe38022",
+  "app_image_id": "sha256:9fea309f14e71cd768ee89ff7e311e67f235099488efaa0fb856d5d7d605c528",
+  "source_provider_container": "awp-develop2-app-1",
+  "model": "gpt-6-luna",
+  "chat_api": "responses",
+  "endpoint": "https://api.openai.com/v1",
+  "embedding_model": "text-embedding-3-small",
+  "server_key_matches_authorized_source": true,
+  "key_not_in_user_records_or_git": true,
+  "actual_provider_verified_by_agent": false,
+  "real_provider_requests_by_agent": 0,
+  "paid_model_calls_by_agent": 0,
+  "resources": {
+    "status": "PROVISIONED",
+    "model": "gpt-6-luna",
+    "mcp_id": "6d0939d2af0d4a5eb0e170c8e0656ac5",
+    "domain_tools": [
+      "vh_ticket_get",
+      "vh_knowledge_search",
+      "vh_service_context",
+      "vh_amenity_availability",
+      "vh_staff_available",
+      "vh_work_order_dispatch",
+      "vh_operation_get",
+      "vh_ticket_add_note"
+    ],
+    "skill_ids": [
+      "10e2bf07e27b468aa9a8cbae7b682b2e",
+      "5de7511d9d6242eca505cc8ee782fec8",
+      "87e4902ad2ec4ef7a9701313a7ed5bf2"
+    ],
+    "knowledge_base_id": "f769ca95fca34062bbff1d1957d1e354",
+    "kb_mode": "lexical",
+    "real_Vin_business_documents_loaded": false,
+    "embedding_enabled": true,
+    "embedding_model": "text-embedding-3-small",
+    "embedding_daily_tokens": 10000,
+    "real_provider_requests": 0,
+    "paid_model_calls": 0
+  },
+  "readiness": {
+    "status": "PASS",
+    "model": "gpt-6-luna",
+    "leader_model": "gpt-6-luna",
+    "key_matches_authorized_source": true,
+    "endpoint": "https://api.openai.com/v1",
+    "real_provider_requests_by_agent": 0,
+    "resources": {
+      "/mcp": {
+        "http": 200,
+        "count": 1
+      },
+      "/skill": {
+        "http": 200,
+        "count": 3
+      },
+      "/knowledge_bases/": {
+        "http": 200,
+        "count": 1
+      },
+      "/credential/": {
+        "http": 200,
+        "count": 1
+      },
+      "/channels/": {
+        "http": 200,
+        "count": 0
+      },
+      "/schedule/": {
+        "http": 200,
+        "count": 0
+      }
+    },
+    "browser_pages": {
+      "/mcp": "PASS",
+      "/skill": "PASS",
+      "/knowledge": "PASS",
+      "/credential": "PASS",
+      "/schedule": "PASS",
+      "/channel": "PASS"
+    },
+    "domain_tools": 8,
+    "saved_session_model": "gpt-6-luna",
+    "lexical_search_http": 200,
+    "lexical_results": 1,
+    "effective_limits": [
+      {
+        "subject": "user:112a7adc-0ce2-4811-875f-d48cdf8b8648",
+        "window": "day:2026-10-18",
+        "limit": 200000,
+        "used": 420,
+        "reserved": 0,
+        "remaining": 199580
+      },
+      {
+        "subject": "user:112a7adc-0ce2-4811-875f-d48cdf8b8648",
+        "window": "month:2026-10",
+        "limit": 200000,
+        "used": 420,
+        "reserved": 0,
+        "remaining": 199580
+      },
+      {
+        "subject": "user:112a7adc-0ce2-4811-875f-d48cdf8b8648",
+        "window": "embedding-day:2026-10-18",
+        "limit": 10000,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 10000
+      }
+    ],
+    "page_errors": [],
+    "external_icons_blocked": [
+      "https://avatars.githubusercontent.com/u/9919?s=64",
+      "https://openclaw.ai/favicon.svg",
+      "https://www.google.com/s2/favicons?domain=dingtalk.com&sz=128",
+      "https://www.google.com/s2/favicons?domain=discord.com&sz=128",
+      "https://www.google.com/s2/favicons?domain=feishu.cn&sz=128"
+    ]
+  },
+  "runtime": [
+    {
+      "name": "platform-rc",
+      "image_id": "sha256:9fea309f14e71cd768ee89ff7e311e67f235099488efaa0fb856d5d7d605c528",
+      "running": true,
+      "mounts": [
+        {
+          "type": "bind",
+          "destination": "/app/examples/agent_service/workspaces",
+          "read_only": false
+        }
+      ]
+    },
+    {
+      "name": "web-rc",
+      "image_id": "sha256:5be765a31e8e5ccfaf8ea311533603086f8f0c418be4c856d64bb2e8e08807df",
+      "running": true,
+      "mounts": [
+        {
+          "type": "bind",
+          "destination": "/etc/nginx/nginx.conf",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "destination": "/staff",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "destination": "/resident",
+          "read_only": true
+        }
+      ]
+    },
+    {
+      "name": "domain-rc",
+      "image_id": "sha256:37573253b6bb2a52b47a922fb42e6858d8a2b97be80efc392beff990b63a41e0",
+      "running": true,
+      "mounts": [
+        {
+          "type": "bind",
+          "destination": "/rc-guard",
+          "read_only": true
+        }
+      ]
+    }
+  ],
+  "scripted_model_container_running": false,
+  "tests": {
+    "strict_contracts": {
+      "passed": 98,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "runtime_before_ticket_ids_followup": {
+      "passed": 513,
+      "skipped": 27,
+      "failed": 0,
+      "errors": 0,
+      "skip_reason": "26 generic browser plus 1 PostgreSQL; prior separate gates S16 unchanged"
+    },
+    "actual_domain_mcp_read": {
+      "passed": 1,
+      "skipped": 0,
+      "real_model_calls": 0,
+      "side_effect": "one retained synthetic open case/ticket"
+    },
+    "browser_resource_page_loads": 6,
+    "browser_page_errors": 0
+  },
+  "remaining": {
+    "discord": "OAuth app configuration and private bot not configured",
+    "eval_domain_mcp": "C08 sandbox provider/link/MCP profile not provisioned on owner local",
+    "real_Vin_documents": "not loaded; platform user guide only",
+    "autonomous_staff_dispatch_with_real_model": "not verified",
+    "provider_key_model_acceptance": "owner to verify by own prompt",
+    "business_UAT": "not signed",
+    "VPS": "not deployed"
+  },
+  "historical_fixture_report": "n2-s16-20261018.json",
+  "owner_runbook": "../N2_OWNER_USE_RUNBOOK_20261018.md",
+  "production_cutover_verified": false
+}

@@ -57,6 +57,8 @@ class CreateSessionRequest(BaseModel):
     """Request body for creating a new session."""
 
     agent_id: str = Field(description="Agent this session belongs to.")
+    personal: bool = False
+    """Create an independent platform-user conversation."""
     workspace_id: str | None = Field(
         default=None,
         description=(
@@ -76,10 +78,6 @@ class CreateSessionRequest(BaseModel):
         default=None,
         description="Model provider and parameters. "
         "Can be set later via PATCH.",
-    )
-    sub_agent_chat_model_config: ChatModelConfig | None = Field(
-        default=None,
-        description="Shared model for all sub-agents in this session's team.",
     )
     fallback_chat_model_config: ChatModelConfig | None = Field(
         default=None,
@@ -121,11 +119,6 @@ class UpdateSessionRequest(BaseModel):
         description="New model configuration. "
         "Replaces the existing one entirely. "
         "Pass null to clear; omit to leave unchanged.",
-    )
-    sub_agent_chat_model_config: ChatModelConfig | None = Field(
-        default=None,
-        description="Shared sub-agent model, independent of the leader model. "
-        "Pass null to restore worker-specific models; omit to leave unchanged.",
     )
     fallback_chat_model_config: ChatModelConfig | None = Field(
         default=None,

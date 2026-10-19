@@ -1,0 +1,26 @@
+[
+  {
+    "code": "ocean-park-1",
+    "name": "Vinhomes Ocean Park 1",
+    "region": "Hà Nội",
+    "source_url": "https://market.vinhomes.vn/en/blog/dia-chi-chinh-xac-cua-vinhomes-ocean-park-1-o-dau",
+    "checked_at": "2026-10-14",
+    "note": "Thông tin nhận diện dự án công khai; địa giới chi tiết, phạm vi vận hành, phí và nội quy cần xác nhận riêng."
+  },
+  {
+    "code": "ocean-park-2",
+    "name": "Vinhomes Ocean Park 2 – The Empire",
+    "region": "Hưng Yên",
+    "source_url": "https://market.vinhomes.vn/blog/dia-chi-chinh-xac-cua-vinhomes-ocean-park-2-o-dau",
+    "checked_at": "2026-10-14",
+    "note": "Nguồn công khai ngày 22/07/2024; không dùng địa chỉ xã/huyện lịch sử làm dữ liệu địa giới hiện hành."
+  },
+  {
+    "code": "ocean-park-3",
+    "name": "Vinhomes Ocean Park 3 – The Crown",
+    "region": "Hưng Yên",
+    "source_url": "https://oceanpark3.vinhomes.vn/",
+    "checked_at": "2026-10-14",
+    "note": "Các trang chính thức chưa thống nhất địa chỉ chi tiết. Chỉ lưu mức tỉnh; không nhập hotline bán hàng thành đầu mối BQL."
+  }
+]

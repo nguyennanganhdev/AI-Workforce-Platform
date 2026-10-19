@@ -600,7 +600,9 @@ class DingTalkChannelTest(  # pylint: disable=too-many-public-methods
 
     async def test_public_registration_and_secret_schema(self) -> None:
         registry = ChannelTypeRegistry([DingTalkChannel])
-        schema = registry.list_types()[0]
+        self.assertEqual(registry.list_types(), [])
+        self.assertTrue(registry.has_type("dingtalk"))
+        schema = registry.schema_of(DingTalkChannel)
 
         self.assertEqual(schema.channel_type, "dingtalk")
         self.assertEqual(schema.platform_bot_id_field, "client_id")

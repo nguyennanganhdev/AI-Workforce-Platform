@@ -1,0 +1,290 @@
+{
+  "format_version": 1,
+  "date": "2026-10-18",
+  "lane": "N2",
+  "branch": "feat/vin-user2-experience-20261018",
+  "image_source_revision": "9876d94eaa8c68040bcb2e6cea91ded6f58a606c",
+  "runner_revision": "54c5067bf3191b993980e8d7a93b5772dd672b1c",
+  "producer_test_fix": "c1a8acd84dc0b04ba8b996528d3fa9ba98e69077",
+  "images": {
+    "app": {
+      "tag": "vin-n2-platform-rc:9876d94e",
+      "id": "sha256:cb0caf0914297c189f6dad1105747de741db22e8d49f36ab9a8f925007180c0a",
+      "source_revision": "9876d94eaa8c68040bcb2e6cea91ded6f58a606c"
+    },
+    "web": {
+      "tag": "vin-n2-web-rc:9876d94e",
+      "id": "sha256:5be765a31e8e5ccfaf8ea311533603086f8f0c418be4c856d64bb2e8e08807df",
+      "source_revision": "9876d94eaa8c68040bcb2e6cea91ded6f58a606c"
+    },
+    "domain": {
+      "tag": "vinhomes-domain-api:vin-n1-6ef348ce-rc-20261018",
+      "id": "sha256:37573253b6bb2a52b47a922fb42e6858d8a2b97be80efc392beff990b63a41e0",
+      "source_revision": "6ef348ce1ef51c5f1002218ccff4e7be43f8e273"
+    }
+  },
+  "build": {
+    "dockerfiles": "production",
+    "VITE_API_BASE_URL": "/api",
+    "VITE_VIN_EXPERIENCE_ENABLED": true,
+    "application_source_mounts": 0,
+    "platform_python_files": 717,
+    "domain_python_sql_files": 128,
+    "domain_git_EOL_variants_only": true,
+    "domain_uid": 10001,
+    "pip_check": "PASS",
+    "app_tree_secret_env_artifact_files": 0,
+    "web_assets_count": 476,
+    "web_assets_sorted_json_sha256": "cf6c40c5e0fd1a3a7ace18bd1226d65f80b1c0a5c6c6cc49bf90623a44e0c9b1"
+  },
+  "migration_head": "0024_vin_admin_revisions",
+  "flags": {
+    "VIN_PLATFORM_ENABLED": true,
+    "VINHOMES_CUSTOMER_PLATFORM_ENABLED": true,
+    "VINHOMES_CHATBOT_COHORT_CUTOVER_ENABLED": false
+  },
+  "tests": {
+    "strict_contracts": {
+      "passed": 90,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "runtime_generic_s15_same_application_source": {
+      "passed": 505,
+      "skipped": 27,
+      "failed": 0,
+      "errors": 0,
+      "skip_reason": "26 browser plus 1 personal SQL; independent gates below passed"
+    },
+    "postgres_migration_consumers_lookup": {
+      "passed": 16,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "personal_chat_postgres_concurrency": {
+      "passed": 1,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "browser_regression": {
+      "passed": 26,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "source_integration_local_bundle": {
+      "passed": 7,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "source_integration_exact_image_bundle": {
+      "passed": 7,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "source_revision": "d647eaa2d0c4fffe236e5939dcf06350f66c6dca",
+      "dirty_paths": []
+    },
+    "frontend_node": {
+      "passed": 20,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "production_api_bundle": {
+      "passed": 1,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0
+    },
+    "normal_cmd_image_smoke": {
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "scenarios": {
+        "customer_staff_photo_consent": "PASS",
+        "admin_policy_ui_persistence": "PASS"
+      }
+    },
+    "saved_leader_reply_ui": {
+      "status": "PASS"
+    },
+    "restore_stores": {
+      "passed": 4,
+      "skipped": 0,
+      "restored_app_started": false
+    },
+    "staff_login_browser_s17": {
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "errors": 0,
+      "repro_before_fix": {
+        "status": "FAIL",
+        "unauthorized_responses_in_five_seconds": 108
+      }
+    }
+  },
+  "customer_proof": {
+    "canonical_case_status": "completed",
+    "bql_commands": 0,
+    "result_photo_bytes_match": true,
+    "result_photo_decoded_in_browser": true,
+    "decision_replay_matches": true,
+    "scripted_sdk_calls": 3,
+    "saved_reply_reopened_in_ui": true
+  },
+  "staging": {
+    "scope": "isolated_loopback_fixture",
+    "running": false,
+    "platform_url": "http://127.0.0.1:18104",
+    "staff_url": "http://127.0.0.1:18105",
+    "domain_readiness": "http://127.0.0.1:18101/ready",
+    "runtime": {
+      "services": [
+        {
+          "name": "platform-rc",
+          "image_id": "sha256:cb0caf0914297c189f6dad1105747de741db22e8d49f36ab9a8f925007180c0a",
+          "running": true,
+          "mounts": [
+            {
+              "type": "bind",
+              "destination": "/rc-guard",
+              "read_only": true
+            }
+          ],
+          "flags": {
+            "VIN_PLATFORM_ENABLED": "true"
+          }
+        },
+        {
+          "name": "web-rc",
+          "image_id": "sha256:5be765a31e8e5ccfaf8ea311533603086f8f0c418be4c856d64bb2e8e08807df",
+          "running": true,
+          "mounts": [
+            {
+              "type": "bind",
+              "destination": "/etc/nginx/nginx.conf",
+              "read_only": true
+            },
+            {
+              "type": "bind",
+              "destination": "/staff",
+              "read_only": true
+            },
+            {
+              "type": "bind",
+              "destination": "/resident",
+              "read_only": true
+            }
+          ],
+          "flags": {}
+        },
+        {
+          "name": "domain-rc",
+          "image_id": "sha256:37573253b6bb2a52b47a922fb42e6858d8a2b97be80efc392beff990b63a41e0",
+          "running": true,
+          "mounts": [
+            {
+              "type": "bind",
+              "destination": "/rc-guard",
+              "read_only": true
+            }
+          ],
+          "flags": {
+            "VINHOMES_CUSTOMER_PLATFORM_ENABLED": "true",
+            "VINHOMES_CHATBOT_COHORT_CUTOVER_ENABLED": "false"
+          }
+        }
+      ],
+      "health": {
+        "platform": 200,
+        "domain": 200,
+        "staff": 200
+      }
+    },
+    "output": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4",
+    "staff_entry_url": "http://127.0.0.1:18105/operations/my-tasks",
+    "superseded_by_owner_use": "n2-s18-owner-use-20261018.json"
+  },
+  "archive": {
+    "path": "platform_VP/agentscope/.artifacts/n2-release-9876d94e/images.tar",
+    "bytes": 416169984,
+    "sha256": "9684e03ca0843db26933d2de846c944ab5b8fcf356280854941538e57dcea7d1",
+    "images": 3,
+    "contains_deployment_env": false
+  },
+  "offline": {
+    "real_model_calls": 0,
+    "paid_model_calls": 0,
+    "external_network_attempts_in_guarded_final_runs": 0,
+    "real_model_quality": "NOT_MEASURED"
+  },
+  "remaining": {
+    "full_feature_matrix_in_single_production_CMD_process": "NOT_RUN; seven feature journeys use actual image bundle and source ASGI runtime",
+    "autonomous_staff_dispatch": "NOT_PROVEN; Domain dispatcher fixture uses business API",
+    "business_UAT": "NOT_SIGNED",
+    "real_model_test": "NOT_RUN; owner only",
+    "input_photo_vision": "NOT_CERTIFIED",
+    "real_Vin_KB_indexing": "NOT_CERTIFIED",
+    "VPS": "NOT_DEPLOYED; target preflight and UAT required"
+  },
+  "production_cutover_verified": false,
+  "limitations": [
+    "Integration suite uses scripted model and Discord IO plus synthetic Domain identity seam; image smoke uses actual password auth and SDK against local scripted provider.",
+    "Restore is synthetic isolated; not off-host or production restore.",
+    "RC Platform DB owner role permits migration; not production least-privilege preflight.",
+    "No overlapping suite counts are added."
+  ],
+  "artifacts": {
+    "rc": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4/rc-summary.json",
+    "journeys": "platform_VP/agentscope/.artifacts/vin-journey/pytest.xml",
+    "final_reply": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4/leader-final-reply.png",
+    "restore": "platform_VP/agentscope/.artifacts/n2-s16-staging-r4/restore/deep-restore.json"
+  },
+  "staff_login_followup_s17": {
+    "status": "PASS",
+    "red_unauthorized_responses_in_5_seconds": 108,
+    "regression": {
+      "status": "PASS",
+      "passed": 2,
+      "skipped": 0,
+      "paid_model_calls": 0,
+      "viewports": [
+        {
+          "width": 1280,
+          "unauthorized_responses": 1,
+          "page_errors": [],
+          "external_requests": 0,
+          "status": "PASS"
+        },
+        {
+          "width": 390,
+          "unauthorized_responses": 1,
+          "page_errors": [],
+          "external_requests": 0,
+          "status": "PASS"
+        }
+      ]
+    },
+    "gateway_configuration": "nginx-staff-login.conf",
+    "gateway_sha256": "953ccd0253e0a2422a8a845fd305653a2725a04c7f6673b3897ef460cea8d154",
+    "domain_ui": {
+      "staff": {
+        "tree_sha256": "d2776bace13c259bdf870d54b421f07121b038b995a040235e8f82aa121ad3b0",
+        "build_directory": "E:\\AI-Workforce-Platform\\vinhome_Recident\\apps\\staff-web\\dist"
+      },
+      "resident": {
+        "tree_sha256": "3f53bf54fbff75d39f2bb68a9db47eb24297a2d747091e191454000f93b1fee3",
+        "build_directory": "E:\\AI-Workforce-Platform\\vinhome_Recident\\apps\\resident-web\\dist"
+      }
+    },
+    "scripted_model_calls": 3,
+    "paid_model_calls": 0
+  }
+}

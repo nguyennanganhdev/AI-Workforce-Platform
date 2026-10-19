@@ -7,18 +7,20 @@ import {
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
 import { GitBranch, TriangleAlert, X } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
 import { DiffStats } from './tool-renderers/_shared';
 import type { GitStatus } from '@/api';
 import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
+import { ChoiceCard } from '@/components/chat/ChoiceCard';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
 import { FlipCard } from '@/components/chat/FlipCard.tsx';
-import { TextInput } from '@/components/chat/TextInput.tsx';
+import { TicketViewContext } from '@/components/chat/team-roster';
+import { type MentionOption, TextInput } from '@/components/chat/TextInput.tsx';
 import { WorkingDirectoryDialog } from '@/components/dialog/WorkingDirectoryDialog';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert.tsx';
-import { ClayPortrait } from '@/components/ui/clay-portrait';
+import { Bubble, BubbleContent } from '@/components/ui/bubble';
 import { Marker, MarkerContent } from '@/components/ui/marker';
 import {
 	MessageScroller,
@@ -29,6 +31,7 @@ import {
 	MessageScrollerViewport,
 } from '@/components/ui/message-scroller.tsx';
 import { Spinner } from '@/components/ui/spinner';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import type { ReplyPhase } from '@/hooks/useMessages';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
@@ -61,6 +64,10 @@ function markerStamp(at: Date, previous: Date, language: string): string {
 }
 
 interface ChatContentProps {
+	personalChat?: boolean;
+	groupChat?: boolean;
+	composerPlaceholder?: string;
+	showWorkspace?: boolean;
 	msgs: Msg[];
 	/**
 	 * Whether the history for the currently selected session is still on
@@ -76,6 +83,7 @@ interface ChatContentProps {
 	phase: ReplyPhase;
 	disabled: boolean;
 	onSend: (content: ContentBlock[], targetAgentId?: string) => void;
+	/** The Leader's team chat: members' replies show under their own names. */
 	teamChat?: boolean;
 	onUserConfirm: (
 		toolCall: ToolCallBlock,
@@ -84,6 +92,8 @@ interface ChatContentProps {
 		rules?: ToolCallBlock['suggested_rules'],
 	) => Promise<void>;
 	autoComplete?: (input: string) => string | null;
+	/** @see TextInputProps.mentions */
+	mentions?: MentionOption[];
 	className?: string;
 	/** Called when the user clicks the stop button. */
 	onInterrupt?: () => void;
@@ -111,10 +121,16 @@ interface ChatContentProps {
 	git?: GitStatus | null;
 	/** Re-reads the git state, since nothing polls for it. */
 	onRefreshGit?: () => void | Promise<void>;
+	/** Who is on the other end: names the composer and the empty state. */
+	agentName?: string;
 }
 
 const ChatContentComponent: React.FC<ChatContentProps> = ({
+	personalChat = false,
+	groupChat = false,
 	msgs,
+	composerPlaceholder,
+	showWorkspace = true,
 	loading = false,
 	phase,
 	disabled,
@@ -122,6 +138,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	teamChat = false,
 	onUserConfirm,
 	autoComplete,
+	mentions,
 	className,
 	onInterrupt,
 	footerSlot,
@@ -133,24 +150,28 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	onCwdChange,
 	git,
 	onRefreshGit,
+	agentName,
 }) => {
 	const { t, i18n } = useTranslation();
-	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
-		if (message.role !== 'assistant') return [message];
-		const content = message.content.filter((block) => block.type !== 'hint' && block.type !== 'thinking');
-		if (content.length === 0 && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
-		return [{ ...message, content }];
-	}) : msgs, [msgs, teamChat]);
-	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
-	useEffect(() => setReplyTarget(null), [sessionId]);
-	const handleSend = (content: ContentBlock[]) => {
-		onSend(content, replyTarget?.agentId);
-		setReplyTarget(null);
-	};
+	const ticketView = useContext(TicketViewContext);
 	// Only a session that finished loading with nothing in it is empty.
 	// Treating "no messages yet" as empty would flash the greeting over
 	// every session that does have history.
 	const isEmpty = !loading && msgs.length === 0;
+	const user = useCurrentUser();
+	const onboardingOptions = t('chat.onboarding.options', { returnObjects: true }) as string[];
+	const sendText = (text: string) => {
+		const now = new Date().toISOString();
+		onSend([
+			{
+				id: crypto.randomUUID(),
+				type: 'text',
+				text,
+				created_at: now,
+				finished_at: now,
+			} as TextBlock,
+		]);
+	};
 
 	// A spinner that appears and vanishes inside a couple of frames reads
 	// as a flicker, not as feedback — so hold it back until the load has
@@ -166,6 +187,21 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 		return () => clearTimeout(timer);
 	}, [loading]);
 
+	// Team chat shows each member's public reply; private working stays in
+	// that member's own session.
+	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
+		if (message.role !== 'assistant') return [message];
+		const content = message.content.filter((block) => block.type !== 'hint' && block.type !== 'thinking');
+		if (content.length === 0 && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
+		return [{ ...message, content }];
+	}) : msgs, [msgs, teamChat]);
+	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
+	useEffect(() => setReplyTarget(null), [sessionId]);
+	const handleSend = (content: ContentBlock[]) => {
+		onSend(content, replyTarget?.agentId);
+		setReplyTarget(null);
+	};
+
 	const toConfirmedToolCalls = useMemo(() => {
 		if (msgs.length === 0) return [];
 
@@ -178,28 +214,56 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				.map((tc) => ({ replyId: message.id, toolCall: tc }));
 		});
 	}, [msgs, sessionId]);
+	const cardVisible = toConfirmedToolCalls.length > 0 || footerSlot != null;
 
+	// Left-aligned with a 16px gutter, Cue-style: no centred reading column.
+	// The composer always sits at the foot, empty session or not.
 	return (
-		<div
-			className={cn(
-				'flex h-full w-full flex-col gap-3 px-3 pb-3',
-				className,
-			)}
-		>
+		<div className={cn('flex h-full w-full flex-col gap-3', className)}>
 			{loading ? (
 				<div className="flex flex-1 w-full items-center justify-center">
 					{showSpinner ? <Spinner className="size-5 text-muted-foreground" /> : null}
 				</div>
+			) : isEmpty && ticketView ? (
+				<div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+					Session này chưa nhận ticket nào.
+				</div>
+			) : isEmpty && personalChat ? (
+				<div className="flex min-h-0 flex-1 flex-col items-start justify-center gap-5 overflow-y-auto px-6 py-8 sm:px-10">
+					<div className="max-w-xl space-y-2">
+						<h1 className="text-xl font-semibold tracking-tight">{t('personal.greeting', { agent: agentName ?? 'Agent' })}</h1>
+						<p className="text-sm leading-relaxed text-muted-foreground">{t(groupChat ? 'personal.groupIntro' : 'personal.intro')}</p>
+					</div>
+					<div className="flex max-w-xl flex-col items-start gap-2">
+						{['capabilities', 'boundaries', 'plan'].map(key => <Button key={key} variant="outline" className="h-auto min-h-11 max-w-full justify-start whitespace-normal py-2 text-left text-sm" disabled={disabled} onClick={() => sendText(t(`personal.${key}`))}>{t(`personal.${key}`)}</Button>)}
+					</div>
+				</div>
 			) : isEmpty ? (
-				<div className="flex flex-1 flex-col items-center justify-center gap-4 text-center text-2xl font-medium text-foreground">
-					<ClayPortrait which="leader" size={96} />
-					{t('chat.greeting')}
+				// Cue's onboarding: the agent speaks first — a personal greeting,
+				// then a few things it can do as a choice card. Picking one sends
+				// it as the person's first message; typing works just as well.
+				<div className="flex min-h-0 flex-1 flex-col items-start gap-6 overflow-y-auto px-4 pt-2 pb-4">
+					<Bubble variant="agent">
+						<BubbleContent>
+							{user?.username
+								? t('chat.onboarding.greeting', { name: user.username })
+								: t('chat.onboarding.greetingNoName')}
+						</BubbleContent>
+					</Bubble>
+					<ChoiceCard
+						question={t('chat.onboarding.question')}
+						options={onboardingOptions}
+						hint={t('chat.onboarding.hint')}
+						continueLabel={t('chat.onboarding.continue')}
+						disabled={disabled}
+						onSubmit={(index) => sendText(onboardingOptions[index])}
+					/>
 				</div>
 			) : (
 				<MessageScrollerProvider autoScroll={true} defaultScrollPosition={'end'}>
 					<MessageScroller>
 						<MessageScrollerViewport>
-							<MessageScrollerContent>
+							<MessageScrollerContent className="px-4 pt-2 pb-4">
 								{visibleMsgs.map((message, index) => {
 									const previous = visibleMsgs[index - 1];
 									const at = new Date(message.created_at);
@@ -277,16 +341,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 			)}
 
 			{loading ? null : (
-				<div className="relative min-w-full max-w-full w-full">
-					{replyTarget && (
-						<div className="mb-2 flex items-center justify-between rounded-xl bg-muted px-3 py-2 text-sm">
-							<span>Trả lời {replyTarget.name}</span>
-							<Button variant="ghost" size="icon-xs" aria-label="Hủy trả lời agent" onClick={() => setReplyTarget(null)}><X /></Button>
-						</div>
-					)}
+				<div className="relative w-full px-4 pb-4">
+					{/* In flow, not overlaid: the transcript shrinks to make room, so the
+					    card never hides the message it answers. */}
 					<FlipCard
-						visible={toConfirmedToolCalls.length > 0 || footerSlot !== null}
-						className="mb-2 max-h-[45vh] overflow-y-auto"
+						visible={cardVisible}
+						className={cn(cardVisible && 'mb-2 max-h-[50vh] overflow-y-auto')}
 					>
 						{toConfirmedToolCalls.length > 0 ? (
 							<ConfirmCard
@@ -305,28 +365,38 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 							footerSlot
 						)}
 					</FlipCard>
-					{/* Concentric radii: the pill stays rounded-[28px] on all four
-				    corners and floats on this surface, whose own radius is
-				    28 + the 4px padding. Matching them is what keeps the two
-				    edges parallel — a plain rectangle here would show the
-				    pill's corners cutting into it. */}
+					{replyTarget && (
+						<div className="mb-2 flex w-full items-center justify-between rounded-xl bg-muted px-3 py-2 text-sm">
+							<span>Trả lời {replyTarget.name}</span>
+							<Button variant="ghost" size="icon-xs" aria-label="Hủy trả lời agent" onClick={() => setReplyTarget(null)}><X /></Button>
+						</div>
+					)}
 					<TextInput
-						className="min-w-full max-w-full w-full rounded-3xl border border-border bg-background p-1 shadow-[var(--cue-shadow-composer)]"
+						className="w-full"
+						placeholder={
+							composerPlaceholder ??
+							(agentName
+								? t('chat.messagePlaceholder', { name: agentName })
+								: undefined)
+						}
 						onSend={handleSend}
 						disabled={disabled}
 						autoComplete={autoComplete}
+						mentions={mentions}
 						allowedInputTypes={allowedInputTypes}
 						fileProcessor={fileProcessor}
 						phase={phase}
 						onInterrupt={onInterrupt}
 						headerSlot={
-							<div className="flex w-full items-center justify-between px-2 py-1 text-sm text-muted-foreground">
-								<WorkingDirectoryDialog
-									agentId={agentId}
-									sessionId={sessionId}
-									value={cwd}
-									onChange={onCwdChange}
-								/>
+							<div className="flex w-full items-center justify-between pb-1.5 text-[13px] text-muted-foreground">
+								{showWorkspace && (
+									<WorkingDirectoryDialog
+										agentId={agentId}
+										sessionId={sessionId}
+										value={cwd}
+										onChange={onCwdChange}
+									/>
+								)}
 								{git && (
 									<Button
 										className="font-mono"

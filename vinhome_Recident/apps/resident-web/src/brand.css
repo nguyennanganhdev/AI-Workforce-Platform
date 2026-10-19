@@ -1,0 +1,59 @@
+/* Shared visual language for landing, account and resident surfaces. */
+:root {
+  color-scheme: light;
+  --vh-ink: #293b46;
+  --vh-muted: #596976;
+  --vh-accent: #a34d35;
+  --vh-accent-soft: #fcf0e9;
+  --vh-surface: #fff;
+  --vh-background: #faf9f6;
+  --vh-border: #e5e4de;
+  --vh-radius: 16px;
+}
+.vinhomes-brand { display: inline-flex; align-items: center; gap: 16px; }
+.vinhomes-brand img { display: block; width: 112px; height: 52px; object-fit: contain; flex-shrink: 0; }
+.vinhomes-brand > span { max-width: 180px; padding-left: 16px; border-left: 1px solid var(--vh-border); font-size: 13px; line-height: 1.6; color: var(--vh-muted); font-weight: 500; letter-spacing: 0; }
+.vinhomes-brand.is-compact img { width: 96px; height: 44px; }
+@media (max-width: 767px) { .vinhomes-brand > span { display: none; } }
+
+body,.app-shell { background: var(--vh-background); }
+.brand > .vinhomes-brand { font-size: inherit; font-weight: inherit; line-height: inherit; letter-spacing: 0; padding: 0; flex-direction: column; align-items: flex-start; gap: 8px; }
+.brand > .vinhomes-brand > span { padding-left: 0; border: 0; max-width: none; font-size: 12px; }
+.desktop-sidebar { padding-top: 22px; border-color: var(--vh-border); }
+.app-header,.conversation-toolbar,.composer-area,.mobile-nav { border-color: var(--vh-border); }
+.header-location .location-icon img { object-fit: contain; width: 48px; height: 40px; }
+.header-location .location-icon { width: 48px; background: transparent; }
+.assistant-welcome-background::before { background: linear-gradient(rgb(250 249 246 / 89%),rgb(250 249 246 / 89%)),url("/images/ocean-park-welcome-960.webp") center/cover no-repeat; filter: none; }
+.assistant-welcome-background { background: var(--vh-background); }
+.assistant-home .assistant-prompt-chips button,.assistant-home .resume-conversation { background: white; border-color: var(--vh-border); box-shadow: none; backdrop-filter: none; }
+.message.assistant .message-bubble { border: 1px solid var(--vh-border); background: white; color: var(--vh-ink); }
+.message.resident .message-bubble { background: #f8e9df; border: 1px solid #ecd4c3; color: #6f3827; }
+.message-bubble p { line-height: 1.8; }
+.message-body { min-width: 0; }
+.primary-button,.send-button:not(:disabled) { background: var(--vh-accent); color: white; }
+.secondary-button { border: 1px solid var(--vh-border); }
+.notification-button { position: relative; }
+.notification-count { position: absolute; top: 0; right: -2px; min-width: 19px; padding: 2px 5px; border-radius: 12px; background: var(--vh-accent); color: white; font-size: 10px; font-weight: 700; border: 2px solid white; }
+.notification-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.notification-filters { display: flex; gap: 4px; background: #f0eee8; padding: 4px; border-radius: 12px; }
+.notification-filters button { min-height: 44px; padding: 8px 14px; border-radius: 9px; font-size: 13px; color: var(--vh-muted); }
+.notification-filters button[aria-pressed="true"] { background: white; color: var(--vh-accent); box-shadow: 0 1px 4px #293b4612; }
+.notification-filters span { font-variant-numeric: tabular-nums; margin-left: 4px; }
+.notification-entry { background: white; border: 1px solid var(--vh-border); border-radius: 14px; overflow: hidden; }
+.notification-entry:not(.is-read) { border-left: 3px solid var(--vh-accent); }
+.notification-entry .notification-card { width: 100%; border: 0; box-shadow: none; background: transparent; padding-bottom: 8px; }
+.notification-entry .notification-card p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.notification-entry.is-read .notification-card { background: #fcfcfa; }
+.notification-read-row { display: flex; justify-content: flex-end; min-height: 44px; padding: 0 16px 8px; font-size: 12px; color: var(--vh-muted); }
+.notification-read-row > span { display: inline-flex; align-items: center; gap: 5px; }
+.notification-unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vh-accent); flex: 0 0 8px !important; }
+.notification-controls .text-button { display: inline-flex; gap: 6px; align-items: center; min-height: 44px; }
+@media (max-width: 767px) {
+ .message { max-width: 100%; }
+ .message-body { max-width: calc(100% - 2px); }
+ .composer-area { padding-bottom: max(10px,env(safe-area-inset-bottom)); }
+ .header-location strong { max-width: 43vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+.main-shell,.main-scroll { background: var(--vh-background); }
+.new-messages-button { position: sticky; bottom: 12px; margin: 8px auto; display: block; padding: 12px 18px; min-height: 44px; border-radius: 24px; color: white; background: var(--vh-accent); box-shadow: 0 3px 12px #293b4620; }

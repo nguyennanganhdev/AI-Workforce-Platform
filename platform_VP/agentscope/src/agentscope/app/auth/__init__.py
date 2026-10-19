@@ -3,6 +3,13 @@
 
 from ._models import AuthPrincipal, AuthTokens, AuthUser
 from ._service import (
+    AREA_MANAGER,
+    DOMAIN_ADMIN,
+    PLATFORM_ADMIN,
+    VIN_USER,
+    AccountPendingError,
+    AdminPermissionError,
+    AreaTakenError,
     AuthError,
     AuthService,
     InvalidCredentialsError,
@@ -12,6 +19,13 @@ from ._service import (
 )
 
 __all__ = [
+    "AREA_MANAGER",
+    "DOMAIN_ADMIN",
+    "PLATFORM_ADMIN",
+    "VIN_USER",
+    "AccountPendingError",
+    "AdminPermissionError",
+    "AreaTakenError",
     "AuthError",
     "AuthPrincipal",
     "AuthService",

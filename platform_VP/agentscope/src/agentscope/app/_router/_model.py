@@ -36,8 +36,5 @@ async def list_models(
             detail=f"Provider '{body.provider}' not found.",
         )
 
-    try:
-        models = credential_cls.get_chat_model_class().list_models()
-    except NotImplementedError:
-        models = []
+    models = credential_cls.get_chat_model_class().list_models()
     return ListModelsResponse(models=models, total=len(models))

@@ -140,6 +140,13 @@ export type SessionOrigin =
 export type SessionSourceKind = SessionOrigin['type'];
 
 export interface SessionConfig {
+	personal_chat?: {
+		kind: 'direct' | 'group';
+		root_session_id: string | null;
+		members: { agent_id: string; session_id: string; name: string }[];
+		goal: string;
+		context_mode: 'shared' | 'isolated';
+	} | null;
 	name: string;
 	/** Who owns `name` — see the backend's `SessionNaming`. */
 	naming: { auto: boolean };
@@ -180,6 +187,7 @@ export interface SessionRecord extends RecordBase {
 
 export interface CreateSessionRequest {
 	agent_id: string;
+	personal?: boolean;
 	workspace_id?: string;
 	chat_model_config?: ChatModelConfig | null;
 	sub_agent_chat_model_config?: ChatModelConfig | null;
@@ -316,6 +324,7 @@ export interface WorkspaceStatus {
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
 export interface TeamData {
+	purpose?: 'operational' | 'platform_group';
 	name: string;
 	description: string;
 	/** Worker agent ids belonging to the team. */
@@ -511,8 +520,12 @@ export interface ToolInfo {
 	description?: string | null;
 }
 
-export interface MCPClientStatus extends MCPClient {
-	is_healthy: boolean;
+export interface MCPClientStatus {
+	name: string;
+	is_stateful?: boolean;
+	/** Omitted for server-managed catalog resources. */
+	mcp_config?: StdioMCPConfig | HttpMCPConfig;
+	is_healthy: boolean | null;
 	tools: ToolInfo[];
 	/**
 	 * Why listing this MCP's tools failed. `null` when healthy — a red dot
@@ -711,6 +724,8 @@ export interface MCPView {
 	card_id: string | null;
 	version: string | null;
 	tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
+	/** False for a granted pack/domain MCP: view and use only. */
+	editable?: boolean;
 	catalog_revision: number;
 	last_synced_at: string | null;
 	last_sync_error: string | null;
@@ -734,6 +749,8 @@ export interface DirectInstallMCPRequest {
  * re-fetched from the hub when the skill reaches a workspace.
  */
 export interface SkillView {
+	review_status?: 'candidate' | 'approved' | 'revoked';
+	archive_cached?: boolean;
 	id: string;
 	/** Unique per user — the handle a workspace refers to it by. */
 	name: string;
@@ -781,6 +798,12 @@ export interface ScheduleData {
 	permission_mode: PermissionMode;
 	source: ScheduleSource;
 	source_session_id: string;
+	once?: boolean;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
+	last_fired_at?: string | null;
+	last_session_id?: string;
+	last_error?: string;
 }
 
 export interface ScheduleRecord extends RecordBase {
@@ -799,6 +822,10 @@ export interface CreateScheduleRequest {
 	enabled?: boolean;
 	stateful?: boolean;
 	permission_mode?: PermissionMode;
+	once?: boolean;
+	ended_at?: string | null;
+	deliver_channel_id?: string;
+	deliver_chat_id?: string;
 }
 
 export interface CreateScheduleResponse {
@@ -908,6 +935,7 @@ export interface ListChunkersResponse {
  * :class:`agentscope.app._service.KnowledgeBaseView`.
  */
 export interface KnowledgeBaseView {
+	retrieval_mode?: 'vector' | 'lexical';
 	id: string;
 	name: string;
 	description: string;

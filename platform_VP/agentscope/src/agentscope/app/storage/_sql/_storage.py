@@ -25,6 +25,7 @@ from ....sop import SOPPhase, SOPRunState
 from ....state import AgentState
 from .._base import StorageBase
 from .._model import (
+    AgentMemoryRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -48,6 +49,7 @@ from .._model._session import _origin_kwargs
 from .._utils import _dump_with_secrets
 from ._mappers import _from_record, _to_record
 from ._tables import (
+    AgentMemoryRow,
     AgentRow,
     ChannelRow,
     CredentialRow,
@@ -756,7 +758,7 @@ class AsyncSQLAlchemyStorage(StorageBase):
                 credential_data,
             )
 
-        data_dump = _dump_with_secrets(credential_data)
+        data_dump = _dump_with_secrets(credential_data, managed=getattr(self, "vin_platform_service", None) is not None)
 
         # Scope the create-or-update to *user_id*. The Redis backend
         # namespaces its keys by user, so a preset id can only ever
@@ -808,6 +810,19 @@ class AsyncSQLAlchemyStorage(StorageBase):
             sess.add(_from_record(CredentialRow, record))
             await sess.commit()
         return record.id
+
+    async def replace_credential_data(self, user_id, credential_id, expected_data, replacement):
+        from sqlalchemy import select, update
+        async with self._session() as sess:
+            row = (await sess.execute(select(CredentialRow).where(CredentialRow.id == credential_id,
+                CredentialRow.user_id == user_id).with_for_update())).scalar_one_or_none()
+            if row is None or row.payload.get("data") != expected_data:
+                return False
+            changed = await sess.execute(update(CredentialRow).where(CredentialRow.id == credential_id,
+                CredentialRow.user_id == user_id, CredentialRow.updated_at == row.updated_at,
+            ).values(payload={**row.payload, "data": replacement}, updated_at=_utcnow()))
+            await sess.commit()
+            return changed.rowcount == 1
 
     async def list_credentials(self, user_id: str) -> list[CredentialRecord]:
         """Return every credential for *user_id*."""
@@ -1031,10 +1046,77 @@ class AsyncSQLAlchemyStorage(StorageBase):
         user_id: str,
         agent_record: AgentRecord,
     ) -> str:
-        """Persist an agent record (create or overwrite)."""
-        _ = user_id  # scoping is enforced by the caller
-        await self._write_row(AgentRow, agent_record)
+        """Persist an agent with an atomic, owner-scoped revision check."""
+        from sqlalchemy import func, insert, update
+        from sqlalchemy.exc import IntegrityError
+        from .._base import AgentRevisionConflict, validate_agent_history
+
+        if agent_record.user_id != user_id:
+            raise PermissionError("Agent owner mismatch")
+        await self.normalize_personal_agent(user_id, agent_record)
+        expected = agent_record.storage_revision
+        candidate = agent_record.model_copy(deep=True)
+        candidate.storage_revision = expected + 1
+        candidate.updated_at = datetime.now()
+        row = _from_record(AgentRow, candidate)
+        values = {column.name: getattr(row, column.name) for column in AgentRow.__table__.columns}
+        async with self._session() as sess:
+            current = await sess.get(AgentRow, agent_record.id)
+            validate_agent_history(_to_record(current, AgentRecord) if current is not None else None, candidate)
+            changed = await sess.execute(update(AgentRow).where(
+                AgentRow.id == agent_record.id, AgentRow.user_id == user_id,
+                func.coalesce(AgentRow.payload["storage_revision"].as_integer(), 0) == expected,
+            ).values(**values))
+            if changed.rowcount != 1:
+                if expected != 0:
+                    raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                try:
+                    await sess.execute(insert(AgentRow).values(**values))
+                except IntegrityError as exc:
+                    raise AgentRevisionConflict("AGENT_REVISION_CONFLICT") from exc
+            await sess.commit()
+        agent_record.storage_revision = candidate.storage_revision
+        agent_record.updated_at = candidate.updated_at
         return agent_record.id
+
+    async def activate_agents_batch(self, user_id, records):
+        from sqlalchemy import select, update, func, insert
+        from sqlalchemy.exc import IntegrityError
+        from .._base import AgentRevisionConflict, validate_agent_history
+        if not records or len(records) > 50 or len({r.id for r in records}) != len(records):
+            raise ValueError("Batch must have 1-50 distinct agent IDs")
+        for record in records:
+            await self.normalize_personal_agent(user_id, record)
+        candidates = []
+        async with self._session() as sess:
+            for record in sorted(records, key=lambda r: r.id):
+                current = (await sess.execute(select(AgentRow).where(AgentRow.id == record.id).with_for_update())).scalar_one_or_none()
+                if current is not None and current.user_id != user_id:
+                    raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                candidate = record.model_copy(deep=True)
+                candidate.storage_revision += 1
+                candidate.updated_at = datetime.now()
+                validate_agent_history(_to_record(current, AgentRecord) if current is not None else None, candidate)
+                row = _from_record(AgentRow, candidate)
+                values = {column.name: getattr(row, column.name) for column in AgentRow.__table__.columns}
+                if current is None:
+                    if record.storage_revision != 0:
+                        raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                    try:
+                        await sess.execute(insert(AgentRow).values(**values))
+                    except IntegrityError as exc:
+                        raise AgentRevisionConflict("AGENT_REVISION_CONFLICT") from exc
+                else:
+                    result = await sess.execute(update(AgentRow).where(AgentRow.id == record.id, AgentRow.user_id == user_id,
+                        func.coalesce(AgentRow.payload["storage_revision"].as_integer(), 0) == record.storage_revision).values(**values))
+                    if result.rowcount != 1:
+                        raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                candidates.append(candidate)
+            await sess.commit()
+        by_id = {r.id: r for r in candidates}
+        for record in records:
+            record.storage_revision, record.updated_at = by_id[record.id].storage_revision, by_id[record.id].updated_at
+        return [r.id for r in records]
 
     async def list_agents(self, user_id: str) -> list[AgentRecord]:
         """Return the user's ``source='user'`` agents only.
@@ -1703,6 +1785,29 @@ class AsyncSQLAlchemyStorage(StorageBase):
     # Messages
     # ------------------------------------------------------------------
 
+
+
+    async def claim_builder_publish(self, user_id: str, conversation_id: str, proposal_id: str) -> bool:
+        from sqlalchemy import insert
+        from sqlalchemy.exc import IntegrityError
+        from ....message import SystemMsg
+
+        # Reuse the existing unique (session_id, msg_id) event key, without
+        # adding runtime schema DDL. System events are hidden by Builder UI.
+        message = SystemMsg(id=f"builder-publish:{proposal_id}", name="builder_publish_claim",
+                            content=f"Publication reserved by {user_id}")
+        async with self._session() as sess:
+            try:
+                await sess.execute(insert(MessageRow).values(
+                    session_id=conversation_id, msg_id=message.id, created_at=_utcnow(),
+                    payload=message.model_dump(mode="json"),
+                ))
+                await sess.commit()
+                return True
+            except IntegrityError:
+                await sess.rollback()
+                return False
+
     async def upsert_message(
         self,
         user_id: str,
@@ -2087,6 +2192,136 @@ class AsyncSQLAlchemyStorage(StorageBase):
             rows = (await sess.execute(query)).scalars().all()
         return [_to_record(row, TeamHandoffRecord) for row in rows]
 
+    async def upsert_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+    ) -> AgentMemoryRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        await self._write_row(AgentMemoryRow, record)
+        return record
+
+    async def list_agent_memories(
+        self,
+        user_id: str,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[AgentMemoryRecord]:
+        from sqlalchemy import select
+
+        query = select(AgentMemoryRow).where(
+            AgentMemoryRow.user_id == user_id,
+            AgentMemoryRow.agent_id == agent_id,
+        )
+        if status is not None:
+            query = query.where(AgentMemoryRow.status == status)
+        query = query.order_by(AgentMemoryRow.created_at.desc()).limit(limit)
+        async with self._session() as sess:
+            rows = (await sess.execute(query)).scalars().all()
+        return [_to_record(row, AgentMemoryRecord) for row in rows]
+
+    async def compare_and_swap_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+        expected_revision: int | None,
+    ) -> bool:
+        from sqlalchemy import func, update
+        from sqlalchemy.exc import IntegrityError
+
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        if record.revision != (expected_revision or 0) + 1:
+            raise ValueError("memory revision must advance exactly once")
+        record.updated_at = _utcnow()
+        record.created_at = _to_naive_utc(record.created_at)
+        row = _from_record(AgentMemoryRow, record)
+        async with self._session() as sess:
+            try:
+                if expected_revision is None:
+                    sess.add(row)
+                else:
+                    result = await sess.execute(
+                        update(AgentMemoryRow).where(
+                            AgentMemoryRow.id == record.id,
+                            AgentMemoryRow.user_id == user_id,
+                            AgentMemoryRow.agent_id == record.agent_id,
+                            func.coalesce(AgentMemoryRow.payload["revision"].as_integer(), 0) == expected_revision,
+                        ).values(updated_at=row.updated_at, payload=row.payload, status=row.status),
+                    )
+                    if result.rowcount != 1:
+                        await sess.rollback()
+                        return False
+                await sess.commit()
+                return True
+            except IntegrityError:
+                await sess.rollback()
+                return False
+
+    async def record_model_call(self, user_id: str, record: dict) -> None:
+        from sqlalchemy import select, update
+        from sqlalchemy.exc import IntegrityError
+        from ._tables import ModelCallRow
+        if record.get("user_id") != user_id:
+            raise ValueError("Ledger owner mismatch")
+        async with self._session() as sess:
+            current = (await sess.execute(select(ModelCallRow).where(
+                ModelCallRow.user_id == user_id, ModelCallRow.id == record["id"]))).scalar_one_or_none()
+            if current and current.status != "started":
+                if current.payload != record:
+                    raise ValueError("Terminal model-call evidence is immutable")
+                return
+            if current:
+                if any(current.payload.get(k) != record.get(k) for k in ("id", "user_id", "started_at", "model")):
+                    raise ValueError("Model-call identity changed")
+                changed = await sess.execute(update(ModelCallRow).where(
+                    ModelCallRow.user_id == user_id, ModelCallRow.id == record["id"],
+                    ModelCallRow.status == "started").values(status=record["status"], payload=record))
+                if changed.rowcount != 1:
+                    raise ValueError("Concurrent terminal ledger update")
+            else:
+                sess.add(ModelCallRow(user_id=user_id, id=record["id"], started_at=record["started_at"],
+                                     status=record["status"], payload=record))
+            try:
+                await sess.commit()
+            except IntegrityError:
+                await sess.rollback()
+                raise ValueError("Concurrent model call identity") from None
+
+    async def list_model_calls(self, user_id: str, *, since: str, limit: int = 1000,
+                               offset: int = 0, until: str | None = None) -> list[dict]:
+        from sqlalchemy import select
+        from ._tables import ModelCallRow
+        query = select(ModelCallRow.payload).where(ModelCallRow.user_id == user_id, ModelCallRow.started_at >= since)
+        if until is not None:
+            query = query.where(ModelCallRow.started_at <= until)
+        async with self._session() as sess:
+            return list((await sess.execute(query.order_by(ModelCallRow.started_at, ModelCallRow.id)
+                        .offset(offset).limit(limit))).scalars().all())
+
+    async def get_agent_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        memory_id: str,
+    ) -> AgentMemoryRecord | None:
+        from sqlalchemy import select
+
+        async with self._session() as sess:
+            row = (
+                await sess.execute(
+                    select(AgentMemoryRow).where(
+                        AgentMemoryRow.id == memory_id,
+                        AgentMemoryRow.user_id == user_id,
+                        AgentMemoryRow.agent_id == agent_id,
+                    ),
+                )
+            ).scalar_one_or_none()
+        return _to_record(row, AgentMemoryRecord) if row is not None else None
+
     async def delete_team(self, user_id: str, team_id: str) -> bool:
         """Delete a team + role-aware member cleanup.
 
@@ -2174,6 +2409,22 @@ class AsyncSQLAlchemyStorage(StorageBase):
     # ------------------------------------------------------------------
     # Knowledge documents
     # ------------------------------------------------------------------
+
+    async def replace_knowledge_document(self, expected, replacement):
+        from sqlalchemy import select, update
+        if (expected.id, expected.user_id, expected.knowledge_base_id) != (replacement.id, replacement.user_id, replacement.knowledge_base_id):
+            raise ValueError("Document identity is immutable")
+        async with self._session() as sess:
+            row = (await sess.execute(select(KnowledgeDocumentRow).where(KnowledgeDocumentRow.id == expected.id,
+                KnowledgeDocumentRow.user_id == expected.user_id,
+                KnowledgeDocumentRow.knowledge_base_id == expected.knowledge_base_id).with_for_update())).scalar_one_or_none()
+            if row is None or _to_record(row, KnowledgeDocumentRecord) != expected:
+                return False
+            changed = await sess.execute(update(KnowledgeDocumentRow).where(KnowledgeDocumentRow.id == expected.id,
+                KnowledgeDocumentRow.updated_at == row.updated_at).values(
+                    payload={**row.payload, "data": replacement.data.model_dump(mode="json")}, updated_at=_utcnow()))
+            await sess.commit()
+            return changed.rowcount == 1
 
     async def upsert_knowledge_document(
         self,

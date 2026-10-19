@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """The knowledge base record."""
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -43,6 +43,7 @@ class KnowledgeBaseData(BaseModel):
     """
 
     name: str = Field(description="Display name of the knowledge base.")
+    retrieval_mode: Literal["vector", "lexical"] = "vector"
     """Display name shown in the UI."""
 
     description: str = Field(

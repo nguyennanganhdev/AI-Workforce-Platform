@@ -89,6 +89,10 @@ class MCPLibraryRenameTest(IsolatedAsyncioTestCase):
             "hub_id": None,
             "card_id": None,
             "version": None,
+            "tools": [],
+            "catalog_revision": 0,
+            "last_synced_at": None,
+            "last_sync_error": None,
         }
 
     async def test_rename_to_unloadable_name_is_rejected(self) -> None:

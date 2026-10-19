@@ -17,8 +17,7 @@ Task series, …) in two ways:
    ``AgentCreate`` remains importable for legacy integrations and direct
    tests but is deliberately not registered in chat runtime. A session that
    is a worker in some
-   team gets ``TeamSay``. Both roles also receive ``SharedContextRead``
-   when shared context is enabled. This session-level distinction is what
+   team gets only ``TeamSay``. This session-level distinction is what
    lets a borrowed ("invited") agent's session see worker-only tools
    even though the underlying ``AgentRecord`` still has
    ``source='user'``. Each tool re-reads the current session + team
@@ -41,6 +40,7 @@ from ._team_say import TeamSay
 from ._shared_context_read import SharedContextRead
 
 __all__ = [
+    "SharedContextRead",
     "AgentCreate",
     "AgentInvite",
     "DEFAULT_SUB_AGENT_TEMPLATE",
@@ -49,5 +49,4 @@ __all__ = [
     "TeamCreate",
     "TeamDelete",
     "TeamSay",
-    "SharedContextRead",
 ]

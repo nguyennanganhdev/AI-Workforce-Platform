@@ -23,6 +23,18 @@ class MessageBusKeys:  # pylint: disable=too-many-public-methods
     business key, so the public-method count is expected to be high.
     """
 
+    @staticmethod
+    def channel_approval(channel_id: str, token: str) -> str:
+        return f"agentscope:channel:approval:{channel_id}:{token}"
+
+    @staticmethod
+    def channel_poll_cursor(channel_id: str) -> str:
+        return f"agentscope:channel:poll:{channel_id}"
+
+    @staticmethod
+    def channel_webhook(channel_id: str, message_id: str) -> str:
+        return f"agentscope:channel:webhook:{channel_id}:{message_id}"
+
     # ------------------------------------------------------------------
     # Run-trigger queue — the discriminator carried by each entry on the
     # shared trigger queue, telling the dispatcher how to spawn the run.
@@ -101,6 +113,11 @@ class MessageBusKeys:  # pylint: disable=too-many-public-methods
         return cls._TEAM_SHARED_CONTEXT_LOCK.format(team_id=team_id)
 
     @classmethod
+    def team_context_changed(cls, team_id: str) -> str:
+        """Broadcast channel signalled after a team's context or a handoff changes."""
+        return f"agentscope:team:{team_id}:context_changed"
+
+    @classmethod
     def team_history_bootstrap_lock(cls, team_id: str) -> str:
         """Lock the whole one-time customer-history projection."""
 
@@ -122,15 +139,17 @@ class MessageBusKeys:  # pylint: disable=too-many-public-methods
         return cls._TEAM_HANDOFF_DELIVERY_NS.format(handoff_id=handoff_id)
 
     @classmethod
+    def team_context_sources(
+        cls, user_id: str, team_id: str, task_id: str
+    ) -> str:
+        """Temporary immutable model-input sources, scoped to their owner."""
+        return f"agentscope:team:context_sources:{user_id}:{team_id}:{task_id}"
+
+    @classmethod
     def team_session_context(cls, session_id: str) -> str:
         """Last context revision actually prepared for one agent session."""
 
         return cls._TEAM_SESSION_CONTEXT_NS.format(session_id=session_id)
-
-    @classmethod
-    def team_context_sources(cls, user_id: str, team_id: str, task_id: str) -> str:
-        """Temporary immutable model-input sources, scoped to their owner."""
-        return f"agentscope:team:context_sources:{user_id}:{team_id}:{task_id}"
 
     @classmethod
     def team_handoff_delivery_lock(

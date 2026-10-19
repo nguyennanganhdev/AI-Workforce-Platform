@@ -1,0 +1,262 @@
+import { useState, type ReactNode } from "react";
+import {
+  IconArrowUpRight,
+  IconCheck,
+  IconChevronRight,
+  IconClock,
+  IconMapPin,
+  IconSearch,
+  IconTool,
+} from "@tabler/icons-react";
+import { statusLabels, type ResidentRequest } from "../../services/types";
+
+export const dateLabel = (date: string) =>
+  new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
+
+export function RequestCard({
+  request,
+  onOpen,
+  compact = false,
+  waiting = false,
+}: {
+  request: ResidentRequest;
+  onOpen: (id: string) => void;
+  compact?: boolean;
+  /** Ban quản lý asked something or sent a plan: the request stands still until the resident answers. */
+  waiting?: boolean;
+}) {
+  return (
+    <button
+      className={`request-card ${compact ? "compact" : ""}`}
+      onClick={() => onOpen(request.id)}
+    >
+      <span className="icon-tile blue">
+        <IconTool size={21} stroke={1.7} />
+      </span>
+      <span className="request-copy">
+        <strong>{request.title}</strong>
+        <span className={`status ${waiting ? "confirmation" : request.status}`}>
+          <i />
+          {waiting ? "Cần bạn phản hồi" : statusLabels[request.status]}
+        </span>
+      </span>
+      <IconChevronRight size={18} className="muted shrink" />
+    </button>
+  );
+}
+
+export function Requests({
+  requests,
+  onOpen,
+  onReport,
+  waiting = () => false,
+}: {
+  requests: ResidentRequest[];
+  onOpen: (id: string) => void;
+  onReport: () => void;
+  /** Whether a request waits for the resident's answer; those are listed first. */
+  waiting?: (id: string) => boolean;
+}) {
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const filtered = requests.filter(
+    (r) =>
+      (filter === "all" ||
+        (filter === "open"
+          ? r.status !== "completed"
+          : r.status === "completed")) &&
+      `${r.id} ${r.title}`
+        .toLocaleLowerCase("vi")
+        .includes(search.toLocaleLowerCase("vi")),
+  ).sort((a, b) => Number(waiting(b.id)) - Number(waiting(a.id)));
+  return (
+    <div className="page-section">
+      <p className="page-description">
+        Mọi phản ánh của bạn, được theo dõi ở một nơi.
+      </p>
+      <label className="search-field">
+        <IconSearch size={20} />
+        <input
+          aria-label="Tìm yêu cầu"
+          placeholder="Tìm theo nội dung phản ánh"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </label>
+      <div className="filter-row" aria-label="Lọc yêu cầu">
+        {[
+          ["all", "Tất cả"],
+          ["open", "Đang mở"],
+          ["completed", "Hoàn tất"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            aria-pressed={filter === value}
+            className={filter === value ? "selected" : ""}
+            onClick={() => setFilter(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="stack">
+        {filtered.map((r) => (
+          <RequestCard key={r.id} request={r} onOpen={onOpen} waiting={waiting(r.id)} />
+        ))}
+      </div>
+      {!filtered.length && (
+        <div className="empty-state">
+          <IconSearch size={32} />
+          <h3>Chưa có yêu cầu phù hợp</h3>
+          <p>Thử đổi bộ lọc hoặc bắt đầu một phản ánh mới.</p>
+        </div>
+      )}
+      <button className="primary-button full" onClick={onReport}>
+        Báo sự cố mới <IconArrowUpRight size={19} />
+      </button>
+    </div>
+  );
+}
+
+export function RequestDetail({
+  request,
+  onResolve,
+  connected = false,
+  children,
+}: {
+  request: ResidentRequest;
+  connected?: boolean;
+  /** What waits for the resident's answer: read first, above the record of the request. */
+  children?: ReactNode;
+  onResolve: (accepted: boolean, reason?: string) => boolean | Promise<boolean>;
+}) {
+  const [redo, setRedo] = useState(false);
+  const [reason, setReason] = useState("");
+  const [allEvents, setAllEvents] = useState(false);
+  const visibleEvents = allEvents ? request.events : request.events.slice(-3);
+  return (
+    <div className="page-section stack request-detail">
+      <div className="detail-heading">
+        <span className={`status ${request.status}`}>
+          <i />
+          {statusLabels[request.status]}
+        </span>
+        <h2>{request.title}</h2>
+        <p>
+          <IconMapPin size={16} />
+          {request.location}
+        </p>
+      </div>
+      {children}
+      <section className="white-card">
+        <h3>Nội dung phản ánh</h3>
+        <p className="preserve">{request.description}</p>
+        {request.photos.length > 0 && (
+          <div className="photo-grid">
+            {request.photos.map((p) => (
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noreferrer"
+                key={p.id}
+                aria-label={`Xem ảnh ${p.name}`}
+              >
+                <img src={p.url} alt={p.name} />
+              </a>
+            ))}
+          </div>
+        )}
+        <span className="small muted">
+          Đã gửi lúc {dateLabel(request.createdAt)}
+        </span>
+      </section>
+      <section className="white-card">
+        <h3>Tiến độ xử lý</h3>
+        <ol className="timeline">
+          {visibleEvents.map((event, index) => (
+            <li key={`${index}-${event.at}`}>
+              <span
+                className={`timeline-dot ${index === visibleEvents.length - 1 ? "current" : ""}`}
+              >
+                {index === visibleEvents.length - 1 ? (
+                  <IconClock size={14} />
+                ) : (
+                  <IconCheck size={14} />
+                )}
+              </span>
+              <div>
+                <strong>{event.label}</strong>
+                <time>{dateLabel(event.at)}</time>
+                {event.note && <p>{event.note}</p>}
+              </div>
+            </li>
+          ))}
+        </ol>
+        {request.events.length > 3 && <button type="button" className="text-button" aria-expanded={allEvents} onClick={() => setAllEvents(!allEvents)}>{allEvents ? 'Thu gọn tiến độ' : `Xem toàn bộ tiến độ (${request.events.length})`}</button>}
+      </section>
+      {request.status === "confirmation" && (
+        <section className="confirmation-card">
+          <span className="icon-tile teal">
+            <IconCheck size={23} />
+          </span>
+          <h3>Mọi thứ đã ổn rồi chứ?</h3>
+          <p>Bạn kiểm tra kết quả và cho chúng mình biết nhé.</p>
+          {redo ? (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (await onResolve(false, reason)) setRedo(false);
+              }}
+            >
+              <label className="field-label" htmlFor="redo-reason">
+                Điều gì cần xử lý thêm?
+              </label>
+              <textarea
+                id="redo-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                minLength={8}
+                maxLength={2000}
+                required
+                placeholder="Mô tả vấn đề còn tồn tại…"
+              />
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setRedo(false)}
+                >
+                  Quay lại
+                </button>
+                <button className="primary-button" type="submit">
+                  Gửi yêu cầu
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <button
+                className="primary-button full"
+                onClick={() => onResolve(true)}
+              >
+                <IconCheck size={19} />
+                Đã ổn, xác nhận hoàn tất
+              </button>
+              <button className="text-button" onClick={() => setRedo(true)}>
+                Tôi cần được hỗ trợ thêm
+              </button>
+            </>
+          )}
+        </section>
+      )}
+      <p className="footnote">
+        {connected ? "Thông tin và tiến độ được cập nhật từ Ban quản lý." : "Dữ liệu trải nghiệm trên thiết bị của bạn. Chưa kết nối Ban quản lý."}
+      </p>
+    </div>
+  );
+}

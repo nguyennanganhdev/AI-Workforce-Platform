@@ -10,6 +10,7 @@ from ...message import Msg
 from ...sop import SOPPhase, SOPRunState
 from ...state import AgentState
 from ._model import (
+    AgentMemoryRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -31,8 +32,38 @@ from ._model import (
 )
 
 
+class AgentRevisionConflict(RuntimeError):
+    """Another writer changed this agent; reload before retrying the operation."""
+
+
+def validate_agent_history(current: AgentRecord | None, candidate: AgentRecord) -> None:
+    """Published entries are append-only, including writes outside Studio."""
+    if current is None:
+        return
+    history = current.data.versions
+    if candidate.data.versions[:len(history)] != history:
+        raise AgentRevisionConflict("IMMUTABLE_AGENT_VERSION_CHANGED")
+    if candidate.data.published_version < current.data.published_version:
+        raise AgentRevisionConflict("AGENT_VERSION_REGRESSION")
+
+
 class StorageBase(ABC):
     """The storage abstract base class."""
+
+    async def normalize_personal_agent(self, user_id, record):
+        if record.user_id != user_id:
+            raise PermissionError("Agent owner mismatch")
+        authority = getattr(self, "vin_platform_service", None)
+        if authority is not None:
+            context = await authority.context(user_id)
+            async with authority.engine.begin() as db:
+                await authority.assert_active(db, context)
+            if context.role == "VIN_USER":
+                record.data.purpose, record.data.visibility = "personal", "private"
+
+    async def activate_agents_batch(self, user_id: str, records: list[AgentRecord]) -> list[str]:
+        """Atomically CAS prepared agent pointers; workspace staging is external."""
+        raise NotImplementedError("Atomic batch activation requires a CAS-capable adapter")
 
     async def __aenter__(self) -> Self:
         """Start the storage backend (open connection pool, etc.)."""
@@ -49,6 +80,17 @@ class StorageBase(ABC):
 
     async def aclose(self) -> None:
         """Release underlying connection resources. Default is a no-op."""
+
+    async def claim_builder_publish(self, user_id: str, conversation_id: str, proposal_id: str) -> bool:
+        """Durably reserve a proposal once, before any publication side effects.
+
+        A claim never expires: after a worker crash an operator must review
+        partial publication rather than retrying side effects blindly.
+        Unsupported backends must fail closed, never fall back to RAM locks.
+        """
+        raise NotImplementedError("Storage does not support durable Builder publication claims")
+
+
 
     @abstractmethod
     async def upsert_credential(
@@ -68,6 +110,10 @@ class StorageBase(ABC):
             `str`:
                 The credential id.
         """
+
+    async def replace_credential_data(self, user_id: str, credential_id: str, expected_data: dict, replacement: dict) -> bool:
+        """CAS migration preserving IDs referenced by agents and KB configs."""
+        raise NotImplementedError("Credential reference migration requires a CAS-capable adapter")
 
     @abstractmethod
     async def list_credentials(self, user_id: str) -> list[CredentialRecord]:
@@ -1129,6 +1175,49 @@ class StorageBase(ABC):
         """List pending/delivered-but-unconsumed handoffs for recovery."""
 
     # ------------------------------------------------------------------
+    # Agent long-term memory
+    # ------------------------------------------------------------------
+    # Concrete (not abstract) so storage doubles written before this feature
+    # keep working; both production backends override them.
+
+    async def upsert_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+    ) -> AgentMemoryRecord:
+        """Insert or replace one remembered item of an agent."""
+        raise NotImplementedError("this storage does not keep agent memory")
+
+    async def list_agent_memories(
+        self,
+        user_id: str,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[AgentMemoryRecord]:
+        """List an agent's memories, newest first."""
+        raise NotImplementedError("this storage does not keep agent memory")
+
+    async def compare_and_swap_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+        expected_revision: int | None,
+    ) -> bool:
+        """Insert (None) or update a memory only at the expected revision."""
+        raise NotImplementedError("this storage does not support atomic agent memory")
+
+    async def get_agent_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        memory_id: str,
+    ) -> AgentMemoryRecord | None:
+        """Read one memory of an agent."""
+        raise NotImplementedError("this storage does not keep agent memory")
+
+    # ------------------------------------------------------------------
     # Knowledge base persistence
     # ------------------------------------------------------------------
 
@@ -1219,6 +1308,10 @@ class StorageBase(ABC):
     # ------------------------------------------------------------------
     # Knowledge document persistence
     # ------------------------------------------------------------------
+
+    async def replace_knowledge_document(self, expected: KnowledgeDocumentRecord, replacement: KnowledgeDocumentRecord) -> bool:
+        """CAS reviewed metadata; false when content/lifecycle changed since read."""
+        raise NotImplementedError("Document review requires a CAS-capable adapter")
 
     @abstractmethod
     async def upsert_knowledge_document(
@@ -1504,3 +1597,12 @@ class StorageBase(ABC):
             `list[KnowledgeDocumentRecord]`:
                 Orphan ``pending`` documents to redispatch.
         """
+
+    async def record_model_call(self, user_id: str, record: dict) -> None:
+        """Persist a started/final projection; terminal evidence is immutable."""
+        raise NotImplementedError
+
+    async def list_model_calls(self, user_id: str, *, since: str, limit: int = 1000,
+                               offset: int = 0, until: str | None = None) -> list[dict]:
+        """Owner-scoped call evidence, in stable ascending start/id order."""
+        raise NotImplementedError

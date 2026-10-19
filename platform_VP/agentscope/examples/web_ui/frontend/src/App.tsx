@@ -1,73 +1,102 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Onborda, OnbordaProvider } from 'onborda';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import type { ComponentType } from 'react';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
-import { MCPHubPage } from './pages/mcp';
-import { SkillHubPage } from './pages/skill';
 import { authApi } from '@/api';
 import type { AuthUser } from '@/api';
 import { AUTH_EXPIRED_EVENT } from '@/api/client';
 import { RouteError } from '@/components/error/RouteError';
+import { CapabilityShell, RoutedAdminPage } from '@/components/layout/CapabilityShell';
 import { ChatLayout } from '@/components/layout/ChatLayout';
 import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { buildChatTour } from '@/components/tour/chatTourSteps';
 import { TourCard } from '@/components/tour/TourCard';
 import { CurrentUserProvider } from '@/context/CurrentUserContext';
+import { PlatformAccessProvider } from '@/context/PlatformAccessContext';
 import { UploadProvider } from '@/context/UploadContext';
+import { VIN_EXPERIENCE_ENABLED } from '@/features/workforce/shell/flags';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
+import { AdminPage } from '@/pages/admin';
 import { AuthPage } from '@/pages/auth';
-import { ChannelPage } from '@/pages/channel';
-import { ChatPage } from '@/pages/chat';
-import { CredentialPage } from '@/pages/credential';
-import { KnowledgePage } from '@/pages/knowledge';
-import { SchedulePage } from '@/pages/schedule';
-import { AgentManagementPage } from '@/pages/workforce/agents';
-import { AgentBuilderPage } from '@/pages/workforce/builder';
-import { LeaderPage } from '@/pages/workforce/leader';
 
-const router = createBrowserRouter([
+/**
+ * Load a page's code only when its route is visited. The chat viewport pulls
+ * in markdown, mermaid and code highlighting; keeping every page in the entry
+ * chunk made the first load download all of it (3 MB entry chunk).
+ */
+function page<T extends Record<string, unknown>>(load: () => Promise<T>, name: keyof T) {
+	return async () => ({ Component: (await load())[name] as ComponentType });
+}
+
+const AccessProvider = VIN_EXPERIENCE_ENABLED ? PlatformAccessProvider : Fragment;
+
+const router = createBrowserRouter([{ element: <CapabilityShell />, children: [
+	// Two shells. The chat gets the whole window; everything that is
+	// configured rather than talked to lives behind its own navigation.
 	{
 		element: <ChatLayout />,
 		errorElement: <RouteError />,
-		children: [{ path: '/chat/:agentId?/:sessionId?/:memberId?', element: <ChatPage /> }],
+		children: [
+			{
+				// Content-level boundary: a crash in a page replaces only
+				// the Outlet area, so the shell around it stays usable. The
+				// parent route keeps its own errorElement as a last-resort
+				// catch-all for a crash in the layout itself.
+				errorElement: <RouteError />,
+				children: [
+					{
+						path: '/chat/:agentId?/:sessionId?/:memberId?',
+						lazy: page(() => import('@/pages/chat'), 'ChatPage'),
+					},
+				],
+			},
+		],
 	},
 	{
 		element: <SettingsLayout />,
 		errorElement: <RouteError />,
 		children: [
 			{
-				// Content-level boundary: a crash in a page replaces only
-				// the Outlet area, so SettingsLayout (the icon rail / nav) stays
-				// usable. The parent route keeps its own errorElement as a
-				// last-resort catch-all for SettingsLayout/SettingsSidebar crashes.
 				errorElement: <RouteError />,
 				children: [
+					// Tickets and agents first: the Leader is the management board's
+					// front door; settings keep their own paths so old links still work.
 					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
-					{ path: '/workforce/leader', element: <LeaderPage /> },
-					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
-					{ path: '/workforce/agents/:agentId?', element: <AgentManagementPage /> },
+					{ path: '/workforce/leader', lazy: page(() => import('@/pages/workforce/leader'), 'LeaderPage') },
+					{ path: '/workforce/builder', lazy: page(() => import('@/pages/workforce/builder'), 'AgentBuilderPage') },
+					{ path: '/workforce/agents', lazy: page(() => import('@/pages/workforce/agents'), 'AgentManagementPage') },
+					{ path: '/workforce/agents/:agentId', lazy: page(() => import('@/pages/workforce/agents'), 'AgentDetailPage') },
 					{ path: '/settings', element: <Navigate to="/workforce/agents" replace /> },
-					{ path: '/schedule', element: <SchedulePage /> },
-					{ path: '/channel', element: <ChannelPage /> },
-					{ path: '/credential', element: <CredentialPage /> },
-					{ path: '/mcp', element: <MCPHubPage /> },
-					{ path: '/mcp/:hubId', element: <MCPHubPage /> },
-					{ path: '/skill', element: <SkillHubPage /> },
-					{ path: '/skill/:hubId', element: <SkillHubPage /> },
-					{ path: '/knowledge', element: <KnowledgePage /> },
-					{ path: '/knowledge/:kbId', element: <KnowledgePage /> },
+					// The agent map is a tab of agent management now.
+					{ path: '/agents/*', element: <Navigate to="/workforce/agents?view=graph" replace /> },
+					{ path: '/schedule', lazy: page(() => import('@/pages/schedule'), 'SchedulePage') },
+					{ path: '/channel', lazy: page(() => import('@/pages/channel'), 'ChannelPage') },
+					{ path: '/credential', lazy: page(() => import('@/pages/credential'), 'CredentialPage') },
+					{ path: '/mcp', lazy: page(() => import('./pages/mcp'), 'MCPHubPage') },
+					{ path: '/mcp/:hubId', lazy: page(() => import('./pages/mcp'), 'MCPHubPage') },
+					{ path: '/skill', lazy: page(() => import('./pages/skill'), 'SkillHubPage') },
+					{ path: '/skill/:hubId', lazy: page(() => import('./pages/skill'), 'SkillHubPage') },
+					{ path: '/knowledge', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
+					{ path: '/knowledge/:kbId', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
+					{ path: '/account', lazy: page(() => import('@/pages/account'), 'AccountPage') },
+					{ path: '/connections/*', lazy: page(() => import('@/pages/connections'), 'ConnectionsPage') },
+					{ path: '/packs', lazy: page(() => import('@/pages/packs'), 'PacksPage') },
 				],
 			},
 		],
 	},
 	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
-	...['/login', '/register', '/auth'].map((path) => ({ path, element: <Navigate to="/" replace /> })),
-]);
+	{ path: '/admin', element: <RoutedAdminPage />, errorElement: <RouteError /> },
+	// Auth is rendered above the router. A restored session may still be on
+	// an authentication URL, so resolve it to the user's chat instead of a 404.
+	...['/login', '/register', '/auth'].map((path) => ({ path, element: <Navigate to="/chat" replace /> })),
+]}]);
 
-function App() {
+function PlatformApp() {
 	const { t } = useTranslation();
 	const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'anonymous'>(
 		'checking',
@@ -107,8 +136,30 @@ function App() {
 			<>
 				<AuthPage
 					onAuthenticated={(user) => {
+						queryClient.clear();
+						try { localStorage.setItem(`session-workspace:view:${user.id}`, 'chat'); } catch { /* Optional browser preference. */ }
+						const callback = window.location.pathname === '/connections/callback/vinhomes';
+						void router.navigate(VIN_EXPERIENCE_ENABLED && callback ? window.location.pathname + window.location.search
+							: VIN_EXPERIENCE_ENABLED ? (user.role === 'PLATFORM_ADMIN' || user.role === 'DOMAIN_ADMIN' ? '/admin' : '/') : '/chat');
 						setCurrentUser(user);
 						setAuthStatus('authenticated');
+					}}
+				/>
+				<Toaster richColors position="top-right" />
+			</>
+		);
+	}
+
+	if (!VIN_EXPERIENCE_ENABLED && currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
+		// Administrators manage accounts, domains and areas; agents and tickets belong to BQL accounts.
+		return (
+			<>
+				<AdminPage
+					user={currentUser}
+					onLogout={async () => {
+						await authApi.logout();
+						setCurrentUser(null);
+						setAuthStatus('anonymous');
 					}}
 				/>
 				<Toaster richColors position="top-right" />
@@ -126,9 +177,11 @@ function App() {
 					cardTransition={{ type: 'spring', duration: 0.4 }}
 				>
 					<CurrentUserProvider value={currentUser}>
+						<AccessProvider>
 						<UploadProvider>
 							<RouterProvider router={router} />
 						</UploadProvider>
+						</AccessProvider>
 					</CurrentUserProvider>
 					<Toaster richColors position="top-right" />
 				</Onborda>
@@ -137,4 +190,4 @@ function App() {
 	);
 }
 
-export default App;
+export default PlatformApp;

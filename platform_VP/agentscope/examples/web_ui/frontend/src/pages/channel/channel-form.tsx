@@ -1,15 +1,6 @@
 import * as React from 'react';
 
-import type {
-	AgentView,
-	ChannelBinding,
-	ChannelRecord,
-	ChannelTypeSchema,
-	ChatModelConfig,
-	CreateChannelRequest,
-	PermissionMode,
-	UpdateChannelRequest,
-} from '@/api';
+import type { AgentView, ChannelBinding, ChannelTypeSchema, ChatModelConfig, PermissionMode } from '@/api';
 import { ModelParametersPopover } from '@/components/popover/ModelParametersPopover';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { PermissionModeSelect } from '@/components/select/PermissionModeSelect';
@@ -24,7 +15,9 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
+import { useDiscordIdentity } from '@/hooks/useDiscordIdentity';
 import { useTranslation } from '@/i18n/useI18n';
 import { BindingsEditor } from '@/pages/channel/bindings-editor';
 import { CredentialBindingPanel } from '@/pages/channel/credential-binding-panel';
@@ -44,80 +37,6 @@ export interface ChannelFormValue {
 	permissionMode: PermissionMode;
 }
 
-export function defaultChannelForm(agentId = ''): ChannelFormValue {
-	return {
-		channelType: 'feishu',
-		name: '',
-		credentialMode: 'form',
-		credentialBindingId: '',
-		credentials: {},
-		platformConfig: {},
-		bindings: [
-			{
-				match_key: 'chat_id',
-				match_value: '*',
-				agent_id: agentId,
-				session_scope: 'per_chat',
-			},
-		],
-		chatModelConfig: null,
-		fallbackChatModelConfig: null,
-		permissionMode: 'default' as PermissionMode,
-	};
-}
-
-export function channelFormFromRecord(record: ChannelRecord): ChannelFormValue {
-	return {
-		channelType: record.channel_type,
-		name: record.name ?? '',
-		credentialMode: 'form',
-		credentialBindingId: '',
-		credentials: {},
-		platformConfig: record.platform_config ?? {},
-		bindings: record.routing.bindings,
-		chatModelConfig: record.session.chat_model_config,
-		fallbackChatModelConfig: record.session.fallback_chat_model_config ?? null,
-		permissionMode: record.session.permission_mode,
-	};
-}
-
-function sessionSettings(v: ChannelFormValue) {
-	return {
-		session: {
-			chat_model_config: v.chatModelConfig as ChatModelConfig,
-			fallback_chat_model_config: v.fallbackChatModelConfig,
-			permission_mode: v.permissionMode,
-		},
-	};
-}
-
-export function toCreateRequest(v: ChannelFormValue): CreateChannelRequest {
-	// A completed binding replaces the fields; the server takes the
-	// credentials from it so they never travel through the browser.
-	const credentials =
-		v.credentialMode === 'binding'
-			? { credential_binding_id: v.credentialBindingId }
-			: { credentials: v.credentials };
-	return {
-		channel_type: v.channelType,
-		name: v.name.trim() || null,
-		...credentials,
-		platform_config: v.platformConfig,
-		routing: { bindings: v.bindings },
-		enabled: true,
-		...sessionSettings(v),
-	};
-}
-
-export function toUpdateRequest(v: ChannelFormValue): UpdateChannelRequest {
-	return {
-		name: v.name.trim() || null,
-		platform_config: v.platformConfig,
-		routing: { bindings: v.bindings },
-		...sessionSettings(v),
-	};
-}
-
 interface Props {
 	value: ChannelFormValue;
 	onChange: (value: ChannelFormValue) => void;
@@ -129,6 +48,8 @@ interface Props {
 
 export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Props) {
 	const { t } = useTranslation();
+	const privateDiscord = useCurrentUser()?.role === 'VIN_USER' && value.channelType === 'discord';
+	const identity = useDiscordIdentity(privateDiscord);
 	const { groups } = useAvailableModels();
 
 	const set = <K extends keyof ChannelFormValue>(key: K, v: ChannelFormValue[K]) =>
@@ -140,6 +61,13 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 	React.useEffect(() => {
 		valueRef.current = value;
 	});
+	React.useEffect(() => {
+		const owner = identity.data?.verified ? identity.data.discord_user_id : undefined;
+		if (!privateDiscord || !owner || valueRef.current.platformConfig.owner_user_id === owner) return;
+		const current = valueRef.current;
+		onChange({ ...current, platformConfig: { ...current.platformConfig, owner_user_id: owner,
+			...(mode === 'create' && current.platformConfig.allowed_user_ids === undefined ? { allowed_user_ids: [owner] } : {}) } });
+	}, [identity.data, mode, onChange, privateDiscord, value]);
 
 	const typeSchema = React.useMemo(
 		() => channelTypes.find((ct) => ct.channel_type === value.channelType),
@@ -162,6 +90,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 	}, [value.channelType, bindingSupported]);
 
 	const credentialFields = React.useMemo(() => {
+		const schemaLabels = ['telegram', 'zalo_oa'].includes(value.channelType);
 		const schema = typeSchema?.credentials_schema as
 			| { properties?: Record<string, Record<string, unknown>>; required?: string[] }
 			| undefined;
@@ -169,17 +98,17 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 		const required = schema.required ?? [];
 		return Object.entries(schema.properties).map(([key, def]) => ({
 			key,
-			title: t(`channel.fields.${key}.title`, {
+			title: schemaLabels ? (def.title as string) || key : t(`channel.fields.${key}.title`, {
 				defaultValue: (def.title as string) || key,
 			}),
 			description:
-				t(`channel.fields.${key}.description`, {
+				(schemaLabels ? (def.description as string) || '' : t(`channel.fields.${key}.description`, {
 					defaultValue: (def.description as string) || '',
-				}) || undefined,
+				})) || undefined,
 			format: def.format as string | undefined,
 			required: required.includes(key),
 		}));
-	}, [t, typeSchema]);
+	}, [t, typeSchema, value.channelType]);
 
 	const configFields = React.useMemo(() => {
 		const schema = typeSchema?.config_schema as
@@ -209,7 +138,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 			if (card) return card;
 		}
 		return null;
-	}, [groups, value.chatModelConfig?.type, value.chatModelConfig?.model]);
+	}, [groups, value.chatModelConfig]);
 
 	return (
 		<FieldGroup className="[&>[data-orientation=horizontal]>:last-child]:w-48">
@@ -268,11 +197,13 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 				value.credentialMode === 'form' &&
 				credentialFields.map((field) => (
 					<Field key={field.key}>
-						<FieldLabel>
+						<FieldLabel htmlFor={`channel-credential-${field.key}`}>
 							{field.title}
 							{field.required && ' *'}
 						</FieldLabel>
 						<Input
+							id={`channel-credential-${field.key}`}
+							required={field.required}
 							className="text-sm"
 							type={field.format === 'password' ? 'password' : 'text'}
 							value={value.credentials[field.key] || ''}
@@ -286,6 +217,11 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 						/>
 					</Field>
 				))}
+			{mode === 'create' && ['telegram', 'zalo_oa'].includes(value.channelType) && (
+				<p className="text-xs leading-relaxed text-muted-foreground">{value.channelType === 'telegram'
+					? 'Tạo bot bằng BotFather. Bot ID là phần số trước dấu : trong token. Kênh nhận tin bằng long polling; bot cần chưa bật webhook Telegram.'
+					: 'Dùng token của Official Account và OA Secret Key của Zalo App. Sau khi tạo, mở chi tiết kênh để sao chép Webhook URL.'}</p>
+			)}
 
 			<Separator />
 
@@ -349,17 +285,20 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 
 			{configFields.map((field) => (
 				<Field key={field.key}>
-					<div className="flex flex-row items-center justify-between gap-4">
+					<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
 						<div className="flex flex-col gap-y-0.5">
-							<FieldLabel>{field.title}</FieldLabel>
+							<FieldLabel htmlFor={`channel-config-${field.key}`}>{field.key === 'owner_user_id' && privateDiscord ? 'Discord ID của chủ tài khoản (bắt buộc)' : field.title}</FieldLabel>
 							{field.description && (
 								<span className="text-xs text-muted-foreground">
 									{field.description}
 								</span>
 							)}
+							{field.key === 'allowed_user_ids' && <span id="discord-allowlist-help" className="text-xs text-muted-foreground">Danh sách rỗng = chặn tất cả người dùng. Khi tạo bot cá nhân, danh sách phải có Discord ID của chủ tài khoản. Bot cá nhân chỉ trả lời qua tin nhắn riêng (DM).</span>}
+							{field.key === 'owner_user_id' && privateDiscord && <span className="text-xs text-muted-foreground">ID được điền từ tài khoản Discord đã xác minh trên trang Kênh; không thể sửa bằng cách nhập tay.</span>}
 						</div>
 						{field.type === 'boolean' ? (
 							<Switch
+								id={`channel-config-${field.key}`}
 								checked={
 									(value.platformConfig[field.key] as boolean) ??
 									(field.default as boolean) ??
@@ -372,9 +311,26 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 									})
 								}
 							/>
+						) : field.type === 'array' ? (
+							<Input
+								id={`channel-config-${field.key}`}
+								aria-describedby={field.key === 'allowed_user_ids' ? 'discord-allowlist-help' : undefined}
+								className="h-9 w-full text-sm sm:w-48"
+								placeholder="ID, cách nhau bằng dấu phẩy"
+								value={((value.platformConfig[field.key] ?? field.default ?? []) as string[]).join(', ')}
+								onChange={(e) =>
+									set('platformConfig', {
+										...value.platformConfig,
+										[field.key]: e.target.value.split(/[\s,]+/).filter(Boolean),
+									})
+								}
+							/>
 						) : (
 							<Input
-								className="h-8 w-48 text-sm"
+								id={`channel-config-${field.key}`}
+								required={privateDiscord && field.key === 'owner_user_id' && mode === 'create'}
+								readOnly={privateDiscord && field.key === 'owner_user_id'}
+								className="h-9 w-full text-sm sm:w-48"
 								value={String(
 									value.platformConfig[field.key] ?? field.default ?? '',
 								)}
@@ -382,6 +338,10 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 									set('platformConfig', {
 										...value.platformConfig,
 										[field.key]: e.target.value,
+										...(privateDiscord && field.key === 'owner_user_id' && mode === 'create'
+											&& (!Array.isArray(value.platformConfig.allowed_user_ids)
+												|| (value.platformConfig.allowed_user_ids.length === 1 && value.platformConfig.allowed_user_ids[0] === value.platformConfig.owner_user_id))
+											? { allowed_user_ids: e.target.value ? [e.target.value] : [] } : {}),
 									})
 								}
 							/>
@@ -391,15 +351,4 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 			))}
 		</FieldGroup>
 	);
-}
-
-export function isChannelFormValid(v: ChannelFormValue, mode: 'create' | 'edit'): boolean {
-	if (!v.name.trim()) return false;
-	if (!v.chatModelConfig) return false;
-	if (v.bindings.length === 0) return false;
-	if (v.bindings.some((b) => !b.agent_id)) return false;
-	if (mode === 'create' && !v.channelType) return false;
-	// An unfinished binding has no credentials to create the channel with.
-	if (mode === 'create' && v.credentialMode === 'binding' && !v.credentialBindingId) return false;
-	return true;
 }

@@ -13,6 +13,7 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCurrentUser } from '@/context/CurrentUserContext';
+import { usePlatformAccess } from '@/context/platform-access';
 import i18n from '@/i18n';
 import { useTranslation } from '@/i18n/useI18n';
 
@@ -41,7 +42,9 @@ export function AccountMenu({
 	const { t } = useTranslation();
 	const { startOnborda } = useOnborda();
 	const user = useCurrentUser();
+	const access = usePlatformAccess();
 
+	const inVietnamese = i18n.language.startsWith('vi');
 	const displayName = user?.username || user?.email || t('shell.account');
 
 	const handleLogout = async () => {
@@ -67,7 +70,7 @@ export function AccountMenu({
 			)}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
-					<Button variant="ghost" className={ROW}>
+					<Button variant="ghost" className={ROW} aria-label={`Tài khoản ${displayName}`}>
 						<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cue-avatar-user,#e5484d)] text-[15px] font-medium text-white">
 							{displayName.charAt(0).toUpperCase()}
 						</span>
@@ -78,19 +81,17 @@ export function AccountMenu({
 				{/* w-auto: the default pins the menu to the trigger's width,
 				    which clips the longer labels. */}
 				<DropdownMenuContent side="top" align="start" className="w-auto min-w-52">
-					{[
-						['vi', 'common.switchToVi'],
-						['en', 'common.switchToEn'],
-						['zh', 'common.switchToZh'],
-					].map(([language, label]) => (
-						<DropdownMenuItem
-							key={language}
-							onClick={() => i18n.changeLanguage(language)}
-						>
-							<Languages />
-							{t(label)}
-						</DropdownMenuItem>
-					))}
+					{access?.view?.capabilities['personal.read'] && <>
+						<DropdownMenuItem onClick={() => navigate('/account')}>Tài khoản và hạn mức</DropdownMenuItem>
+						<DropdownMenuItem onClick={() => navigate('/connections')}>Kết nối Vinhomes</DropdownMenuItem>
+						<DropdownMenuSeparator />
+					</>}
+					<DropdownMenuItem
+						onClick={() => i18n.changeLanguage(inVietnamese ? 'en' : 'vi')}
+					>
+						<Languages />
+						{inVietnamese ? t('common.switchToEn') : t('common.switchToVi')}
+					</DropdownMenuItem>
 					{showTour && (
 						<DropdownMenuItem onClick={() => startOnborda(CHAT_TOUR_NAME)}>
 							<Compass />

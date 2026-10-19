@@ -136,12 +136,7 @@ class ChannelClients:
             return cached[1]
 
         try:
-            channel = self._types.create_channel(
-                channel_type=record.channel_type,
-                channel_id=record.id,
-                credentials=record.credentials,
-                config=record.platform_config,
-            )
+            channel = await self._types.create_for_record(self._storage, record)
         except Exception:  # pylint: disable=broad-except
             logger.exception(
                 "channel client '%s' could not be built",
@@ -150,6 +145,7 @@ class ChannelClients:
             return None
 
         # Retire the rotated instance; borrowers keep working.
+        channel.bind_message_bus(self._bus)
         self._retire(channel_id)
         self._cache[channel_id] = (version, channel)
         return channel
@@ -161,6 +157,7 @@ class ChannelClients:
         channel_id: str,
         chat_id: str,
         agent_id: str,
+        requester_id: str = "",
     ) -> None:
         """Start streaming a run's reply back to its platform chat.
 
@@ -175,6 +172,8 @@ class ChannelClients:
             chat_id (`str`): The platform chat to deliver into.
             agent_id (`str`): The agent that owns the session; pinned on
                 a confirmation card so a click resumes this exact run.
+            requester_id (`str`): The platform user whose message started
+                the run; a channel may let only them answer its cards.
         """
         channel = await self.get(channel_id)
         if channel is None:
@@ -191,7 +190,7 @@ class ChannelClients:
         # pin its exact target and skip re-resolving routing on click.
         target = ChannelEvent(
             channel_id=channel_id,
-            channel_user_id="",
+            channel_user_id=requester_id,
             chat_id=chat_id,
             metadata={"session_id": session_id, "agent_id": agent_id},
         )

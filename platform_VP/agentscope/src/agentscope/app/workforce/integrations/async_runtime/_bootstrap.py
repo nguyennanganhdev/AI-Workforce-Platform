@@ -49,6 +49,7 @@ class WorkforceRuntimeAssembly:
     routers: tuple[Any, ...] = ()
     job_handlers: Mapping[str, Any] | None = None
     worker_id: str = "workforce-runtime"
+    startup: tuple[Callable[[], Awaitable[None]], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.worker_id:
@@ -177,6 +178,9 @@ class WorkforceBootstrap(AbstractAsyncContextManager):
         try:
             self._components = self._prepared
             runtime = self._prepared.runtime
+            if runtime is not None:
+                for initialize in runtime.startup:
+                    await initialize()
             if runtime is not None and runtime.job_handlers:
                 worker = DurableJobWorker(
                     self._prepared.jobs,

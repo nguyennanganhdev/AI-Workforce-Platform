@@ -1,0 +1,158 @@
+{
+  "format_version": 1,
+  "date": "2026-10-18",
+  "status": "SOURCE_VERIFIED_FOR_PUSH",
+  "target": "origin/dev_Chien",
+  "base_local": "e7b80da6b3073648b2c39d5854372953e64a0e08",
+  "remote_before_push": "83e3e6d3f687cebd2fc24db8b60052a0e0ee345b",
+  "n1_input": "12759d6e3b388312a406ba87e93f78087d9ff282",
+  "n2_input": "5b58d26713466f5695661880178d4997760d824e",
+  "tested_source_revision": "f1232d3b3165c1d48326471ec3f78696b7574fdc",
+  "merge_commits": [
+    "d949ea97e4804f4249250c4f9b6e5dd37a1a3b19",
+    "f1232d3b3165c1d48326471ec3f78696b7574fdc"
+  ],
+  "merge_conflicts": 0,
+  "both_input_shas_are_ancestors": true,
+  "application_tree_matches_n2": true,
+  "python": "3.11.9 Windows",
+  "tests": {
+    "strict_contracts": {
+      "tests": 90,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 90
+    },
+    "authority_migration_quota_ledger": {
+      "tests": 51,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 51
+    },
+    "runtime_generic": {
+      "tests": 532,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 27,
+      "passed": 505
+    },
+    "browser_regression": {
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 26
+    },
+    "postgres_personal_concurrency": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 1
+    },
+    "source_browser_runtime_journeys": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 7
+    },
+    "domain": {
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 9
+    }
+  },
+  "staff_login_existing_staging": {
+    "status": "PASS",
+    "passed": 2,
+    "skipped": 0,
+    "paid_model_calls": 0,
+    "viewports": [
+      {
+        "width": 1280,
+        "unauthorized_responses": 1,
+        "page_errors": [],
+        "external_requests": 0,
+        "status": "PASS"
+      },
+      {
+        "width": 390,
+        "unauthorized_responses": 1,
+        "page_errors": [],
+        "external_requests": 0,
+        "status": "PASS"
+      }
+    ]
+  },
+  "frontend_node": {
+    "passed": 15,
+    "skipped": 0,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "frontend_build": {
+    "exit_code": 0,
+    "VITE_API_BASE_URL": "/api",
+    "VITE_VIN_EXPERIENCE_ENABLED": true
+  },
+  "frontend_lint": {
+    "exit_code": 0,
+    "errors": 0,
+    "warnings": 3,
+    "warning_scope": "ignored local UI fixture files"
+  },
+  "initial_authority_invocation": {
+    "results": {
+      "tests": 51,
+      "failures": 0,
+      "errors": 6,
+      "skipped": 0,
+      "passed": 45
+    },
+    "cause": "Missing --asyncio-mode=auto; fixture setup errors, not assertion failures",
+    "resolution": "Reran the entire 51-test suite with CI asyncio mode; no production/test code changes"
+  },
+  "initial_python312_contracts": {
+    "passed": 90,
+    "skipped": 0,
+    "failed": 0,
+    "errors": 0,
+    "used_as_primary_ci_evidence": false
+  },
+  "offline": {
+    "real_model_calls": 0,
+    "paid_model_calls": 0,
+    "guarded_external_attempts": 0,
+    "model_mode": "scripted/fake",
+    "real_model_quality": "NOT_MEASURED"
+  },
+  "cleanup": {
+    "owned_postgres_removed": true,
+    "owned_anonymous_volume_removed": true,
+    "remaining_fixture_databases_before_removal": [],
+    "preview_18517_stopped": true,
+    "existing_staging_preserved": true
+  },
+  "git_checks": {
+    "diff_check": "PASS",
+    "private_runtime_paths_in_new_history": [],
+    "force_push": false
+  },
+  "artifacts": {
+    "root": "platform_VP/agentscope/.artifacts/merge-dev-chien-20261018",
+    "source_journey_provenance": "journey-provenance.json",
+    "source_journey_asset_count": 475
+  },
+  "limitations": [
+    "Suite counts overlap and are not added. Generic runtime retains 27 SKIP; browser and PG gates ran separately.",
+    "This is source integration; existing Docker image labels remain pinned to S16 application source.",
+    "Full feature matrix in one production CMD process, target preflight and business UAT remain open.",
+    "VPS not deployed; M2 cutover not enabled."
+  ],
+  "production_cutover_verified": false
+}

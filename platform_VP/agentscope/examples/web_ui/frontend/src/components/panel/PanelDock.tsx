@@ -98,9 +98,10 @@ interface PanelProps {
  */
 export const Panel = ({ title, icon, actions, onClose, children }: PanelProps) => {
 	return (
-		<div className="flex flex-1 flex-col h-full p-2 min-h-0">
-			<div className="flex items-center justify-between px-2">
-				<span className="flex items-center gap-x-1.5 text-sm">
+		<div className="flex flex-1 flex-col h-full min-h-0">
+			{/* Cue panel header: 48px, a 17px semibold title, actions then ✕. */}
+			<div className="flex h-12 shrink-0 items-center justify-between pr-2 pl-4">
+				<span className="flex min-w-0 items-center gap-x-2 text-[17px]/6 font-semibold [&_svg]:size-4 [&_svg]:text-muted-foreground">
 					{icon}
 					{title}
 				</span>
@@ -112,12 +113,12 @@ export const Panel = ({ title, icon, actions, onClose, children }: PanelProps) =
 							className="mx-0.5 data-vertical:h-4 data-vertical:self-center"
 						/>
 					) : null}
-					<Button variant="ghost" size="icon-sm" onClick={onClose}>
-						<X />
+					<Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
+						<X className="size-5" />
 					</Button>
 				</div>
 			</div>
-			<div className="flex flex-1 flex-col min-h-0 overflow-auto px-2">{children}</div>
+			<div className="flex flex-1 flex-col min-h-0 overflow-auto px-4 pb-4">{children}</div>
 		</div>
 	);
 };
@@ -148,9 +149,9 @@ export const PanelDock = ({ layout, panels, onClosePanel }: PanelDockProps) => {
 			{layout.map((column, colIndex) => (
 				<Fragment key={`col-${column.join('-')}`}>
 					{colIndex > 0 && (
-						<ResizableHandle withHandle className="bg-transparent w-1.5" />
+						<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 					)}
-					<ResizablePanel minSize={COLUMN_MIN_WIDTH} defaultSize="22rem">
+					<ResizablePanel minSize={COLUMN_MIN_WIDTH} defaultSize="25rem">
 						<ResizablePanelGroup orientation="vertical">
 							{column.map((key, rowIndex) => {
 								const descriptor = panels[key];
@@ -158,14 +159,11 @@ export const PanelDock = ({ layout, panels, onClosePanel }: PanelDockProps) => {
 								return (
 									<Fragment key={key}>
 										{rowIndex > 0 && (
-											<ResizableHandle
-												withHandle
-												className="bg-transparent !h-1"
-											/>
+											<ResizableHandle className="!h-px bg-[var(--cue-divider,var(--border))]" />
 										)}
 
 										<ResizablePanel
-											className="rounded-[22px] bg-card shadow-panel"
+											className="bg-background"
 											minSize={PANEL_MIN_HEIGHT}
 										>
 											<Panel

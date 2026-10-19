@@ -146,12 +146,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     HintBlock(
                         hint=(
                             "Repeated tool calls returned identical results with no progress. "
-                            "Call TeamSay(to=null, kind='requires_user_input') "
-                            "for genuinely customer-owned missing information, or "
-                            "TeamSay to report the blocker to the original assignment "
-                            "requester using its request id. Use kind='answer' for a peer "
-                            "question, result/error for a handoff. Report to "
-                            f"{self._leader_name!r} only for work assigned by that owner. "
+                            "Call TeamSay(kind='requires_user_input') for genuinely "
+                            "customer-owned missing information, or TeamSay(kind='error') "
+                            "to report the blocker to whoever gave you the work. "
                             "Do not retry tools or invent an external identifier/outcome."
                         ),
                     )
@@ -250,12 +247,25 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 return False
             declared_kind = kwargs.get("kind")
             kind = result.metadata.get("kind", declared_kind or "result")
+            # Our worker schema routes results, answers and customer
+            # questions itself, so a report may omit ``to``.
             if kind == "requires_user_input" and self._is_null_target(
                 kwargs.get("to"),
             ):
                 return True
-            if kind == "progress" or not kwargs.get("to"):
+            if kind == "progress":
                 return False
+            if not kwargs.get("to"):
+                # The runtime routed it (results/errors to the reply owner,
+                # answers to the asker); a worker broadcast never succeeds.
+                return kind in {
+                    "result",
+                    "error",
+                    "answer",
+                    "question",
+                    "requires_user_input",
+                    "user_input_proposal",
+                }
             if kwargs.get("to") != self._leader_name and declared_kind not in {
                 "handoff",
                 "question",
@@ -500,13 +510,12 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             else:
                 instruction = (
                     "<system-reminder>You MUST call the tool `TeamSay` "
-                    "to report to the original assignment requester: kind=answer with "
-                    "in_reply_to=the incoming question id for a peer question, or "
-                    "kind=result/error with the original request id for a handoff. "
-                    f"Use {self._leader_name!r} only for work assigned by that owner. "
-                    "If missing another agent's output, use TeamSay(to=that peer, kind=question, content=a specific task) and wait. "
+                    "with kind='result' (your finished work) or kind='error' "
+                    "(the blocker); it goes back to whoever gave you the work. "
+                    "Answer a peer question with kind='answer'. "
+                    "If missing another agent's output, use TeamSay(kind='question', to=that peer, content=a specific request) and wait. "
                     "Progress alone is not a completed assignment. For genuinely customer-owned missing information, "
-                    "use TeamSay(to=null, kind=requires_user_input) and ask the customer directly."
+                    "use TeamSay(kind='requires_user_input') and ask the customer directly."
                     "</system-reminder>"
                 )
 

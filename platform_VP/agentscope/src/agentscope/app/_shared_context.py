@@ -7,9 +7,12 @@ it never deletes source data or makes a business decision.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+import re
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -20,15 +23,20 @@ from .._logging import logger
 from .._utils._common import _generate_id
 from ..message import Msg, SystemMsg, UserMsg
 from ..model import ChatModelBase
+from ..model._call_observer import usage_purpose
+from ._bus_ops import deliver_to_inbox
+from ._evidence_claims import ClaimValidation, EvidenceSource, validate_claims
 from .message_bus import MessageBus, MessageBusKeys
 from .storage import (
     ContextDelta,
     ContextMode,
+    ProviderUsage,
     SharedContextEvent,
     SharedContextItem,
     SharedContextSummary,
     SharedTaskState,
     StorageBase,
+    TaskAssignment,
     TeamHandoffRecord,
     TeamSharedContextRecord,
 )
@@ -276,6 +284,51 @@ class SharedContextService:
             raise SharedContextConcurrencyError(
                 "shared context changed concurrently; reload and retry",
             )
+        await self._signal_change(record.team_id, record.state.revision)
+
+    async def _signal_change(self, team_id: str, revision: int = 0) -> None:
+        """Wake whoever waits on this team (best effort, never raises)."""
+
+        try:
+            await self._bus.publish(
+                MessageBusKeys.team_context_changed(team_id),
+                {"revision": revision},
+            )
+        except Exception:  # noqa: BLE001 - a missed signal only delays a poll
+            logger.debug("Could not publish team context change", exc_info=True)
+
+    @asynccontextmanager
+    async def watch(self, team_id: str):
+        """Yield an ``asyncio.Queue`` that receives one item per change.
+
+        The subscription is live before the body runs, so a caller that
+        checks state inside the block cannot miss a change made between its
+        check and its wait.
+        """
+
+        changes: asyncio.Queue = asyncio.Queue()
+        ready = asyncio.Event()
+
+        async def pump() -> None:
+            async for item in self._bus.subscribe(
+                MessageBusKeys.team_context_changed(team_id),
+                on_ready=ready.set,
+            ):
+                changes.put_nowait(item)
+
+        task = asyncio.create_task(pump())
+        try:
+            await asyncio.wait_for(ready.wait(), timeout=5)
+        except TimeoutError:
+            logger.debug("Team context subscription not ready; falling back to polling")
+        try:
+            yield changes
+        finally:
+            task.cancel()
+            try:
+                await task
+            except BaseException:  # noqa: BLE001 - cancellation/cleanup
+                pass
 
     async def _load_or_create(
         self,
@@ -464,6 +517,17 @@ class SharedContextService:
         ]
 
     @staticmethod
+    def _partner_evidence_event(event: SharedContextEvent) -> bool:
+        if event.kind != "external_event":
+            return False
+        try:
+            value = json.loads(event.content)
+            return bool(value.get("tool_result", {}).get("metadata", {}).get("external_evidence"))
+        except (ValueError, TypeError, AttributeError):
+            # Legacy partner results used a labelled tool/arguments envelope.
+            return bool(re.match(r"^\w+ \{.*\}\nE\d+:", event.content))
+
+    @staticmethod
     def _compact_tool_facts(items: list[dict]) -> list[dict]:
         """Lossless business-value projection; raw calls stay in source events.
 
@@ -472,6 +536,7 @@ class SharedContextService:
         """
         projected: list[dict] = []
         seen: dict[str, dict] = {}
+        snapshots: dict[str, tuple[tuple[int, int], dict]] = {}
         for item in items:
             if item["authority"] != "tool_verified" or item["kind"] != "fact":
                 projected.append(item)
@@ -479,7 +544,10 @@ class SharedContextService:
             try:
                 value = json.loads(item["text"])
                 call, result = value["tool_call"], value["tool_result"]
-                if not call["name"].startswith("mcp__") or not isinstance(result, dict):
+                if not isinstance(result, dict) or not (
+                    call["name"].startswith("mcp__")
+                    or result.get("metadata", {}).get("external_evidence")
+                ):
                     raise ValueError("not a runtime MCP result")
                 arguments = json.loads(call["input"])
                 output = result["output"]
@@ -497,11 +565,17 @@ class SharedContextService:
                         # This is lossless for business values and raw evidence
                         # remains immutable in the source event.
                         block_text = compact_block.get("text")
-                        if isinstance(block_text, str) and block_text.strip().startswith(
-                            ("{", "[")
-                        ):
+                        label = None
+                        if isinstance(block_text, str):
+                            match = re.match(r"^(E\d+):\s*(.*)$", block_text, re.DOTALL)
+                            if match:
+                                label, block_text = match.groups()
+                        if isinstance(block_text, str) and block_text.strip().startswith(("{", "[")):
                             try:
-                                normalized_output.append(json.loads(block_text))
+                                parsed = json.loads(block_text)
+                                normalized_output.append(
+                                    {"evidence": label, "value": parsed} if label else parsed,
+                                )
                                 continue
                             except (TypeError, ValueError):
                                 pass
@@ -522,6 +596,39 @@ class SharedContextService:
                 )
             except (ValueError, TypeError, KeyError, AttributeError):
                 projected.append(item)
+                continue
+            # vh_ticket_get is a versioned full snapshot. A newer read replaces
+            # that snapshot, while raw events and all page reads stay durable.
+            snapshot = output.get("value", {}) if isinstance(output, dict) else {}
+            version = snapshot.get("ticket_version")
+            if (
+                call["name"] == "vh_ticket_get"
+                and value["state"] == "success"
+                and isinstance(version, int)
+                and not arguments.get("history_before_seq")
+            ):
+                # Omitted and explicit null cursors both request the full
+                # snapshot; history pages remain separate evidence.
+                snapshot_arguments = {key: value for key, value in arguments.items()
+                                      if key != "history_before_seq" or value is not None}
+                snapshot_key = SharedContextService._json([item["task_id"], snapshot_arguments])
+                sequence = snapshot.get("snapshot_seq")
+                rank = (version, sequence if isinstance(sequence, int) else 0)
+                previous = snapshots.get(snapshot_key)
+                compact = {**item, "text": text, "superseded_source_event_ids": []}
+                if previous:
+                    previous_rank, previous_item = previous
+                    if rank >= previous_rank:
+                        compact["superseded_source_event_ids"] = [
+                            *previous_item.get("superseded_source_event_ids", []),
+                            *previous_item["source_event_ids"],
+                        ]
+                        projected.remove(previous_item)
+                    else:
+                        previous_item["superseded_source_event_ids"].extend(item["source_event_ids"])
+                        continue
+                snapshots[snapshot_key] = (rank, compact)
+                projected.append(compact)
                 continue
             key = SharedContextService._json([item["task_id"], text])
             if key in seen:
@@ -633,6 +740,8 @@ class SharedContextService:
         reply_owner_agent_id: str | None = None,
         reference_event_ids: tuple[str, ...] = (),
         delta: ContextDelta | None = None,
+        recipient_session_ids: tuple[str, ...] = (),
+        report_type: Literal["verified", "analysis"] = "verified",
     ) -> SharedContextEvent:
         """Idempotently append one shareable event under a team lock."""
 
@@ -723,14 +832,6 @@ class SharedContextService:
                     ),
                 )
                 record.state.tasks[selected_task_id] = task
-            elif task.status == "completed" and kind not in {
-                "customer_message",
-                "customer_reply",
-            }:
-                raise CollaborationStoppedError(
-                    "This customer turn is already finalized; start a new "
-                    "customer requirement before adding more team evidence"
-                )
 
             previous_revision = record.state.revision
             record.state.revision += 1
@@ -777,19 +878,13 @@ class SharedContextService:
                 hop_count=hop_count,
                 reference_event_ids=reference_event_ids,
                 payload_hash=payload_hash,
+                recipient_session_ids=recipient_session_ids,
+                report_type=report_type,
             )
             record.state.events.append(event)
 
             if kind == "customer_message":
                 if not stale:
-                    if in_reply_to in task.pending_question_ids:
-                        # Clarification continues the same unfinished assignments.
-                        for branch in task.collaboration.values():
-                            if (
-                                branch.customer_revision == task.latest_customer_revision
-                                and branch.status in {"running", "waiting_peer"}
-                            ):
-                                branch.customer_revision = event.revision
                     task.status = "running"
                     task.pending_question_ids = ()
                     task.latest_customer_revision = event.revision
@@ -946,6 +1041,7 @@ class SharedContextService:
                 raise SharedContextConcurrencyError(
                     "shared context changed concurrently; reload and retry",
                 )
+            await self._signal_change(team_id, record.state.revision)
             return event
 
     async def validate_handoff_link(
@@ -997,92 +1093,6 @@ class SharedContextService:
         if next_hop > 12:
             raise ValueError("handoff hop limit (12) exceeded")
         return next_hop, parent.thread_id or in_reply_to or parent.id
-
-    async def stop_failed_branch(
-        self,
-        user_id: str,
-        team_id: str,
-        failed_session_id: str,
-        reason: str,
-        *,
-        task_id: str | None = None,
-    ) -> tuple[str, ...]:
-        """Stop a failed worker and release every branch waiting on it.
-
-        Model/provider failures happen outside TeamSay, so the normal error
-        handoff path cannot clear dependency edges. This server-owned terminal
-        transition prevents coordinators and the Leader from waiting forever.
-        Returned session ids must be woken by the caller after its failure
-        notice and evidence event are durable.
-        """
-
-        async with self._bus.acquire_lock(
-            MessageBusKeys.team_shared_context_lock(team_id),
-            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
-        ):
-            record = await self._storage.get_team_shared_context(user_id, team_id)
-            selected = task_id or (record.state.active_task_id if record else None)
-            task = record.state.tasks.get(selected) if record and selected else None
-            if record is None or task is None:
-                return ()
-
-            failed = self._branch(task, failed_session_id)
-            failed.status = "stopped"
-            failed.reason = reason.strip() or "worker run failed"
-            failed.waiting_for.clear()
-
-            released: list[str] = []
-            for session_id, branch in task.collaboration.items():
-                if (
-                    session_id == failed_session_id
-                    or branch.customer_revision != task.latest_customer_revision
-                ):
-                    continue
-                dependencies = [
-                    handoff_id
-                    for handoff_id, provider in branch.waiting_for.items()
-                    if provider == failed_session_id
-                ]
-                for handoff_id in dependencies:
-                    del branch.waiting_for[handoff_id]
-                if dependencies:
-                    released.append(session_id)
-                    if not branch.waiting_for and branch.status == "waiting_peer":
-                        branch.status = "running"
-                        branch.reason = (
-                            "dependency failed; resume with preserved partial "
-                            "evidence or report the blocker"
-                        )
-
-            task.updated_at = datetime.now(UTC)
-            record.updated_at = datetime.now()
-            await self._commit_mutation(user_id, record)
-            return tuple(dict.fromkeys(released))
-
-    async def current_tool_evidence_for_session(
-        self,
-        user_id: str,
-        team_id: str,
-        session_id: str,
-        *,
-        task_id: str | None = None,
-    ) -> tuple[str, ...]:
-        """Read successful current tool results retained for a failed run."""
-
-        record = await self._storage.get_team_shared_context(user_id, team_id)
-        selected = task_id or (record.state.active_task_id if record else None)
-        task = record.state.tasks.get(selected) if record and selected else None
-        if record is None or task is None:
-            return ()
-        return tuple(
-            event.content
-            for event in record.state.events
-            if event.task_id == task.id
-            and event.kind == "external_event"
-            and event.source_session_id == session_id
-            and not event.stale
-            and event.revision > task.latest_customer_revision
-        )
 
     async def register_directive(
         self,
@@ -1277,6 +1287,8 @@ class SharedContextService:
         while changed:
             changed = False
             for event in current.values():
+                if event.report_type == "analysis":
+                    continue
                 if event.id in trusted or event.kind not in {"answer", "result"}:
                     continue
                 same_worker_tool = any(
@@ -1291,6 +1303,121 @@ class SharedContextService:
                     trusted.add(event.id)
                     changed = True
         return trusted
+
+    @classmethod
+    def _claim_support_texts(
+        cls,
+        record: TeamSharedContextRecord,
+        task: SharedTaskState,
+        current: dict[str, SharedContextEvent],
+        *,
+        sender: str | None = None,
+        references: tuple[str, ...] = (),
+        customer_reply: bool = False,
+    ) -> list[EvidenceSource]:
+        """Keep each authoritative source separate, with its durable event id."""
+
+        support = [
+            EvidenceSource(event.content, event.id, authority="customer")
+            for event in record.state.events
+            if event.task_id == task.id
+            and not event.stale
+            and event.kind == "customer_message"
+            and event.report_type != "analysis"
+        ]
+        trusted = cls._trusted_event_ids(current)
+        selected: set[str] = set()
+        if customer_reply:
+            selected.update(trusted)
+        else:
+            # Task-mode workers all receive the same authoritative shared
+            # state. Any current trusted event in that packet may therefore
+            # support a synthesis, even when the model did not copy opaque
+            # event ids into TeamSay. Explicit references still define the
+            # trust lineage used to complete a collaboration branch.
+            selected.update(trusted)
+            selected.update(
+                event.id
+                for event in current.values()
+                if event.kind == "external_event"
+                and event.source_session_id == sender
+            )
+            frontier = list(references)
+            while frontier:
+                event_id = frontier.pop()
+                if event_id in selected or event_id not in trusted:
+                    continue
+                selected.add(event_id)
+                event = current[event_id]
+                frontier.extend(event.reference_event_ids)
+                if event.source_session_id:
+                    selected.update(
+                        candidate.id
+                        for candidate in current.values()
+                        if candidate.kind == "external_event"
+                        and candidate.source_session_id == event.source_session_id
+                    )
+        # Peer prose may synthesize a result, but must not become a new
+        # independent source for entity/value associations. Its raw lineage
+        # is already selected above and remains authoritative.
+        facts = cls._compact_tool_facts([
+            {"id": event.id, "task_id": task.id, "kind": "fact", "authority": "tool_verified",
+             "source_event_ids": [event.id], "text": event.content}
+            for event in current.values() if event.id in selected and event.kind == "external_event"
+        ])
+        support.extend(EvidenceSource(current[event_id].content, event_id)
+                       for item in facts for event_id in item["source_event_ids"])
+        support.extend(
+            EvidenceSource(assignment.agent_name, "roster:" + session_id)
+            for session_id, assignment in task.assignments.items()
+        )
+        if customer_reply and record.state.purpose == "platform_group":
+            # Proposal lineage may support a synthesis, but never becomes a
+            # tool-verified event or durable operational fact.
+            support.extend(EvidenceSource(e.content, e.id) for e in current.values()
+                           if e.report_type == "analysis" and e.kind in {"result", "answer"})
+        return support
+
+    async def validate_customer_reply_claims(
+        self,
+        user_id: str,
+        team_id: str,
+        content: str,
+        *,
+        task_id: str | None = None,
+        additional_sources: list[EvidenceSource] | None = None,
+    ) -> ClaimValidation:
+        """Check a Leader reply against current trusted task evidence."""
+
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = (
+            record.state.tasks.get(task_id or record.state.active_task_id)
+            if record
+            else None
+        )
+        if record is None or task is None:
+            return validate_claims(content, additional_sources or ())
+        current = {
+            event.id: event
+            for event in record.state.events
+            if event.task_id == task.id
+            and not event.stale
+            and event.revision > task.latest_customer_revision
+        }
+        support = self._claim_support_texts(
+            record,
+            task,
+            current,
+            customer_reply=True,
+        )
+        return validate_claims(content, [*support, *(additional_sources or ())])
+
+    async def unsupported_customer_reply_claims(
+        self, user_id: str, team_id: str, content: str,
+    ) -> tuple[str, ...]:
+        """Compatibility view of the detailed customer-reply validation."""
+
+        return (await self.validate_customer_reply_claims(user_id, team_id, content)).unsupported
 
     async def collaboration_pause(
         self, user_id: str, team_id: str, session_id: str, task_id: str | None = None
@@ -1311,9 +1438,19 @@ class SharedContextService:
         return None
 
     async def collaboration_review(
-        self, user_id: str, team_id: str, owner: str
+        self, user_id: str, team_id: str, owner: str, *, working_only: bool = False
     ) -> list[str]:
-        """Finalize delivered reports and return non-terminal branches."""
+        """Finalize evidence-backed reports and return non-terminal branches.
+
+        A worker report used to leave its branch in ``review`` until the
+        Leader model remembered to issue one extra ``TeamSay`` resolution.
+        That made successful runs depend on prompt compliance and consumed a
+        model iteration per completed worker.  The runtime already owns the
+        evidence graph, so it can safely accept a report when the same worker
+        produced a current successful external event (or the report cites
+        current trusted evidence).  Unverified reports, conflicts and user
+        input proposals remain in ``review`` for an explicit Leader decision.
+        """
 
         async with self._bus.acquire_lock(
             MessageBusKeys.team_shared_context_lock(team_id),
@@ -1335,6 +1472,7 @@ class SharedContextService:
                 and not event.stale
                 and event.revision > task.latest_customer_revision
             }
+
             mutated = False
             for sid, branch in task.collaboration.items():
                 if (
@@ -1350,10 +1488,13 @@ class SharedContextService:
                     if event.source_session_id == sid
                     and event.kind in {"answer", "result"}
                 ]
-                accepted_report = next(iter(reports), None)
-                if accepted_report is not None:
+                if reports:
                     branch.status = "completed"
                     branch.reason = "worker result accepted by runtime"
+                    assignment = task.assignments.get(sid)
+                    if assignment is not None and assignment.status == "reported":
+                        assignment.status = "verified"
+                        assignment.updated_at = datetime.now(UTC)
                     mutated = True
                     continue
 
@@ -1389,63 +1530,27 @@ class SharedContextService:
 
             if mutated:
                 await self._commit_mutation(user_id, record)
-            return [
+            # ``working_only``: a branch in review waits for the Leader, not for
+            # its worker, so it must not keep the Leader waiting for it.
+            statuses = {"running", "waiting_peer"} if working_only else {"running", "waiting_peer", "review"}
+            pending = [
                 sid
                 for sid, branch in task.collaboration.items()
                 if sid != owner
                 and branch.customer_revision == task.latest_customer_revision
-                and branch.status in {"running", "waiting_peer", "review"}
+                and branch.status in statuses
             ]
-
-    async def seal_final_answer(
-        self,
-        user_id: str,
-        team_id: str,
-        owner: str,
-        *,
-        expected_event_revision: int,
-    ) -> bool:
-        """Atomically freeze a settled task before the Leader reply is emitted."""
-
-        async with self._bus.acquire_lock(
-            MessageBusKeys.team_shared_context_lock(team_id),
-            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
-        ):
-            record = await self._storage.get_team_shared_context(user_id, team_id)
-            task = (
-                record.state.tasks.get(record.state.active_task_id)
-                if record and record.state.active_task_id
-                else None
+            # A queued assignment has not run yet, so it has no branch; the
+            # Leader must still wait for it instead of answering early.
+            pending.extend(
+                sid
+                for sid, assignment in task.assignments.items()
+                if sid != owner
+                and sid not in pending
+                and assignment.status in {"queued", "assigned", "challenged"}
+                and sid not in task.collaboration
             )
-            if record is None or task is None:
-                return False
-            latest_event_revision = max(
-                (
-                    event.revision
-                    for event in record.state.events
-                    if event.task_id == task.id
-                ),
-                default=0,
-            )
-            if latest_event_revision != expected_event_revision:
-                return False
-            if task.pending_question_ids or task.pending_operation_ids:
-                return False
-            if any(
-                sid != owner
-                and branch.customer_revision == task.latest_customer_revision
-                and branch.status in {"running", "waiting_peer", "review"}
-                for sid, branch in task.collaboration.items()
-            ):
-                return False
-            if task.status == "completed":
-                return True
-            if task.status != "running":
-                return False
-            task.status = "completed"
-            task.updated_at = datetime.now(UTC)
-            await self._commit_mutation(user_id, record)
-            return True
+            return pending
 
     async def coordinate_handoff(
         self,
@@ -1465,6 +1570,7 @@ class SharedContextService:
         based_on_revision: int | None = None,
         share_report: bool = True,
         notify_owner: bool = True,
+        analysis_report: bool = False,
     ) -> dict:
         """Reserve a bounded exchange and its durable delivery routing atomically.
 
@@ -1490,13 +1596,9 @@ class SharedContextService:
                     "Reload shared context before coordinating an outdated assignment"
                 )
             branch = self._branch(task, sender)
+            analysis_report = analysis_report and record.state.purpose == "platform_group"
             if handoff_id in branch.receipts:
                 return branch.receipts[handoff_id]
-            if task.status == "completed":
-                raise CollaborationStoppedError(
-                    "This customer turn is already finalized; wait for a new "
-                    "customer requirement before starting more collaboration"
-                )
             effective_references = tuple(
                 dict.fromkeys(
                     (
@@ -1516,7 +1618,17 @@ class SharedContextService:
                 and not e.stale
                 and e.revision > task.latest_customer_revision
             }
+            # Team results are accepted as reported; the Leader reviews their
+            # content. No runtime claim gate rewrites or bounces them.
+            claim_feedback = ""
             released = []
+            if kind == "conflict" and (
+                len(set(effective_references)) < 2
+                or any(ref not in current for ref in effective_references)
+            ):
+                raise ValueError(
+                    "Conflicts require at least two current source references"
+                )
             if resolution:
                 if sender != owner or len(recipients) != 1:
                     raise ValueError(
@@ -1546,6 +1658,8 @@ class SharedContextService:
                 else:
                     raise ValueError("Unknown resolution")
                 target.reason = content
+                if resolution in {"complete", "stop"}:
+                    target.needs_claim_review = False
                 target.waiting_for.clear()
                 if target.status == "stopped":
                     for sid, waiting in task.collaboration.items():
@@ -1571,7 +1685,7 @@ class SharedContextService:
                 raise CollaborationStoppedError(branch.reason or branch.status)
 
             # Count regardless of model-supplied thread/hop/idempotency keys.
-            context_revision = max(
+            evidence_revision = max(
                 (
                     e.revision
                     for e in current.values()
@@ -1585,7 +1699,7 @@ class SharedContextService:
                         kind,
                         recipients,
                         " ".join(content.casefold().split()),
-                        context_revision,
+                        evidence_revision,
                     ]
                 ).encode()
             ).hexdigest()
@@ -1595,12 +1709,23 @@ class SharedContextService:
             if branch.exchanges > self.config.collaboration_max_exchanges:
                 reason = "exchange limit exceeded"
             elif branch.signatures[signature] > 2:
-                reason = "repeated exchange without new information"
-            if kind == "question":
+                reason = "repeated exchange without new evidence"
+            if kind == "question" and sender != owner:
                 if len(recipients) != 1 or recipients[0] == owner:
                     raise ValueError(
                         "Peer dependency requires one concrete non-owner collaborator"
                     )
+                visited = {sender}
+                frontier = list(recipients)
+                while frontier:
+                    peer = frontier.pop()
+                    if peer == sender:
+                        reason = "cyclic peer dependency; Leader must resolve the missing information"
+                        break
+                    if peer in visited:
+                        continue
+                    visited.add(peer)
+                    frontier.extend(self._branch(task, peer).waiting_for.values())
                 if not reason:
                     target = self._branch(task, recipients[0])
                     if target.status == "stopped":
@@ -1608,18 +1733,16 @@ class SharedContextService:
                     else:
                         branch.waiting_for[handoff_id] = recipients[0]
                         branch.status = "waiting_peer"
-                        # A peer may ask back through an existing dependency.
-                        # Wake it to answer, then return it to its own wait.
-                        target.status = "running"
+                        if target.status in {"review", "completed"}:
+                            target.status = "running"
             if kind in {"user_input_proposal", "conflict"} and sender != owner:
                 branch.status = "review"
-            if kind == "handoff" and not resolution:
+            if kind == "handoff" and sender == owner and not resolution:
                 for sid in recipients:
                     target = self._branch(task, sid)
                     if target.status != "stopped":
                         target.status = "running"
-                        if sender == owner:
-                            target.waiting_for.clear()
+                        target.waiting_for.clear()
             routed = [*recipients, *released]
             if (
                 kind in {"result", "answer", "error"}
@@ -1627,12 +1750,6 @@ class SharedContextService:
             ):
                 if in_reply_to and in_reply_to not in current and not any(
                     b.waiting_for.get(in_reply_to) == sender
-                    # A clarification carries the requester's branch, and
-                    # its receipt, into the new customer revision.
-                    or (
-                        b.customer_revision == task.latest_customer_revision
-                        and sender in b.receipts.get(in_reply_to, {}).get("recipients", ())
-                    )
                     for b in task.collaboration.values()
                 ):
                     raise ValueError("Unknown reply dependency")
@@ -1666,8 +1783,6 @@ class SharedContextService:
                     routed.append(owner)
                 if not branch.waiting_for:
                     branch.status = "review"
-                elif kind == "answer":
-                    branch.status = "waiting_peer"
             if reason:
                 branch.status, branch.reason = "stopped", reason
                 branch.waiting_for.clear()
@@ -1690,16 +1805,296 @@ class SharedContextService:
                         routed.append(sid)
                         if not waiting.waiting_for and waiting.status == "waiting_peer":
                             waiting.status = "running"
+            self._track_assignments(
+                task,
+                sender=sender,
+                owner=owner,
+                recipients=recipients,
+                kind=kind,
+                content=content,
+                handoff_id=handoff_id,
+                resolution=resolution,
+                stopped=bool(reason),
+            )
             receipt = {
                 "kind": kind,
                 "content": content,
                 "recipients": list(dict.fromkeys(s for s in routed if s != sender)),
                 "status": branch.status,
                 "reference_event_ids": list(effective_references),
+                **({"claim_feedback": claim_feedback, "partial_result": True} if claim_feedback else {}),
             }
             branch.receipts[handoff_id] = receipt
             await self._commit_mutation(user_id, record)
             return receipt
+
+    @staticmethod
+    def _track_assignments(
+        task: SharedTaskState,
+        *,
+        sender: str,
+        owner: str,
+        recipients: tuple[str, ...],
+        kind: str,
+        content: str,
+        handoff_id: str,
+        resolution: str | None,
+        stopped: bool,
+    ) -> None:
+        """Keep the task ledger in step with one coordinated exchange."""
+
+        now = datetime.now(UTC)
+        if sender == owner:
+            for sid in recipients:
+                assignment = task.assignments.get(sid)
+                if resolution == "complete" and assignment is not None:
+                    assignment.status = "accepted"
+                elif resolution == "verify" and assignment is not None:
+                    assignment.status = "challenged"
+                    assignment.challenges += 1
+                    assignment.last_feedback = content[:4000]
+                elif resolution == "stop" and assignment is not None:
+                    assignment.status = "stopped"
+                    assignment.last_feedback = content[:4000]
+                elif kind == "handoff" and not resolution:
+                    if assignment is None:
+                        task.assignments[sid] = TaskAssignment(goal=content[:20000])
+                        continue
+                    if assignment.status != "queued":
+                        assignment.status = "assigned"
+                    assignment.last_feedback = content[:4000]
+                else:
+                    continue
+                assignment.updated_at = now
+            return
+        assignment = task.assignments.get(sender)
+        if assignment is None:
+            return
+        if stopped:
+            assignment.status = "stopped"
+        elif kind == "error":
+            assignment.status = "failed"
+            assignment.last_report_event_id = handoff_id
+        elif kind == "result" or (kind == "answer" and owner in recipients):
+            assignment.status = "reported"
+            assignment.last_report_event_id = handoff_id
+        else:
+            return
+        assignment.updated_at = now
+
+    async def record_assignments(
+        self,
+        user_id: str,
+        team_id: str,
+        assignments: dict[str, TaskAssignment],
+        *,
+        task_id: str | None = None,
+    ) -> None:
+        """Write the Leader's briefs into the task ledger (one lock, one CAS)."""
+
+        if not assignments:
+            return
+        default_task = task_id or await self.active_task_id(user_id, team_id)
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            task = record.state.tasks.get(default_task)
+            if task is None:
+                return
+            for sid, assignment in assignments.items():
+                task.assignments[sid] = assignment
+            await self._commit_mutation(user_id, record)
+
+    async def release_ready_assignments(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> list[tuple[str, str, dict]]:
+        """Release queued assignments whose dependencies have all reported.
+
+        Returns ``(session_id, agent_id, inbox_payload)`` for each released
+        assignment; the caller delivers the payloads. A dependency that
+        failed or was stopped also releases the waiter, whose brief then
+        tells it which input is missing instead of leaving it queued forever.
+        """
+
+        settled = {"reported", "verified", "accepted", "stopped", "failed"}
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            task = (
+                record.state.tasks.get(record.state.active_task_id)
+                if record and record.state.active_task_id
+                else None
+            )
+            if task is None:
+                return []
+            released: list[tuple[str, str, dict]] = []
+            for sid, assignment in task.assignments.items():
+                if assignment.status != "queued" or assignment.pending_payload is None:
+                    continue
+                dependencies = [
+                    task.assignments.get(dep) for dep in assignment.depends_on
+                ]
+                if any(
+                    dep is not None and dep.status not in settled
+                    for dep in dependencies
+                ):
+                    continue
+                payload = dict(assignment.pending_payload)
+                missing = [
+                    dep.agent_name or "?"
+                    for dep in dependencies
+                    if dep is not None and dep.status in {"stopped", "failed"}
+                ]
+                if missing:
+                    payload["hint"] = (
+                        payload.get("hint", "")
+                        + "\n<system-reminder>These dependencies did not "
+                        "deliver a result: "
+                        + ", ".join(missing)
+                        + ". Work with the verified results that exist and "
+                        "report what is missing; do not invent it."
+                        "</system-reminder>"
+                    )
+                assignment.pending_payload = None
+                assignment.status = "assigned"
+                assignment.updated_at = datetime.now(UTC)
+                released.append((sid, assignment.agent_id, payload))
+            if released:
+                await self._commit_mutation(user_id, record)
+            return released
+
+    async def mark_learned(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        revision: int,
+    ) -> None:
+        """Record that the learning loop processed ``task_id`` up to ``revision``."""
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            if record is None or task_id not in record.state.tasks:
+                return
+            task = record.state.tasks[task_id]
+            if task.learned_revision >= revision:
+                return
+            task.learned_revision = revision
+            await self._commit_mutation(user_id, record)
+
+    async def deliver_ready_assignments(self, user_id: str, team_id: str) -> int:
+        """Release and wake queued assignments whose dependencies reported."""
+
+        released = await self.release_ready_assignments(user_id, team_id)
+        for session_id, agent_id, payload in released:
+            await deliver_to_inbox(
+                self._bus,
+                user_id=user_id,
+                session_id=session_id,
+                agent_id=agent_id,
+                payload=payload,
+                wake=True,
+            )
+        return len(released)
+
+    async def pending_question_for(
+        self,
+        user_id: str,
+        team_id: str,
+        provider_session_id: str,
+    ) -> tuple[str, str] | None:
+        """Return ``(asker_session_id, question_id)`` of the newest open peer
+        question addressed to ``provider_session_id``."""
+
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = (
+            record.state.tasks.get(record.state.active_task_id)
+            if record and record.state.active_task_id
+            else None
+        )
+        if task is None:
+            return None
+        revisions = {event.id: event.revision for event in record.state.events}
+        candidates = [
+            (revisions.get(question_id, 0), asker, question_id)
+            for asker, branch in task.collaboration.items()
+            if branch.customer_revision == task.latest_customer_revision
+            for question_id, provider in branch.waiting_for.items()
+            if provider == provider_session_id
+        ]
+        if not candidates:
+            return None
+        _, asker, question_id = max(candidates)
+        return asker, question_id
+
+    async def assignment_evidence(
+        self,
+        user_id: str,
+        team_id: str,
+        member_session_id: str,
+    ) -> tuple[str, ...]:
+        """Evidence ids that let the Leader accept a member's latest report.
+
+        The member's newest result plus everything it (transitively) cites,
+        and the tool events of every session in that lineage. The Leader
+        model never has to copy opaque event ids to accept good work.
+        """
+
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = (
+            record.state.tasks.get(record.state.active_task_id)
+            if record and record.state.active_task_id
+            else None
+        )
+        if task is None:
+            return ()
+        current = {
+            event.id: event
+            for event in record.state.events
+            if event.task_id == task.id
+            and not event.stale
+            and event.revision > task.latest_customer_revision
+        }
+        reports = sorted(
+            (
+                event
+                for event in current.values()
+                if event.source_session_id == member_session_id
+                and event.kind in {"result", "answer"}
+            ),
+            key=lambda event: event.revision,
+        )
+        if not reports:
+            return ()
+        selected: list[str] = []
+        sessions: set[str] = set()
+        frontier = [reports[-1].id]
+        while frontier:
+            event_id = frontier.pop()
+            if event_id in selected or event_id not in current:
+                continue
+            selected.append(event_id)
+            event = current[event_id]
+            if event.source_session_id:
+                sessions.add(event.source_session_id)
+            frontier.extend(event.reference_event_ids)
+        selected.extend(
+            event.id
+            for event in current.values()
+            if event.kind == "external_event"
+            and event.source_session_id in sessions
+            and event.id not in selected
+        )
+        return tuple(selected[:50])
 
     async def measure_collaboration(
         self,
@@ -1752,63 +2147,6 @@ class SharedContextService:
                 self.config.collaboration_max_active_seconds - branch.active_seconds,
                 task.latest_customer_revision,
             )
-
-    async def credit_source_read(
-        self,
-        user_id: str,
-        team_id: str,
-        session_id: str,
-        *,
-        task_id: str,
-        customer_revision: int,
-        paging_call_id: str,
-        source_reads: list[dict],
-    ) -> bool:
-        """Refund one work round only for successful, advancing source reads."""
-        async with self._bus.acquire_lock(
-            MessageBusKeys.team_shared_context_lock(team_id),
-            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
-        ):
-            record = await self._load_or_create(user_id, team_id)
-            task = record.state.tasks[task_id]
-            if task.latest_customer_revision != customer_revision:
-                raise SharedContextConcurrencyError(
-                    "Customer requirement changed during execution"
-                )
-            branch = self._branch(task, session_id)
-            if branch.status == "stopped":
-                raise CollaborationStoppedError(branch.reason)
-            credited = False
-            for read in sorted(
-                source_reads, key=lambda read: (read["section"], read["offset"])
-            ):
-                section = read["section"]
-                offset, pages = branch.source_read_progress.get(section, (0, 0))
-                end = read["end"]
-                if read["offset"] <= offset < end:
-                    # Packet refreshes cannot refund the same source page twice.
-                    complete_pages = (
-                        (end + 1999) // 2000
-                        if end == read["total_characters"]
-                        else end // 2000
-                    )
-                    if (
-                        complete_pages > pages
-                        and not credited
-                        and paging_call_id not in branch.paging_call_ids
-                        and branch.paging_model_calls < branch.model_calls
-                    ):
-                        credited = True
-                        branch.paging_model_calls += 1
-                        branch.paging_call_ids = (
-                            *branch.paging_call_ids, paging_call_id,
-                        )
-                    branch.source_read_progress[section] = (
-                        end,
-                        max(pages, complete_pages) if credited else pages,
-                    )
-            await self._commit_mutation(user_id, record)
-            return credited
 
     async def pending_user_question(self, user_id: str, team_id: str) -> str | None:
         record = await self._storage.get_team_shared_context(user_id, team_id)
@@ -1872,6 +2210,7 @@ class SharedContextService:
         elif status == "consumed":
             record.consumed_at = now
         await self._storage.upsert_team_handoff(record.user_id, record)
+        await self._signal_change(record.team_id)
         return record
 
     async def acknowledge_handoff(
@@ -2015,6 +2354,7 @@ class SharedContextService:
         old = [event for event in events if event.id not in recent_ids]
         return old, recent
 
+    @usage_purpose("shared_summary")
     async def _summarize(
         self,
         model: ChatModelBase,
@@ -2096,10 +2436,6 @@ class SharedContextService:
             int(
                 self.config.history_budget_tokens * self.config.summary_max_ratio,
             ),
-        )
-        instructions += (
-            " The complete rendered summary, including source citations, must fit "
-            f"within {max_tokens} tokens. Merge related points and keep prose brief."
         )
         error: Exception | None = None
         attempts = 0
@@ -2209,21 +2545,11 @@ class SharedContextService:
         record: TeamSharedContextRecord,
         events: list[SharedContextEvent],
         task_id: str,
+        summary_model: ChatModelBase | None = None,
     ) -> TeamSharedContextRecord:
         prior_summary = record.state.summaries.get(task_id)
         covered = prior_summary.covered_through_revision if prior_summary else 0
         uncovered = [event for event in events if event.revision > covered]
-        # Raw tool envelopes already represented in authoritative state need
-        # no narrative summary. Keep customer/report history and its citations.
-        projected = self._packet_value(
-            record, uncovered, mode="task", task_id=task_id,
-        )
-        visible_ids = {event["id"] for event in projected["recent_events"]}
-        uncovered = [
-            event
-            for event in uncovered
-            if event.kind != "external_event" or event.id in visible_ids
-        ]
         history_tokens = await self._history_tokens(
             model,
             prior_summary,
@@ -2248,18 +2574,30 @@ class SharedContextService:
                 ],
             ),
         )
+        # Partner history is retrievable through CaseEvidence. An index avoids
+        # asking another model to paraphrase the same durable facts.
+        partner_sources = any(
+            self._partner_evidence_event(event)
+            for event in record.state.events if event.task_id == task_id and event.kind == "external_event"
+        )
+        # Partner CaseEvidence can retrieve immutable sources by event id or
+        # history cursor. Summarizer prose must never gate a long-running job.
+        use_index = partner_sources
         try:
-            (
-                summary_text,
-                input_tokens,
-                output_tokens,
-                attempts,
-                model_calls,
-            ) = await self._summarize(
-                model,
-                prior_summary,
-                old,
-            )
+            if use_index:
+                summary_text = (
+                    f"History through revision {target_revision} is archived. Current authoritative "
+                    "constraints, verified facts, outputs and the task ledger are below. Raw sources "
+                    "remain stored. Read history:0/event_ids or archived E cites with CaseEvidence before using earlier details. "
+                    "Check current pending approvals and operations; never repeat a side effect to recall it."
+                )
+                input_tokens = 0
+                output_tokens = await self._tokens(model, summary_text)
+                attempts = model_calls = 0
+            else:
+                (summary_text, input_tokens, output_tokens, attempts, model_calls) = await self._summarize(
+                    summary_model or model, prior_summary, old,
+                )
         except SharedContextSummaryError as exc:
             async with self._bus.acquire_lock(
                 MessageBusKeys.team_shared_context_lock(team_id),
@@ -2320,11 +2658,40 @@ class SharedContextService:
             else []
         )
         for task in tasks:
+            from ._customer_questions import known_inputs
+            task["known_customer_inputs"] = known_inputs(
+                event for event in record.state.events if event.task_id == task["id"]
+            )
+            for key in ("created_at", "updated_at", "learned_revision", "thread_id"):
+                task.pop(key, None)
             for branch in task.get("collaboration", {}).values():
                 branch.pop("receipts", None)
                 branch.pop("signatures", None)
-                branch.pop("paging_call_ids", None)
-                branch.pop("source_read_progress", None)
+                for key in (
+                    "paging_call_ids",
+                    "source_read_progress",
+                    "paging_model_calls",
+                    "input_tokens",
+                    "output_tokens",
+                    "tokens",
+                    "measured_tokens",
+                    "model_calls",
+                    "active_seconds",
+                    "exchanges",
+                    "started_at",
+                    "updated_at",
+                ):
+                    branch.pop(key, None)
+            for assignment in task.get("assignments", {}).values():
+                assignment.pop("pending_payload", None)
+                assignment.pop("created_at", None)
+                assignment.pop("updated_at", None)
+                if assignment.get("status") in {"verified", "accepted", "stopped"}:
+                    # The runtime has already checked this assignment; keep
+                    # its result and dependency state, not its repeated brief.
+                    assignment.pop("goal", None)
+                    assignment.pop("expected_output", None)
+                    assignment.pop("done_when", None)
         selected_event_ids = {event.id for event in events}
         active_items = [
             item
@@ -2365,7 +2732,15 @@ class SharedContextService:
             and event.kind in {"answer", "result"}
             and event.source_session_id
         }
-        represented_tool_source_ids: set[str] = set()
+        # Review instructions are also held verbatim by the current ledger.
+        # Project an exact duplicate once; keep the immutable event in storage.
+        ledger_texts = {branch.get("reason") for task in tasks
+                        for branch in task.get("collaboration", {}).values()
+                        if branch.get("reason")}
+        represented_tool_source_ids: set[str] = {
+            event.id for event in events
+            if event.kind == "handoff" and event.content in ledger_texts
+        }
         if reported_sessions:
             retained_items: list[dict] = []
             for item in active_items:
@@ -2392,6 +2767,10 @@ class SharedContextService:
                     retained_items.append(item)
             active_items = retained_items
         active_items = self._compact_tool_facts(active_items)
+        represented_tool_source_ids.update(
+            source_id for item in active_items
+            for source_id in item.get("superseded_source_event_ids", ())
+        )
         superseded_source_ids = {
             source_id
             for item in record.state.items
@@ -2405,11 +2784,22 @@ class SharedContextService:
             active_items,
             superseded_source_ids,
         )
+        active_items = [
+            {key: value for key, value in item.items()
+             if key not in {"created_at", "task_id", "status", "equivalent_item_ids", "superseded_source_event_ids"}}
+            for item in active_items
+        ]
         summary = (
             record.state.summaries.get(selected_task_id)
             if selected_task_id is not None
             else None
         )
+        summary_text = summary.text if summary else ""
+        if summary:
+            # Canonical source ids stay in the stored summary. Its model view
+            # uses short revision handles rather than repeated opaque UUIDs.
+            for event in record.state.events:
+                summary_text = summary_text.replace(event.id, f"event:{event.revision}")
         return {
             "schema": "agentscope.shared-context.v1",
             "team_id": record.team_id,
@@ -2423,12 +2813,9 @@ class SharedContextService:
             "summary": (
                 {
                     "id": summary.id,
-                    "text": summary.text,
+                    "text": summary_text,
                     "covered_through_revision": (summary.covered_through_revision),
                     "source_event_count": len(summary.source_event_ids),
-                    "input_tokens": summary.input_tokens,
-                    "output_tokens": summary.output_tokens,
-                    "created_at": summary.created_at.isoformat(),
                 }
                 if mode == "task" and summary
                 else None
@@ -2454,10 +2841,74 @@ class SharedContextService:
                 else None
             ),
             "history_omission": None,
+            "history_read_ref": "history:0" if any(self._partner_evidence_event(e) for e in record.state.events) else None,
             "recent_events": [
-                self._event_dict(event) for event in recent_events
+                {key: value for key, value in self._event_dict(event).items()
+                 if value is not None and value != [] and value != () and value is not False}
+                for event in recent_events
             ],
         }
+
+    async def credit_source_read(
+        self,
+        user_id: str,
+        team_id: str,
+        session_id: str,
+        *,
+        task_id: str,
+        customer_revision: int,
+        paging_call_id: str,
+        source_reads: list[dict],
+    ) -> bool:
+        """Refund one work round only for successful, advancing source reads."""
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            task = record.state.tasks[task_id]
+            if task.latest_customer_revision != customer_revision:
+                raise SharedContextConcurrencyError(
+                    "Customer requirement changed during execution"
+                )
+            branch = self._branch(task, session_id)
+            if branch.status == "stopped":
+                raise CollaborationStoppedError(branch.reason)
+            credited = False
+            for read in sorted(
+                source_reads,
+                key=lambda read: (read["section"], read["offset"]),
+            ):
+                section = read["section"]
+                offset, pages = branch.source_read_progress.get(
+                    section, (0, 0)
+                )
+                end = read["end"]
+                if read["offset"] <= offset < end:
+                    # Packet refreshes cannot refund the same source page twice.
+                    complete_pages = (
+                        (end + 1999) // 2000
+                        if end == read["total_characters"]
+                        else end // 2000
+                    )
+                    if (
+                        complete_pages > pages
+                        and not credited
+                        and paging_call_id not in branch.paging_call_ids
+                        and branch.paging_model_calls < branch.model_calls
+                    ):
+                        credited = True
+                        branch.paging_model_calls += 1
+                        branch.paging_call_ids = (
+                            *branch.paging_call_ids,
+                            paging_call_id,
+                        )
+                    branch.source_read_progress[section] = (
+                        end,
+                        max(pages, complete_pages) if credited else pages,
+                    )
+            await self._commit_mutation(user_id, record)
+            return credited
 
     async def _reference_packet_sources(
         self,
@@ -2596,19 +3047,31 @@ class SharedContextService:
         task_id: str | None = None,
         reference_event_ids: tuple[str, ...] = (),
         exclude_event_ids: tuple[str, ...] = (),
+        summary_model: ChatModelBase | None = None,
         allow_source_references: bool = False,
         max_tokens: int | None = None,
     ) -> tuple[str, int]:
-        """Return a replaceable packet and its selected-model token count."""
+        """Return a replaceable packet and its selected-model token count.
+
+        ``summary_model`` (optional) writes the history summary, so a Leader
+        running on an expensive model can compact history with a cheap one;
+        packet budgets are still measured with ``model``.
+        """
 
         if mode == "isolated":
             return "", 0
         packet_limit = min(
             self.config.packet_max_tokens,
-            max_tokens if max_tokens is not None else self.config.packet_max_tokens,
+            (
+                max_tokens
+                if max_tokens is not None
+                else self.config.packet_max_tokens
+            ),
         )
         if packet_limit <= 0:
-            raise SharedContextBudgetError("No model budget remains for shared context")
+            raise SharedContextBudgetError(
+                "No model budget remains for shared context"
+            )
         record = await self._load_or_create(user_id, team_id)
         if record.state.active_task_id is None:
             await self.active_task_id(user_id, team_id)
@@ -2624,49 +3087,31 @@ class SharedContextService:
             ]
         else:
             selected = task_id or record.state.active_task_id
-            summary_key = MessageBusKeys.team_summary_lock(team_id, selected)
-            use_current_packet = False
-            if await self._bus.is_locked(summary_key):
-                summary = record.state.summaries.get(selected)
-                covered = summary.covered_through_revision if summary else 0
-                current_packet = self._packet_value(
-                    record,
-                    [
-                        event
-                        for event in record.state.events
-                        if event.task_id == selected
-                        and event.id not in excluded
-                        and event.revision > covered
-                    ],
-                    mode="task",
-                    task_id=selected,
-                    excluded_event_ids=excluded,
-                )
-                use_current_packet = (
-                    await self._tokens(model, self._json(current_packet))
-                    <= packet_limit
-                )
-            # A valid uncompressed snapshot need not wait for another model.
-            # Oversized packets still wait for the single task compactor.
-            if not use_current_packet:
-                async with self._bus.acquire_lock(
-                    summary_key,
-                    ttl_secs=MessageBusKeys.TEAM_HISTORY_BOOTSTRAP_LOCK_TTL_SECS,
-                ):
+            async with self._bus.acquire_lock(
+                MessageBusKeys.team_summary_lock(team_id, selected),
+                ttl_secs=MessageBusKeys.TEAM_HISTORY_BOOTSTRAP_LOCK_TTL_SECS,
+            ):
+                # Other workers may have compacted this task while we waited.
+                record = await self._load_or_create(user_id, team_id)
+                events = [
+                    event
+                    for event in record.state.events
+                    if event.task_id == selected and event.id not in excluded
+                ]
+                try:
+                    record = await self._maybe_compact(
+                        model,
+                        user_id,
+                        team_id,
+                        record,
+                        events,
+                        selected,
+                        summary_model=summary_model,
+                    )
+                except SharedContextSummaryError as exc:
+                    logger.error("%s", exc)
+                    compaction_failed = True
                     record = await self._load_or_create(user_id, team_id)
-                    events = [
-                        event
-                        for event in record.state.events
-                        if event.task_id == selected and event.id not in excluded
-                    ]
-                    try:
-                        record = await self._maybe_compact(
-                            model, user_id, team_id, record, events, selected,
-                        )
-                    except SharedContextSummaryError as exc:
-                        logger.error("%s", exc)
-                        compaction_failed = True
-                        record = await self._load_or_create(user_id, team_id)
             summary = record.state.summaries.get(selected)
             covered = summary.covered_through_revision if summary else 0
             # A customer can write while the model summarizes. Use the events
@@ -2688,6 +3133,72 @@ class SharedContextService:
         )
         text = self._json(packet)
         tokens = await self._tokens(model, text)
+        # Large sources are already durable. Partner rooms read them back by
+        # label through CaseEvidence; every other team through
+        # SharedContextRead. Explicit references keep the current task and
+        # approvals available without resending every historical tool result.
+        partner_packet = any(self._partner_evidence_event(e) for e in record.state.events)
+        read_tool = "CaseEvidence" if partner_packet else "SharedContextRead"
+        if mode == "task" and partner_packet and tokens > packet_limit:
+            for event in sorted(packet["recent_events"], key=lambda value: len(value.get("content", "")), reverse=True):
+                if tokens <= packet_limit:
+                    break
+                if event["kind"] == "customer_message" or len(event.get("content", "")) < 300:
+                    continue
+                event["content"] = self._json({"archived_event_ids": [event["id"]],
+                    "read_tool": read_tool, "instruction": "Read before using details; raw source retained."})
+                text = self._json(packet)
+                tokens = await self._tokens(model, text)
+            candidates = sorted(
+                (item for item in packet["authoritative_state"]["items"]
+                 if item["authority"] == "tool_verified"
+                 and ("external_evidence" in item["text"] or re.match(r"^\w+ \{.*\}\nE\d+:", item["text"]))
+                 and re.search(r"\bE\d+\b", item["text"])),
+                key=lambda item: len(item["text"]), reverse=True,
+            )
+            for item in candidates:
+                if tokens <= packet_limit:
+                    break
+                labels = list(dict.fromkeys(re.findall(r"\bE\d+\b", item["text"])))
+                item["text"] = self._json({
+                    "archived_evidence": labels,
+                    "read_tool": "CaseEvidence",
+                    "instruction": "Read these cites before using business details. Raw sources retained.",
+                })
+                text = self._json(packet)
+                tokens = await self._tokens(model, text)
+            # If raw tool reads alone were insufficient, archive full older
+            # reports as retrievable sources too. Keep live tasks, dependencies,
+            # questions, operations and latest customer input in the packet.
+            if tokens > packet_limit:
+                latest_customer = max((e.revision for e in record.state.events
+                                       if e.kind == "customer_message"), default=0)
+                event_by_id = {e.id: e for e in record.state.events}
+                for item in sorted(packet["authoritative_state"]["items"],
+                                   key=lambda value: len(value["text"]), reverse=True):
+                    if tokens <= packet_limit:
+                        break
+                    source_ids = item.get("source_event_ids") or []
+                    if not source_ids or any(event_by_id[sid].revision == latest_customer
+                                             for sid in source_ids if sid in event_by_id):
+                        continue
+                    if len(item["text"]) < 300:
+                        continue
+                    item["text"] = self._json({"archived_event_ids": source_ids,
+                        "read_tool": read_tool, "instruction": "Read before using details; original sources retained."})
+                    text = self._json(packet)
+                    tokens = await self._tokens(model, text)
+            if tokens > packet_limit:
+                for task in packet["authoritative_state"]["tasks"]:
+                    for sid, assignment in task.get("assignments", {}).items():
+                        if tokens <= packet_limit:
+                            break
+                        # Status/dependencies stay visible to every member.
+                        for key in ("goal", "expected_output", "done_when", "last_feedback"):
+                            assignment.pop(key, None)
+                        assignment["brief_ref"] = "assignment:" + sid
+                        text = self._json(packet)
+                        tokens = await self._tokens(model, text)
         source_event_count = len(events)
         projected_event_count = (
             packet["history_projection"]["projected_event_count"]
@@ -2703,14 +3214,14 @@ class SharedContextService:
             model,
             self._json(required_packet),
         )
-        budget_error: SharedContextBudgetError | None = None
         referenced_event_count: int | None = None
+        budget_error: SharedContextBudgetError | None = None
         if tokens > packet_limit:
             # Only non-authoritative progress narration may be omitted, and
             # only on whole-event boundaries. The packet explicitly declares
             # the omission so the model cannot mistake a partial narrative for
-            # complete history. Authoritative data requires readable source
-            # references; callers without that capability still fail loudly.
+            # complete history. Results, customer turns, handoffs, HITL and
+            # external/correction events fail loudly when they do not fit.
             omitted: list[dict] = []
             while mode == "task" and tokens > packet_limit:
                 removable_index = next(
@@ -2748,7 +3259,7 @@ class SharedContextService:
             if tokens > packet_limit and allow_source_references:
                 referenced_event_count = len(packet["recent_events"])
                 text, tokens = await self._reference_packet_sources(
-                    model, packet, packet_limit, user_id,
+                    model, packet, packet_limit, user_id
                 )
             if tokens > packet_limit:
                 budget_error = SharedContextBudgetError(
@@ -2844,6 +3355,49 @@ class SharedContextService:
                 metrics.prompt_budget_failures += 1
             await self._commit_mutation(user_id, record)
 
+    async def record_provider_usage(
+        self,
+        *,
+        user_id: str,
+        team_id: str,
+        agent_id: str,
+        agent_name: str,
+        model: str,
+        usage: object | None,
+    ) -> None:
+        """Accumulate the provider's own usage block for one model call.
+
+        ``usage`` is a :class:`~agentscope.model.ChatUsage` or ``None`` when
+        the provider/gateway did not report usage; the call is still counted
+        so a missing usage block is visible instead of silently zero.
+        """
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            entry = record.state.metrics.provider_usage.setdefault(
+                agent_id,
+                ProviderUsage(),
+            )
+            entry.agent_name = agent_name[:255]
+            entry.model = model[:255] if not entry.model or entry.model == model[:255] else "mixed (legacy aggregate)"
+            per_model = record.state.metrics.provider_usage_by_model.setdefault(
+                json.dumps([agent_id, model], ensure_ascii=False), ProviderUsage(agent_name=agent_name[:255], model=model[:255]))
+            for item in (entry, per_model):
+                item.calls += 1
+                if usage is None:
+                    continue
+                item.calls_with_usage += 1
+                item.input_tokens += max(0, int(getattr(usage, "input_tokens", 0)))
+                item.cached_input_tokens += max(
+                    0,
+                    int(getattr(usage, "cache_input_tokens", 0) or 0),
+                )
+                item.output_tokens += max(0, int(getattr(usage, "output_tokens", 0)))
+            await self._commit_mutation(user_id, record)
+
     @staticmethod
     def system_attachment(packet: str, tokens: int) -> str:
         """Wrap untrusted shared data in a replaceable system attachment."""
@@ -2860,16 +3414,7 @@ class SharedContextService:
             "Internal task_id, team_id, session_id and event IDs are routing "
             "references, NOT provider ticket/booking IDs. Never substitute them "
             "into MCP arguments unless an explicit external mapping exists. "
-            "Agent-reported narrative is shared team context. "
-            "A source_ref replaces a section that is too large to inline. "
-            "Use SharedContextRead(source_ref, offset) to read its pages before "
-            "using those constraints, results or open questions. A reference "
-            "is not an empty section. All source data is retained. "
-            "coordination stays inline so you can follow open dependencies while "
-            "reading. Its objective_preview is abbreviated; read the task source "
-            "for full requirements. Retained snapshots may be older than this "
-            "packet; prefer newer requirements and results. Reading sources does "
-            "not replace necessary TeamSay questions, answers or final reports.\n"
+            "Agent-reported narrative is not independently verified evidence.\n"
             f"{packet}\n</shared-context-packet>"
         )
 

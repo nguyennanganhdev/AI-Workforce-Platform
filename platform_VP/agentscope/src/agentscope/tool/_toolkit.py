@@ -58,8 +58,7 @@ Skills are a collection of instructions, scripts, and resources to extend your c
 <name>{{ skill.name }}</name>
 <description>{{ skill.description }}</description>
 <dir>{{ skill.dir }}</dir>
-</skill>{% endfor %}{% if loaded_skills %}
-Already loaded in this session: {{ loaded_skills | join(', ') }}. Reuse their previous instructions. Do not call `{{ skill_viewer }}` again for these skills.{% endif %}
+</skill>{% endfor %}
 </agent-skills>
 """  # noqa: E501
 
@@ -432,8 +431,6 @@ class Toolkit:
     async def get_skill_instructions(
         self,
         activated_groups: list[str] | None = None,
-        *,
-        loaded_skills: list[str] | None = None,
     ) -> str | None:
         """Get the prompt for all registered agent skills, which can be
         attached to the system prompt for the agent.
@@ -448,9 +445,6 @@ class Toolkit:
             activated_groups (`list[str] | None`, optional):
                 The currently activated tool groups. If omitted, all groups
                 will be included for backwards compatibility.
-            loaded_skills (`list[str] | None`, optional):
-                Skills already loaded in this session. Mark them for reuse
-                without changing the available skills or tool schemas.
 
         Returns:
             `str | None`:
@@ -474,7 +468,6 @@ class Toolkit:
         return template.render(
             skills=skills.values(),
             skill_viewer=self.builtin_skill_viewer.tool.name,
-            loaded_skills=[name for name in (loaded_skills or []) if name in skills],
         )
 
     async def _get_available_tools(

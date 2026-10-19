@@ -35,6 +35,7 @@ import {
 import { Progress } from '@/components/ui/progress.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
+import { useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useSkills } from '@/hooks/useSkills.ts';
 import { useTranslation } from '@/i18n/useI18n';
 
@@ -55,6 +56,7 @@ interface Props {
  */
 export function AddSkillDialog({ children, present, onUpload, onAddFromLibrary }: Props) {
 	const { t } = useTranslation();
+	const canManage = useCatalogManagement();
 	const [open, setOpen] = useState(false);
 	const [tab, setTab] = useState('installed');
 	const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -98,6 +100,7 @@ export function AddSkillDialog({ children, present, onUpload, onAddFromLibrary }
 	};
 
 	const handleUpload = async () => {
+		if (!canManage) return;
 		setBusy(true);
 		setError(null);
 		setProgress(0);
@@ -132,7 +135,7 @@ export function AddSkillDialog({ children, present, onUpload, onAddFromLibrary }
 						<TabsTrigger value="installed" className="flex-1">
 							{t('panel.skill.fromInstalled')}
 						</TabsTrigger>
-						<TabsTrigger value="upload" className="flex-1">
+						<TabsTrigger disabled={!canManage} value="upload" className="flex-1">
 							{t('panel.skill.fromFolder')}
 						</TabsTrigger>
 					</TabsList>
@@ -317,7 +320,7 @@ export function AddSkillDialog({ children, present, onUpload, onAddFromLibrary }
 								{t('common.add')}
 							</Button>
 						) : (
-							<Button onClick={handleUpload} disabled={files.length === 0 || busy}>
+							<Button onClick={handleUpload} disabled={!canManage || files.length === 0 || busy}>
 								{busy ? <Spinner /> : <PlusCircle />}
 								{t('common.add')}
 							</Button>

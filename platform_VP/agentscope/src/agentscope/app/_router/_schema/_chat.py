@@ -74,11 +74,7 @@ class ChatTriggerResponse(BaseModel):
 
     status: str = Field(
         default="started",
-        description=(
-            '"started" for a scheduled run; "awaiting_confirmation" while a '
-            'tool decision is pending; "no_pending_confirmation" when a typed '
-            "decision does not match any pending operation."
-        ),
+        description='"started" for a scheduled run; "awaiting_confirmation" for clarification.',
     )
     session_id: str = Field(
         description="Echo of the session id the run was started for.",

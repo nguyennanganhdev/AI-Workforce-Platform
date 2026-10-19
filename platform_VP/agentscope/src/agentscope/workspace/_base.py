@@ -593,12 +593,28 @@ class WorkspaceBase:
         empty list means it explicitly has none.
         """
         declared = self._mcp_specs.get((agent_id, session_id))
+        if declared is None:
+            declared = self._mcp_specs.get((agent_id, ""))
         if declared is not None:
-            return declared
+            return [MCPClient.model_validate(m.model_dump(mode="json")) for m in declared]
         return [
             MCPClient.model_validate(m.model_dump(mode="json"))
             for m in self.default_mcps
         ]
+
+    def declared_mcps(self, *, agent_id: str) -> list[MCPClient]:
+        """Copy agent defaults without opening any connector connections."""
+        return self._declared_specs(agent_id, "")
+
+    async def set_mcp_declarations(self, clients: list[MCPClient], *, agent_id: str) -> None:
+        """Prepare agent defaults in an unused publication workspace."""
+        async with self._mcp_lock:
+            if any(owner == agent_id and live for (owner, _), live in self._mcp_instances.items()):
+                raise RuntimeError("Cannot replace declarations in a live workspace")
+            self._mcp_specs[(agent_id, "")] = [
+                MCPClient.model_validate(client.model_dump(mode="json")) for client in clients
+            ]
+            await self._save_mcp_file(strict=True)
 
     async def list_mcps(
         self,
@@ -892,7 +908,7 @@ class WorkspaceBase:
 
     # ── MCP persistence (shared) ───────────────────────────────────
 
-    async def _save_mcp_file(self) -> None:
+    async def _save_mcp_file(self, *, strict: bool = False) -> None:
         """Persist :attr:`_mcp_specs` to ``${workdir}/.mcp``.
 
         Only declarations are written, and only for sessions that
@@ -923,6 +939,8 @@ class WorkspaceBase:
         try:
             await backend.write_file(self._mcp_file, payload)
         except Exception as e:
+            if strict:
+                raise
             logger.warning(
                 "Failed to save MCP file at %s: %s",
                 self._mcp_file,

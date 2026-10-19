@@ -9,13 +9,16 @@
     POST   /channels/                   Create a channel
     GET    /channels/{id}               Channel details
     PATCH  /channels/{id}               Update routing/session/config
+    PATCH  /channels/{id}/credentials   Rotate Telegram/Zalo secrets
+    POST   /channels/{id}/webhook       Receive signed Zalo OA events
     DELETE /channels/{id}               Delete a channel
     POST   /channels/{id}/enable        Enable
     POST   /channels/{id}/disable       Disable
     GET    /channels/{id}/status        Aggregated runtime status
     GET    /channels/{id}/chat_ids      Known chats (for routing config)
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..channel import (
     ChannelError,
@@ -30,6 +33,7 @@ from .._service import (
     CredentialBindingService,
 )
 from .._service._credential_binding import BindingView
+from .._service._runnable_agents import ensure_runnable
 from ..deps import (
     get_channel_clients,
     get_credential_binding_service,
@@ -37,6 +41,8 @@ from ..deps import (
     get_channel_type_registry,
     get_current_user_id,
     get_storage,
+    get_message_bus,
+    get_workspace_manager,
 )
 from ..storage import ChannelRecord, StorageBase
 from ._schema import (
@@ -51,6 +57,88 @@ from ._schema import (
 )
 
 channel_router = APIRouter(prefix="/channels", tags=["channels"])
+
+
+class DiscordIdentityCompletion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: str = Field(min_length=40, max_length=200)
+    code: str = Field(min_length=1, max_length=2000)
+    issuer: str
+
+
+async def _discord_identity_call(operation, storage, user_id, **kwargs):
+    from .._service import _discord_identity
+    from ..vin_platform import PlatformError
+    try:
+        authority, context = await _discord_identity.scope(storage, user_id)
+        return await getattr(_discord_identity, operation)(authority, context, **kwargs)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
+@channel_router.get("/discord/identity")
+async def discord_identity(storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    return await _discord_identity_call("identity", storage, user_id)
+
+
+@channel_router.post("/discord/identity/start")
+async def start_discord_identity(storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    return await _discord_identity_call("start", storage, user_id)
+
+
+@channel_router.post("/discord/identity/complete")
+async def complete_discord_identity(body: DiscordIdentityCompletion, storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    return await _discord_identity_call("complete", storage, user_id, **body.model_dump())
+
+
+@channel_router.delete("/discord/identity", status_code=204)
+async def revoke_discord_identity(storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    await _discord_identity_call("revoke", storage, user_id)
+
+
+@channel_router.post("/{channel_id}/webhook")
+async def receive_zalo_webhook(
+    channel_id: str,
+    request: Request,
+    clients: ChannelClients = Depends(get_channel_clients),
+    bus=Depends(get_message_bus),
+    storage: StorageBase = Depends(get_storage),
+    workspace_manager=Depends(get_workspace_manager),
+):
+    """Public provider ingress authenticated by Zalo's signature, never by a user token."""
+    from ..channel import ChannelGateway, ZaloOAChannel
+    from ..message_bus import MessageBusKeys
+
+    channel = await clients.get(channel_id) if clients else None
+    if not isinstance(channel, ZaloOAChannel):
+        raise HTTPException(404, "Webhook not found.")
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 262144:
+            raise HTTPException(413, "Webhook too large.")
+    try:
+        data = channel.verify_webhook(bytes(raw), request.headers.get("X-ZEvent-Signature", ""))
+        event = channel.webhook_event(data)
+    except ChannelError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from None
+    if event is None:
+        return {"status": "ignored"}
+    key = MessageBusKeys.channel_webhook(channel_id, event.channel_message_id)
+    gateway = ChannelGateway(storage, bus, workspace_manager)
+
+    async def emit(item):
+        await gateway.process(item, raise_errors=True)
+
+    async with bus.acquire_lock(key + ":lock", ttl_secs=30):
+        if await bus.registry_exists(key, "delivered"):
+            return {"status": "duplicate"}
+        try:
+            await channel.receive_text(event, emit)
+            await bus.registry_set(key, "delivered", "1", ttl_secs=86400)
+        except Exception:
+            raise HTTPException(503, "Webhook delivery unavailable; retry later.") from None
+    return {"status": "accepted"}
 
 
 def _to_response(
@@ -116,6 +204,28 @@ async def _owned(
     return record
 
 
+@channel_router.get("/{channel_id}/runs")
+async def personal_channel_runs(channel_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage), cursor: str | None = None, limit: int = Query(25, ge=1, le=100)):
+    from .._service._personal_jobs import ledger
+    from ..vin_platform import PlatformError
+    await _owned(channel_id, user_id, storage)
+    try:
+        return await ledger(storage, user_id, "channel-event", channel_id, cursor=cursor, limit=limit)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
+@channel_router.post("/{channel_id}/runs/{job_id}/repair-delivery")
+async def repair_channel_delivery(channel_id: str, job_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._personal_jobs import repair_delivery
+    from ..vin_platform import PlatformError
+    await _owned(channel_id, user_id, storage)
+    try:
+        return await repair_delivery(storage, user_id, "channel-event", channel_id, job_id)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
 @channel_router.get("/types")
 async def list_channel_types(
     registry: ChannelTypeRegistry = Depends(get_channel_type_registry),
@@ -143,9 +253,12 @@ async def create_channel(
     bindings: CredentialBindingService = Depends(
         get_credential_binding_service,
     ),
+    storage: StorageBase = Depends(get_storage),
     user_id: str = Depends(get_current_user_id),
 ) -> ChannelResponse:
     """Create a channel, from a completed binding or from the body."""
+    for binding in body.routing.bindings:
+        await ensure_runnable(storage, user_id, binding.agent_id)
     credentials = body.credentials
     if body.credential_binding_id:
         try:
@@ -258,10 +371,30 @@ async def update_channel(
             status.HTTP_400_BAD_REQUEST,
             "No fields to update.",
         )
+    if body.routing is not None:
+        for binding in body.routing.bindings:
+            await ensure_runnable(storage, user_id, binding.agent_id)
     try:
         record = await service.update(channel_id, updates)
     except ChannelError as e:
         raise HTTPException(e.status_code, str(e)) from e
+    return _to_response(record, registry)
+
+
+@channel_router.patch("/{channel_id}/credentials", response_model=ChannelResponse)
+async def rotate_channel_credentials(
+    channel_id: str,
+    credentials: dict[str, str] = Body(),
+    storage: StorageBase = Depends(get_storage),
+    service: ChannelService = Depends(get_channel_service),
+    registry: ChannelTypeRegistry = Depends(get_channel_type_registry),
+    user_id: str = Depends(get_current_user_id),
+):
+    await _owned(channel_id, user_id, storage)
+    try:
+        record = await service.rotate_secrets(channel_id, credentials)
+    except ChannelError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from None
     return _to_response(record, registry)
 
 

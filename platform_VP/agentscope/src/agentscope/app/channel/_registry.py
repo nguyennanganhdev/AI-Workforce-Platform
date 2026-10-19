@@ -96,6 +96,8 @@ class ChannelTypeRegistry:
         channel_id: str,
         credentials: dict,
         config: dict,
+        *,
+        owner_role: str | None = None,
     ) -> "ChannelBase":
         """Validate stored credentials/config against the class's nested
         models and build the channel instance.
@@ -115,11 +117,30 @@ class ChannelTypeRegistry:
                 f"Channel type '{channel_type}' is not registered; pass it "
                 f"to create_app(channels=[...]).",
             )
+        from ._secrets import open_credentials
+
         return channel_cls(
             channel_id,
-            channel_cls.Credentials(**credentials),
+            channel_cls.Credentials(**open_credentials(credentials)),
             channel_cls.Config(**config),
+            **({"private_account": owner_role == "VIN_USER"} if channel_type == "discord" else {}),
         )
+
+    async def create_for_record(self, storage, record) -> "ChannelBase":
+        """Build private Discord behavior from the server's owner, never user config."""
+        authority = getattr(storage, "vin_platform_service", None)
+        context = await authority.context(record.user_id) if authority is not None and record.channel_type == "discord" else None
+        return self.create_channel(record.channel_type, record.id, record.credentials,
+            record.platform_config, owner_role=context.role if context is not None else None)
+
+    def seal_credentials(self, channel_type: str, credentials: dict) -> dict:
+        """Encrypt the type's secret (``format: password``) fields for storage."""
+        from ._secrets import seal_credentials, secret_fields
+
+        channel_cls = self._classes.get(channel_type)
+        if channel_cls is None:
+            return dict(credentials)
+        return seal_credentials(credentials, secret_fields(channel_cls.Credentials))
 
     def schema_of(
         self,
@@ -145,7 +166,7 @@ class ChannelTypeRegistry:
 
     def list_types(self) -> list[ChannelTypeSchema]:
         """List frontend schemas for all registered types."""
-        return [self.schema_of(c) for c in self._classes.values()]
+        return [self.schema_of(c) for c in self._classes.values() if not c.hidden_from_catalog]
 
     def extract_platform_bot_id(
         self,

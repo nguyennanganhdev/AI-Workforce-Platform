@@ -450,3 +450,7 @@ async def team_is_paused(
         user_id=user_id,
     )
     return state is not None and state.status != "running"
+
+
+# Kept for callers written before the specialist-owned clarification turn.
+mark_team_awaiting_user = finish_team_turn
