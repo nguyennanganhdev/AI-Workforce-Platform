@@ -43,7 +43,7 @@ jobs:
       WORKFORCE_E2E_FACTORY: >-
         tests.workforce.fixtures.release_candidate_factory:factory
       PYTEST_ADDOPTS: "--asyncio-mode=auto"
-      PYTHONPATH: "${{ github.workspace }}/platform_VP/agentscope:${{ github.workspace }}/platform_VP/agentscope/tests"
+      PYTHONPATH: "${{ github.workspace }}/platform_VP/agentscope:${{ github.workspace }}/platform_VP/agentscope/tests:${{ github.workspace }}/platform_VP/agentscope/tests/workforce/console"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
