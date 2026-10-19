@@ -1,4 +1,4 @@
-import { ArrowLeft, MessageSquare, Plus, Power, Settings2, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Plus, Power, Settings2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
@@ -57,25 +57,23 @@ export function AgentManagementPage() {
 
 	return (
 		<div className="h-full overflow-y-auto bg-background">
-			<header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-4 md:px-8">
-				<div className="flex items-center gap-3">
-					{agentId ? (
+			<header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--cue-divider,var(--border))] px-4 pt-3 pb-3">
+				<div className="flex items-start gap-2">
+					{agentId && (
 						<Button
 							variant="ghost"
-							size="icon"
+							size="icon-sm"
 							aria-label={t('agentManagement.title')}
 							onClick={() => navigate('/workforce/agents')}
 						>
 							<ArrowLeft />
 						</Button>
-					) : (
-						<Users className="size-5 text-muted-foreground" />
 					)}
 					<div>
-						<h1 className="text-lg font-semibold">
+						<h1 className="text-[17px]/6 font-semibold">
 							{selected?.data.name ?? t('agentManagement.title')}
 						</h1>
-						<p className="text-sm text-muted-foreground">
+						<p className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
 							{t('agentManagement.description')}
 						</p>
 					</div>

@@ -732,11 +732,11 @@ export function ChatViewport({
 			<main className="flex size-full">
 				<ResizablePanelGroup orientation="horizontal">
 					<ResizablePanel
-						className="flex min-w-0 flex-1 bg-card"
+						className="flex min-w-0 flex-1 bg-background"
 						minSize={isMobile ? "0%" : "24rem"}
 					>
 						<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden">
-							<div className="flex flex-row flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b px-3 py-2">
+							<div className="flex flex-row flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-[var(--cue-divider,var(--border))] px-3 py-2">
 								<div className="flex min-w-0 flex-row items-center gap-x-1">
 									<SidebarTrigger className="md:hidden" />
 									{agentId && <ClayAvatar id={agentId} label={agentName ?? view?.team?.leader_agent?.data.name} size={28} />}
@@ -987,7 +987,7 @@ export function ChatViewport({
 						</div>
 					</ResizablePanel>
 					{!isMobile && panelLayout.length > 0 && (
-						<ResizableHandle withHandle className="bg-transparent w-1.5" />
+						<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 					)}
 					{!isMobile && <PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />}
 				</ResizablePanelGroup>
@@ -995,7 +995,7 @@ export function ChatViewport({
 			{isMobile && <Sheet open={panelLayout.length > 0} onOpenChange={(open) => { if (!open) setPanelLayout([]); }}>
 				<SheetContent className="flex w-full max-w-full flex-col overflow-y-auto">
 					<SheetHeader><SheetTitle>{t('common.settings')}</SheetTitle><SheetDescription className="sr-only">{t('common.settings')}</SheetDescription></SheetHeader>
-					{panelLayout.flat().map((key) => <section key={key} className="flex min-h-48 flex-col border-t p-3"><div className="mb-2 flex items-center justify-between gap-2"><h2 className="font-medium">{panels[key].title}</h2>{panels[key].actions}</div>{panels[key].content}</section>)}
+					{panelLayout.flat().map((key) => <section key={key} className="flex min-h-48 flex-col border-t border-[var(--cue-divider,var(--border))] p-3"><div className="mb-2 flex items-center justify-between gap-2"><h2 className="font-medium">{panels[key].title}</h2>{panels[key].actions}</div>{panels[key].content}</section>)}
 				</SheetContent>
 			</Sheet>}
 			<CreateCredentialDialog

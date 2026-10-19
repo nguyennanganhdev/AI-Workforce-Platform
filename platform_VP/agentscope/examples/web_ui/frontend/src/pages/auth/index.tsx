@@ -5,6 +5,7 @@ import { AuthShowcase } from './AuthShowcase';
 import { authApi } from '@/api';
 import type { AreaOption, AuthUser, DomainOption } from '@/api';
 import { ApiError, getBaseUrl } from '@/api/client';
+import heroSquad from '@/assets/images/brand/hero-squad-768.webp';
 import { BRAND_NAME, BrandMark } from '@/components/layout/Brand';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ import {
 import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
+import './auth-page.css';
 
 interface Props {
 	onAuthenticated: (user: AuthUser) => void;
@@ -127,37 +129,53 @@ export function AuthPage({ onAuthenticated }: Props) {
 	};
 
 	return (
-		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-10">
-			<div className="relative grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_400px] lg:items-center lg:gap-14">
-				<div className="hidden space-y-6 lg:block">
-					<div className="flex items-center gap-3">
-						<BrandMark className="size-10" />
-						<p className="text-[15px]/5 font-semibold">{t('auth.brand')}</p>
-					</div>
-					<div className="space-y-2">
-						<h1 className="max-w-xl text-[30px]/[38px] font-semibold tracking-tight">
-							{t('auth.heroTitle')}
-						</h1>
-						<p className="max-w-lg text-[15px]/[22px] text-muted-foreground">
-							{t('auth.heroDescription')}
-						</p>
-					</div>
+		<div className="vg-auth relative flex min-h-screen flex-col overflow-hidden bg-background">
+			{/* Warm studio light behind the page, as on the landing hero. */}
+			<div aria-hidden className="vg-auth-glow pointer-events-none absolute inset-0" />
+
+			<header className="relative mx-auto flex w-full max-w-6xl items-center px-5 py-5 sm:px-8">
+				<div className="flex items-center gap-2.5">
+					<BrandMark className="size-9" />
+					<span className="text-xl font-semibold tracking-tight">{BRAND_NAME}</span>
+				</div>
+			</header>
+
+			<main className="relative mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-5 pb-12 sm:px-8 lg:grid-cols-[1fr_420px] lg:gap-16">
+				<section className="hidden lg:block">
+					<span className="vg-auth-chip inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium">
+						<span className="size-1.5 rounded-full bg-[var(--vg-accent)]" />
+						{t('auth.brand')}
+					</span>
+					<h1 className="mt-5 max-w-xl text-[44px]/[1.1] font-black tracking-[-0.045em]">
+						{t('auth.heroTitle')}
+					</h1>
+					<span aria-hidden className="mt-5 block h-1 w-16 rounded-full bg-[linear-gradient(90deg,var(--vg-accent),var(--vg-accent-bright))]" />
+					<p className="mt-5 max-w-lg text-base/7 text-muted-foreground">
+						{t('auth.heroDescription')}
+					</p>
 					{/* What the platform does, played out by its own agents. */}
-					<AuthShowcase />
-					<div className="flex items-center gap-2 text-sm text-muted-foreground">
+					<div className="mt-7">
+						<AuthShowcase />
+					</div>
+					<div className="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
 						<ShieldCheck className="size-4 text-[var(--cue-success,currentColor)]" />
 						{t('auth.securityHint')}
 					</div>
-				</div>
+				</section>
 
-				<Card className="rounded-3xl border border-[var(--cue-border,var(--border))] bg-background p-2 shadow-[var(--cue-shadow-float,none)] ring-0">
-					<CardHeader className="space-y-4">
-						<div className="flex items-center gap-3 lg:hidden">
-							<BrandMark className="size-9" />
-							<span className="font-semibold">{BRAND_NAME}</span>
-						</div>
+				<Card className="vg-auth-card gap-0 overflow-hidden rounded-[28px] bg-background p-2 pt-0 ring-0">
+					<div className="-mx-2 flex justify-center bg-[linear-gradient(180deg,var(--vg-accent-soft),transparent)] px-6 pt-4">
+						<img
+							src={heroSquad}
+							alt=""
+							width={768}
+							height={768}
+							className="vg-auth-squad h-40 w-auto object-contain object-bottom"
+						/>
+					</div>
+					<CardHeader className="space-y-4 pt-2">
 						<div>
-							<CardTitle className="text-[17px]/6 font-semibold">
+							<CardTitle className="text-[22px]/7 font-bold tracking-[-0.02em]">
 								{mode === 'login' ? t('auth.loginTitle') : t('auth.registerTitle')}
 							</CardTitle>
 							<CardDescription className="mt-1.5">
@@ -169,18 +187,20 @@ export function AuthPage({ onAuthenticated }: Props) {
 						<div className="grid grid-cols-2 rounded-full bg-[var(--cue-bg-subtle,var(--muted))] p-1">
 							<Button
 								type="button"
-								variant={mode === 'login' ? 'outline' : 'ghost'}
+								variant="ghost"
 								size="sm"
-								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
+								data-active={mode === 'login'}
+								className="vg-auth-tab rounded-full font-semibold hover:bg-transparent"
 								onClick={() => switchMode('login')}
 							>
 								{t('auth.login')}
 							</Button>
 							<Button
 								type="button"
-								variant={mode === 'register' ? 'outline' : 'ghost'}
+								variant="ghost"
 								size="sm"
-								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
+								data-active={mode === 'register'}
+								className="vg-auth-tab rounded-full font-semibold hover:bg-transparent"
 								onClick={() => switchMode('register')}
 							>
 								{t('auth.register')}
@@ -188,7 +208,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 						</div>
 					</CardHeader>
 
-					<CardContent>
+					<CardContent className="pt-5 pb-4">
 						<form onSubmit={handleSubmit}>
 							<FieldGroup>
 								{mode === 'login' ? (
@@ -318,7 +338,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 								<Button
 									type="submit"
 									size="lg"
-									className="w-full"
+									className="vg-auth-cta h-11 w-full rounded-full text-[15px] font-semibold"
 									disabled={
 										submitting ||
 										(mode === 'register' && (!domainId || !areaId))
@@ -334,7 +354,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 						</p>
 					</CardContent>
 				</Card>
-			</div>
+			</main>
 		</div>
 	);
 }
