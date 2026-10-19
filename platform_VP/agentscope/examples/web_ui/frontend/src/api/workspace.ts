@@ -1,4 +1,4 @@
-import { ApiError, client, getAccessToken, getBaseUrl } from './client';
+import { ApiError, apiUrl, client, getAccessToken } from './client';
 import type { UploadProgress } from './knowledgeBase';
 import type {
 	AddFromLibraryResponse,
@@ -51,7 +51,7 @@ function uploadSkillXhr(
 		}
 
 		const xhr = new XMLHttpRequest();
-		const url = new URL('/workspace/skill/upload', getBaseUrl());
+		const url = apiUrl('/workspace/skill/upload');
 		url.searchParams.set('agent_id', agentId);
 		url.searchParams.set('session_id', sessionId);
 		xhr.open('POST', url.toString(), true);

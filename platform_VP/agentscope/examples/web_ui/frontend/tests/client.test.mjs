@@ -122,3 +122,30 @@ test('other errors keep their original detail and notification', async () => {
     assert.deepEqual(api.notifications, [detail]);
   }
 });
+
+test('apiUrl keeps the base path for relative and absolute API bases', () => {
+  const { apiUrl } = clientWith(async () => ok({}));
+  assert.equal(apiUrl('/auth/login', '/api').pathname, '/api/auth/login');
+  assert.equal(apiUrl('/auth/login', 'https://example.test/api/').toString(), 'https://example.test/api/auth/login');
+  assert.equal(apiUrl('/sessions/', 'http://localhost:8000').toString(), 'http://localhost:8000/sessions/');
+});
+
+test('requests go under a relative /api base instead of throwing', async () => {
+  const seen = [];
+  const source = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+    .replace('import.meta.env.VITE_API_BASE_URL', "'/api'");
+  const context = {
+    exports: {}, require: () => ({ toast: { error() {} } }),
+    URL, AbortSignal, DOMException, Event,
+    fetch: async (url) => { seen.push(String(url)); return ok({ ready: true }); },
+    localStorage: { getItem: () => null },
+    location: { origin: 'https://app.example.test' },
+    window: { dispatchEvent() {} },
+  };
+  vm.runInNewContext(ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, context);
+  context.globalThis = context;
+  await context.exports.client.get('/auth/me', undefined, { silent: true });
+  assert.deepEqual(seen, ['https://app.example.test/api/auth/me']);
+});
