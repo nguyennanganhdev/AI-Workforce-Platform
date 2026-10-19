@@ -43,13 +43,14 @@ async def shared(real_authority):
         return {mcp.id: mcp, skill.id: skill}.get(ident)
 
     async def get_skill(owner, ident):
-        assert owner == "admin", "Resolver must retain the service owner"
+        if owner != "admin":
+            return None
         return {skill.id: skill}.get(ident)
 
     storage.get_mcp = AsyncMock(side_effect=get_record)
     storage.get_skill = AsyncMock(side_effect=get_skill)
     storage.list_mcps = AsyncMock(side_effect=lambda owner: [r for (o, _), r in storage.own_mcps.items() if o == owner])
-    storage.list_skills = AsyncMock(side_effect=AssertionError("owned-only skill fallback"))
+    storage.list_skills = AsyncMock(return_value=[])
     storage.list_knowledge_bases = AsyncMock(return_value=[])
     grants = []
     for kind, record in [("mcp", mcp), ("skill", skill)]:
@@ -58,7 +59,7 @@ async def shared(real_authority):
         grants.append(await authority.grant(admin, ResourceGrant(catalog_id=ident,
             subject_kind="user", subject_id="alice", permissions=["view", "bind", "execute"])))
     yield storage, authority, admin, grants, mcp, skill
-    storage.list_skills.assert_not_awaited()
+    assert all(call.args[0] in {"alice", "bob"} for call in storage.list_skills.await_args_list)
 
 
 @pytest.mark.asyncio
@@ -122,11 +123,10 @@ async def test_workspace_projection_does_not_serialize_mcp_credentials(shared):
 
 
 @pytest.mark.asyncio
-async def test_customer_cannot_bypass_readonly_catalog_by_importing_workspace_config(shared):
+async def test_customer_cannot_import_a_server_local_skill_path(shared):
     storage, _, _, _, mcp, _ = shared
     service = SimpleNamespace(resolve=AsyncMock())
     for action in [
-        routes.add_mcp(mcp.client, "a", "s", "alice", storage, service),
         routes.add_skill(AddSkillRequest(skill_path="/offline"), "a", "s", "alice", service, storage),
     ]:
         with pytest.raises(HTTPException) as denied:

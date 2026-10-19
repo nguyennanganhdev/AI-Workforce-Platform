@@ -130,7 +130,7 @@ async def add_mcp(
     that MCP is defined, and adding it to a second workspace must not
     silently redefine it.
     """
-    await require_catalog_management(storage, user_id)
+    await require_catalog_management(storage, user_id, private_kind="mcp")
     workspace = await workspace_service.resolve(
         user_id,
         agent_id,
@@ -309,7 +309,7 @@ async def upload_skill(
     claims; every limit in it is re-checked here, and the byte counts
     are verified as the tar is built.
     """
-    await require_catalog_management(storage, user_id)
+    await require_catalog_management(storage, user_id, private_kind="skill")
     try:
         parsed = UploadManifest.model_validate_json(manifest)
         workspace_service.validate_manifest(parsed, len(files))

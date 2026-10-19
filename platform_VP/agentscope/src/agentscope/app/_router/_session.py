@@ -244,6 +244,10 @@ async def list_sessions(
     sessions = await storage.list_sessions(user_id, agent_id)
     views: list[SessionView] = []
     for session in sessions:
+        if session.config.chat_model_config is not None:
+            from ..vin_platform._resources import customer_model_config
+            config = await customer_model_config(storage, user_id, session.config.chat_model_config)
+            session = session.model_copy(update={"config": session.config.model_copy(update={"chat_model_config": config})})
         if session.state.middle_context.get("management_case_session_id"):
             continue
         if scope in {"leader", "leader_tests"}:

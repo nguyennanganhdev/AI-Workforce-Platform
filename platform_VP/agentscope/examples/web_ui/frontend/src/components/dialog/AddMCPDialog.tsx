@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/item.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
-import { useCatalogManagement } from '@/hooks/useCatalogManagement';
+import { usePrivateMCPManagement as useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useMCPs } from '@/hooks/useMCPs.ts';
 import { useTranslation } from '@/i18n/useI18n';
 

@@ -36,6 +36,7 @@ def browser_app():
                 capabilities={"personal.read": True, "personal.create": True,
                     "knowledge.private.manage": True, **(capabilities or {})})
             state = {"links": [], "view": view, "anonymous": anonymous}
+            private_skills = []
 
             def respond(route):
                 parsed, base = urlsplit(route.request.url), urlsplit(URL)
@@ -95,6 +96,16 @@ def browser_app():
                     result = [dict(id="shared-skill", name="vin-fixture-skill", display_name="Vin fixture Skill",
                         description="Safe skill", enabled=True, tags=[], hub_id=None, card_id=None,
                         version="1", url=None, editable=False, review_status="approved")]
+                    if route.request.method == "POST":
+                        skill = dict(id="private-skill", tags=[], **body, enabled=False, review_status="candidate", editable=True,
+                            display_name=None, hub_id=None, card_id=None, version="1", url=None, icon_url=None)
+                        private_skills.append(skill)
+                        status, result = 201, skill
+                    else:
+                        result += private_skills
+                elif path == "/skill/private-skill/review":
+                    private_skills[0].update(review_status=body["status"], enabled=body["status"] == "approved")
+                    result = private_skills[0]
                 elif path in ("/hub/mcp", "/hub/skill"):
                     result = []
                 elif path == "/workforce/console/leader/bootstrap":
@@ -259,4 +270,23 @@ def test_customer_discord_form_shows_owner_verification_and_allowlist_policy(bro
     page.locator("#channel-config-allowed_user_ids").fill("")
     expect(page.locator("#channel-config-allowed_user_ids")).to_have_value("")
     assert not [call for call in calls if call[0] == "POST" and call[1] == "/channels/"]
+    assert not external
+
+
+def test_customer_can_create_and_enable_private_skill_while_shared_skill_stays_readonly(browser_app):
+    from playwright.sync_api import expect
+
+    page, calls, external, _ = browser_app(capabilities={"skills.private.manage": True})
+    page.goto(URL + "/skill")
+    expect(page.get_by_text("Vin fixture Skill", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Thu hồi", exact=True)).to_be_disabled()
+    page.get_by_text("Tạo skill nội bộ để dùng lại", exact=True).click()
+    page.get_by_label("Tên phiên bản", exact=True).fill("private-procedure")
+    page.get_by_label("Mô tả", exact=True).fill("Personal procedure")
+    page.get_by_label("Hướng dẫn SKILL.md", exact=True).fill("# Procedure\nRead and verify the supplied information before answering.")
+    page.get_by_role("button", name="Lưu bản chờ duyệt", exact=True).click()
+    expect(page.get_by_text("private-procedure", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Duyệt", exact=True).click()
+    expect(page.get_by_role("button", name="Thu hồi", exact=True)).to_have_count(2)
+    assert any(method == "POST" and path == "/skill/private-skill/review" for method, path, _ in calls)
     assert not external

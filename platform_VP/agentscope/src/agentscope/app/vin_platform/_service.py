@@ -154,6 +154,7 @@ class VinPlatformService:
                     "personal.execute": eligible, "agents.author": eligible,
                     "schedules.manage": eligible, "channels.manage": eligible,
                     "providers.read": True, "providers.private.manage": eligible, "mcps.read": True, "skills.read": True,
+                    "skills.private.manage": eligible, "mcps.private.manage": eligible, "hubs.private.manage": eligible,
                     "domain-links.manage": True, "usage.read": True,
                     "accounts.manage": context.role in {"PLATFORM_ADMIN", "DOMAIN_ADMIN"} and context.workspace_id.startswith("administration:"),
                     "providers.manage": context.role == "PLATFORM_ADMIN" and context.workspace_id.startswith("administration:"),

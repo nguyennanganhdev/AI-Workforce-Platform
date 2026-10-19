@@ -1682,7 +1682,9 @@ class ChatService:
                 from ..vin_platform._resources import prefer_personal_model
                 model_cfg = await prefer_personal_model(self._storage, user_id, model_cfg)
                 base_model_cfg = model_cfg
-                model_cfg = _role_model_config(
+                authority = getattr(self._storage, "vin_platform_service", None)
+                private_model = authority is not None and await is_private_credential(authority, user_id, model_cfg.credential_id)
+                model_cfg = model_cfg if private_model else _role_model_config(
                     model_cfg,
                     agent_record.data.system_role,
                     str((agent_record.data.spec or {}).get("model_tier", "standard")),
@@ -1703,7 +1705,8 @@ class ChatService:
                 if summary_model is not None:
                     summary_model._usage_attributes = {**attribution, "purpose": "private_summary"}
                 _apply_prompt_cache_key(model, agent_id)
-                _apply_reasoning_effort(model, agent_record.data.system_role)
+                if not private_model:
+                    _apply_reasoning_effort(model, agent_record.data.system_role)
 
                 # Persist customer-visible input before any agent reasons.
                 # Message ids make retries idempotent. Team handoff wakeups
@@ -1897,7 +1900,7 @@ class ChatService:
                     )
                     middlewares.append(isolation)
 
-                fallback_cfg = (None if os.getenv("WORKFORCE_MODEL_NAME", "").strip()
+                fallback_cfg = (None if not private_model and os.getenv("WORKFORCE_MODEL_NAME", "").strip()
                                 else session_record.config.fallback_chat_model_config)
                 fallback_model = (
                     await get_model(user_id, fallback_cfg, self._access)

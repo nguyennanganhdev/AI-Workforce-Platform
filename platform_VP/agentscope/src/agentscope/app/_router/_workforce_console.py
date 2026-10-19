@@ -540,6 +540,11 @@ async def _model_config(storage: StorageBase, user_id: str, *, authority=None) -
         if personal is not None:
             return personal
         try:
+            context = await resource_context(authority, user_id)
+            if context.role == "VIN_USER" and context.workspace_id.startswith("personal:"):
+                private = await private_model_config(storage, user_id)
+                if private is not None:
+                    return private
             return await platform_model_config(authority, user_id)
         except PlatformError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.code) from exc

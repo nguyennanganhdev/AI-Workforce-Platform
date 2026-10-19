@@ -28,10 +28,12 @@ async def list_catalog_resources(storage, user_id: str, kind: Kind, *, permissio
         records = [record for _, record in await catalog_records(authority, user_id, kind, permission)]
     except PlatformError as exc:
         raise HTTPException(exc.status, exc.code) from exc
-    if kind == "mcp":
-        # A user's own MCPs (PM 19/10) sit next to the granted catalog; only the owner sees them.
+    if kind in {"mcp", "skill"}:
+        # Personal resources sit beside granted catalog records, scoped to their owner.
         granted = {record.id for record in records}
-        records += [record for record in await storage.list_mcps(user_id) if record.id not in granted]
+        records += [record for record in await getattr(storage, f"list_{kind}s")(user_id)
+                    if record.id not in granted and record.user_id == user_id
+                    and (kind != "skill" or (record.enabled and record.review_status == "approved"))]
     return records
 
 
@@ -41,9 +43,11 @@ async def resolve_catalog_resource(storage, user_id: str, kind: Kind, ident: str
         return await getattr(storage, f"get_{kind}")(user_id, ident)
     from ..vin_platform._contracts import PlatformError
 
-    if kind == "mcp" and environment == "production":
-        own = await storage.get_mcp(user_id, ident)
+    if kind in {"mcp", "skill"} and environment == "production":
+        own = await getattr(storage, f"get_{kind}")(user_id, ident)
         if own is not None and own.user_id == user_id:
+            if kind == "skill" and permission != "view" and (not own.enabled or own.review_status != "approved"):
+                raise HTTPException(409, "RESOURCE_REVOKED")
             return own
     try:
         context = await authority.context(user_id, environment=environment)
@@ -53,7 +57,7 @@ async def resolve_catalog_resource(storage, user_id: str, kind: Kind, ident: str
         raise HTTPException(exc.status, exc.code) from exc
 
 
-async def require_catalog_management(storage, user_id: str):
+async def require_catalog_management(storage, user_id: str, *, private_kind: Kind | None = None):
     authority = catalog_authority(storage)
     if authority is None:
         return
@@ -63,5 +67,8 @@ async def require_catalog_management(storage, user_id: str):
         view = await authority.capabilities(await authority.context(user_id))
     except PlatformError as exc:
         raise HTTPException(exc.status, exc.code) from exc
-    if view["capabilities"].get("catalog.manage") is not True:
+    capabilities = view["capabilities"]
+    if capabilities.get("catalog.manage") is not True and not (
+        private_kind and capabilities.get(f"{private_kind}s.private.manage") is True
+    ):
         raise HTTPException(403, "CATALOG_READ_ONLY")

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { useCatalogManagement } from './useCatalogManagement';
+import { usePrivateMCPManagement as useCatalogManagement } from './useCatalogManagement';
 import { mcpApi } from '@/api';
 import type { MCPView, UpdateMCPRequest } from '@/api';
 

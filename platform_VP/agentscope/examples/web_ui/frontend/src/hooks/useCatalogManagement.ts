@@ -11,3 +11,13 @@ export function usePrivateProviderManagement() {
 	const access = usePlatformAccess();
 	return access === null || access.view?.capabilities['providers.private.manage'] === true;
 }
+
+export function usePrivateSkillManagement() {
+	const access = usePlatformAccess();
+	return access === null || access.view?.capabilities['skills.private.manage'] === true;
+}
+
+export function usePrivateMCPManagement() {
+	const access = usePlatformAccess();
+	return access === null || access.view?.capabilities['mcps.private.manage'] === true;
+}

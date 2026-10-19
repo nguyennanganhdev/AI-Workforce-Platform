@@ -35,7 +35,7 @@ import {
 import { Progress } from '@/components/ui/progress.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
-import { useCatalogManagement } from '@/hooks/useCatalogManagement';
+import { usePrivateSkillManagement as useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useSkills } from '@/hooks/useSkills.ts';
 import { useTranslation } from '@/i18n/useI18n';
 

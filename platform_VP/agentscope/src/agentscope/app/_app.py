@@ -392,8 +392,10 @@ def create_app(
                 try:
                     principal = await get_current_principal(request, authorization=request.headers.get("authorization"))
                     context = await authority.context(principal.user_id, session_id=principal.session_id)
-                    if catalog_mutation and context.role == "VIN_USER":
-                        raise PlatformError("CAPABILITY_DENIED", 403)
+                    if catalog_mutation:
+                        capability = "skills.private.manage" if path == "/skill" or path.startswith("/skill/") else "hubs.private.manage"
+                        if not (await authority.capabilities(context))["capabilities"].get(capability):
+                            raise PlatformError("CAPABILITY_DENIED", 403)
                     if provider_mutation and not (await authority.capabilities(context))["capabilities"]["providers.private.manage"]:
                         raise PlatformError("CAPABILITY_DENIED", 403)
                 except PlatformError as exc:
