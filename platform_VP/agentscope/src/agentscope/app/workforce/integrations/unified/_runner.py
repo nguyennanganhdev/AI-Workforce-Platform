@@ -556,6 +556,7 @@ class ChatLeaderTurnRunner:
 
         from ...._router._workforce_console import _leader
         from ....storage import SessionConfig, SessionNaming, TeamData, TeamRecord
+        from ....storage._model._team import direct_routing_default
         from ._case import _members
 
         state = self._state()
@@ -601,7 +602,8 @@ class ChatLeaderTurnRunner:
             # with the session (a model call less) and carries the ticket's name.
             team = TeamRecord(
                 user_id=user_id, session_id=session.id, leader_agent_id=leader.id,
-                data=TeamData(name=session.config.name, description="Phòng xử lý phiếu", member_ids=[]),
+                data=TeamData(name=session.config.name, description="Phòng xử lý phiếu",
+                              direct_member_routing=direct_routing_default(), member_ids=[]),
             )
             await storage.upsert_team(user_id, team)
             await storage.set_session_team_id(user_id, session.id, team.id)

@@ -62,6 +62,15 @@ class TeamData(BaseModel):
     collaboration_mode: Literal["reviewed", "peer"] = "reviewed"
     """Server-owned personal chat routing; external cases retain their review path."""
 
+    direct_member_routing: bool = False
+    """Collaborative routing for a ``reviewed`` team.
+
+    Members also hand work to each other and pass results straight to the
+    teammate that continues the work; the Leader still owns the customer
+    reply. A separate flag, not a third ``collaboration_mode`` value, so an
+    older release reading the record ignores it instead of failing.
+    """
+
     name: str = Field(
         description="Display name of the team.",
         title="Name",
@@ -128,3 +137,28 @@ class TeamRecord(_RecordBase):
 
     data: TeamData
     """The team data."""
+
+
+def _reviewed_forced() -> bool:
+    import os
+
+    return os.getenv("WORKFORCE_TEAM_COLLABORATION", "").strip().lower() == "reviewed"
+
+
+def direct_collaboration_enabled(data: "TeamData") -> bool:
+    """Whether the team's members work with each other directly.
+
+    ``WORKFORCE_TEAM_COLLABORATION=reviewed`` turns it off for every
+    collaborative team at once, including teams created before the switch.
+    Personal chat (``peer``) teams are not affected.
+    """
+
+    if data.collaboration_mode == "peer":
+        return True
+    return data.direct_member_routing and not _reviewed_forced()
+
+
+def direct_routing_default() -> bool:
+    """``direct_member_routing`` for a new ticket or channel team."""
+
+    return not _reviewed_forced()

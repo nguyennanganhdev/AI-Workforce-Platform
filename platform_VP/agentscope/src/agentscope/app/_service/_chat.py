@@ -106,6 +106,7 @@ from ..storage import (
     StorageBase,
 )
 from ..storage._model._session import SessionKnowledgeConfig
+from ..storage._model._team import direct_collaboration_enabled
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
@@ -1512,6 +1513,13 @@ class ChatService:
                     and not partner_room and not partner_case and not management_output
                     and (team is None or isinstance(team_ctx, _LeaderContext) or team.data.collaboration_mode == "peer")
                 )
+                # Members of this team hand work and results to each other
+                # without a Leader relay (the Leader may still own the reply).
+                direct_collaboration = bool(
+                    isinstance(team_ctx, _WorkerContext)
+                    and team is not None
+                    and direct_collaboration_enabled(team.data)
+                )
                 if peer_collaboration:
                     # The server-owned customer policy survives the peer prompt.
                     runtime_system_prompt = peer_system_prompt(
@@ -1664,6 +1672,7 @@ class ChatService:
                     shared_context_service=self._shared_context,
                     management_auth_service=self._management_auth_service,
                     peer_collaboration=peer_collaboration,
+                    direct_collaboration=direct_collaboration,
                 )
 
                 # -------------------------------------------------------------
@@ -1968,6 +1977,16 @@ class ChatService:
                             "content=<question>) once."
                         )
                     else:
+                        if direct_collaboration:
+                            attachment += (
+                                " Teammates work directly with each other: "
+                                "hand a part another member's tools own to "
+                                "that member with TeamSay(kind='handoff', "
+                                "to=<handle>), and pass finished output a "
+                                "teammate continues with TeamSay(kind='result', "
+                                "to=<handle>). The Leader does not relay "
+                                "messages between members."
+                            )
                         attachment += (
                             " You are an internal collaborator. Never address "
                             "the customer unless you first call "

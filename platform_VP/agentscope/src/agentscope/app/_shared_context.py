@@ -1232,7 +1232,14 @@ class SharedContextService:
                 "conflict",
             }
             and event.source_session_id
-            and event.id in delivered_handoff_ids
+            and (
+                event.id in delivered_handoff_ids
+                or (
+                    event.kind == "result"
+                    and event.recipient_session_ids
+                    and leader_session_id not in event.recipient_session_ids
+                )
+            )
         }
         error_sessions = {
             event.source_session_id
@@ -1571,6 +1578,7 @@ class SharedContextService:
         share_report: bool = True,
         notify_owner: bool = True,
         analysis_report: bool = False,
+        recipient_labels: dict[str, tuple[str, str]] | None = None,
     ) -> dict:
         """Reserve a bounded exchange and its durable delivery routing atomically.
 
@@ -1710,7 +1718,7 @@ class SharedContextService:
                 reason = "exchange limit exceeded"
             elif branch.signatures[signature] > 2:
                 reason = "repeated exchange without new evidence"
-            if kind == "question" and sender != owner:
+            if kind in {"question", "handoff"} and sender != owner:
                 if len(recipients) != 1 or recipients[0] == owner:
                     raise ValueError(
                         "Peer dependency requires one concrete non-owner collaborator"
@@ -1815,6 +1823,7 @@ class SharedContextService:
                 handoff_id=handoff_id,
                 resolution=resolution,
                 stopped=bool(reason),
+                labels=recipient_labels or {},
             )
             receipt = {
                 "kind": kind,
@@ -1840,6 +1849,7 @@ class SharedContextService:
         handoff_id: str,
         resolution: str | None,
         stopped: bool,
+        labels: dict[str, tuple[str, str]] | None = None,
     ) -> None:
         """Keep the task ledger in step with one coordinated exchange."""
 
@@ -1866,6 +1876,17 @@ class SharedContextService:
                 else:
                     continue
                 assignment.updated_at = now
+            return
+        if kind == "handoff" and not stopped:
+            for sid in recipients:
+                if sid not in task.assignments:
+                    agent_id, agent_name = (labels or {}).get(sid, ("", ""))
+                    task.assignments[sid] = TaskAssignment(
+                        agent_id=agent_id,
+                        agent_name=agent_name,
+                        goal=content[:20000],
+                        assigned_by=sender,
+                    )
             return
         assignment = task.assignments.get(sender)
         if assignment is None:
@@ -2011,9 +2032,15 @@ class SharedContextService:
         user_id: str,
         team_id: str,
         provider_session_id: str,
+        *,
+        kinds: frozenset[str] | None = None,
     ) -> tuple[str, str] | None:
         """Return ``(asker_session_id, question_id)`` of the newest open peer
-        question addressed to ``provider_session_id``."""
+        question addressed to ``provider_session_id``.
+
+        ``kinds`` keeps only dependencies opened by those message kinds, for
+        example ``{"handoff"}`` for work a teammate handed over.
+        """
 
         record = await self._storage.get_team_shared_context(user_id, team_id)
         task = (
@@ -2024,12 +2051,14 @@ class SharedContextService:
         if task is None:
             return None
         revisions = {event.id: event.revision for event in record.state.events}
+        event_kinds = {event.id: event.kind for event in record.state.events}
         candidates = [
             (revisions.get(question_id, 0), asker, question_id)
             for asker, branch in task.collaboration.items()
             if branch.customer_revision == task.latest_customer_revision
             for question_id, provider in branch.waiting_for.items()
             if provider == provider_session_id
+            and (kinds is None or event_kinds.get(question_id) in kinds)
         ]
         if not candidates:
             return None

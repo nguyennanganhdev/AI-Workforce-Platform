@@ -4,6 +4,7 @@ from pydantic import Field
 
 from ._team_tool_base import _TeamToolBase
 from ..storage import TeamData, TeamRecord
+from ..storage._model._team import direct_routing_default
 from ...message import TextBlock, ToolResultState
 from ...tool import ToolChunk, ParamsBase
 
@@ -124,6 +125,9 @@ one team at a time.
                     name=name,
                     description=description,
                     collaboration_mode="peer" if self._peer_collaboration else "reviewed",
+                    direct_member_routing=(
+                        not self._peer_collaboration and direct_routing_default()
+                    ),
                     member_ids=[],
                 ),
             )
