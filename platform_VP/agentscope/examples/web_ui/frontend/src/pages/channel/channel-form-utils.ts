@@ -96,9 +96,10 @@ export function isChannelFormValid(v: ChannelFormValue, mode: 'create' | 'edit',
 	if (v.channelType === 'discord' && mode === 'create' && customer) {
 		const owner = v.platformConfig.owner_user_id;
 		const allowed = v.platformConfig.allowed_user_ids;
-		// With no OAuth link the server verifies the bot application owner.
+		// The customer's own Discord ID (filled in when the account is linked);
+		// the server only accepts it when it owns the bot application.
 		// Omitted access lists default to that owner; an explicit empty list blocks everyone.
-		if (owner !== undefined && owner !== '' && !isDiscordUserId(owner)) return false;
+		if (!isDiscordUserId(owner)) return false;
 		if (allowed !== undefined && (!Array.isArray(allowed) || allowed.length === 0
 			|| allowed.length > 100 || !allowed.every(isDiscordUserId)
 			|| (isDiscordUserId(owner) && !allowed.includes(owner)))) return false;

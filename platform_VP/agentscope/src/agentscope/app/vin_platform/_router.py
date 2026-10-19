@@ -368,7 +368,7 @@ async def my_packs(who=Depends(caller)):
 async def _pack_change(request: Request, pack_id: str, installed: bool, who):
     from .._service._pack_agents import install_templates, withdraw_templates
     from ._packs import get_pack, set_installed
-    from ._resources import platform_model_config
+    from ._resources import platform_model_config, private_model_config
     authority, context = who
     pack, owner_id = await get_pack(authority, context, pack_id)
     await set_installed(authority, context, pack_id, installed)
@@ -378,7 +378,7 @@ async def _pack_change(request: Request, pack_id: str, installed: bool, who):
         return {"installed": False, "agents": []}
     agents = await install_templates(storage, request.app.state.workspace_manager,
         request.app.state.resource_access_service, user_id, pack_id, owner_id, pack.template_agent_ids,
-        await platform_model_config(authority, user_id))
+        await private_model_config(storage, user_id) or await platform_model_config(authority, user_id))
     return {"installed": True, "agents": agents, "link_provider_id": pack.link_provider_id}
 
 

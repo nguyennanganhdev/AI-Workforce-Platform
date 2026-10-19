@@ -173,6 +173,8 @@ async def install_mcp(
             detail=str(e),
         ) from e
 
+    from .._service._catalog_resources import assert_customer_mcp
+    await assert_customer_mcp(storage, user_id, client)
     record = MCPRecord(
         user_id=user_id,
         client=client,

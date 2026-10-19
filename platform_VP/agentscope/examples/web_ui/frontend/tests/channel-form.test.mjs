@@ -16,9 +16,10 @@ test('a customer Discord create requires the owner ID in the allowlist', () => {
   assert.deepEqual(toCreateRequest(value).platform_config.allowed_user_ids, ['100']);
 });
 
-test('a personal bot can be created with server-verified ownership and default private access', () => {
-  assert.equal(isChannelFormValid(form(), 'create', true), true);
-  assert.equal(isChannelFormValid({ ...form(), platformConfig: { allowed_user_ids: [] } }, 'create', true), false);
+test('a personal bot names its owner; access defaults to that owner', () => {
+  assert.equal(isChannelFormValid(form(), 'create', true), false);
+  assert.equal(isChannelFormValid({ ...form(), platformConfig: { owner_user_id: '100' } }, 'create', true), true);
+  assert.equal(isChannelFormValid({ ...form(), platformConfig: { owner_user_id: '100', allowed_user_ids: [] } }, 'create', true), false);
 });
 
 test('BQL without a list remains compatible and an edited bot can explicitly block everyone', () => {

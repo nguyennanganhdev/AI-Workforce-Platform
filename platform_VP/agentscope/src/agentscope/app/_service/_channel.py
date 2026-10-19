@@ -267,6 +267,12 @@ class ChannelService:
                     if exc.code != "DISCORD_IDENTITY_REQUIRED":
                         raise
                     if creating and credentials:
+                        # Without a linked Discord account the customer names
+                        # themselves; it must be the bot application's owner.
+                        # Never adopt the bot owner silently: an agency or team
+                        # owner would otherwise control this customer's Leader.
+                        if not options.owner_user_id:
+                            raise PlatformError("DISCORD_OWNER_REQUIRED", 400)
                         owner = await bot_owner(authority, credentials)
                     elif trusted_owner:
                         owner = trusted_owner

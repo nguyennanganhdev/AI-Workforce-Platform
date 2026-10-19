@@ -68,6 +68,8 @@ async def install_direct_mcp(
             timeout=body.timeout,
         ),
     )
+    from .._service._catalog_resources import assert_customer_mcp
+    await assert_customer_mcp(storage, user_id, client)
     try:
         tools = await _discover_tools(client, body.timeout)
     except Exception as exc:
@@ -221,6 +223,8 @@ async def update_mcp(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e),
             ) from e
+        from .._service._catalog_resources import assert_customer_mcp
+        await assert_customer_mcp(storage, user_id, record.client)
         record.values = merged
         record.version = card.version
     elif body.name is not None:

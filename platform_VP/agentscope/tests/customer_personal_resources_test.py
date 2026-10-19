@@ -89,7 +89,7 @@ async def test_editing_provider_name_preserves_the_write_only_key():
 
 
 @pytest.mark.asyncio
-async def test_private_model_runs_with_its_owner_key_and_keeps_quota_and_revocation(authority):
+async def test_private_model_runs_with_its_owner_key_outside_token_quota_and_keeps_revocation(authority):
     from vin_provider_boundary_test import model_for
     from agentscope.app.vin_platform import PlatformError
     from agentscope.app.vin_platform._model_guard import ModelQuotaGuard
@@ -107,7 +107,10 @@ async def test_private_model_runs_with_its_owner_key_and_keeps_quota_and_revocat
         assert endpoint.call_args.kwargs["model"] == "private-model"
         assert endpoint.call_args.kwargs["max_completion_tokens"] == 100
         usage = await authority.quota.usage(await authority.context("alice"))
-        assert all(bucket["used"] == 15 and bucket["reserved"] == 0 for bucket in usage["buckets"])
+        # The customer's provider account pays: platform token windows stay untouched.
+        assert all(bucket["used"] == 0 and bucket["reserved"] == 0 for bucket in usage["buckets"])
+        alice = await authority.context("alice")
+        await authority.quota.reserve(alice, budget=10**9, purpose="chat", model="private-model", private_credential_id="personal")
         with pytest.raises(PlatformError, match="MODEL_NOT_ENTITLED"):
             await authority.quota.reserve(await authority.context("bob"), budget=1, purpose="chat", model="private-model", private_credential_id="personal")
         storage.credentials.pop(("alice", "personal"))
@@ -124,3 +127,99 @@ def test_personal_credential_payload_cannot_replace_managed_provider(data):
     with pytest.raises(HTTPException) as denied:
         _private_payload(data)
     assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_legacy_copy_of_platform_key_keeps_the_platform_token_quota(authority, monkeypatch):
+    from vin_provider_boundary_test import model_for
+    from agentscope.app.vin_platform import PlatformError
+
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    model, _, _ = await model_for(authority)
+    await model.client.close()
+    storage = _FakeStorage()
+    for ident, data in (("copy", {"name": "Model của platform", "api_key": "rotated-old-key"}),
+                        ("same-key", {"name": "Renamed", "api_key": "platform-key"})):
+        storage.credentials[("alice", ident)] = CredentialRecord(
+            id=ident, user_id="alice", data={"type": "openai_credential", **data})
+    authority.storage = storage
+    alice = await authority.context("alice")
+    for ident in ("copy", "same-key"):
+        with pytest.raises(PlatformError, match="QUOTA_EXCEEDED"):
+            await authority.quota.reserve(alice, budget=10**9, purpose="chat", model="test-model", private_credential_id=ident)
+
+
+@pytest.mark.asyncio
+async def test_customer_key_is_chosen_but_never_a_legacy_copy_of_the_platform_key(monkeypatch):
+    from agentscope.app.vin_platform._resources import private_model_config
+
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    storage = _FakeStorage()
+    storage.credentials[("alice", "copy")] = CredentialRecord(
+        id="copy", user_id="alice", data={"type": "openai_credential", "name": "Model của platform", "api_key": "platform-key"})
+    storage.credentials[("alice", "renamed")] = CredentialRecord(
+        id="renamed", user_id="alice", data={"type": "openai_credential", "name": "Renamed", "api_key": "platform-key"})
+    assert await private_model_config(storage, "alice") is None
+    storage.credentials[("alice", "mine")] = CredentialRecord(
+        id="mine", user_id="alice", data={"type": "openai_credential", "name": "Open", "api_key": "customer-key"})
+    assert (await private_model_config(storage, "alice")).credential_id == "mine"
+    assert await private_model_config(storage, "bob") is None
+
+
+@pytest.mark.asyncio
+async def test_plaintext_legacy_copy_of_platform_key_is_listed_read_only(authority, monkeypatch):
+    # Production shape: the pre-Vin console wrote the platform key in plaintext.
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    storage = _FakeStorage()
+    storage.vin_platform_service = authority
+    authority.storage = storage
+    storage.credentials[("alice", "copy")] = CredentialRecord(
+        id="copy", user_id="alice",
+        data={"type": "openai_credential", "name": "Model của platform", "api_key": "platform-key"},
+    )
+    access = ResourceAccessService(storage, PersistedResourcePolicy(authority))
+    listed = await access.list_resource("alice", ResourceKind.CREDENTIAL)
+    assert [view.editable for view in listed] == [False]
+    with pytest.raises(HTTPException) as denied:
+        await access.resolve_for_edit("alice", ResourceKind.CREDENTIAL, "copy")
+    assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_clearing_an_optional_provider_field_removes_it_and_keeps_the_key():
+    from agentscope.app._router._credential import update_credential
+    from agentscope.app._router._schema._credential import UpdateCredentialRequest
+
+    original = CredentialRecord(id="personal", user_id="alice", data={
+        "type": "openai_credential", "name": "Mine", "api_key": "offline-private-key",
+        "base_url": "https://8.8.8.8/v1",
+    })
+    storage = SimpleNamespace(upsert_credential=AsyncMock(), get_credential=AsyncMock(return_value=original))
+    access = SimpleNamespace(resolve_for_edit=AsyncMock(return_value=("alice", original)))
+    await update_credential("personal", UpdateCredentialRequest(data={"type": "openai_credential", "base_url": None}),
+                            "alice", storage, access)
+    credential = storage.upsert_credential.call_args.args[1]
+    assert credential.base_url is None
+    assert credential.api_key.get_secret_value() == "offline-private-key"
+
+
+@pytest.mark.asyncio
+async def test_any_provider_works_on_a_customer_key_but_the_platform_key_stays_metered(authority, monkeypatch):
+    from agentscope.app._service._model import get_model
+    from agentscope.app.storage import ChatModelConfig
+
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    storage = _FakeStorage()
+    storage.vin_platform_service = authority
+    authority.storage = storage
+    storage.credentials[("alice", "claude")] = CredentialRecord(
+        id="claude", user_id="alice", data={"type": "anthropic_credential", "api_key": "customer-key"})
+    storage.credentials[("alice", "copy")] = CredentialRecord(
+        id="copy", user_id="alice", data={"type": "openai_credential", "name": "Model của platform", "api_key": "platform-key"})
+    access = ResourceAccessService(storage, PersistedResourcePolicy(authority))
+    own = await get_model("alice", ChatModelConfig(type="anthropic_credential", credential_id="claude",
+                                                   model="claude-opus-5-5", parameters={}), access)
+    assert getattr(own, "_quota_guard", None) is None
+    copy = await get_model("alice", ChatModelConfig(type="openai_credential", credential_id="copy",
+                                                    model="gpt-6-luna", parameters={}), access)
+    assert copy._quota_guard is not None

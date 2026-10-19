@@ -1,0 +1,6 @@
+# Backend-only follow-up commits on top of the uploaded 0321c727 image
+# (editable install: /app/src is the package source).
+FROM agentscope-platform:0321c727-leaderfix-20261019
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
+COPY src/ /app/src/

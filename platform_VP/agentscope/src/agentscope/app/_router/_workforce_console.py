@@ -2616,6 +2616,7 @@ class RoomView(BaseModel):
     packet_tokens: int = 0
     peak_packet_tokens: int = 0
     packet_budget: int = 0
+    context: dict[str, int | str] = Field(default_factory=dict)
 
 
 def _room_tool_line(content: str) -> str:
@@ -2749,6 +2750,7 @@ async def session_room(
         packet_tokens=state.metrics.last_packet_tokens,
         peak_packet_tokens=state.metrics.peak_packet_tokens,
         packet_budget=SharedContextConfig.from_env().packet_max_tokens,
+        context=state.metrics.summary(),
     )
 
 

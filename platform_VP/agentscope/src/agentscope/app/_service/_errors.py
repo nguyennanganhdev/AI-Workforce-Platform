@@ -125,7 +125,8 @@ def _is_network_error(e: BaseException) -> bool:
 def _is_out_of_quota(e: BaseException) -> bool:
     """OpenAI-style ``insufficient_quota``: a 429 that waiting never fixes."""
     return any(
-        getattr(exc, "code", None) == "insufficient_quota"
+        # The platform's own token quota (``vin_platform``) is spent too.
+        getattr(exc, "code", None) in {"insufficient_quota", "QUOTA_EXCEEDED"}
         or "insufficient_quota" in str(exc)
         for exc in _causes(e)
     )

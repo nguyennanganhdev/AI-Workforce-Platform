@@ -78,6 +78,9 @@ class PlatformCredentialTest(unittest.IsolatedAsyncioTestCase):
         resources = types.ModuleType("agentscope.app.vin_platform._resources")
         config = ChatModelConfig(type="openai_credential", credential_id="vin-platform-openai", model="entitled-alias", parameters={"max_tokens": 512})
         resources.platform_model_config = mock.AsyncMock(return_value=config)
+        resources.private_model_config = mock.AsyncMock(return_value=None)
+        resources.resource_context = mock.AsyncMock(return_value=types.SimpleNamespace(
+            role="VIN_USER", workspace_id="personal:resident-a"))
         modules = {parent.__name__: parent, contracts.__name__: contracts, resources.__name__: resources}
         storage, authority = _Storage(), object()
         with mock.patch.dict(sys.modules, modules), mock.patch.dict(os.environ, {"VIN_PLATFORM_ENABLED": "true"}):
@@ -88,6 +91,10 @@ class PlatformCredentialTest(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(HTTPException) as raised:
                     await _model_config(storage, "resident-a", authority=authority)
                 self.assertEqual((403, code), (raised.exception.status_code, raised.exception.detail))
+            # A key the customer added outranks the platform provider.
+            own = config.model_copy(update={"credential_id": "customer-key"})
+            resources.private_model_config.return_value = own
+            self.assertEqual(own, await _model_config(storage, "resident-a", authority=authority))
         self.assertEqual([], storage.credentials)
 
 

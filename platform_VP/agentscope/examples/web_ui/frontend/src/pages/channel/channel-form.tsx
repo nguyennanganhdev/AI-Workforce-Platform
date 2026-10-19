@@ -287,14 +287,14 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 				<Field key={field.key}>
 					<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
 						<div className="flex flex-col gap-y-0.5">
-							<FieldLabel htmlFor={`channel-config-${field.key}`}>{field.key === 'owner_user_id' && privateDiscord ? 'Discord ID của chủ bot (tự xác minh)' : field.title}</FieldLabel>
+							<FieldLabel htmlFor={`channel-config-${field.key}`}>{field.key === 'owner_user_id' && privateDiscord ? 'Discord ID của bạn (chủ bot)' : field.title}</FieldLabel>
 							{field.description && (
 								<span className="text-xs text-muted-foreground">
 									{field.description}
 								</span>
 							)}
 							{field.key === 'allowed_user_ids' && <span id="discord-allowlist-help" className="text-xs text-muted-foreground">Không nhập danh sách khi tạo để chỉ chủ bot được dùng. Nếu tự đặt danh sách, phải có ID chủ bot. Xóa danh sách đã cấu hình sẽ chặn tất cả. Bot cá nhân trả lời qua tin nhắn riêng (DM).</span>}
-							{field.key === 'owner_user_id' && privateDiscord && <span className="text-xs text-muted-foreground">Server xác minh chủ ứng dụng từ bot token khi tạo kênh. Bạn cũng có thể dùng tài khoản Discord đã liên kết; không cần nhập ID bằng tay.</span>}
+							{field.key === 'owner_user_id' && privateDiscord && <span className="text-xs text-muted-foreground">Nhập Discord ID của chính bạn. Kênh chỉ được tạo khi ID này là chủ ứng dụng bot. Đã liên kết tài khoản Discord thì ID được điền sẵn.</span>}
 						</div>
 						{field.type === 'boolean' ? (
 							<Switch
@@ -328,7 +328,7 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 						) : (
 							<Input
 								id={`channel-config-${field.key}`}
-								readOnly={privateDiscord && field.key === 'owner_user_id'}
+								readOnly={privateDiscord && field.key === 'owner_user_id' && Boolean(identity.data?.verified)}
 								className="h-9 w-full text-sm sm:w-48"
 								value={String(
 									value.platformConfig[field.key] ?? field.default ?? '',

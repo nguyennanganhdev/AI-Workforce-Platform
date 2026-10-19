@@ -94,10 +94,14 @@ class QuotaAuthority:
         async with self.service.engine.begin() as db:
             await self.service.assert_active(db, context)
             policy, revision, pools = await self._policy(db, context)
-            if model not in policy.models:
-                from ._resources import is_private_credential
-                if not private_credential_id or not await is_private_credential(self.service, context.initiator_user_id, private_credential_id):
-                    raise PlatformError("MODEL_NOT_ENTITLED", 403)
+            from ._resources import is_personal_credential, is_private_credential
+            user = context.initiator_user_id
+            private = bool(private_credential_id) and await is_private_credential(self.service, user, private_credential_id)
+            if model not in policy.models and not private:
+                raise PlatformError("MODEL_NOT_ENTITLED", 403)
+            # The customer's own key bills their provider account, so it skips
+            # the platform token windows; concurrency still applies.
+            own_account = private and await is_personal_credential(self.service, user, private_credential_id)
             prior = (await db.execute(select(t.attempts).where(t.attempts.c.id == attempt_id))).mappings().first()
             if prior:
                 if (prior["tenant_id"], prior["user_id"], prior["budget"], prior["purpose"]) != (
@@ -118,7 +122,9 @@ class QuotaAuthority:
                 ).values(active_calls=t.subjects.c.active_calls + 1))
                 if changed.rowcount != 1:
                     raise PlatformError("QUOTA_CONCURRENCY_EXCEEDED", 429)
-                for window in windows:
+                if own_account:
+                    scopes.append({"subject": subject, "window": None})
+                for window in [] if own_account else windows:
                     limit = limits.embedding_daily_tokens if window.startswith("embedding-day:") else limits.daily_tokens if window.startswith("day:") else limits.monthly_tokens
                     await insert_once(db, t.buckets, dict(tenant_id=context.tenant_id, subject=subject,
                         window=window, used=0, reserved=0))
@@ -165,6 +171,8 @@ class QuotaAuthority:
             if claimed.rowcount != 1:
                 raise PlatformError("SETTLEMENT_CONFLICT", 409)
             for scope in row["scopes"]:
+                if scope["window"] is None:  # concurrency-only scope of a customer's own key
+                    continue
                 await db.execute(update(t.buckets).where(t.buckets.c.tenant_id == tenant,
                     t.buckets.c.subject == scope["subject"], t.buckets.c.window == scope["window"],
                 ).values(reserved=t.buckets.c.reserved - row["budget"], used=t.buckets.c.used + actual))

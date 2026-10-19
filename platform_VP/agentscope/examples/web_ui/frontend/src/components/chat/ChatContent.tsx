@@ -188,13 +188,13 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	}, [loading]);
 
 	// Team chat shows each member's public reply; private working stays in
-	// that member's own session.
-	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
+	// that member's own session. The ticket view keeps it, folded per reply.
+	const visibleMsgs = useMemo(() => teamChat && !ticketView ? msgs.flatMap((message) => {
 		if (message.role !== 'assistant') return [message];
 		const content = message.content.filter((block) => block.type !== 'hint' && block.type !== 'thinking');
 		if (content.length === 0 && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
 		return [{ ...message, content }];
-	}) : msgs, [msgs, teamChat]);
+	}) : msgs, [msgs, teamChat, ticketView]);
 	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
 	useEffect(() => setReplyTarget(null), [sessionId]);
 	const handleSend = (content: ContentBlock[]) => {

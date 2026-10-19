@@ -151,7 +151,16 @@ export interface RoomView {
 	packet_tokens: number;
 	peak_packet_tokens: number;
 	packet_budget: number;
+	/** Context/compaction counters (`SharedContextMetrics.summary`). */
+	context?: Partial<Record<RoomContextMetric, number>> & { token_counter?: string };
 }
+
+export type RoomContextMetric =
+	| 'packets_built' | 'compactions' | 'compaction_failures' | 'peak_packet_tokens'
+	| 'peak_total_prompt_tokens' | 'total_measured_prompt_tokens' | 'model_calls_measured'
+	| 'summary_model_calls' | 'last_summary_input_tokens' | 'last_summary_output_tokens'
+	| 'last_system_prompt_tokens' | 'last_tool_schema_tokens' | 'last_history_tokens'
+	| 'last_model_context_size' | 'prompt_budget_failures' | 'packet_budget_failures';
 
 export interface LeaderSession {
 	agent_id: string;

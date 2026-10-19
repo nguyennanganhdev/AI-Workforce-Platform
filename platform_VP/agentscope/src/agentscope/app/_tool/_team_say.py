@@ -949,6 +949,14 @@ class TeamSay(_TeamToolBase):
                     content=[
                         TextBlock(
                             text=(
+                                # In peer mode plain text is a private draft;
+                                # only a TeamSay result without ``to`` reaches
+                                # the customer.
+                                "Bạn đang sở hữu lượt trả lời. Gửi "
+                                "TeamSay(kind='result', content=<câu trả lời>) "
+                                "không kèm 'to' để trả lời khách hàng; văn bản "
+                                "thường không đến được khách."
+                                if peer_mode else
                                 "Bạn đang sở hữu lượt trả lời; hãy trả lời "
                                 "khách hàng trực tiếp."
                             ),

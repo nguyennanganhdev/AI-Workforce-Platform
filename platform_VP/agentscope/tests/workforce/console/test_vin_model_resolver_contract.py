@@ -24,7 +24,12 @@ async def real_authority(authority, monkeypatch):
     monkeypatch.setenv("VIN_PLATFORM_ENABLED", "true")
     storage = authority.storage
     storage.upsert_credential = AsyncMock(side_effect=AssertionError("user-owned credential write"))
-    storage.list_credentials = AsyncMock(return_value=[])
+    # Only a key the customer added may outrank the platform provider; the
+    # legacy per-user copy of the platform key is never a fallback.
+    from agentscope.app.storage import CredentialRecord
+    storage.list_credentials = AsyncMock(side_effect=lambda user: [CredentialRecord(
+        id="legacy-" + user, user_id=user,
+        data={"type": "openai_credential", "name": "Model của platform", "api_key": "legacy-plaintext"})])
     storage.vin_platform_service = authority
     await seed_policy_catalog(authority, model="offline-entitled-alias")
     admin = await authority.context("admin")

@@ -274,11 +274,13 @@ class ResourceAccessService:
             own = await self._storage.list_knowledge_bases(viewer_id)
 
         authority = getattr(self._storage, "vin_platform_service", None)
+        managed = lambda record: bool(record.data.get("secret_ref"))  # noqa: E731
         if kind is ResourceKind.CREDENTIAL and authority is not None:
-            from ..vin_platform._resources import PLATFORM_PROVIDER_ID
+            from ..vin_platform._resources import PLATFORM_PROVIDER_ID, is_platform_copy
             own = [record for record in own if record.id != PLATFORM_PROVIDER_ID]
+            managed = lambda record: bool(record.data.get("secret_ref")) or is_platform_copy(record)  # noqa: E731
         views: list[BaseModel] = [
-            self._build_view(record, viewer_id, not (kind is ResourceKind.CREDENTIAL and record.data.get("secret_ref"))) for record in own
+            self._build_view(record, viewer_id, not (kind is ResourceKind.CREDENTIAL and managed(record))) for record in own
         ]
         if kind is ResourceKind.CREDENTIAL and authority is not None:
             from ..vin_platform._resources import PLATFORM_PROVIDER_ID
@@ -550,8 +552,11 @@ class ResourceAccessService:
         own = await self._get_owned(kind, viewer_id, resource_id)
         if own is not None:
             if kind is ResourceKind.CREDENTIAL:
-                from ..vin_platform._resources import PLATFORM_PROVIDER_ID
-                if resource_id == PLATFORM_PROVIDER_ID or own.data.get("secret_ref"):
+                from ..vin_platform._resources import PLATFORM_PROVIDER_ID, is_platform_copy
+                # Editing a legacy copy of the platform key would re-save it as a
+                # managed reference and break every session that uses it.
+                legacy = getattr(self._storage, "vin_platform_service", None) is not None and is_platform_copy(own)
+                if resource_id == PLATFORM_PROVIDER_ID or own.data.get("secret_ref") or legacy:
                     raise HTTPException(status_code=403, detail="Managed provider is read-only.")
             return viewer_id, own
 

@@ -32,6 +32,19 @@ def _private_payload(data: dict) -> None:
         raise HTTPException(status_code=403, detail="Managed provider is read-only.")
 
 
+async def _public_endpoints(storage: StorageBase, user_id: str, data: dict) -> None:
+    """A customer's provider must point at a public host (no internal SSRF)."""
+    from .._service._catalog_resources import is_operator
+    if await is_operator(storage, user_id):
+        return
+    from ..vin_platform._contracts import PlatformError
+    from ..vin_platform._egress import assert_public_credential
+    try:
+        await assert_public_credential(data)
+    except PlatformError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.code) from exc
+
+
 @credential_router.get(
     "/schemas",
     response_model=ListCredentialSchemasResponse,
@@ -105,6 +118,7 @@ async def create_credential(
         `CreateCredentialResponse`: The server-assigned credential identifier.
     """
     _private_payload(body.data)
+    await _public_endpoints(storage, user_id, body.data)
     credential_id = await storage.upsert_credential(
         user_id,
         CredentialFactory.from_dict(body.data),
@@ -149,7 +163,11 @@ async def update_credential(
     )
 
     _private_payload(body.data)
-    credential = CredentialFactory.from_dict({**existing.data, **body.data})
+    # ``null`` clears an optional field; omitted fields (the write-only key)
+    # keep their stored value.
+    merged = {key: value for key, value in {**existing.data, **body.data}.items() if value is not None}
+    await _public_endpoints(storage, user_id, merged)
+    credential = CredentialFactory.from_dict(merged)
     credential.id = credential_id
     await storage.upsert_credential(owner_id, credential)
     # ``resolve_for_edit`` proved the record existed under ``owner_id``

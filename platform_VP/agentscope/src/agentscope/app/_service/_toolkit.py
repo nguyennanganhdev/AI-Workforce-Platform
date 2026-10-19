@@ -149,7 +149,11 @@ optional):
         or agent_record.data.execution_mode is not None
         or session_record.config.personal_chat is not None
     )
-    tools = [] if business_runtime else await workspace.list_tools()
+    from ._catalog_resources import is_operator
+    # Shell/file builtins run on the platform host (local workspace); a
+    # self-registered account must never get them.
+    host_tools = not business_runtime and await is_operator(storage, user_id)
+    tools = await workspace.list_tools() if host_tools else []
     if not business_runtime:
         tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
         tools += await background_task_manager.list_tools(

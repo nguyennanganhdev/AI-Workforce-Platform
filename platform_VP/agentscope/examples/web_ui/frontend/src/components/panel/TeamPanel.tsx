@@ -13,10 +13,11 @@ import {
 	UsersRound,
 	Wrench,
 } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useContext, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
+import { RoomContext } from '@/components/chat/team-roster';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
@@ -363,6 +364,55 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 					</ol>
 				)}
 			</details>
+			<RoomMetrics />
 		</div>
+	);
+}
+
+const count = (value = 0) => value.toLocaleString('vi-VN');
+
+/** The room's measured context and spend: what the backend tracks per ticket. */
+function RoomMetrics() {
+	const room = useContext(RoomContext);
+	if (!room) return null;
+	const c = room.context ?? {};
+	const rows: Array<[string, string]> = [
+		['Gói context gần nhất / cao nhất', `${count(room.packet_tokens)} / ${count(room.peak_packet_tokens)} trên ${count(room.packet_budget)} token`],
+		['Prompt gần nhất', `hệ thống ${count(c.last_system_prompt_tokens)} · tool ${count(c.last_tool_schema_tokens)} · lịch sử ${count(c.last_history_tokens)}`],
+		['Prompt cao nhất / cửa sổ model', `${count(c.peak_total_prompt_tokens)} / ${count(c.last_model_context_size)} token`],
+		['Lần nén / thất bại', `${count(c.compactions)} / ${count(c.compaction_failures)}`],
+		['Tóm tắt gần nhất (vào → ra)', `${count(c.last_summary_input_tokens)} → ${count(c.last_summary_output_tokens)} token · ${count(c.summary_model_calls)} lượt`],
+		['Vượt ngân sách (prompt / gói)', `${count(c.prompt_budget_failures)} / ${count(c.packet_budget_failures)}`],
+	];
+	return (
+		<details className="group min-h-0 border-t py-3">
+			<summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-2 py-2 focus-visible:outline-2 focus-visible:outline-ring">
+				<span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+					Context và mức sử dụng
+				</span>
+				<ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+			</summary>
+			<dl className="grid gap-1.5 px-2 text-[11px]">
+				{rows.map(([label, value]) => (
+					<div key={label} className="flex justify-between gap-3">
+						<dt className="text-muted-foreground">{label}</dt>
+						<dd className="text-right tabular-nums">{value}</dd>
+					</div>
+				))}
+			</dl>
+			{room.participants.length > 0 && (
+				<ul className="mt-3 flex flex-col gap-1 border-t px-2 pt-2 text-[11px]">
+					{room.participants.map((p) => (
+						<li key={p.agent_id} className="flex items-center justify-between gap-2">
+							<span className="truncate">{p.name}{p.model ? ` · ${p.model}` : ''}</span>
+							<span className="shrink-0 tabular-nums text-muted-foreground">
+								{count(p.calls)} lượt · ↑{count(p.input_tokens)} ↓{count(p.output_tokens)}
+								{p.input_tokens > 0 && ` · ${Math.round((p.cached_input_tokens / p.input_tokens) * 100)}% cache`}
+							</span>
+						</li>
+					))}
+				</ul>
+			)}
+		</details>
 	);
 }

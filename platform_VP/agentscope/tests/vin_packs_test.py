@@ -113,3 +113,11 @@ async def test_sample_agents_are_copied_published_once_and_withdrawn_on_remove(m
     await _pack_agents.withdraw_templates(storage, "alice", "travelling", ["planner"])
     assert agents[("alice", ident)].data.lifecycle_state == "withdrawn"
     assert not agents[("alice", ident)].data.invite_config.invitable
+    # Reinstalling serves the same version again without re-staging its MCPs,
+    # which a workspace with live connections refuses.
+    bindings.side_effect = RuntimeError("Cannot replace declarations in a live workspace")
+    assert await _pack_agents.install_templates(storage, object(), object(), "alice", "travelling", "admin",
+                                                ["planner"], None) == [ident]
+    restored = agents[("alice", ident)]
+    assert restored.data.lifecycle_state == "published" and restored.data.invite_config.invitable
+    assert bindings.await_count == 1

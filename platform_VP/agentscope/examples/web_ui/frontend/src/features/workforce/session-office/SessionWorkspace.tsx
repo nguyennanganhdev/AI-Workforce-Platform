@@ -11,7 +11,10 @@ const ignore = () => {};
 const EMPTY_AGENTS: AgentView[] = [];
 type View = 'chat' | 'office';
 
-/** Owns only view preference. Chat remains mounted, preserving composer and playback state. */
+/**
+ * Owns only view preference: one view at a time. Chat stays mounted while
+ * hidden, preserving composer and playback state; the 3D office unmounts.
+ */
 export function SessionWorkspace({
 	snapshot,
 	children,
@@ -73,12 +76,12 @@ function Workspace({
 				id={panelId}
 				role="tabpanel"
 				aria-labelledby={`${panelId}-${view}`}
-				className="flex min-h-0 flex-1 flex-col overflow-auto lg:flex-row"
+				className="flex min-h-0 flex-1 flex-col"
 			>
 				{view === 'office' && (
 					<section
 						aria-label="Văn phòng của phiên"
-						className="relative min-h-[360px] min-w-0 flex-1"
+						className="relative min-h-0 min-w-0 flex-1"
 					>
 						<AgentOffice
 							agents={EMPTY_AGENTS}
@@ -90,11 +93,7 @@ function Workspace({
 				)}
 				<div
 					key="chat"
-					className={
-						view === 'office'
-							? 'flex min-h-[320px] min-w-0 flex-1 flex-col border-t lg:w-[380px] lg:max-w-[40%] lg:border-t-0 lg:border-l'
-							: 'flex min-h-0 min-w-0 flex-1 flex-col'
-					}
+					className={view === 'office' ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}
 				>
 					{children}
 				</div>

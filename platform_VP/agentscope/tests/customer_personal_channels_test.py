@@ -33,7 +33,7 @@ async def test_personal_discord_bot_uses_verified_application_owner_without_plat
         authority.http_client = client
         service = ChannelService(storage, InMemoryMessageBus(), ChannelTypeRegistry([DiscordChannel]))
         record = await service.create(user_id="alice", channel_type="discord",
-            credentials={"application_id": "1", "bot_token": "offline-bot-token"}, platform_config={},
+            credentials={"application_id": "1", "bot_token": "offline-bot-token"}, platform_config={"owner_user_id": "100"},
             routing=RoutingConfig(bindings=[ChannelBinding(agent_id="agent")]),
             session=SessionSettings(chat_model_config={}))
     assert record.user_id == "alice"
@@ -61,7 +61,29 @@ async def test_invalid_personal_bot_is_not_persisted(authority, response, code):
         service = ChannelService(storage, InMemoryMessageBus(), ChannelTypeRegistry([DiscordChannel]))
         with pytest.raises(ChannelError, match=code):
             await service.create(user_id="alice", channel_type="discord",
-                credentials={"application_id": "1", "bot_token": "offline-token"}, platform_config={},
+                credentials={"application_id": "1", "bot_token": "offline-token"}, platform_config={"owner_user_id": "100"},
+                routing=RoutingConfig(bindings=[ChannelBinding(agent_id="agent")]),
+                session=SessionSettings(chat_model_config={}))
+    storage.upsert_channel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform_config,code", [
+    ({}, "DISCORD_OWNER_REQUIRED"),
+    # A bot built by someone else (agency, team owner) never becomes the customer's owner.
+    ({"owner_user_id": "200"}, "DISCORD_OWNER_MISMATCH"),
+])
+async def test_personal_bot_owner_is_never_adopted_silently(authority, monkeypatch, platform_config, code):
+    monkeypatch.delenv("DISCORD_OAUTH_CLIENT_ID", raising=False)
+    storage = SimpleNamespace(vin_platform_service=authority,
+        get_channel_id_by_platform_bot_id=AsyncMock(return_value=None), upsert_channel=AsyncMock())
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={"id": "1", "owner": {"id": "100"}}))) as client:
+        authority.http_client = client
+        service = ChannelService(storage, InMemoryMessageBus(), ChannelTypeRegistry([DiscordChannel]))
+        with pytest.raises(ChannelError, match=code):
+            await service.create(user_id="alice", channel_type="discord",
+                credentials={"application_id": "1", "bot_token": "offline-token"}, platform_config=platform_config,
                 routing=RoutingConfig(bindings=[ChannelBinding(agent_id="agent")]),
                 session=SessionSettings(chat_model_config={}))
     storage.upsert_channel.assert_not_awaited()
