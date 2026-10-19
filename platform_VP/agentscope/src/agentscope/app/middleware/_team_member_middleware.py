@@ -248,6 +248,8 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             )
             if result is None or result.state != ToolResultState.SUCCESS:
                 return False
+            if kwargs.get("resolution") in {"complete", "stop"}:
+                return False
             declared_kind = kwargs.get("kind")
             kind = result.metadata.get("kind", declared_kind or "result")
             if kind == "requires_user_input" and self._is_null_target(

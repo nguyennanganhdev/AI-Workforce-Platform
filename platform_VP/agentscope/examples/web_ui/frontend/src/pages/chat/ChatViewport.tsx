@@ -24,6 +24,7 @@ import type {
 import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
+import { sessionTitle } from '@/components/chat/session-row-utils';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { AgentToolsPanel } from '@/components/panel/AgentToolsPanel';
@@ -273,6 +274,7 @@ export function ChatViewport({
 		[sessionId],
 	);
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+	const title = sessionTitle(view?.session.config.name);
 	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 	const inspectingMember = readOnly || (!!view?.team && !isTeamChat);
 	const showAssignedTools = agentData?.execution_mode != null
@@ -742,26 +744,13 @@ export function ChatViewport({
 									{agentId && <ClayAvatar id={agentId} label={agentName ?? view?.team?.leader_agent?.data.name} size={28} />}
 									{agentName && <span className="text-sm font-medium">{agentName}</span>}
 									{agentId && <Button variant="ghost" size="icon-sm" aria-label={t('agentManagement.configure')} onClick={() => navigate(`/workforce/agents/${agentId}?edit=1`)}><Settings2 className="size-4" /></Button>}
-									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Chat chung của team</Badge>}
-									{/* The open session, named opposite its own
-									    settings. The sidebar is the only other
-									    place the name appears, and it collapses
-									    on mobile — so on a narrow screen this is
-									    the only thing saying which conversation
-									    is on screen.
-
-									    Withheld until the session has something
-									    in it: an untouched one is still named
-									    after the timestamp it was created at,
-									    and a date is worse than no title at all.
-									    The first reply replaces that with a real
-									    one. */}
-									{msgs.length > 0 && (
+									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Nhóm</Badge>}
+									{msgs.length > 0 && title && (
 										<span
 											className="truncate px-2 text-sm text-muted-foreground"
-											title={view?.session.config.name}
+											title={title}
 										>
-											{view?.session.config.name}
+											{title}
 										</span>
 									)}
 									{readOnly ? (

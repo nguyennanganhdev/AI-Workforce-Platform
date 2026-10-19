@@ -10,12 +10,11 @@ export function sessionTime(at: string): string {
 }
 
 /**
- * A session's title, or `null` while it still carries the timestamp it was
- * created with — the first reply replaces that with a real one, and a date
- * reads worse than no title at all.
+ * Hide placeholder names until the first reply gives the session a title.
  */
 export function sessionTitle(name: string | null | undefined): string | null {
-	if (!name || /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?/.test(name)) return null;
+	if (!name || /^(Phiếu đối tác|Ticket mới|Partner ticket)$/.test(name)
+		|| /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?/.test(name)) return null;
 	return name;
 }
 

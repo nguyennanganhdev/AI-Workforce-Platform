@@ -802,9 +802,11 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         selection=None,
         existing=(),
         classifier=None,
-        outline=OUTLINE,
+        outline=None,
         message="Confirm",
     ):
+        if outline is None:
+            outline = console._BuilderOutlineUpdate(operation="edit", agents=OUTLINE.agents)
         storage = SimpleNamespace(
             upsert_message=AsyncMock(), list_agents=AsyncMock(return_value=list(existing)),
             get_agent=AsyncMock(side_effect=lambda user_id, agent_id: next((record for record in existing if record.id == agent_id), None)),
@@ -848,7 +850,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
             ),
             patch.object(
                 console, "_outline", AsyncMock(return_value=(outline, 10, 10))
-            ),
+            ) as plan,
             patch.object(
                 console,
                 "_select_builder_resources",
@@ -868,14 +870,201 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
                 storage=storage,
                 access=object(),
             )
-        if confirm_outline or all(agent.reuse_agent_id for agent in result.planned_agents):
+        if confirm_outline:
+            plan.assert_not_awaited()
+        else:
+            plan.assert_awaited_once_with(
+                "Plan trip", TOOLS, model, CONFIG,
+                current_plan=previous.planned_agents, latest_message=message,
+            )
+        if confirm_outline or selection is None:
             select.assert_not_awaited()
         else:
             select.assert_awaited_once()
-            reserved = {tool.id for agent in result.planned_agents if agent.reuse_agent_id for tool in agent.suggested_tools}
-            self.assertTrue(reserved.isdisjoint(tool.id for tool in select.await_args.args[2]))
+            selected_names = {agent.name for agent in select.await_args.args[0].agents}
+            reserved = {tool.id for agent in result.planned_agents if agent.name not in selected_names for tool in agent.suggested_tools}
+            preserved = {tool.id for agent in select.await_args.kwargs["preserved_agents"]
+                         for tool in agent.suggested_tools}
+            self.assertTrue(reserved.isdisjoint(
+                tool.id for tool in select.await_args.args[2] if tool.id not in preserved
+            ))
             self.assertTrue(all(not agent.reuse_agent_id for agent in select.await_args.args[0].agents))
         return result
+
+    async def test_adding_three_agents_keeps_the_four_previous_agents(self):
+        previous = approved()
+        previous.planned_agents = [
+            console.PlannedAgentView(name=name, objective=name)
+            for name in ["Flights", "Restaurant", "Hotel", "Attractions"]
+        ]
+        additions = console.BuilderOutline(agents=[
+            console.PlannedAgent(name=name, objective=name)
+            for name in ["Budget", "Itinerary", "Bus"]
+        ])
+        result = await self._prepare(
+            previous, _Model({}), confirm_outline=False,
+            outline=additions, selection=(additions, "jev"),
+            message="Tạo thêm 3 con nữa",
+        )
+        self.assertEqual(len(result.planned_agents), 7)
+        self.assertEqual(result.planned_agents[:4], previous.planned_agents)
+        self.assertEqual(
+            [agent.name for agent in result.planned_agents[4:]],
+            [agent.name for agent in additions.agents],
+        )
+        payload = generated()
+        payload["agents"] = [
+            {**payload["agents"][0], "name": agent.name}
+            for agent in result.planned_agents
+        ]
+        ready = await self._prepare(
+            result, _Model(payload), expected_revision=result.revision,
+        )
+        self.assertEqual(ready.status, "ready")
+        self.assertEqual(len(ready.agents), 7)
+        self.assertEqual(ready.planned_agents, result.planned_agents)
+        storage = SimpleNamespace(
+            get_session=AsyncMock(return_value=object()),
+            list_messages=AsyncMock(return_value=([
+                AssistantMsg("builder", "Ready", structured_output={
+                    "workforce_builder_proposal": ready.model_dump(),
+                }),
+            ], False)),
+            upsert_agent=AsyncMock(), upsert_message=AsyncMock(),
+        )
+        workspace = SimpleNamespace(default_mcps=[], add_skill_archive=AsyncMock())
+        primary = SessionRecord(
+            id="primary", user_id="user", agent_id="new-agent",
+            config=SessionConfig(workspace_id="workspace"),
+        )
+        with (
+            patch.object(console, "_catalog", AsyncMock(return_value=TOOLS)),
+            patch.object(console, "_knowledge_catalog", AsyncMock(return_value=KBS)),
+            patch.object(console, "_primary_session", AsyncMock(return_value=primary)),
+        ):
+            published = await console.publish_builder(
+                console.PublishRequest(
+                    conversation_id="builder", proposal_id=ready.proposal_id,
+                    expected_revision=ready.revision,
+                ),
+                user_id="user", storage=storage, access=object(),
+                workspace_manager=SimpleNamespace(
+                    get_workspace=AsyncMock(return_value=workspace),
+                ),
+            )
+        self.assertEqual(
+            [agent.name for agent in published.agents],
+            [agent.name for agent in result.planned_agents],
+        )
+        self.assertEqual(storage.upsert_agent.await_count, 7)
+        self.assertEqual(workspace.add_skill_archive.await_count, 7)
+
+    async def test_addition_keeps_resources_and_ignores_repeated_existing_names(self):
+        previous = approved()
+        additions = console._BuilderOutlineUpdate(agents=[
+            console.PlannedAgent(name="Hotel", objective="Unrequested change"),
+            console.PlannedAgent(name="Budget", objective="Track supplied costs"),
+        ])
+        selected = console.BuilderOutline(agents=additions.agents[1:])
+        result = await self._prepare(
+            previous, _Model({}), confirm_outline=False, outline=additions,
+            selection=(selected, "jev"), message="Thêm agent ngân sách",
+        )
+        self.assertEqual(result.planned_agents[:2], previous.planned_agents)
+        self.assertEqual(result.planned_agents[2].name, "Budget")
+        selected.agents[0].suggested_tool_ids = [TOOLS[0].id]
+        with self.assertRaises(HTTPException) as error:
+            await self._prepare(
+                previous, _Model({}), confirm_outline=False, outline=additions,
+                selection=(selected, "jev"), message="Thêm agent ngân sách",
+            )
+        self.assertEqual(error.exception.status_code, 502)
+
+    async def test_another_addition_keeps_the_accumulated_roster(self):
+        previous = approved()
+        for name in ["Budget", "Bus"]:
+            changed = [console.PlannedAgent(name=name, objective="New work")]
+            result = await self._prepare(
+                previous, _Model({}), confirm_outline=False,
+                outline=console._BuilderOutlineUpdate(agents=changed),
+                selection=(console.BuilderOutline(agents=changed), "llm"),
+                message=f"Thêm {name}",
+            )
+            self.assertEqual(result.planned_agents[:-1], previous.planned_agents)
+            self.assertEqual(result.revision, previous.revision + 1)
+            self.assertEqual(result.resource_selection, "hybrid")
+            previous = result
+        self.assertEqual(
+            [agent.name for agent in previous.planned_agents],
+            ["Planner", "Hotel", "Budget", "Bus"],
+        )
+
+    async def test_explicit_edit_keeps_other_agents_and_removal_needs_no_selection(self):
+        previous = approved()
+        change = console.PlannedAgent(name="Planner", objective="Summarize trip costs")
+        result = await self._prepare(
+            previous, _Model({}), confirm_outline=False,
+            outline=console._BuilderOutlineUpdate(operation="edit", agents=[change]),
+            selection=(console.BuilderOutline(agents=[change]), "jev"),
+            message="Sửa Planner để tổng hợp chi phí",
+        )
+        self.assertIn(previous.planned_agents[1], result.planned_agents)
+        self.assertEqual(next(a for a in result.planned_agents if a.name == "Planner").objective,
+                         "Summarize trip costs")
+        removed = await self._prepare(
+            previous, _Model({}), confirm_outline=False,
+            outline=console._BuilderOutlineUpdate(
+                operation="edit", removed_agent_names=["Planner"],
+            ),
+            message="Xóa Planner khỏi đội",
+        )
+        self.assertEqual(removed.planned_agents, previous.planned_agents[1:])
+
+    async def test_explicit_replacement_discards_previous_roster(self):
+        changed = [console.PlannedAgent(name="Budget", objective="Track costs")]
+        result = await self._prepare(
+            approved(), _Model({}), confirm_outline=False,
+            outline=console._BuilderOutlineUpdate(operation="replace", agents=changed),
+            selection=(console.BuilderOutline(agents=changed), "jev"),
+            message="Thay toàn bộ đội bằng agent ngân sách",
+        )
+        self.assertEqual([agent.name for agent in result.planned_agents], ["Budget"])
+
+    def test_update_rejects_invalid_removals_duplicates_and_roster_size(self):
+        previous = approved().planned_agents
+        for update in [
+            console._BuilderOutlineUpdate(removed_agent_names=["Hotel"]),
+            console._BuilderOutlineUpdate(operation="edit", removed_agent_names=["Unknown"]),
+            console._BuilderOutlineUpdate(operation="edit", removed_agent_names=["Hotel"],
+                                         agents=[OUTLINE.agents[1]]),
+            console._BuilderOutlineUpdate(agents=[OUTLINE.agents[0], OUTLINE.agents[0]]),
+        ]:
+            with self.subTest(update=update), self.assertRaises(ValueError):
+                console._apply_outline_update(update, previous)
+        for update in [
+            console._BuilderOutlineUpdate(operation="replace"),
+            console._BuilderOutlineUpdate(operation="edit", removed_agent_names=["Planner", "Hotel"]),
+            console._BuilderOutlineUpdate(agents=[
+                console.PlannedAgent(name=f"New {index}", objective="New work")
+                for index in range(11)
+            ]),
+        ]:
+            with self.subTest(update=update), self.assertRaises(HTTPException) as error:
+                console._apply_outline_update(update, previous)
+            self.assertEqual(error.exception.status_code, 409)
+
+    async def test_removal_rejects_dependencies_on_the_removed_agent(self):
+        previous = approved()
+        previous.planned_agents[1].peer_dependencies = ["Planner: verified results"]
+        with self.assertRaises(HTTPException) as error:
+            await self._prepare(
+                previous, _Model({}), confirm_outline=False,
+                outline=console._BuilderOutlineUpdate(
+                    operation="edit", removed_agent_names=["Planner"],
+                ),
+                message="Xóa Planner",
+            )
+        self.assertEqual(error.exception.status_code, 409)
 
     async def test_preview_saves_selection_and_shows_missing_resources(self):
         selected = OUTLINE.model_copy(deep=True)
@@ -958,6 +1147,21 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertIn("Do not repeat that\ntool requirement on each peer", instructions)
         self.assertIn("do not add hypothetical databases", instructions)
         self.assertIn("user explicitly requests an unavailable operation", instructions)
+
+    async def test_outline_receives_current_roster_separately_from_history(self):
+        model = _Model({
+            "operation": "add", "agents": [{"name": "Budget", "objective": "Track costs"}],
+        })
+        previous = approved().planned_agents
+        result, _, _ = await console._outline(
+            "Summarized conversation", TOOLS, model, CONFIG,
+            current_plan=previous, latest_message="Tạo thêm 1 agent ngân sách",
+        )
+        payload = json.loads(model.calls[0][0][-1].get_text_content())
+        self.assertEqual(payload["current_plan"], [agent.model_dump() for agent in previous])
+        self.assertEqual(payload["latest_message"], "Tạo thêm 1 agent ngân sách")
+        self.assertEqual(result.operation, "add")
+        self.assertEqual([agent.name for agent in result.agents], ["Budget"])
 
     async def test_classifier_resolves_visible_credentials_without_exposing_secret(
         self,

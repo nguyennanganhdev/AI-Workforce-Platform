@@ -20,7 +20,7 @@ from ...message import (
     ToolResultState,
 )
 from ...middleware import MiddlewareBase
-from ...types import ReplyFinishedReason
+from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from .._chat_consent import pending_chat_actions
 from .._shared_context import SharedContextService
 from ..storage import StorageBase
@@ -276,6 +276,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             "please wait",
             "will continue",
             "will update",
+            "after successful team message",
+            "end this run",
+            "must end run",
         )
         chunks = re.split(r"(?<=[.!?])\s+|[\r\n]+", text.strip())
         useful = [
@@ -410,6 +413,29 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 return
 
             current_text = self._buffered_text(buffered_text)
+            if not self._usable_partial_text(current_text):
+                discard_text()
+                if nudges >= self._max_nudges:
+                    yield event.model_copy(
+                        update={
+                            "finished_reason": ReplyFinishedReason.ERROR,
+                            "error": ErrorInfo(
+                                type=ErrorType.INTERNAL,
+                                message="Leader chưa tạo được câu trả lời tổng hợp.",
+                            ),
+                        }
+                    )
+                    return
+                nudges += 1
+                self._nudge(
+                    agent,
+                    "TeamSay resolution=complete/stop closes internal work, "
+                    "not this run. Review any remaining assignments, then "
+                    "synthesize the verified results and limitations for the "
+                    "customer in Vietnamese. Do not emit an instruction to "
+                    "end the run or a progress-only placeholder.",
+                )
+                continue
             if self._is_customer_intake(current_text):
                 discard_text()
                 if nudges >= self._max_nudges:

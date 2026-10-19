@@ -73,9 +73,6 @@ export function AgentManagementPage() {
 						<h1 className="text-[17px]/6 font-semibold">
 							{selected?.data.name ?? t('agentManagement.title')}
 						</h1>
-						<p className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
-							{t('agentManagement.description')}
-						</p>
 					</div>
 				</div>
 				<AgentDialog onCreated={refetch}>

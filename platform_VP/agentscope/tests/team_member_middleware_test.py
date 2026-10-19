@@ -40,6 +40,7 @@ class _FakeTeamSay(ToolBase):
             "to": {"type": "string"},
             "content": {"type": "string"},
             "kind": {"type": "string"},
+            "resolution": {"type": "string"},
         },
         "required": ["content"],
     }
@@ -72,12 +73,15 @@ class _FakeTeamSay(ToolBase):
         )
 
     async def __call__(
-        self, content: str, to: str | None = None, kind: str | None = None
+        self, content: str, to: str | None = None, kind: str | None = None,
+        resolution: str | None = None,
     ) -> ToolChunk:
         """Record the call and answer with the configured state."""
         self.calls.append({"to": to, "content": content})
         if kind:
             self.calls[-1]["kind"] = kind
+        if resolution:
+            self.calls[-1]["resolution"] = resolution
         return ToolChunk(
             content=[TextBlock(text=self._output)],
             state=self._state,
@@ -136,6 +140,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         max_nudges: int = 3,
         extra_tools: list | None = None,
         pending_question=None,
+        require_report: bool = True,
     ) -> list:
         """Drive one reply and return the streamed items."""
         toolkit = Toolkit(tools=[self.team_say, *(extra_tools or [])])
@@ -151,6 +156,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                     leader_name="Leader",
                     max_nudges=max_nudges,
                     pending_question=pending_question,
+                    require_report=require_report,
                 ),
             ],
             injection_config=InjectionConfig(inject_runtime_state=False),
@@ -159,6 +165,28 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         async for item in agent.reply_stream(UserMsg("user", "do it")):
             items.append(item)
         return items
+
+    async def test_reply_owner_synthesizes_after_closing_internal_work(self):
+        answer = "Đây là kết quả đã xác minh. Chưa đặt dịch vụ."
+        for resolution in ("complete", "stop"):
+            with self.subTest(resolution=resolution):
+                items = await self._run(
+                    [
+                        _call("TeamSay", to="Peer", kind="handoff",
+                              resolution=resolution, content="Đóng phần việc."),
+                        _text(answer),
+                    ],
+                    require_report=False,
+                )
+                self.assertEqual(self.model.cnt, 2)
+                self.assertEqual(
+                    "".join(e.delta for e in items if isinstance(e, TextBlockDeltaEvent)),
+                    answer,
+                )
+                self.assertEqual(
+                    [e.finished_reason for e in items if isinstance(e, ReplyEndEvent)],
+                    [ReplyFinishedReason.COMPLETED],
+                )
 
     async def test_waiting_for_user_never_calls_model_or_tools(self):
         async def question():

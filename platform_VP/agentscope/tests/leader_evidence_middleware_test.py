@@ -5,7 +5,9 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
-from agentscope.agent import ReActConfig
+from utils import MockModel
+
+from agentscope.agent import Agent, InjectionConfig, ReActConfig
 from agentscope.app.middleware import LeaderEvidenceMiddleware
 from agentscope.event import (
     ReplyEndEvent,
@@ -13,8 +15,17 @@ from agentscope.event import (
     TextBlockEndEvent,
     TextBlockStartEvent,
 )
-from agentscope.message import HintBlock, ToolCallBlock, ToolResultBlock, ToolResultState
+from agentscope.message import (
+    HintBlock,
+    TextBlock,
+    ToolCallBlock,
+    ToolResultBlock,
+    ToolResultState,
+    UserMsg,
+)
+from agentscope.model import ChatResponse
 from agentscope.state import AgentState
+from agentscope.types import ReplyFinishedReason
 
 
 class _Storage:
@@ -133,6 +144,100 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
                 }
             )
         self.assertEqual(0, LeaderEvidenceMiddleware._expected_reports(agent))
+
+    async def test_internal_stop_after_resolution_requires_synthesis_before_sealing(self):
+        bad = "(This is prohibited because after successful team message must end run.)"
+        answer = "Vé máy bay 8.100.000 VND; phòng 2.800.000 VND. Chưa đặt dịch vụ."
+        for resolution in ("complete", "stop"):
+            with self.subTest(resolution=resolution):
+                shared = _SharedContext((4, 0, 4, False))
+                shared.seal_final_answer = AsyncMock(return_value=True)
+                middleware = LeaderEvidenceMiddleware(
+                    _Storage(), shared, "u", "leader", "session-1"
+                )
+                agent = self._agent(dispatched=False)
+                agent.state.append_context("Leader", [
+                    ToolCallBlock(
+                        id="close", name="TeamSay",
+                        input=json.dumps({
+                            "to": "Restaurant", "kind": "handoff", "resolution": resolution,
+                        }),
+                    ),
+                    ToolResultBlock(
+                        id="close", name="TeamSay", output="Delivered",
+                        state=ToolResultState.SUCCESS,
+                    ),
+                ])
+
+                async def next_handler(**kwargs):
+                    agent.state.append_context("Leader", [TextBlock(text=bad)])
+                    for event in _text_round("reply-1", "internal-stop", bad):
+                        yield event
+                    shared.seal_final_answer.assert_not_awaited()
+                    for event in _text_round("reply-1", "synthesis", answer):
+                        yield event
+
+                output = [
+                    event async for event in middleware.on_reply(agent, {}, next_handler)
+                ]
+                text = "".join(
+                    e.delta for e in output if isinstance(e, TextBlockDeltaEvent)
+                )
+                self.assertEqual(text, answer)
+                self.assertNotIn(
+                    bad, "\n".join(m.get_text_content() or "" for m in agent.state.context)
+                )
+                shared.seal_final_answer.assert_awaited_once()
+
+    async def test_repeated_internal_stop_or_empty_answer_fails_without_sealing(self):
+        for text in ("", "End this run after successful team message."):
+            with self.subTest(text=text):
+                shared = _SharedContext((1, 0, 1, False))
+                shared.seal_final_answer = AsyncMock(return_value=True)
+                middleware = LeaderEvidenceMiddleware(
+                    _Storage(), shared, "u", "leader", "session-1", max_nudges=1,
+                )
+
+                async def next_handler(**kwargs):
+                    for index in range(2):
+                        for event in _text_round("reply-1", f"bad-{index}", text):
+                            yield event
+
+                output = [event async for event in middleware.on_reply(
+                    self._agent(dispatched=False), {}, next_handler,
+                )]
+                self.assertEqual(output[-1].finished_reason, ReplyFinishedReason.ERROR)
+                shared.seal_final_answer.assert_not_awaited()
+                self.assertFalse(any(isinstance(e, TextBlockDeltaEvent) for e in output))
+
+    async def test_internal_stop_retries_the_real_agent_loop_at_iteration_limit(self):
+        bad = "(This is prohibited because after successful team message must end run.)"
+        answer = "Kết quả đã xác minh; chưa đặt dịch vụ."
+        model = MockModel()
+        model.set_responses([
+            ChatResponse(content=[TextBlock(text=bad)], is_last=True),
+            ChatResponse(content=[TextBlock(text=answer)], is_last=True),
+        ])
+        shared = _SharedContext((1, 0, 1, False))
+        shared.seal_final_answer = AsyncMock(return_value=True)
+        agent = Agent(
+            name="Leader", system_prompt="Synthesize the verified results.", model=model,
+            react_config=ReActConfig(max_iters=1),
+            injection_config=InjectionConfig(inject_runtime_state=False),
+            middlewares=[LeaderEvidenceMiddleware(_Storage(), shared, "u", "leader", "session-1")],
+        )
+        output = [
+            event async for event in agent.reply_stream(UserMsg("user", "Tổng hợp kết quả."))
+        ]
+        self.assertEqual(model.cnt, 2)
+        self.assertEqual(
+            "".join(e.delta for e in output if isinstance(e, TextBlockDeltaEvent)), answer,
+        )
+        self.assertEqual(
+            [e.finished_reason for e in output if isinstance(e, ReplyEndEvent)],
+            [ReplyFinishedReason.COMPLETED],
+        )
+        shared.seal_final_answer.assert_awaited_once()
 
     def test_batch_counts_actual_dispatches_even_when_one_invite_fails(self):
         agent = self._agent(dispatched=True)

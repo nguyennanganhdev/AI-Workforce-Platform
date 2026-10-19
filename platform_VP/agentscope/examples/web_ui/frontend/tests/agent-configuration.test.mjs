@@ -122,6 +122,7 @@ function viewport(update) {
 		'../src/pages/chat/ChatViewport.tsx',
 		'ChatViewport',
 		{
+			'@/components/chat/session-row-utils': { sessionTitle: (name) => name ?? null },
 			'@/api': {
 				sessionApi: {
 					update: async (...args) => {

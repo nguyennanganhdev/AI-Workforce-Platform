@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { sessionApi, workforceApi } from '@/api';
 import type { LeaderSession, SessionView } from '@/api';
-import { sessionTime } from '@/components/chat/session-row-utils';
+import { sessionTime, sessionTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { Button } from '@/components/ui/button';
@@ -13,20 +13,17 @@ import { AudioProvider } from '@/context/AudioContext';
 import { useSessions } from '@/hooks/useSessions';
 import { ChatViewport } from '@/pages/chat/ChatViewport';
 
-/** Names a session had before the first turn titled it. */
-const UNTITLED = /^(Phiếu đối tác|Ticket mới|Partner ticket|\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?)$/;
-
 /** A row's name: the session's title without the unit code it once led with. */
 function rowTitle(name: string | undefined): string {
 	const title = (name ?? '').replace(/^[A-Z0-9][A-Z0-9-]{3,}\s*·\s*/, '').trim();
-	return !title || UNTITLED.test(title) ? 'Session mới' : title;
+	return sessionTitle(title) ?? 'Mới';
 }
 
 /** A row's second line: what the session is doing, or who is in its room. */
 function rowPreview(view: SessionView): string {
 	if (view.status === 'running') return 'Đang xử lý…';
-	if (view.status === 'awaiting_permission') return 'Chờ bạn duyệt';
-	if (view.status === 'awaiting_external_result') return 'Chờ kết quả từ đối tác';
+	if (view.status === 'awaiting_permission') return 'Chờ duyệt';
+	if (view.status === 'awaiting_external_result') return 'Chờ đối tác';
 	const members = view.team?.members.map(({ agent }) => agent.data.name) ?? [];
 	return members.length > 0 ? members.join(', ') : 'Leader';
 }
@@ -98,8 +95,8 @@ function LeaderPageInner() {
 					<EmptyMedia variant="icon">
 						<Bot />
 					</EmptyMedia>
-					<EmptyTitle>Leader chưa thể khởi tạo</EmptyTitle>
-					<EmptyDescription>Hãy kiểm tra model credential rồi tải lại trang.</EmptyDescription>
+					<EmptyTitle>Không thể mở Leader</EmptyTitle>
+					<EmptyDescription>Kiểm tra credential rồi tải lại.</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		);
@@ -109,15 +106,12 @@ function LeaderPageInner() {
 		<div className="flex size-full min-h-0">
 			<aside className="cue-column flex w-56 lg:w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar hidden md:flex">
 				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
-					<div className="min-w-0">
-						<h1 className="truncate text-[15px]/5 font-semibold">Leader</h1>
-						<p className="truncate text-xs text-muted-foreground">Phiếu cư dân · Ban quản lý điều hành</p>
-					</div>
+					<h1 className="truncate text-[15px]/5 font-semibold">Leader</h1>
 					<Button
 						variant="ghost"
 						size="icon"
-						aria-label="Tạo session thử"
-						title="Tạo session thử"
+						aria-label="Tạo phiên"
+						title="Tạo phiên"
 						disabled={creating}
 						onClick={createTicket}
 					>
@@ -127,7 +121,7 @@ function LeaderPageInner() {
 				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
 					{sessions.length === 0 ? (
 						<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
-							Chưa có session. Ticket từ khách hàng hiện ở đây.
+							Chưa có hội thoại
 						</p>
 					) : (
 						sessions.map((view, index) => {
@@ -149,8 +143,8 @@ function LeaderPageInner() {
 										<Button
 											variant="ghost"
 											size="icon-sm"
-											aria-label={`Xoá session ${title}`}
-											title="Xoá session"
+											aria-label={`Xoá phiên ${title}`}
+											title="Xoá phiên"
 											className="text-muted-foreground"
 											onClick={() => setDeleting({ id: view.session.id, title })}
 										>
@@ -166,10 +160,10 @@ function LeaderPageInner() {
 
 			<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
 				<div className="flex items-center gap-2 border-b p-2 md:hidden">
-					<select aria-label="Ticket Leader" className="min-w-0 flex-1 rounded-lg border p-2 text-sm" value={selectedSessionId ?? ''} onChange={(event) => setSelectedSessionId(event.target.value)}>
+					<select aria-label="Hội thoại" className="min-w-0 flex-1 rounded-lg border p-2 text-sm" value={selectedSessionId ?? ''} onChange={(event) => setSelectedSessionId(event.target.value)}>
 						{sessions.map(({ session }) => <option key={session.id} value={session.id}>{rowTitle(session.config.name)}</option>)}
 					</select>
-					<Button variant="ghost" size="icon" aria-label="Tạo ticket" disabled={creating} onClick={createTicket}><Plus /></Button>
+					<Button variant="ghost" size="icon" aria-label="Tạo phiên" disabled={creating} onClick={createTicket}><Plus /></Button>
 				</div>
 				<ChatViewport
 					agentId={leader.agent_id}
@@ -183,9 +177,9 @@ function LeaderPageInner() {
 			<DeleteDialog
 				open={deleting !== null}
 				onOpenChange={(open) => !open && setDeleting(null)}
-				title={`Xoá session "${deleting?.title ?? ''}"?`}
-				description="Xoá session và tin nhắn của session này. Các agent vẫn được giữ lại."
-				confirmLabel="Xoá session"
+				title={`Xoá phiên "${deleting?.title ?? ''}"?`}
+				description="Xoá phiên và tin nhắn. Giữ lại agent."
+				confirmLabel="Xoá phiên"
 				onConfirm={async () => {
 					if (deleting) await removeSession(deleting.id);
 				}}

@@ -371,7 +371,7 @@ export function AgentBuilderPage() {
 					<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
 						{conversations.length === 0 ? (
 							<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
-								Chưa có hội thoại Builder. Mô tả agent bạn cần ở khung bên phải.
+								Chưa có hội thoại
 							</p>
 						) : (
 							conversations.map((item, index) => (
@@ -607,13 +607,13 @@ export function AgentBuilderPage() {
 										void prepare();
 									}
 								}}
-								placeholder="Ví dụ: Tạo agent tìm khách sạn, kiểm tra phòng trống và đề xuất theo ngân sách..."
+								placeholder="Mô tả agent cần tạo…"
 								className="min-h-12 resize-none border-none bg-transparent px-3 text-[15px] shadow-none focus-visible:ring-0"
 								disabled={working}
 							/>
 							<div className="flex items-center justify-between gap-2 pr-1 pl-3">
 								<p className="text-xs text-amber-700 dark:text-amber-400">
-									{!selectedModel && 'Hãy chọn model trước khi gửi yêu cầu cho Builder.'}
+									{!selectedModel && 'Chọn model để bắt đầu'}
 								</p>
 								<Button
 									size="icon"
@@ -638,8 +638,8 @@ export function AgentBuilderPage() {
 			<Sheet open={agentsOpen} onOpenChange={setAgentsOpen}>
 				<SheetContent className="w-[340px] gap-0 p-0 sm:max-w-[340px]">
 					<SheetHeader className="sr-only">
-						<SheetTitle>Agent trong platform</SheetTitle>
-						<SheetDescription>Leader chỉ thấy agent đang phát hành.</SheetDescription>
+						<SheetTitle>Agent</SheetTitle>
+						<SheetDescription>Phát hành để Leader sử dụng.</SheetDescription>
 					</SheetHeader>
 					{roster}
 				</SheetContent>
@@ -707,7 +707,7 @@ function PlannedAgentCard({
 			</div>
 			{!!agent.peer_dependencies?.length && (
 				<div className="rounded-xl bg-muted/50 p-2.5 text-[13px]/[18px] text-muted-foreground">
-					<p className="font-medium text-foreground">Nhận kết quả đã xác minh từ agent phụ trách:</p>
+					<p className="font-medium text-foreground">Kết quả đã xác minh từ:</p>
 					<ul className="mt-1 list-disc pl-4">
 						{agent.peer_dependencies.map((dependency) => (
 							<li key={dependency}>{dependency}</li>
@@ -718,14 +718,14 @@ function PlannedAgentCard({
 			{!!agent.missing_resources?.length && (
 				<div className="rounded-xl bg-destructive/5 p-2.5 text-[13px]/[18px] text-destructive">
 					<p className="flex items-center gap-1.5 font-medium">
-						<CircleAlert className="size-3.5 shrink-0" /> Còn thiếu tài nguyên:
+						<CircleAlert className="size-3.5 shrink-0" /> Thiếu tài nguyên:
 					</p>
 					<ul className="mt-1 list-disc pl-4">
 						{agent.missing_resources.map((missing) => (
 							<li key={missing}>{missing}</li>
 						))}
 					</ul>
-					<p className="mt-1 text-xs text-muted-foreground">KB có thể bổ sung sau khi tạo agent.</p>
+					<p className="mt-1 text-xs text-muted-foreground">Có thể thêm KB sau.</p>
 				</div>
 			)}
 			{(agent.suggested_tools.length > 0 || agent.suggested_knowledge_bases.length > 0) && (
@@ -762,9 +762,9 @@ const WELCOME_TEAM: { which: PortraitKey; label: string }[] = [
 ];
 
 const WELCOME_PROMPTS = [
-	'Tạo đội agent lên kế hoạch du lịch: vé, khách sạn, ăn uống, tham quan trong một ngân sách tổng.',
-	'Tạo agent tìm khách sạn, kiểm tra phòng trống và đề xuất theo ngân sách.',
-	'Tạo agent trả lời câu hỏi của khách hàng từ Knowledge Base của bạn.',
+	'Lên kế hoạch du lịch theo ngân sách: vé, khách sạn, ăn uống, tham quan.',
+	'Tìm khách sạn còn phòng theo ngân sách.',
+	'Trả lời khách hàng từ kho tri thức.',
 ];
 
 /** An empty conversation: the team to build, and a few ways to start. */
@@ -787,10 +787,7 @@ function BuilderWelcome({ onPick }: { onPick: (text: string) => void }) {
 					</div>
 				))}
 			</div>
-			<h3 className="mt-5 text-xl font-semibold tracking-tight">Bạn cần agent làm nghiệp vụ gì?</h3>
-			<p className="mt-1.5 max-w-md text-sm text-muted-foreground">
-				Mô tả một agent hoặc nhiều agent. Builder tự viết prompt, skill và chọn tool.
-			</p>
+			<h3 className="mt-5 text-xl font-semibold tracking-tight">Bạn muốn tạo agent gì?</h3>
 			<div className="mt-5 flex w-full max-w-xl flex-col gap-2">
 				{WELCOME_PROMPTS.map((prompt, index) => (
 					<button
@@ -864,19 +861,18 @@ function agentRoster({
 			<header className="shrink-0 px-4 pt-3 pb-2">
 				<div className="flex items-center justify-between">
 					<button type="button" className="text-[15px]/5 font-semibold hover:underline" onClick={onOpenManagement}>
-						Agent trong platform
+						Agent
 					</button>
 					<span className="text-xs tabular-nums text-muted-foreground">
 						{published}/{agents.length} phát hành
 					</span>
 				</div>
-				<p className="mt-0.5 text-xs text-muted-foreground">Leader chỉ thấy agent đang phát hành</p>
 			</header>
 			<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-3">
 				{agents.length === 0 ? (
 					<div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
 						<img src={robotStill} alt="" className="size-14 opacity-80" />
-						<p className="text-sm text-muted-foreground">Chưa có business agent nào.</p>
+						<p className="text-sm text-muted-foreground">Chưa có agent</p>
 					</div>
 				) : (
 					<ul className="flex flex-col gap-1">
