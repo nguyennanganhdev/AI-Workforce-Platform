@@ -1639,6 +1639,28 @@ class SharedContextService:
                 raise ValueError(
                     "Conflicts require at least two current source references"
                 )
+            if kind == "handoff" and sender == owner and not resolution:
+                last_customer = max(
+                    (
+                        event.created_at
+                        for event in record.state.events
+                        if event.task_id == task.id and event.kind == "customer_message"
+                    ),
+                    default=None,
+                )
+                for sid in recipients:
+                    assignment = task.assignments.get(sid)
+                    if (
+                        assignment is not None
+                        and assignment.status in {"assigned", "queued"}
+                        and (last_customer is None or assignment.updated_at >= last_customer)
+                    ):
+                        raise ValueError(
+                            "This member is already working on its assignment and "
+                            "has not reported yet. Do not send reminders or repeat "
+                            "the task; end your turn. Its result arrives "
+                            "automatically"
+                        )
             if resolution:
                 if sender != owner or len(recipients) != 1:
                     raise ValueError(
@@ -1649,6 +1671,15 @@ class SharedContextService:
                     if target.waiting_for:
                         raise ValueError(
                             "Assignment still has unresolved peer dependencies"
+                        )
+                    if not any(
+                        event.source_session_id == recipients[0]
+                        and event.kind in {"result", "answer"}
+                        for event in current.values()
+                    ):
+                        raise ValueError(
+                            "This member has not reported a result, so there is "
+                            "nothing to accept; wait for it or stop the assignment"
                         )
                     target.status = "completed"
                 elif resolution == "stop":
