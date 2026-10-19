@@ -145,6 +145,17 @@ class TestBuilderConversation(IsolatedAsyncioTestCase):
         self.assertEqual(len(reply.messages), 200)
         self.assertEqual(self.storage.list_messages.await_args.kwargs["before"], recent[0].id)
 
+    async def test_reload_stops_paging_once_the_proposal_and_visible_page_are_loaded(self):
+        proposal = approved()
+        latest = AssistantMsg("builder", "Review plan", structured_output={
+            "workforce_builder_proposal": proposal.model_dump(),
+        })
+        recent = [AssistantMsg("builder", "Conversation") for _ in range(199)] + [latest]
+        self.storage.list_messages.side_effect = [(recent, True)]
+        reply = await console.get_builder_conversation("builder", "user", self.storage)
+        self.assertEqual(reply.proposal, proposal)
+        self.assertEqual(self.storage.list_messages.await_count, 1)
+
     def test_conversation_output_requires_text_and_cannot_mutate_agents(self):
         for payload in [
             {"intent": "chat"},

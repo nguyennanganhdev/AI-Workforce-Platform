@@ -2019,6 +2019,34 @@ async def _list_all_builder_messages(
     return [message for page in reversed(pages) for message in page]
 
 
+async def _list_visible_builder_messages(
+    storage: StorageBase,
+    user_id: str,
+    conversation_id: str,
+    visible: int = 200,
+) -> list[Msg]:
+    """Load the last ``visible`` messages, paging further only to find the proposal."""
+
+    pages: list[list[Msg]] = []
+    loaded = 0
+    before: str | None = None
+    while True:
+        page, has_more = await storage.list_messages(
+            user_id,
+            conversation_id,
+            limit=200,
+            before=before,
+        )
+        if not page:
+            break
+        pages.append(page)
+        loaded += len(page)
+        if not has_more or (loaded >= visible and _stored_proposal(page) is not None):
+            break
+        before = page[0].id
+    return [message for page in reversed(pages) for message in page]
+
+
 async def _builder_text_tokens(model: ChatModelBase, text: str) -> int:
     return await model.count_tokens(
         [UserMsg(name="builder_memory", content=text)],
@@ -2447,7 +2475,7 @@ async def get_builder_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Không tìm thấy hội thoại Agent Builder.",
         )
-    messages = await _list_all_builder_messages(
+    messages = await _list_visible_builder_messages(
         storage,
         user_id,
         conversation_id,
