@@ -289,7 +289,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
 
     @staticmethod
     def _pending_customer_question(agent: "Agent") -> str | None:
-        """Return the last successfully registered direct customer question."""
+        """Return a registered customer question or a server-accepted peer result."""
 
         for msg in reversed(agent.state.context):
             if msg.id != agent.state.reply_id or msg.role != "assistant":
@@ -317,6 +317,10 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 ),
                 None,
             )
+            if result is not None and result.state == ToolResultState.SUCCESS:
+                published = result.metadata.get("customer_reply")
+                if isinstance(published, str) and published.strip():
+                    return published.strip()
             if (
                 result is not None
                 and result.state == ToolResultState.SUCCESS

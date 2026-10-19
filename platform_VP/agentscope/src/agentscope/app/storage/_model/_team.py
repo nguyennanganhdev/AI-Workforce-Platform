@@ -59,6 +59,9 @@ class TeamData(BaseModel):
     purpose: Literal["operational", "platform_group"] = "operational"
     """Server-owned audience. Platform groups work for their BQL owner."""
 
+    collaboration_mode: Literal["reviewed", "peer"] = "reviewed"
+    """Server-owned personal chat routing; external cases retain their review path."""
+
     name: str = Field(
         description="Display name of the team.",
         title="Name",

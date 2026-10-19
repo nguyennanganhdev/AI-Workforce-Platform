@@ -59,6 +59,7 @@ class _FakeTeamSay(ToolBase):
         self.calls: list[dict] = []
         self._state = state
         self._output = output
+        self.metadata = {}
 
     async def check_permissions(
         self,
@@ -81,6 +82,7 @@ class _FakeTeamSay(ToolBase):
         return ToolChunk(
             content=[TextBlock(text=self._output)],
             state=self._state,
+            metadata=self.metadata,
         )
 
 
@@ -170,6 +172,15 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         self.assertEqual(
             self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
         )
+
+    async def test_personal_result_is_streamed_once_without_another_model_call(self):
+        answer = "No matching options were returned."
+        self.team_say.metadata = {"kind": "result", "customer_reply": answer}
+        items = await self._run([_call("TeamSay", kind="result", content=answer)])
+        public = "".join(item.delta for item in items if isinstance(item, TextBlockDeltaEvent))
+        self.assertEqual(answer, public)
+        self.assertEqual(1, self.model.cnt)
+        self.assertEqual(1, len(self._end_events(items)))
 
     async def test_progress_is_not_a_terminal_report(self):
         items = await self._run(

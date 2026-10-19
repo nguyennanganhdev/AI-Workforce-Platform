@@ -238,6 +238,7 @@ class AgentInvite(_TeamToolBase):
         invitable_pool: list["AgentRecord"],
         resource_access_service: "ResourceAccessService | None" = None,
         shared_context_service: "SharedContextService | None" = None,
+        peer_collaboration: bool = False,
     ) -> None:
         """Bind the base dependencies plus the invitable pool snapshot.
 
@@ -273,6 +274,7 @@ class AgentInvite(_TeamToolBase):
             session_id,
             agent_id,
             shared_context_service,
+            peer_collaboration,
         )
 
         self._pool_by_id: dict[str, "AgentRecord"] = {
@@ -329,6 +331,15 @@ class AgentInvite(_TeamToolBase):
             ),
             *request.additional_assignments,
         ]
+        try:
+            team = await self._require_leader_team("invite members")
+        except Exception as exc:
+            return _error(f"AgentInvite: {exc}")
+        if team.data.collaboration_mode == "peer":
+            # Every member reads the request immediately and negotiates its
+            # dependencies via TeamSay; no dormant coordinator-only roster.
+            briefs = [brief.model_copy(update={"standby": False, "depends_on": []})
+                      for brief in briefs]
         selected: set[str] = set()
         for name in (b.target for b in briefs):
             record, error = _resolve_target(self._pool_by_id, name)
@@ -674,6 +685,19 @@ class AgentInvite(_TeamToolBase):
             # "user approved X" state should not silently cross over.
             # HITL prompts in this team will re-confirm any sensitive
             # tool call.
+            registered_mcps = {}
+            from .._service._catalog_resources import resolve_catalog_resource
+            for binding in invited.data.tool_bindings:
+                mcp_id = str(binding.get("mcp_id") or "")
+                if not mcp_id or not binding.get("tool_name") or mcp_id in registered_mcps:
+                    continue
+                record = await resolve_catalog_resource(
+                    self._storage, self._user_id, "mcp", mcp_id, permission="execute",
+                )
+                if record is None or not record.enabled:
+                    raise ValueError(f"Registered MCP {mcp_id!r} is unavailable")
+                registered_mcps[mcp_id] = record
+
             worker_state = AgentState(
                 # permission_context defaults to a fresh
                 # ``PermissionContext()``; tasks_context defaults to
@@ -757,14 +781,7 @@ class AgentInvite(_TeamToolBase):
                             if binding.get("requires_consent"):
                                 confirm.setdefault(mcp_id, []).append(tool_name)
                     for mcp_id, enabled_tools in selected.items():
-                        record = await self._storage.get_mcp(
-                            self._user_id,
-                            mcp_id,
-                        )
-                        if record is None or not record.enabled:
-                            raise ValueError(
-                                f"Registered MCP {mcp_id!r} is unavailable",
-                            )
+                        record = registered_mcps[mcp_id]
                         spec = MCPClient.model_validate(
                             record.client.model_dump(mode="json"),
                         )

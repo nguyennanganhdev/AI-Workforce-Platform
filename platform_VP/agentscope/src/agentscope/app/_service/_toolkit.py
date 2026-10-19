@@ -58,6 +58,7 @@ async def get_toolkit(
     sop_dispatch: str | None = None,
     shared_context_service: SharedContextService | None = None,
     management_auth_service=None,
+    peer_collaboration: bool = False,
 ) -> Toolkit:
     """Assemble the complete :class:`Toolkit` for one chat turn.
 
@@ -192,6 +193,7 @@ time or interval"
         "session_id": session_record.id,
         "agent_id": agent_record.id,
         "shared_context_service": shared_context_service,
+        "peer_collaboration": peer_collaboration,
     }
     if is_leader:
         from ._catalog_resources import catalog_authority

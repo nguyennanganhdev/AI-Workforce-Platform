@@ -45,6 +45,7 @@ from ...message import (
     AssistantMsg,
     HintBlock,
     Msg,
+    TextBlock,
     ToolCallBlock,
     ToolResultBlock,
     ToolResultState,
@@ -80,7 +81,7 @@ from .._types import (
     EventProjector,
     SubAgentTemplate,
 )
-from .._workforce_policy import conversation_policy, governed_system_prompt
+from .._workforce_policy import conversation_policy, governed_system_prompt, peer_system_prompt
 from .._personal_chat import group_root, group_prompt, personal_prompt
 from ..channel import ChatKind
 from ..message_bus import MessageBus, MessageBusKeys
@@ -141,7 +142,7 @@ class _WorkerContext:
 _TeamContext = _LeaderContext | _WorkerContext
 
 
-def _team_chat_message(message: Msg, agent_id: str, session_id: str) -> Msg:
+def _team_chat_message(message: Msg, agent_id: str, session_id: str, *, public_reply_only: bool = False) -> Msg:
     """Project public activity while retaining its author and reply identity."""
 
     projected = message.model_copy(deep=True)
@@ -153,6 +154,18 @@ def _team_chat_message(message: Msg, agent_id: str, session_id: str) -> Msg:
     projected.content = [
         block for block in projected.content if block.type not in {"thinking", "hint"}
     ]
+    if public_reply_only:
+        calls = {b.id: b for b in message.content if isinstance(b, ToolCallBlock) and b.name == "TeamSay"}
+        public = []
+        for block in message.content:
+            if not isinstance(block, ToolResultBlock) or block.id not in calls or block.state != ToolResultState.SUCCESS:
+                continue
+            text = block.metadata.get("customer_reply")
+            if isinstance(text, str) and text.strip() and text.strip() not in public:
+                public.append(text.strip())
+        projected.content = [b for b in projected.content if b.type != "text"]
+        if public:
+            projected.content.append(TextBlock(id="public-" + message.id, text="\n\n".join(public)))
     return projected
 
 
@@ -1491,8 +1504,24 @@ class ChatService:
                         partner_case = True
                     if middleware_key in {"partner_case", "partner_case_member"}:
                         partner_room = True
+                audience = session_record
+                if team is not None and team.session_id != session_id:
+                    audience = await self._storage.get_session(user_id, "", team.session_id)
+                peer_collaboration = bool(
+                    audience is not None and audience.origin.type == "user"
+                    and audience.config.personal_chat is None
+                    and not partner_room and not partner_case and not management_output
+                    and (team is None or isinstance(team_ctx, _LeaderContext) or team.data.collaboration_mode == "peer")
+                )
+                if peer_collaboration:
+                    runtime_system_prompt = peer_system_prompt(
+                        agent_record.data.system_role, agent_record.data.system_prompt,
+                    )
+                    if team is not None and isinstance(team_ctx, _LeaderContext) and team.data.collaboration_mode != "peer":
+                        team.data.collaboration_mode = "peer"
+                        await self._storage.upsert_team(user_id, team)
                 if ((agent_record.data.system_role == "leader" and personal is None)
-                    or (personal_root is not None and isinstance(team_ctx, _LeaderContext))) and not partner_case:
+                    or (personal_root is not None and isinstance(team_ctx, _LeaderContext))) and not partner_case and not peer_collaboration:
                     middlewares.append(
                         LeaderEvidenceMiddleware(
                             self._storage,
@@ -1511,7 +1540,7 @@ class ChatService:
                 # A specialist answering its own customer question still owes
                 # its requester a result.
                 if isinstance(team_ctx, _WorkerContext) and (
-                    not is_reply_owner
+                    peer_collaboration or not is_reply_owner
                     or (turn_state is not None and turn_state.mode == "specialist_question")
                 ):
                     middlewares.append(
@@ -1634,6 +1663,7 @@ class ChatService:
                     sop_dispatch=sop_dispatch,
                     shared_context_service=self._shared_context,
                     management_auth_service=self._management_auth_service,
+                    peer_collaboration=peer_collaboration,
                 )
 
                 # -------------------------------------------------------------
@@ -1903,7 +1933,9 @@ class ChatService:
                         "and ask that peer directly; never ask the customer to "
                         "relay it."
                     )
-                if isinstance(team_ctx, _LeaderContext):
+                if peer_collaboration:
+                    attachment += " Personal team members work and publish directly; no Leader relay is required."
+                elif isinstance(team_ctx, _LeaderContext):
                     attachment += (
                         " You compose the team, delegate work and synthesize "
                         "completed reports. Never ask a task-specific customer "
@@ -2299,8 +2331,9 @@ class ChatService:
                     # The shared team chat shows each member's public reply
                     # under its own name; private reasoning stays in the
                     # member's session.
-                    if output_id == team_chat_session_id and output_id != customer_output_session_id and (
+                    if isinstance(team_ctx, _WorkerContext) and (
                         event.type.startswith("THINKING_BLOCK_")
+                        or (peer_collaboration and event.type.startswith("TEXT_BLOCK_"))
                         or event.type == "HINT_BLOCK"
                         or isinstance(event, CustomEvent)
                     ):
@@ -2657,6 +2690,7 @@ class ChatService:
                         and is_reply_owner
                         and reply_msg is not None
                         and reply_msg.finished_reason is ReplyFinishedReason.COMPLETED
+                        and (team.data.collaboration_mode != "peer" or (live_turn is not None and live_turn.pending_question_ids))
                         and await mark_team_awaiting_user(
                             self._message_bus,
                             team.id,
@@ -2745,6 +2779,10 @@ class ChatService:
                             active_personal_job = personal_job.get()
                             if active_personal_job is not None:
                                 msg.metadata["personal_job_id"] = active_personal_job.job_id
+                            public_msg = (
+                                _team_chat_message(msg, agent_id, session_id, public_reply_only=peer_collaboration)
+                                if isinstance(team_ctx, _WorkerContext) else msg
+                            )
                             await self._storage.upsert_message(
                                 user_id,
                                 session_id,
@@ -2754,22 +2792,32 @@ class ChatService:
                                 await self._storage.upsert_message(
                                     user_id,
                                     customer_output_session_id,
-                                    msg.model_copy(deep=True),
+                                    public_msg.model_copy(deep=True),
                                 )
                             if team_chat_session_id not in {None, session_id, customer_output_session_id}:
                                 await self._storage.upsert_message(
                                     user_id,
                                     team_chat_session_id,
-                                    _team_chat_message(msg, agent_id, session_id),
+                                    public_msg.model_copy(deep=True),
+                                )
+                                await publish_session_event(
+                                    self._message_bus, team_chat_session_id,
+                                    CustomEvent(name="message_upserted", value={
+                                        "message": public_msg.model_dump(mode="json"),
+                                    }).model_dump(mode="json"),
                                 )
                             await publish_session_event(
                                 self._message_bus, customer_output_session_id,
                                 CustomEvent(name="message_upserted", value={
-                                    "message": msg.model_dump(mode="json"),
+                                    "message": (
+                                        public_msg
+                                        if customer_output_session_id != session_id
+                                        else msg
+                                    ).model_dump(mode="json"),
                                 }).model_dump(mode="json"),
                             )
                             if team is not None and is_reply_owner and not partner_case:
-                                reply_text = (msg.get_text_content() or "").strip()
+                                reply_text = (public_msg.get_text_content() or "").strip()
                                 if reply_text:
                                     group_analysis = False
                                     if team.data.purpose == "platform_group":

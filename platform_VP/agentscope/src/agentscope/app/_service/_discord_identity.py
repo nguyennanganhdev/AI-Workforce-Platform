@@ -45,6 +45,39 @@ async def verified_owner(authority, context):
     return result
 
 
+async def bot_owner(authority, credentials):
+    """Verify a customer-supplied bot without requiring Platform OAuth setup."""
+    from ..channel import DiscordChannel
+    from pydantic import ValidationError
+    try:
+        parsed = DiscordChannel.Credentials.model_validate(credentials)
+    except ValidationError:
+        raise PlatformError("DISCORD_BOT_CREDENTIALS_INVALID", 400) from None
+    token = parsed.bot_token
+    if hasattr(token, "get_secret_value"):
+        token = token.get_secret_value()
+
+    async def verify(client):
+        response = await client.get("https://discord.com/api/v10/applications/@me",
+                                    headers={"Authorization": "Bot " + token})
+        response.raise_for_status()
+        data = response.json()
+        owner = (data.get("team") or {}).get("owner_user_id") or (data.get("owner") or {}).get("id")
+        if str(data.get("id", "")) != str(parsed.application_id):
+            raise PlatformError("DISCORD_APPLICATION_MISMATCH", 403)
+        if not isinstance(owner, str) or not owner.isascii() or not owner.isdigit() or not 1 <= len(owner) <= 20 or int(owner) == 0:
+            raise PlatformError("DISCORD_BOT_OWNER_UNAVAILABLE", 403)
+        return owner
+
+    try:
+        if authority.http_client is not None:
+            return await verify(authority.http_client)
+        async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=False) as client:
+            return await verify(client)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        raise PlatformError("DISCORD_BOT_VERIFICATION_FAILED", 400) from None
+
+
 def _config():
     client_id = os.getenv("DISCORD_OAUTH_CLIENT_ID", "")
     secret = os.getenv("DISCORD_OAUTH_CLIENT_SECRET", "")

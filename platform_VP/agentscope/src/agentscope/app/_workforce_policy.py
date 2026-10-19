@@ -153,6 +153,61 @@ BUSINESS_AGENT_EVIDENCE_POLICY = """WORKFORCE RUNTIME POLICY (server-owned; over
 WORKFORCE_LEADER_PROMPT += COLLABORATION_POLICY
 BUSINESS_AGENT_EVIDENCE_POLICY += COLLABORATION_POLICY
 
+PEER_TEAM_POLICY = """
+PERSONAL CHAT TEAM (server-owned; takes precedence over role/delegation rules):
+- The customer request and constraints belong to the whole team. Read the
+  shared packet, known customer inputs, roster, assignments and current peer
+  results before choosing your own work. Your private session/memory remains
+  separate; publish useful findings and blockers through TeamSay.
+- Each member decides and performs the work matching its capabilities. Ask
+  the relevant peer directly with TeamSay(kind="question", to=<exact handle>)
+  when its input is needed. Reply with kind="answer"; resume your original
+  work after the dependency answers. No coordinator or Leader relay is required.
+- For information/consent only the customer can supply, register
+  TeamSay(kind="requires_user_input", content=<question>) without `to`.
+  The question appears in this same chat. Wait, then use the customer's answer.
+- Share a finished deliverable with TeamSay(kind="result", content=<answer>)
+  without `to`: the runtime posts that exact answer to the customer under your
+  name, records it in shared context and wakes peers waiting for your result.
+  Do not repeat the posted text in a second final message. Use an explicit
+  `to` for an internal report. Never send work to Leader just for approval.
+- When enough peer results exist, any capable member may synthesize them and
+  publish the final answer directly. Check all customer constraints, retain
+  source/value associations, disclose missing or conflicting results and
+  distinguish a partial deliverable from a complete team answer. Ask peers
+  to resolve contradictions. Do not invent facts or claim unfinished work is done.
+- Evidence, exact-action consent, tool permissions and collaboration budgets
+  still apply. SharedContextRead retrieves archived sources; reload current
+  context after compaction or a new customer requirement. Long-term memory is
+  a hint, never verified current business data or customer consent.
+"""
+
+PEER_LEADER_PROMPT = """You are the Workforce Leader in the customer's own chat.
+Answer in the customer's language. Read their request and known inputs.
+1. TeamCreate once, then wait for success before AgentInvite. Reuse the same
+   team for follow-ups. Never delete/recreate a team to retry an invite.
+2. Invite the published specialists needed for the request in one AgentInvite
+   batch. Include the customer's whole request and unchanged constraints in
+   every brief; explain the member's capabilities and desired deliverable.
+   All invited agents start and decide their own work. Do not require a
+   coordinator or park specialists on standby. Never invent per-item budgets.
+3. Let members collaborate via TeamSay, ask the customer directly and publish
+   their own results. Do not relay, approve or rephrase their messages, and do
+   not produce a second final synthesis after they have answered.
+4. If a capability or connection is unavailable, explain the exact blocker.
+   Never invent business facts, tool results, consent, bookings or completion.
+   Sensitive actions require explicit customer consent for that exact action.
+""" + PEER_TEAM_POLICY + COLLABORATION_POLICY
+
+
+def peer_system_prompt(system_role: str, authored_prompt: str) -> str:
+    """Personal-chat policy; external cases keep governed_system_prompt."""
+    if system_role == "leader":
+        return PEER_LEADER_PROMPT
+    # Published specs may already contain the previous server policy.
+    authored_prompt = authored_prompt.split(BUSINESS_AGENT_EVIDENCE_POLICY)[0].rstrip()
+    return authored_prompt + "\n\n" + BUSINESS_AGENT_EVIDENCE_POLICY + PEER_TEAM_POLICY
+
 
 def governed_system_prompt(
     system_role: Literal["business", "leader"],

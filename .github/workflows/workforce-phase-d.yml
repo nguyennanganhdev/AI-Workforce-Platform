@@ -157,6 +157,12 @@ jobs:
           tests/workforce_leader_wait_test.py
           tests/mcp_runtime_headers_test.py
           tests/service_team_tools_test.py
+          tests/customer_autonomous_team_test.py
+          tests/customer_team_runtime_test.py
+          tests/customer_invite_catalog_test.py
+          tests/customer_personal_resources_test.py
+          tests/customer_personal_channels_test.py
+          tests/vin_provider_boundary_test.py
           -q -rs --junitxml=.artifacts/phase-d/collaboration.xml
       - name: Build D7 release-candidate report
         if: always()

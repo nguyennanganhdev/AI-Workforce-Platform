@@ -381,16 +381,20 @@ def create_app(
             from .deps import get_current_principal
             from .vin_platform._context import execution_scope
             path = request.url.path.rstrip("/")
-            # Personal users manage their own MCPs (PM 19/10); credentials, skills and the
-            # hub stay admin catalog. The MCP router only touches the caller's own records.
+            # Personal MCPs/providers use owner-scoped CRUD. Shared catalog
+            # resources and server-managed provider references remain read-only.
             catalog_mutation = request.method not in {"GET", "HEAD", "OPTIONS"} and any(
-                path == prefix or path.startswith(prefix + "/") for prefix in ("/credential", "/skill", "/hub"))
+                path == prefix or path.startswith(prefix + "/") for prefix in ("/skill", "/hub"))
+            provider_mutation = request.method not in {"GET", "HEAD", "OPTIONS"} and (
+                path == "/credential" or path.startswith("/credential/"))
             context = None
-            if catalog_mutation or request.headers.get("authorization"):
+            if catalog_mutation or provider_mutation or request.headers.get("authorization"):
                 try:
                     principal = await get_current_principal(request, authorization=request.headers.get("authorization"))
                     context = await authority.context(principal.user_id, session_id=principal.session_id)
                     if catalog_mutation and context.role == "VIN_USER":
+                        raise PlatformError("CAPABILITY_DENIED", 403)
+                    if provider_mutation and not (await authority.capabilities(context))["capabilities"]["providers.private.manage"]:
                         raise PlatformError("CAPABILITY_DENIED", 403)
                 except PlatformError as exc:
                     return JSONResponse(status_code=exc.status, content={"detail": {"code": exc.code}})

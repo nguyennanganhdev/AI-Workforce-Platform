@@ -16,10 +16,11 @@ async def embedding_attempt(model, inputs, kwargs):
     inherited = execution_context.get()
     context = inherited.model_copy(update={"purpose": "embedding"}) if inherited is not None else await service.context(user_id, purpose="embedding")
     from ._model_guard import entitled_model
-    await entitled_model(service, context, model._vin_credential_id, model.model)
+    private = await entitled_model(service, context, model._vin_credential_id, model.model)
     ident = uuid4().hex
     budget = sum(len(item.encode("utf-8")) for item in inputs) + 32 * len(inputs)
-    await service.quota.reserve(context, budget=max(1, budget), purpose="embedding", model=model.model, attempt_id=ident)
+    await service.quota.reserve(context, budget=max(1, budget), purpose="embedding", model=model.model, attempt_id=ident,
+                                private_credential_id=model._vin_credential_id if private else None)
     model.client.max_retries = 0
     try:
         await asyncio.shield(service.quota.mark_dispatched(context.tenant_id, ident))

@@ -7,11 +7,15 @@ from ._contracts import PlatformError
 
 
 async def entitled_model(service, context, credential_id, model_name):
+    from ._resources import is_private_credential
+    if await is_private_credential(service, context.initiator_user_id, credential_id):
+        return True
     entries = await service.catalog(context, "credential", "execute")
     entry = next((r for r in entries if r["resource_id"] == credential_id
                   and r["environment"] == context.environment), None)
     if entry is None or model_name not in entry["model_names"]:
         raise PlatformError("MODEL_NOT_ENTITLED", 403)
+    return False
 
 
 def text_payload(payload):
@@ -53,7 +57,7 @@ class ModelQuotaGuard:
             raise PlatformError("ATTEMPT_ALREADY_DISPATCHED", 409)
         context = attempt["context"]
         policy, _ = await self.service.quota.policy(context)
-        await entitled_model(self.service, context, self.credential_id, payload["model"])
+        private = await entitled_model(self.service, context, self.credential_id, payload["model"])
         text_payload(payload)
         cap = policy.max_output_tokens
         for key in ("max_tokens", "max_completion_tokens", "max_output_tokens"):
@@ -70,7 +74,7 @@ class ModelQuotaGuard:
         items = payload.get("messages", payload.get("input", []))
         budget = len(serialized.encode("utf-8")) + 1024 + 64 * (len(items) + len(payload.get("tools") or [])) + cap
         reservation = asyncio.create_task(self.service.quota.reserve(context, budget=budget, purpose=context.purpose,
-            model=payload["model"], attempt_id=attempt["id"]))
+            model=payload["model"], attempt_id=attempt["id"], private_credential_id=self.credential_id if private else None))
         try:
             await asyncio.shield(reservation)
         except asyncio.CancelledError:

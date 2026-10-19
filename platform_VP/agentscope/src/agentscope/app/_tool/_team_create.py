@@ -123,6 +123,7 @@ one team at a time.
                 data=TeamData(
                     name=name,
                     description=description,
+                    collaboration_mode="peer" if self._peer_collaboration else "reviewed",
                     member_ids=[],
                 ),
             )

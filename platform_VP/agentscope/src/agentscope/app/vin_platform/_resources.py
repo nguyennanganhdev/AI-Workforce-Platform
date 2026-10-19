@@ -10,6 +10,14 @@ PLATFORM_PROVIDER_ID = "vin-platform-openai"
 PLATFORM_KEY_REFERENCE = "vin:platform-openai"
 
 
+async def is_private_credential(service, user_id, credential_id):
+    if credential_id == PLATFORM_PROVIDER_ID:
+        return False
+    load = getattr(service.storage, "get_credential", None)
+    record = await load(user_id, credential_id) if load else None
+    return bool(record and record.user_id == user_id and not record.data.get("secret_ref"))
+
+
 async def resource_context(service, user_id):
     from ._context import execution_context
     context = execution_context.get()
@@ -60,13 +68,13 @@ async def platform_model_config(service, user_id):
 
 
 async def resolve_platform_credential(service, user_id, credential_id):
+    if credential_id != PLATFORM_PROVIDER_ID:
+        # Personal keys use the normal owner/grant boundary, not the shared
+        # platform provider's catalog entitlement.
+        return None
     context = await resource_context(service, user_id)
     entries = await service.catalog(context, "credential", "execute")
     entry = next((r for r in entries if r["resource_id"] == credential_id), None)
-    if context.role == "VIN_USER" and entry is None:
-        raise PlatformError("RESOURCE_NOT_ENTITLED", 403)
-    if credential_id != PLATFORM_PROVIDER_ID:
-        return None
     if entry is None:
         raise PlatformError("RESOURCE_NOT_ENTITLED", 403)
     return hydrate_platform_credential(CredentialRecord(id=credential_id, user_id=entry["owner_id"],

@@ -5,3 +5,9 @@ export function useCatalogManagement() {
 	const access = usePlatformAccess();
 	return access === null || access.view?.capabilities['catalog.manage'] === true;
 }
+
+/** Private provider CRUD is independent of managing the shared catalog. */
+export function usePrivateProviderManagement() {
+	const access = usePlatformAccess();
+	return access === null || access.view?.capabilities['providers.private.manage'] === true;
+}

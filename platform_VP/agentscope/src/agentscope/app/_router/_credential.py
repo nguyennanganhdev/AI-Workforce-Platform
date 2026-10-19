@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Credential router — CRUD endpoints for API key credentials."""
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..access import ResourceKind
 from ..deps import (
@@ -24,6 +24,12 @@ credential_router = APIRouter(
     tags=["credential"],
     responses={404: {"description": "Not found"}},
 )
+
+
+def _private_payload(data: dict) -> None:
+    from ..vin_platform._resources import PLATFORM_PROVIDER_ID
+    if data.get("id") == PLATFORM_PROVIDER_ID or "secret_ref" in data:
+        raise HTTPException(status_code=403, detail="Managed provider is read-only.")
 
 
 @credential_router.get(
@@ -98,6 +104,7 @@ async def create_credential(
     Returns:
         `CreateCredentialResponse`: The server-assigned credential identifier.
     """
+    _private_payload(body.data)
     credential_id = await storage.upsert_credential(
         user_id,
         CredentialFactory.from_dict(body.data),
@@ -135,13 +142,14 @@ async def update_credential(
         `HTTPException`: 404 if the credential is not visible to the
             caller; 403 if visible but only readable.
     """
-    owner_id, _ = await access.resolve_for_edit(
+    owner_id, existing = await access.resolve_for_edit(
         user_id,
         ResourceKind.CREDENTIAL,
         credential_id,
     )
 
-    credential = CredentialFactory.from_dict(body.data)
+    _private_payload(body.data)
+    credential = CredentialFactory.from_dict({**existing.data, **body.data})
     credential.id = credential_id
     await storage.upsert_credential(owner_id, credential)
     # ``resolve_for_edit`` proved the record existed under ``owner_id``

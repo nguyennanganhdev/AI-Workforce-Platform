@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 
-import { useCatalogManagement } from './useCatalogManagement';
+import { usePrivateProviderManagement } from './useCatalogManagement';
 import { credentialApi } from '../api';
 import type { CredentialView, CreateCredentialRequest, UpdateCredentialRequest } from '../api';
 import { AVAILABLE_MODELS_KEY } from './useAvailableModels';
@@ -11,7 +11,7 @@ import { AVAILABLE_MODELS_KEY } from './useAvailableModels';
  * Fetches on mount and automatically re-fetches after each mutation.
  */
 export function useCredentials() {
-	const canManage = useCatalogManagement();
+	const canManage = usePrivateProviderManagement();
 	const [credentials, setCredentials] = useState<CredentialView[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);

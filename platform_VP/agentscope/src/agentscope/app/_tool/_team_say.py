@@ -313,6 +313,14 @@ class TeamSay(_TeamToolBase):
         self.description = (
             _LEADER_DESCRIPTION if role == "leader" else _WORKER_DESCRIPTION
         )
+        if self._peer_collaboration:
+            self.description += (
+                "\nPersonal team: a worker's kind=result without to publishes "
+                "the finished answer directly to the customer. An explicit to "
+                "keeps it internal. Ask peers directly with kind=question; "
+                "kind=requires_user_input without to asks the customer. "
+                "No Leader approval or coordinator is required."
+            )
         # The model sees only what it must decide. Routing ids, threads,
         # hops, idempotency, context modes and evidence references are
         # filled by the runtime; the legacy keyword arguments stay accepted
@@ -426,6 +434,8 @@ class TeamSay(_TeamToolBase):
             if context_delta is not None:
                 context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
+            peer_mode = team.data.collaboration_mode == "peer"
+            customer_result = peer_mode and self._role == "worker" and kind == "result" and to is None
             analysis_report = report_type == "analysis" and team.data.purpose == "platform_group" and kind in {"result", "answer"}
             if report_type == "analysis" and team.data.purpose != "platform_group":
                 raise ValueError("Analysis reports are only supported in BQL groups")
@@ -678,6 +688,7 @@ class TeamSay(_TeamToolBase):
                     "answer",
                 }
                 and not is_reply_owner
+                and not customer_result
             ):
                 to = reply_owner_name
             elif (
@@ -687,6 +698,7 @@ class TeamSay(_TeamToolBase):
                 and turn is not None
                 and turn.mode == "specialist_question"
                 and turn.reply_owner_session_id == self._session_id
+                and not peer_mode
             ):
                 # The customer's answer only unblocked this specialist; its
                 # finished work still goes back to the Leader for synthesis.
@@ -854,10 +866,10 @@ class TeamSay(_TeamToolBase):
                             ),
                         ),
                     ],
-                    metadata={"kind": "requires_user_input"},
+                    metadata={"kind": "requires_user_input", "customer_reply": content},
                 )
 
-            if self._role == "worker" and to is None:
+            if self._role == "worker" and to is None and not customer_result:
                 return ToolChunk(
                     content=[
                         TextBlock(
@@ -870,7 +882,24 @@ class TeamSay(_TeamToolBase):
                     state=ToolResultState.ERROR,
                 )
 
-            if to is None:
+            if customer_result:
+                pause = await shared_context.collaboration_pause(
+                    self._user_id, team.id, self._session_id, effective_task_id,
+                )
+                if (turn is not None and turn.pending_question_ids) or pause == "waiting_peer":
+                    return ToolChunk(state=ToolResultState.ERROR, content=[TextBlock(
+                        text="Wait for the customer's answer or the outstanding peer dependency before publishing a result."
+                    )])
+                validation = await shared_context.validate_customer_reply_claims(
+                    self._user_id, team.id, content, task_id=effective_task_id,
+                )
+                if validation.unsupported:
+                    return ToolChunk(state=ToolResultState.ERROR, content=[TextBlock(
+                        text="Customer reply contains unsupported claims. Recheck tools or state the missing evidence: "
+                        + "; ".join(validation.unsupported)
+                    )])
+                recipients = []
+            elif to is None:
                 recipients: list[tuple[str, str]] = [
                     (sid, aid)
                     for sid, aid in directory.values()
@@ -1079,10 +1108,10 @@ class TeamSay(_TeamToolBase):
             coordination_owner_session_id = (
                 leader.session_id
                 if (
-                    turn is not None
+                    peer_mode or (turn is not None
                     and turn.mode == "specialist_question"
                     and turn.reply_owner_session_id == self._session_id
-                    and kind in {"result", "answer", "error"}
+                    and kind in {"result", "answer", "error"})
                 )
                 else turn.reply_owner_session_id
                 if turn is not None
@@ -1109,9 +1138,9 @@ class TeamSay(_TeamToolBase):
                 # Leader inbox duplicates model work before the requesting worker's
                 # final result arrives.
                 notify_owner=not (
-                    kind == "answer"
+                    customer_result or (kind == "answer"
                     and in_reply_to is not None
-                    and self._session_id != leader.session_id
+                    and self._session_id != leader.session_id)
                 ),
             )
             kind, content = coordination["kind"], coordination["content"]
@@ -1202,6 +1231,7 @@ class TeamSay(_TeamToolBase):
                 and turn.mode == "specialist_question"
                 and turn.reply_owner_session_id == self._session_id
                 and kind in {"result", "answer", "error"}
+                and not peer_mode
             ):
                 await return_team_reply_to_leader(
                     self._message_bus,
@@ -1399,6 +1429,7 @@ class TeamSay(_TeamToolBase):
                     "handoff_id": handoff_id,
                     "kind": kind,
                     "collaboration_status": coordination["status"],
+                    **({"customer_reply": content} if customer_result and kind == "result" else {}),
                     **({"partial_result": True, "claim_feedback": coordination["claim_feedback"]}
                        if coordination.get("partial_result") else {}),
                     **({"delta_feedback": delta_feedback} if delta_feedback else {}),

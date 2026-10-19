@@ -37,7 +37,7 @@ import {
 	TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useCatalogManagement } from '@/hooks/useCatalogManagement';
+import { usePrivateProviderManagement } from '@/hooks/useCatalogManagement';
 import { useCredentials } from '@/hooks/useCredentials';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
@@ -460,7 +460,7 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 
 export const CredentialPage = () => {
 	const { t } = useTranslation();
-	const canManage = useCatalogManagement();
+	const canManage = usePrivateProviderManagement();
 	const { credentials, loading, remove, refetch } = useCredentials();
 	const [schemas, setSchemas] = useState<CredentialSchema[]>([]);
 	const [selectedId, setSelectedId] = useState<string | null>(null);

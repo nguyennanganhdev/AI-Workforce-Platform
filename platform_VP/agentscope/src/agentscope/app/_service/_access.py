@@ -274,12 +274,11 @@ class ResourceAccessService:
             own = await self._storage.list_knowledge_bases(viewer_id)
 
         authority = getattr(self._storage, "vin_platform_service", None)
-        customer_credentials = kind is ResourceKind.CREDENTIAL and authority is not None and (await authority.context(viewer_id)).role == "VIN_USER"
-        if customer_credentials:
-            allowed = {r["resource_id"] for r in await authority.catalog(await authority.context(viewer_id), "credential", "view")}
-            own = [record for record in own if record.id in allowed]
+        if kind is ResourceKind.CREDENTIAL and authority is not None:
+            from ..vin_platform._resources import PLATFORM_PROVIDER_ID
+            own = [record for record in own if record.id != PLATFORM_PROVIDER_ID]
         views: list[BaseModel] = [
-            self._build_view(record, viewer_id, not customer_credentials) for record in own
+            self._build_view(record, viewer_id, not (kind is ResourceKind.CREDENTIAL and record.data.get("secret_ref"))) for record in own
         ]
         if kind is ResourceKind.CREDENTIAL and authority is not None:
             from ..vin_platform._resources import PLATFORM_PROVIDER_ID
@@ -374,10 +373,7 @@ class ResourceAccessService:
                     data={"type": "openai_credential", "name": entry["name"]})
         own = await self._get_owned(kind, viewer_id, resource_id)
         if own is not None:
-            if kind is ResourceKind.CREDENTIAL and authority is not None and (await authority.context(viewer_id)).role == "VIN_USER":
-                allowed = await authority.catalog(await authority.context(viewer_id), "credential", "view")
-                if not any(r["resource_id"] == resource_id for r in allowed):
-                    raise self._not_found(kind, resource_id)
+            if kind is ResourceKind.CREDENTIAL and own.data.get("secret_ref"):
                 return self._build_view(own, viewer_id, False)
             # Owner-side reads bypass the ``team`` filter on purpose:
             # runtime paths legitimately load the owner's ``source ==
@@ -429,6 +425,10 @@ class ResourceAccessService:
         if record is not None:
             if authority is not None:
                 from ..vin_platform._resources import hydrate_platform_credential
+                if record.data.get("secret_ref"):
+                    rows = await authority.catalog(await authority.context(viewer_id), "credential", "execute")
+                    if not any(row["resource_id"] == credential_id for row in rows):
+                        raise self._not_found(ResourceKind.CREDENTIAL, credential_id)
                 record = hydrate_platform_credential(record)
             return record
 
@@ -549,6 +549,10 @@ class ResourceAccessService:
         """
         own = await self._get_owned(kind, viewer_id, resource_id)
         if own is not None:
+            if kind is ResourceKind.CREDENTIAL:
+                from ..vin_platform._resources import PLATFORM_PROVIDER_ID
+                if resource_id == PLATFORM_PROVIDER_ID or own.data.get("secret_ref"):
+                    raise HTTPException(status_code=403, detail="Managed provider is read-only.")
             return viewer_id, own
 
         for ref in await self._list_refs(viewer_id, kind):

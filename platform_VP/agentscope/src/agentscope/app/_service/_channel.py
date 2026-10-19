@@ -66,7 +66,7 @@ class ChannelService:
             session (`SessionSettings`): Derived-session settings.
             enabled (`bool`): Whether to start the channel immediately.
         """
-        platform_config = await self._discord_config(user_id, channel_type, platform_config, creating=True)
+        platform_config = await self._discord_config(user_id, channel_type, platform_config, creating=True, credentials=credentials)
         from pydantic import ValidationError
 
         channel_cls = self._types.get(channel_type)
@@ -123,6 +123,7 @@ class ChannelService:
         if "platform_config" in updates:
             updates = {**updates, "platform_config": await self._discord_config(
                 record.user_id, record.channel_type, updates["platform_config"],
+                trusted_owner=record.platform_config.get("owner_user_id"),
             )}
         updates.pop("credentials", None)
         updates.pop("channel_type", None)
@@ -248,7 +249,7 @@ class ChannelService:
 
     # -- internals --
 
-    async def _discord_config(self, user_id, channel_type, config, *, creating=False):
+    async def _discord_config(self, user_id, channel_type, config, *, creating=False, credentials=None, trusted_owner=None):
         if channel_type != "discord":
             return config
         from ..channel._discord._channel import DiscordChannel
@@ -257,10 +258,20 @@ class ChannelService:
         authority = getattr(self._storage, "vin_platform_service", None)
         context = await authority.context(user_id) if authority is not None else None
         if context is not None and context.role == "VIN_USER":
-            from ._discord_identity import verified_owner
+            from ._discord_identity import bot_owner, verified_owner
             from ..vin_platform import PlatformError
             try:
-                owner = (await verified_owner(authority, context))["discord_user_id"]
+                try:
+                    owner = (await verified_owner(authority, context))["discord_user_id"]
+                except PlatformError as exc:
+                    if exc.code != "DISCORD_IDENTITY_REQUIRED":
+                        raise
+                    if creating and credentials:
+                        owner = await bot_owner(authority, credentials)
+                    elif trusted_owner:
+                        owner = trusted_owner
+                    else:
+                        raise
             except PlatformError as exc:
                 raise ChannelError(exc.code, exc.status) from exc
             if options.owner_user_id and options.owner_user_id != owner:

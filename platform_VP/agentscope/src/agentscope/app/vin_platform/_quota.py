@@ -82,7 +82,7 @@ class QuotaAuthority:
             policy, revision, _ = await self._policy(db, context)
             return policy, revision
 
-    async def reserve(self, context, *, budget, purpose, model, attempt_id=None, now=None):
+    async def reserve(self, context, *, budget, purpose, model, attempt_id=None, now=None, private_credential_id=None):
         if isinstance(budget, bool) or not isinstance(budget, int) or budget < 1:
             raise PlatformError("INVALID_QUOTA_RESERVATION", 422)
         now = now or datetime.now(UTC)
@@ -95,7 +95,9 @@ class QuotaAuthority:
             await self.service.assert_active(db, context)
             policy, revision, pools = await self._policy(db, context)
             if model not in policy.models:
-                raise PlatformError("MODEL_NOT_ENTITLED", 403)
+                from ._resources import is_private_credential
+                if not private_credential_id or not await is_private_credential(self.service, context.initiator_user_id, private_credential_id):
+                    raise PlatformError("MODEL_NOT_ENTITLED", 403)
             prior = (await db.execute(select(t.attempts).where(t.attempts.c.id == attempt_id))).mappings().first()
             if prior:
                 if (prior["tenant_id"], prior["user_id"], prior["budget"], prior["purpose"]) != (

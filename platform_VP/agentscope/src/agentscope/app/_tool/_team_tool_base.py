@@ -55,6 +55,7 @@ class _TeamToolBase(ToolBase):
         session_id: str,
         agent_id: str,
         shared_context_service: "SharedContextService | None" = None,
+        peer_collaboration: bool = False,
     ) -> None:
         """Bind request-scoped identifiers and shared dependencies.
 
@@ -81,6 +82,7 @@ class _TeamToolBase(ToolBase):
         self._session_id = session_id
         self._agent_id = agent_id
         self._shared_context = shared_context_service
+        self._peer_collaboration = peer_collaboration
 
     async def _require_team(self) -> "TeamRecord":
         """Return this session's team, read fresh at call time.
