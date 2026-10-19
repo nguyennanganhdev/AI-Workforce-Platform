@@ -1,0 +1,21 @@
+services:
+  landing:
+    image: ${LANDING_IMAGE:?Set LANDING_IMAGE to a release image tag}
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5180:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

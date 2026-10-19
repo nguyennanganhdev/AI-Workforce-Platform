@@ -1,0 +1,39 @@
+VAgents white landing asset notes
+Date: 2026-10-17
+
+Art direction:
+Bright white studio, pale neutral surfaces, orange brand accents and cool blue details. Preserve the existing VAgents mascot family. No fabricated customer logos, claims or testimonial assets.
+
+Exact supplied assets:
+The user supplied five PNG images; coordinator image was duplicated. The four unique files were copied byte-for-byte from input attachments into:
+public/images/agent-ky-su.png SHA256 28bc001b09fb6fb675bf50292bd53067dd487dccc1ed155427a1e642ed289ac9
+public/images/agent-cskh.png SHA256 028b5dadf80355e304f1cf9917b7c9ee2eee29382bfc03745ad3bb17a51e9d6b
+public/images/agent-dieu-phoi.png SHA256 eb6e0eb1f685a796dc46b174a9a43819e416c4207202820635f06820b8ec6854
+public/images/agent-phan-tich.png SHA256 b542fd7a478689c48078ca1c121a33697354da4f88cb721d834827a1480850aa
+All four are 1254x1254 PNG RGBA with genuine transparent pixels, not black backgrounds. Originals retained unchanged. Runtime WebP variants resized to 240, 480 and 700 pixels preserve alpha.
+
+Additional generated assets:
+Built-in image_gen tool (not CLI/API key) generated a fifth data mascot because the fifth attachment duplicated the coordinator. It is a matching derivative, not an original supplied character.
+public/images/agent-du-lieu.png (matching blue vest laptop agent, actual transparency)
+public/images/hero-squad.webp and hero-squad-768.webp (white team render)
+public/images/team-journey.webp and team-journey-768.webp (white floating industry islands and orange V gate)
+public/images/team-journey-square.webp (square center-crop variant)
+public/images/team-journey-contained.webp (900x900 white contain-resize variant that preserves all five characters; preferred for square bento placement)
+public/images/og-image.webp (1200x630 contain-resized hero; white letterbox background)
+
+Existing logo:
+public/images/logo.png is the exact Platform BrandMark asset from
+platform_VP/agentscope/examples/web_ui/frontend/src/assets/images/brand/vagents-app-icon.png.
+SHA256: 9500a7b48ac3bfea24bc89c0817b5b80f54a5549fec52d950d53d7f50181107a
+The wordmark follows Platform Brand.tsx: VAgents, semibold, without a trailing dot;
+its font stack matches the Platform Cue template in src/styles/cue.css.
+
+Generation prompts, verbatim:
+DATA MASCOT:
+Use case: identity-preserve. Asset type: transparent single mascot PNG for Vietnamese VAgents AI platform, data agent. Reference: supplied agent-phan-tich.png is a reference for exact same chibi 3D family, skin, head, glossy black eyes, smile, navy work trousers and boots, orange accents. Create one full-body Agent Dữ liệu in the same high-end 3D mascot family. Keep the recognizable friendly rounded bald head and proportions. DIFFERENTIATE from analyst: NO glasses, light blue/steel-blue utility vest over ivory short-sleeve shirt, small navy headphones with orange details, holding compact laptop open in both hands with tiny cyan data graph on screen. Full figure, head and boots entirely visible, centered with generous margins. Actual transparent background, no ground, no text, no letters, no scene, no watermark. Camera straight-on 3/4 similar to source. Soft studio lighting with orange left edge and cool blue right edge, crisp detailed fabric, cinematic collectible figurine finish.
+
+HERO:
+Use case: stylized-concept / compositing. Asset type: premium VAgents landing hero image, square render, WHITE website design. Input images 1 engineer, 2 customer care, 3 coordinator, 4 analyst, 5 data agent are character identity references. Render exactly these FIVE chibi 3D mascots together, preserve their faces, costume colors, distinguishing accessories: orange engineer hardhat and wrench (lead in middle), teal-jacket headset CSKH, navy walkie-talkie coordinator, green-vest glasses tablet analyst, blue-vest laptop data agent. Posed like a friendly capable team on a low sculptural white V-shaped platform with thin soft orange luminous trim. Background PURE bright white with very subtle pale gray horizon and soft warm studio shadows beneath platform. Clean 3D studio product render, high material quality, orange and cool blue edge light without dark environment. Balanced lively composition: foreground lead engineer slightly larger, two teammates on either side. Entire platform and all five bodies fully visible; subjects occupy center70%, 10%white safe margins all sides, front three-quarter camera slightly elevated. A thin translucent orange elliptical orbit wraps loosely behind team. NO text, no labels, no logos beyond tiny Vs on uniforms, no UI, no panels, no watermark, no black or navy background, no extra mascots. Elegant enterprise visual; handsome realistic fabric detail matching supplied references, glossy friendly faces. Square image ~1536.
+
+JOURNEY:
+Use case: stylized-concept / compositing. Asset type: premium wide 3D illustration for WHITE VAgents landing page use-case bento feature. Input images 1 engineer,2 CSKH,3 coordinator,4 analyst,5 data agent are exact character identity references. The same FIVE cute polished chibi 3D mascots walk together purposefully toward a tall sculptural V-shaped ORANGE portal on a white floating platform. Small surrounding floating WHITE industry islands show miniature abstract industry objects: a chat bubble, cardboard shipping boxes, small generic office building, calendar tile and simple bar chart. No text or icons with brand logos. Friendly bright futuristic enterprise scene, pure WHITE and very light warm-gray studio background with gentle pale blue atmosphere. Orange portal glows softly; thin amber paths connect white islands. Perspective/isometric three-quarter view, all FIVE full-body mascots in foreground/midground clearly recognizable from references: orange hardhat wrench leader, teal headset customer care, navy walkie-talkie coordinator, green glasses analyst holding tablet, blue laptop data agent. Keep plush 3D fabric navy trousers, rounded peach bald heads, glossy black oval eyes, orange details. Horizontal landscape composition ~1536x1024 with elegant white negative space top left; portal centered right. Entire scene has clean uncluttered silhouette, no dark navy environment, no black background, no sky stars, no neon cyberpunk, no text, no watermark. Soft shadows, studio collectible figurine rendering, detailed refined materials.
