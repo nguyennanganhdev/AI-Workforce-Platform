@@ -83,6 +83,7 @@ export interface BuilderConversation {
 	title: string;
 	messages: BuilderMessage[];
 	proposal: BuilderProposal | null;
+	chat_model_config: ChatModelConfig | null;
 }
 
 export interface WorkforceAgent {
@@ -122,7 +123,7 @@ export const workforceApi = {
 		confirmOutline = false,
 		expectedRevision?: number,
 	) =>
-		client.post<BuilderProposal>('/workforce/console/builder/prepare', {
+		client.post<BuilderProposal | BuilderConversation>('/workforce/console/builder/prepare', {
 			message,
 			chat_model_config: chatModelConfig,
 			conversation_id: conversationId,

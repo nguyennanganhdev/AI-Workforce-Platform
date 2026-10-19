@@ -10,7 +10,7 @@ const source = readFileSync(
   new URL('../src/pages/workforce/builder/index.tsx', import.meta.url), 'utf8');
 
 // Exercise the page's handlers with browser I/O and React hooks mocked.
-async function builderWith(deleteAgent) {
+async function builderWith(deleteAgent, builderApi = {}) {
   const states = [];
   const effects = [];
   let cursor = 0;
@@ -26,7 +26,7 @@ async function builderWith(deleteAgent) {
       if (id === 'react') return {
         useState: (initial) => {
           const index = cursor++;
-          if (!(index in states)) states[index] = initial;
+          if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
           return [states[index], (next) => {
             states[index] = typeof next === 'function' ? next(states[index]) : next;
           }];
@@ -39,6 +39,7 @@ async function builderWith(deleteAgent) {
         workforceApi: {
           listAgents: async () => agents,
           listBuilderConversations: async () => [],
+          ...builderApi,
         },
       };
       if (id === 'react-router-dom') return {
@@ -48,6 +49,7 @@ async function builderWith(deleteAgent) {
       if (id === '@/hooks/useKnowledgeBases') return {
         useKnowledgeBases: () => ({ knowledgeBases: [], loading: false }),
       };
+      if (id === '@/components/chat/session-row-utils') return { sessionTime: () => '' };
       if (id === 'sonner') return { toast: { success() {} } };
       return new Proxy({}, { get: (_, name) => name });
     },
@@ -102,4 +104,34 @@ test('a failed deletion keeps the agent and confirmation available for retry', a
   await assert.rejects(dialog(render()).onConfirm(), /Forbidden/);
   assert.ok(button(render(), 'Hotel'));
   assert.equal(dialog(render()).open, true);
+});
+
+test('a conversation without a proposal restores its model and can continue chatting', async () => {
+  const model = { type: 'openai_credential', credential_id: 'chat', model: 'chat', parameters: {} };
+  let stored = {
+    conversation_id: 'builder', title: 'Chat', proposal: null, chat_model_config: model,
+    messages: [{ role: 'builder', text: 'Bạn muốn agent hỗ trợ công việc gì?' }],
+  };
+  const requests = [];
+  const render = await builderWith(async () => {}, {
+    listBuilderConversations: async () => [{ conversation_id: 'builder', title: 'Chat' }],
+    getBuilderConversation: async () => stored,
+    prepare: async (...args) => {
+      requests.push(args);
+      stored = { ...stored, messages: [...stored.messages,
+        { role: 'user', text: args[0] }, { role: 'builder', text: 'Chào bạn!' }] };
+      return stored;
+    },
+  });
+  assert.equal(find(render(), (node) => node.type === 'LlmSelect').value, model);
+  find(render(), (node) => node.type === 'Textarea').onChange({ target: { value: 'Xin chào' } });
+  await find(render(), (node) => node.props?.['aria-label'] === 'Gửi cho Builder').onClick();
+  // The click starts an async handler; let its history refresh finish.
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0][0], 'Xin chào');
+  assert.equal(requests[0][1], model);
+  assert.equal(requests[0][2], 'builder');
+  assert.ok(find(render(), (node) => node.type === 'Markdown' && node.props.children === 'Chào bạn!'));
+  assert.equal(find(render(), (node) => node.type === 'ProposalSteps'), undefined);
 });

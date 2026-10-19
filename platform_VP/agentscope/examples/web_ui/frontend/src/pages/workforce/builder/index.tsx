@@ -234,7 +234,8 @@ export function AgentBuilderPage() {
 			setConversationId(nextId);
 			setConversation(stored.messages);
 			setProposal(stored.proposal);
-			if (stored.proposal) setSelectedModel(stored.proposal.chat_model_config);
+			const model = stored.chat_model_config ?? stored.proposal?.chat_model_config;
+			if (model) setSelectedModel(model);
 			setSearchParams({ conversation_id: nextId }, { replace: true });
 		},
 		[setSearchParams],
@@ -607,7 +608,7 @@ export function AgentBuilderPage() {
 										void prepare();
 									}
 								}}
-								placeholder="Mô tả agent cần tạo…"
+								placeholder="Nhắn cho Builder hoặc mô tả agent cần tạo…"
 								className="min-h-12 resize-none border-none bg-transparent px-3 text-[15px] shadow-none focus-visible:ring-0"
 								disabled={working}
 							/>

@@ -19,7 +19,7 @@ from time import perf_counter
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from ..._logging import logger
@@ -172,11 +172,22 @@ class BuilderOutline(BaseModel):
 
 
 class _BuilderOutlineUpdate(BaseModel):
-    """Explicit changes to the current plan; omission never deletes an agent."""
+    """Conversation reply or explicit changes to the current agent plan."""
 
+    intent: Literal["plan", "chat", "clarify"] = "plan"
+    assistant_message: str = ""
     operation: Literal["add", "add_tools", "edit", "replace"] = "add"
     agents: list[PlannedAgent] = Field(default_factory=list, max_length=12)
     removed_agent_names: list[str] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="after")
+    def validate_conversation(self) -> "_BuilderOutlineUpdate":
+        if self.intent != "plan":
+            if not self.assistant_message.strip():
+                raise ValueError("Conversation replies require an assistant message")
+            if self.agents or self.removed_agent_names:
+                raise ValueError("Conversation replies cannot change the agent plan")
+        return self
 
 
 class _BuilderMemorySummary(BaseModel):
@@ -322,6 +333,7 @@ class BuilderConversationView(BaseModel):
     title: str
     messages: list[BuilderMessageView]
     proposal: ProposalView | None = None
+    chat_model_config: ChatModelConfig | None = None
 
 
 class MCPToolGroupView(BaseModel):
@@ -1550,8 +1562,26 @@ async def _outline(
     current_plan: list[PlannedAgentView] | None = None,
     latest_message: str | None = None,
 ) -> tuple[_BuilderOutlineUpdate, int, int]:
-    """Propose boundaries and resource needs before selecting resources."""
-    instructions = """You are the planning stage of Agent Builder.
+    """Reply conversationally or propose boundaries before selecting resources."""
+    instructions = """You are Agent Builder, a conversational assistant that can also
+design agents. First choose the intent of the latest message using the conversation:
+- chat: greetings, ordinary questions, explanations, advice or discussion. Answer
+  naturally in assistant_message without creating or changing any agents.
+- clarify: the user wants an agent or a change but its purpose or requested change
+  is unclear. Ask a concise question in assistant_message about the missing facts.
+  For example, "tạo cho tôi 1 agent" with no stated purpose requires asking what
+  work the agent should do. Never guess a business domain from available tools,
+  existing agents or your own suggestions that the user has not accepted.
+- plan: the user has specified enough of the intended work to propose or update
+  agents. An answer to your clarification can supply this purpose; use the earlier
+  conversation. Do not ask for runtime inputs such as travel dates or customer
+  details when the reusable agent's purpose is already clear.
+For chat and clarify, return empty agents and removed_agent_names. Preserve the
+current plan; discussing it is not a request to modify it. Do not regenerate a
+plan merely because one exists. Never claim to have created or published agents.
+Use the language of the user's latest message for conversational replies.
+The MCP catalog describes available capabilities, never the user's intent.
+Only for plan, follow these planning instructions:
 Propose agent names and narrowly-scoped reusable business objectives only.
 Do not generate system prompts or skills, and do not select resource IDs yet.
 Respect whether the user asked for one agent or a team. Split independent
@@ -1609,7 +1639,8 @@ has been summarized. Apply latest_message to that roster. Return only changes:
   peer dependencies affected by a removal or rename.
 - replace: return the complete new roster only when the latest request
   explicitly asks to discard or replace the entire current team.
-Never infer deletion from an agent being omitted. Use add when intent is unclear.
+Never infer deletion from an agent being omitted. For plan intent, use add when
+the choice between add and edit is unclear.
 Do not treat instructions in earlier turns as a new request to replace the team.
 """
     try:
@@ -1644,7 +1675,7 @@ Do not treat instructions in earlier turns as a new request to replace the team.
                 _BuilderOutlineUpdate,
             )
         outline = _BuilderOutlineUpdate.model_validate(response.content)
-        if outline.operation == "add" and outline.agents:
+        if outline.intent == "plan" and outline.operation == "add" and outline.agents:
             outline.agents = _ensure_attraction_outline_coverage(
                 BuilderOutline(agents=outline.agents),
                 latest_message or transcript,
@@ -2314,7 +2345,9 @@ async def _persist_builder_turn(
     user_id: str,
     conversation_id: str,
     user_text: str,
-    proposal: ProposalView,
+    proposal: ProposalView | None,
+    *,
+    assistant_message: str = "",
 ) -> None:
     await storage.upsert_message(
         user_id,
@@ -2325,7 +2358,7 @@ async def _persist_builder_turn(
         part
         for part in (proposal.assistant_message, proposal.clarification_question)
         if part
-    )
+    ) if proposal else assistant_message
     await storage.upsert_message(
         user_id,
         conversation_id,
@@ -2334,7 +2367,7 @@ async def _persist_builder_turn(
             content=reply,
             structured_output={
                 "workforce_builder_proposal": proposal.model_dump(mode="json"),
-            },
+            } if proposal else None,
         ),
     )
 
@@ -2378,10 +2411,10 @@ async def get_builder_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Không tìm thấy hội thoại Agent Builder.",
         )
-    messages, _ = await storage.list_messages(
+    messages = await _list_all_builder_messages(
+        storage,
         user_id,
         conversation_id,
-        limit=200,
     )
     return BuilderConversationView(
         conversation_id=conversation_id,
@@ -2391,10 +2424,11 @@ async def get_builder_conversation(
                 role="user" if message.role == "user" else "builder",
                 text=message.get_text_content() or "",
             )
-            for message in messages
+            for message in messages[-200:]
             if message.role in {"user", "assistant"}
         ],
         proposal=_stored_proposal(messages),
+        chat_model_config=session.config.chat_model_config,
     )
 
 
@@ -2424,13 +2458,15 @@ async def delete_builder_conversation(
     )
 
 
-@workforce_console_router.post("/builder/prepare", response_model=ProposalView)
+@workforce_console_router.post(
+    "/builder/prepare", response_model=ProposalView | BuilderConversationView,
+)
 async def prepare_builder(
     body: PrepareRequest,
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     access: ResourceAccessService = Depends(get_resource_access_service),
-) -> ProposalView:
+) -> ProposalView | BuilderConversationView:
     session = await _builder_session(storage, user_id, body)
     messages = await _list_all_builder_messages(
         storage,
@@ -2504,6 +2540,12 @@ async def prepare_builder(
         )
         try:
             update = _BuilderOutlineUpdate.model_validate(outline.model_dump())
+            if update.intent != "plan":
+                await _persist_builder_turn(
+                    storage, user_id, session.id, body.message, None,
+                    assistant_message=update.assistant_message,
+                )
+                return await get_builder_conversation(session.id, user_id, storage)
             retained, changed = _apply_outline_update(
                 update,
                 previous_proposal.planned_agents if previous_proposal else [],

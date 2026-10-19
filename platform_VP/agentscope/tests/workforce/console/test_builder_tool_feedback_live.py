@@ -79,6 +79,32 @@ class TestLiveLunaToolFeedback(IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.luna.client.close()
 
+    async def test_conversation_intents_do_not_guess_from_the_tool_catalog(self):
+        previous = [console.PlannedAgentView(name="Hotel", objective="Tìm phòng khách sạn")]
+        for message, history, current, intent in [
+            ("tạo cho tôi 1 agent", "", [], "clarify"),
+            ("Xin chào", "", [], "chat"),
+            ("Giải thích sự khác nhau giữa tool và skill", "", previous, "chat"),
+            ("Agent Hotel trong kế hoạch làm gì?", "", previous, "chat"),
+            ("Tạo một agent tóm tắt văn bản tôi cung cấp", "", [], "plan"),
+            ("Tóm tắt văn bản tôi cung cấp",
+             "Area manager: tạo cho tôi 1 agent\n\nBuilder: Bạn muốn agent hỗ trợ công việc gì?",
+             [], "plan"),
+        ]:
+            with self.subTest(message=message):
+                update, _, _ = await console._outline(
+                    f"{history}\n\nArea manager: {message}", self.tools, self.luna, self.config,
+                    current_plan=current, latest_message=message,
+                )
+                self.assertEqual(update.intent, intent)
+                if intent == "plan":
+                    self.assertEqual(len(update.agents), 1)
+                    self.assertEqual(update.agents[0].tool_requirements, [])
+                else:
+                    self.assertTrue(update.assistant_message.strip())
+                    self.assertEqual(update.agents, [])
+                    self.assertEqual(update.removed_agent_names, [])
+
     async def test_correction_adds_booking_keeps_team_and_generates_the_approved_tools(self):
         self.assertTrue(os.getenv("TYPESAFE_API_KEY"), "Set a valid TYPESAFE_API_KEY")
         previous = [
