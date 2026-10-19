@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { AuthShowcase } from './AuthShowcase';
 import { authApi } from '@/api';
 import type { AreaOption, AuthUser, DomainOption } from '@/api';
-import { ApiError, getBaseUrl } from '@/api/client';
+import { ApiError } from '@/api/client';
 import heroSquad from '@/assets/images/brand/hero-squad-768.webp';
 import { BRAND_NAME, BrandMark } from '@/components/layout/Brand';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -33,7 +33,9 @@ type Mode = 'login' | 'register';
 export function AuthPage({ onAuthenticated }: Props) {
 	useCueTheme();
 	const { t } = useTranslation();
-	const [mode, setMode] = useState<Mode>(() => window.location.pathname === '/register' ? 'register' : 'login');
+	const [mode, setMode] = useState<Mode>(() =>
+		window.location.pathname === '/register' ? 'register' : 'login',
+	);
 	const [identity, setIdentity] = useState('');
 	const [email, setEmail] = useState('');
 	const [username, setUsername] = useState('');
@@ -149,7 +151,10 @@ export function AuthPage({ onAuthenticated }: Props) {
 					<h1 className="mt-5 max-w-xl text-[44px]/[1.1] font-black tracking-[-0.045em]">
 						{t('auth.heroTitle')}
 					</h1>
-					<span aria-hidden className="mt-5 block h-1 w-16 rounded-full bg-[linear-gradient(90deg,var(--vg-accent),var(--vg-accent-bright))]" />
+					<span
+						aria-hidden
+						className="mt-5 block h-1 w-16 rounded-full bg-[linear-gradient(90deg,var(--vg-accent),var(--vg-accent-bright))]"
+					/>
 					<p className="mt-5 max-w-lg text-base/7 text-muted-foreground">
 						{t('auth.heroDescription')}
 					</p>
@@ -253,7 +258,9 @@ export function AuthPage({ onAuthenticated }: Props) {
 												}
 												required
 											/>
-										<FieldDescription>{t('auth.usernameHint')}</FieldDescription>
+											<FieldDescription>
+												{t('auth.usernameHint')}
+											</FieldDescription>
 										</Field>
 									</>
 								)}
@@ -349,9 +356,6 @@ export function AuthPage({ onAuthenticated }: Props) {
 								</Button>
 							</FieldGroup>
 						</form>
-						<p className="mt-5 text-center text-xs text-muted-foreground">
-							{t('auth.connectedTo')} {getBaseUrl()}
-						</p>
 					</CardContent>
 				</Card>
 			</main>

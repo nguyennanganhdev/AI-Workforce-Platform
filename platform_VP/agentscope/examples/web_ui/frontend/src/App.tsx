@@ -23,6 +23,7 @@ import { ChannelPage } from '@/pages/channel';
 import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
 import { KnowledgePage } from '@/pages/knowledge';
+import { LandingPage } from '@/pages/landing';
 import { SchedulePage } from '@/pages/schedule';
 import { AgentManagementPage } from '@/pages/workforce/agents';
 import { AgentBuilderPage } from '@/pages/workforce/builder';
@@ -64,7 +65,10 @@ const router = createBrowserRouter([
 		],
 	},
 	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
-	...['/login', '/register', '/auth'].map((path) => ({ path, element: <Navigate to="/" replace /> })),
+	...['/login', '/register', '/auth'].map((path) => ({
+		path,
+		element: <Navigate to="/" replace />,
+	})),
 ]);
 
 function App() {
@@ -103,6 +107,7 @@ function App() {
 	}
 
 	if (authStatus === 'anonymous') {
+		if (window.location.pathname === '/') return <LandingPage />;
 		return (
 			<>
 				<AuthPage

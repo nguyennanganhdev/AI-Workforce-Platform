@@ -1,6 +1,12 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+@import '@fontsource/be-vietnam-pro/400.css';
+@import '@fontsource/be-vietnam-pro/500.css';
+@import '@fontsource/be-vietnam-pro/600.css';
+@import '@fontsource/be-vietnam-pro/700.css';
+@import '@fontsource/be-vietnam-pro/800.css';
+@import '@fontsource/be-vietnam-pro/900.css';
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 /* The Cue design layer. It only declares tokens under `.cue-theme`, so this
@@ -149,7 +155,7 @@ svg.lucide {
 
 @theme inline {
 	--font-heading: var(--font-sans);
-	--font-sans: 'Geist Variable', sans-serif;
+	--font-sans: 'Be Vietnam Pro', 'Segoe UI', sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 	--color-canvas: var(--bg); /* → bg-canvas (app base; panels float on it) */
 	/* Menu-item inset, tied to the corner radius: a rounder item eats more
