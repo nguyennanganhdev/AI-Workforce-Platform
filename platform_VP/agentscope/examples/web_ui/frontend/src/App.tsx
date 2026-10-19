@@ -46,7 +46,8 @@ const router = createBrowserRouter([
 				// last-resort catch-all for SettingsLayout/SettingsSidebar crashes.
 				errorElement: <RouteError />,
 				children: [
-					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
+					// Signing in or registering lands on the chat page.
+					{ path: '/', element: <Navigate to="/chat" replace /> },
 					{ path: '/workforce/leader', element: <LeaderPage /> },
 					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
 					{ path: '/workforce/agents/:agentId?', element: <AgentManagementPage /> },
