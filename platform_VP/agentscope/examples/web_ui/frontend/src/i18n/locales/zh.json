@@ -52,7 +52,8 @@
 		"llm": "LLM",
 		"tts": "TTS",
 		"embedding": "向量",
-		"switchToVi": "Chuyển sang tiếng Việt"
+		"switchToVi": "Chuyển sang tiếng Việt",
+		"secondsElapsed": "{{count}} 秒"
 	},
 	"error": {
 		"description": "页面遇到意外错误。你可以重试或返回首页。",

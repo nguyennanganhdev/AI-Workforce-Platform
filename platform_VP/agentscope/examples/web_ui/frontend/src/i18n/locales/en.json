@@ -52,7 +52,8 @@
 		"llm": "LLM",
 		"tts": "TTS",
 		"embedding": "Embedding",
-		"switchToVi": "Chuyển sang tiếng Việt"
+		"switchToVi": "Chuyển sang tiếng Việt",
+		"secondsElapsed": "{{count}}s"
 	},
 	"error": {
 		"description": "The page hit an unexpected error. You can retry or go back home.",
