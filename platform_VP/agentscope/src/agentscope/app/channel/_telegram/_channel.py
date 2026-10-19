@@ -21,6 +21,10 @@ from .._base import (
 from .._errors import ChannelError
 
 
+# A revoked token or another poller/webhook (409) is rechecked this often.
+_BLOCKED_RETRY_SECONDS = 60.0
+
+
 class TelegramChannel(ChannelBase):
     """Connect a Telegram bot to the agent's text conversation."""
 
@@ -151,14 +155,18 @@ class TelegramChannel(ChannelBase):
                     self.status.last_error = ""
                     backoff = 1.0
                     for update in updates:
-                        await self._on_message(update.get("message", {}))
+                        # Advance first: a message that fails to handle is
+                        # logged and skipped instead of replayed forever.
                         offset = update["update_id"] + 1
+                        await self._on_message(update.get("message", {}))
                 except ChannelError as exc:
                     self.status.last_error = str(exc)
                     if exc.status_code in (401, 403, 409):
+                        # Token revoked or another poller/webhook owns the bot:
+                        # keep checking slowly so the channel recovers by itself.
                         self.status.state = "failed"
-                        while True:
-                            await asyncio.sleep(30.0)
+                        await asyncio.sleep(_BLOCKED_RETRY_SECONDS)
+                        continue
                     self.status.state = "retrying"
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 30.0)
@@ -175,7 +183,24 @@ class TelegramChannel(ChannelBase):
                     backoff = min(backoff * 2, 30.0)
         finally:
             self.status.state = "stopped"
+            await self._confirm_offset(offset)
             await self.aclose()
+
+    async def _confirm_offset(self, offset: int) -> None:
+        """Tell Telegram the handled updates are done, so a restart does not replay them.
+
+        Updates are confirmed only by the next getUpdates call with a higher
+        offset; without this, a stop right after handling re-delivers them.
+        """
+        if not offset:
+            return
+        try:
+            await asyncio.wait_for(
+                self._request("getUpdates", offset=offset, timeout=0, limit=1),
+                timeout=5.0,
+            )
+        except Exception:  # pylint: disable=broad-except
+            logger.info("Telegram '%s' could not confirm its last offset", self._channel_id)
 
     async def _on_message(self, message: dict) -> None:
         """Normalise text messages and ignore bots and unaddressed groups."""
