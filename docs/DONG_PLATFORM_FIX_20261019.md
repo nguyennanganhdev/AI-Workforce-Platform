@@ -26,4 +26,13 @@ All automated checks use fakes or isolated local services. No real model/provide
 
 Existing VPS Platform (`vagen-platform.duckdns.org`), app/web only. Preserve existing runtime environment, mounts, networks, data services and Domain stack. Record a fresh four-store backup, isolated restore and rollback image identity before cutover; verify the deployed source/image identity and public routes afterward.
 
-Validation and deployment evidence will be recorded after the checks complete. Real-model chat quality and business acceptance remain owner-run checks.
+## Validation evidence
+
+- Linux production-image regression selection: 222 tests and 10 subtests passed, with networking disabled.
+- Vin-enabled React browser fixtures: 26 tests passed, using only mocked same-origin HTTP responses. The registration assertion follows Dong's administrator-approval message while still rejecting role/scope submission.
+- Frontend lint, TypeScript/Vite production build, and six chat/HTTP/crypto tests passed. Production images use `/api`.
+- Isolated Domain HTTP confirmation/concurrent-decision and rework scenarios: two tests passed without Agent/model calls.
+- A broad upstream Windows sweep is not a passing release gate: optional dependencies (`moto`, `mem0`, `textual`, `dingtalk_stream`) and the separate resident-test import environment are absent. The required Linux CI gates are assessed from their JUnit reports, including failures, errors and skips.
+- Fresh VPS four-store backup and isolated restore passed. Verification includes PostgreSQL migration/counts, MinIO bucket readiness, workspace file hashes, and canonical values plus stream/consumer-group state for 736 persistent Redis keys. Raw RDB/DUMP hashes are unsuitable for unordered hash/set comparison across reloads.
+
+Final CI and deployment evidence is recorded on [PR #106](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/106) and in the scoped VPS release directory `/opt/awp-platform/releases/dongfix-037563a7-20261019`. Real-model chat quality and business acceptance remain owner-run checks.

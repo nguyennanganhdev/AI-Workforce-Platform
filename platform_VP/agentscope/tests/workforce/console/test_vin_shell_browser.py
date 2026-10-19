@@ -215,7 +215,7 @@ def test_registration_never_submits_a_role_or_management_scope(browser_app):
     page.locator("#username").fill("resident-new")
     page.locator("#password").fill("offline-fixture-password")
     page.get_by_role("button", name="Tạo tài khoản", exact=True).click()
-    expect(page.get_by_text("Đã gửi đăng ký. Tài khoản đang chờ xác minh.", exact=True)).to_be_visible()
+    expect(page.get_by_role("alert")).to_have_text("Đã gửi đăng ký. Tài khoản đang chờ quản trị duyệt.")
     registrations = [call for call in calls if call[1] == "/auth/register-personal"]
     assert len(registrations) == 1
     assert set(registrations[0][2]) == {"email", "username", "password"}
