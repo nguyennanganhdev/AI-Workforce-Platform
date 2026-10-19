@@ -27,6 +27,16 @@ class KnowledgeBaseNotFoundError(KnowledgeBaseError):
     """
 
 
+class KnowledgeCredentialMissingError(KnowledgeBaseNotFoundError):
+    """The knowledge base exists but its embedding credential was deleted.
+
+    The message is safe to show to users; ids stay in the log.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Khóa API của kho tri thức không còn tồn tại. Hãy tạo lại kho tri thức với một khóa API hợp lệ.")
+
+
 class DimensionPolicyError(KnowledgeBaseError):
     """Raised when a create-time embedding model violates the manager's
     dimension policy.

@@ -28,6 +28,7 @@ from ..access import ResourceKind
 from ..rag.knowledge_base_manager import (
     DimensionPolicyError,
     KnowledgeBaseNotFoundError,
+    KnowledgeCredentialMissingError,
 )
 from ..storage import (
     ChunkerConfig,
@@ -173,6 +174,11 @@ class KnowledgeBaseService:
                 detail=f"Invalid chunker parameters: {exc}",
             ) from exc
 
+        if await self._storage.get_credential(user_id, embedding_model_config.credential_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Hãy chọn một khóa API còn tồn tại cho mô hình embedding.",
+            )
         try:
             return await self._manager.create_knowledge_base(
                 user_id=user_id,
@@ -791,8 +797,9 @@ class KnowledgeBaseService:
             # document is already gone.
             return
 
-        knowledge = await self._resolve_knowledge(user_id, knowledge_base_id)
-        await knowledge.delete_document(document_id)
+        # No embedding model needed: a document must stay deletable when the
+        # KB's credential is gone or indexing failed.
+        await self._manager.delete_document_vectors(owner_id, knowledge_base_id, document_id)
         await self._storage.delete_knowledge_document(
             owner_id,
             knowledge_base_id,
@@ -880,10 +887,15 @@ class KnowledgeBaseService:
                 record.user_id,
                 knowledge_base_id,
             )
+        except KnowledgeCredentialMissingError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
         except KnowledgeBaseNotFoundError as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=str(exc),
+                detail="Không tìm thấy kho tri thức.",
             ) from exc
 
     async def _delete_blob_quietly(self, blob_uri: str) -> None:

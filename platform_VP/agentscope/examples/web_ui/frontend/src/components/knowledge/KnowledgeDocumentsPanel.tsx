@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { knowledgeBaseApi } from '@/api';
 import type { KnowledgeDocumentStatus, KnowledgeDocumentView } from '@/api';
+import { ApiError } from '@/api/client';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog.tsx';
 import { DocumentDetailDrawer } from '@/components/knowledge/DocumentDetailDrawer.tsx';
 import { Button } from '@/components/ui/button.tsx';
@@ -22,7 +23,21 @@ import type { UploadPhase, UploadTask } from '@/context/uploadTypes';
 import { useDocumentStatusPolling } from '@/hooks/useDocumentStatusPolling';
 import { useKnowledgeDocuments } from '@/hooks/useKnowledgeDocuments';
 import { useKnowledgeSupportedContentTypes } from '@/hooks/useKnowledgeSupportedContentTypes';
+import { withoutInternalIds } from '@/lib/readable';
 import { cn } from '@/lib/utils';
+
+/**
+ * Indexing errors saved before the server cleaned them read like
+ * "KnowledgeBaseNotFoundError: Credential '…' not found"; show people the
+ * meaning, without the class name or ids.
+ */
+function readableIndexError(error: string | null | undefined): string {
+	if (!error) return '';
+	if (/^KnowledgeBaseNotFoundError: Credential/.test(error)) {
+		return 'Khóa API của kho tri thức không còn tồn tại. Hãy tạo lại kho tri thức với một khóa API hợp lệ.';
+	}
+	return withoutInternalIds(error.replace(/^[A-Z][A-Za-z]+(Error|Exception): /, ''));
+}
 
 interface KnowledgeDocumentsPanelProps {
 	knowledgeBaseId: string;
@@ -148,7 +163,7 @@ function RowView({ row, onCancel, onDismiss, onDelete, onOpen }: RowViewProps) {
 		}
 	})();
 
-	const error = row.kind === 'local' ? row.task.error : row.doc.error;
+	const error = readableIndexError(row.kind === 'local' ? row.task.error : row.doc.error);
 	const chunkCount = row.kind === 'server' ? row.doc.chunk_count : row.task.documentId ? 0 : 0;
 
 	const taskIdForCancel =
@@ -394,8 +409,12 @@ export function KnowledgeDocumentsPanel({ knowledgeBaseId }: KnowledgeDocumentsP
 		try {
 			await knowledgeBaseApi.deleteDocument(knowledgeBaseId, deleteTarget.id);
 			await refetch();
-		} catch {
-			toast.error(t('knowledge.document.deleteError'));
+		} catch (failure) {
+			toast.error(
+				failure instanceof ApiError && failure.detail
+					? `${t('knowledge.document.deleteError')} ${failure.detail}`
+					: t('knowledge.document.deleteError'),
+			);
 		}
 	}, [deleteTarget, knowledgeBaseId, refetch, t]);
 
