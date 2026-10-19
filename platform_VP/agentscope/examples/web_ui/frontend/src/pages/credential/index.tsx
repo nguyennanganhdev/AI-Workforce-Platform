@@ -515,11 +515,11 @@ export const CredentialPage = () => {
 	}, [selectedCredential, remove]);
 
 	return (
-		<div className="flex h-full w-full p-2 gap-2">
+		<div className="flex h-full w-full">
 			{/* Left sidebar */}
-			<Sidebar collapsible="none" className="rounded-[22px]">
+			<Sidebar collapsible="none" className="cue-column border-r border-sidebar-border">
 				<SidebarHeader className={'flex flex-col p-[20px_18px_14px] gap-y-1'}>
-					<div className="text-xl font-medium tracking-[-0.02em] text-foreground">
+					<div className="text-[17px]/6 font-semibold text-foreground">
 						{t('common.credential')}
 					</div>
 					<div className="text-text-tertiary text-xs">{t('credential.subtitle')}</div>
@@ -625,7 +625,7 @@ export const CredentialPage = () => {
 			</Sidebar>
 
 			{/* Right detail */}
-			<main className="flex-1 min-h-0 overflow-hidden rounded-[22px] bg-card shadow-panel">
+			<main className="flex-1 min-h-0 overflow-hidden bg-background">
 				{selectedCredential ? (
 					<DetailPanel
 						credential={selectedCredential}

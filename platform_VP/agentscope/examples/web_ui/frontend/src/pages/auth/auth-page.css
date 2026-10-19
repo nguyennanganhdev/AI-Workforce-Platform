@@ -1,0 +1,67 @@
+/*
+ * The sign-in screen in the VAgents landing template: white studio, warm
+ * orange brand accents and cool blue details (platform_VP/gui/landing-page).
+ * Scoped to .vg-auth so the in-app Cue theme stays untouched. Light only,
+ * like Cue and the landing page.
+ */
+.vg-auth {
+	--vg-accent: #df5c0c;
+	--vg-accent-bright: #ff7a1a;
+	--vg-accent-soft: #fff1e6;
+	--vg-line: #e7e9ee;
+	--vg-glow-warm: rgba(255, 122, 26, 0.16);
+	--vg-glow-cool: rgba(34, 94, 184, 0.1);
+}
+
+.vg-auth-glow {
+	background:
+		radial-gradient(48rem 32rem at 12% 8%, var(--vg-glow-warm), transparent 65%),
+		radial-gradient(40rem 30rem at 92% 88%, var(--vg-glow-cool), transparent 70%);
+}
+
+.vg-auth-chip {
+	border: 1px solid #ffd8ba;
+	background: var(--vg-accent-soft);
+	color: #8a3a08;
+}
+
+.vg-auth-accent {
+	background: linear-gradient(100deg, var(--vg-accent), var(--vg-accent-bright));
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+.vg-auth-card {
+	border: 1px solid var(--vg-line);
+	box-shadow:
+		0 1px 2px rgba(24, 25, 28, 0.04),
+		0 24px 60px -24px rgba(223, 92, 12, 0.25);
+}
+
+.vg-auth-tab[data-active='true'] {
+	background: var(--background);
+	color: var(--vg-accent);
+	box-shadow: 0 1px 3px rgba(24, 25, 28, 0.08);
+}
+
+.vg-auth-cta {
+	background: linear-gradient(135deg, var(--vg-accent-bright), var(--vg-accent));
+	color: #fff;
+	box-shadow: 0 10px 24px -10px rgba(223, 92, 12, 0.65);
+}
+
+.vg-auth-cta:hover:not(:disabled) {
+	filter: brightness(1.05);
+}
+
+.vg-auth input:focus-visible,
+.vg-auth [data-slot='select-trigger']:focus-visible {
+	border-color: var(--vg-accent);
+	box-shadow: 0 0 0 3px rgba(223, 92, 12, 0.16);
+}
+
+/* The mascots are rendered on white; multiply drops that white into the card. */
+.vg-auth-squad {
+	mix-blend-mode: multiply;
+}

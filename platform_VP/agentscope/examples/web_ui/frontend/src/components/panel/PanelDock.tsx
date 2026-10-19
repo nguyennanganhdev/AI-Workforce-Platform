@@ -148,7 +148,7 @@ export const PanelDock = ({ layout, panels, onClosePanel }: PanelDockProps) => {
 			{layout.map((column, colIndex) => (
 				<Fragment key={`col-${column.join('-')}`}>
 					{colIndex > 0 && (
-						<ResizableHandle withHandle className="bg-transparent w-1.5" />
+						<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
 					)}
 					<ResizablePanel minSize={COLUMN_MIN_WIDTH} defaultSize="22rem">
 						<ResizablePanelGroup orientation="vertical">
@@ -158,14 +158,11 @@ export const PanelDock = ({ layout, panels, onClosePanel }: PanelDockProps) => {
 								return (
 									<Fragment key={key}>
 										{rowIndex > 0 && (
-											<ResizableHandle
-												withHandle
-												className="bg-transparent !h-1"
-											/>
+											<ResizableHandle className="!h-px bg-[var(--cue-divider,var(--border))]" />
 										)}
 
 										<ResizablePanel
-											className="rounded-[22px] bg-card shadow-panel"
+											className="bg-background"
 											minSize={PANEL_MIN_HEIGHT}
 										>
 											<Panel

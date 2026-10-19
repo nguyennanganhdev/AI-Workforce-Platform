@@ -227,9 +227,9 @@ export const KnowledgePage = () => {
 
 	return (
 		<div className="flex size-full p-2 gap-2">
-			<Sidebar collapsible="none" className="rounded-[22px]">
+			<Sidebar collapsible="none" className="cue-column border-r border-sidebar-border">
 				<SidebarHeader className={'flex flex-col p-[20px_18px_14px] gap-y-1'}>
-					<div className="text-xl font-medium tracking-[-0.02em] text-foreground">
+					<div className="text-[17px]/6 font-semibold text-foreground">
 						{t('common.knowledge')}
 					</div>
 					<div className="text-text-tertiary text-xs">{t('knowledge.subtitle')}</div>
@@ -336,7 +336,7 @@ export const KnowledgePage = () => {
 				</SidebarContent>
 				<SidebarFooter />
 			</Sidebar>
-			<main className="flex-1 min-h-0 overflow-hidden rounded-[22px] bg-card shadow-panel">
+			<main className="flex-1 min-h-0 overflow-hidden bg-background">
 				<DetailPanel knowledgeBase={selectedKb} onTest={() => setTestOpen(true)} />
 			</main>
 			<CreateKnowledgeBaseDialog
