@@ -840,6 +840,10 @@
 			"showThinkingDesc": "Display model reasoning process in the channel."
 		},
 		"fields": {
+			"bot_id": {
+				"title": "Bot ID",
+				"description": "Numeric prefix before ':' in the BotFather token"
+			},
 			"app_id": {
 				"title": "App ID",
 				"description": "Feishu App ID"

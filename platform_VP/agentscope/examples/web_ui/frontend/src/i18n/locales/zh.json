@@ -838,6 +838,10 @@
 			"showThinkingDesc": "在频道中展示模型推理过程。"
 		},
 		"fields": {
+			"bot_id": {
+				"title": "机器人 ID",
+				"description": "BotFather 令牌中 ':' 前的数字部分"
+			},
 			"app_id": {
 				"title": "应用 ID",
 				"description": "飞书应用 ID"

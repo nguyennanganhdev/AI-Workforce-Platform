@@ -66,6 +66,12 @@ class ChannelService:
             session (`SessionSettings`): Derived-session settings.
             enabled (`bool`): Whether to start the channel immediately.
         """
+        channel_cls = self._types.get(channel_type)
+        if channel_cls is not None:
+            credentials = channel_cls.Credentials.model_validate(
+                credentials,
+            ).model_dump()
+            channel_cls.Config.model_validate(platform_config)
         bot_id = self._types.extract_platform_bot_id(
             channel_type,
             credentials,

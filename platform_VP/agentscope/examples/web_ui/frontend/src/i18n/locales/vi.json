@@ -919,6 +919,10 @@
 			"showThinkingDesc": "Hiển thị quá trình suy luận của mô hình trong kênh."
 		},
 		"fields": {
+			"bot_id": {
+				"title": "ID bot",
+				"description": "Phần số trước dấu ':' trong token do BotFather cấp"
+			},
 			"app_id": {
 				"title": "ID ứng dụng",
 				"description": "ID ứng dụng Feishu"
