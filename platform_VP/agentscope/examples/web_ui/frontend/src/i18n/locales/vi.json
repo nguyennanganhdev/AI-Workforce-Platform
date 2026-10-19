@@ -1,12 +1,12 @@
 {
 	"auth": {
-		"heroTitle": "Xây dựng và vận hành tác nhân AI cho khu vực của bạn",
-		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý tác nhân AI và nhận yêu cầu được định tuyến đúng lĩnh vực, đúng khu vực.",
+		"heroTitle": "Xây dựng và vận hành đội agent AI cho công việc của bạn",
+		"heroDescription": "Tạo tài khoản, dựng đội agent AI chuyên trách và giao việc cho cả đội chỉ bằng một cuộc trò chuyện.",
 		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
 		"loginTitle": "Chào mừng bạn quay lại",
 		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",
 		"registerTitle": "Tạo tài khoản",
-		"registerDescription": "Chọn lĩnh vực và khu vực bạn chịu trách nhiệm.",
+		"registerDescription": "Chỉ cần email, tên đăng nhập và mật khẩu để bắt đầu.",
 		"login": "Đăng nhập",
 		"register": "Đăng ký",
 		"logout": "Đăng xuất",
@@ -15,27 +15,22 @@
 		"username": "Tên đăng nhập",
 		"password": "Mật khẩu",
 		"passwordHint": "Sử dụng ít nhất 12 ký tự.",
-		"domain": "Lĩnh vực",
-		"area": "Khu vực",
-		"selectDomain": "Chọn lĩnh vực",
-		"selectArea": "Chọn khu vực",
 		"createAccount": "Tạo tài khoản",
-		"connectedTo": "Máy chủ:",
 		"authenticationDisabled": "Máy chủ chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại.",
 		"showcase": {
 			"live": "Đang hoạt động",
-			"caption": "Minh hoạ: yêu cầu của cư dân được Leader định tuyến tới đúng agent và được xử lý",
+			"caption": "Minh hoạ: yêu cầu của khách hàng được Leader giao cho đúng agent và được xử lý",
 			"statusIdle": "Chờ yêu cầu",
 			"statusBusy": "Đang xử lý",
 			"statusDone": "Hoàn tất",
-			"resident": "Cư dân",
-			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
-			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
-			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
+			"customer": "Khách hàng",
+			"routed": "Giao cho: Agent Khách sạn",
+			"request": "Tìm giúp tôi khách sạn gần biển ở Đà Nẵng cho 2 người, cuối tuần này.",
+			"reply": "Đã tìm được 3 khách sạn gần biển, giá từ 1,2 triệu/đêm. Bạn muốn xem chi tiết không?",
 			"agents": {
-				"reception": "Lễ tân",
-				"technical": "Kỹ thuật",
-				"hotel": "Khách sạn"
+				"planner": "Lịch trình",
+				"hotel": "Khách sạn",
+				"flight": "Vé máy bay"
 			}
 		},
 		"brand": "Nền tảng VAgents",
@@ -45,9 +40,7 @@
 			"invalidEmail": "Địa chỉ email không hợp lệ.",
 			"invalidUsername": "Tên đăng nhập phải có 3–64 ký tự, chỉ gồm chữ thường, số, dấu chấm, gạch dưới hoặc gạch ngang.",
 			"invalidPassword": "Mật khẩu phải có ít nhất 12 ký tự và không vượt quá 1024 byte.",
-			"alreadyExists": "Email hoặc tên đăng nhập đã được sử dụng.",
-			"scopeRequired": "Hãy chọn lĩnh vực và khu vực.",
-			"invalidArea": "Khu vực không thuộc lĩnh vực đã chọn."
+			"alreadyExists": "Email hoặc tên đăng nhập đã được sử dụng."
 		}
 	},
 	"common": {
@@ -339,9 +332,9 @@
 			"hint": "Không có lựa chọn phù hợp? Cứ gõ câu trả lời của bạn.",
 			"continue": "Tiếp tục",
 			"options": [
-				"Cư dân căn S1.01-1201 báo nước rỉ dưới bồn rửa bếp từ sáng, xử lý giúp tôi",
-				"Cư dân báo ổ cắm phòng khách đang bốc khói và có mùi khét",
-				"Hành lang tầng 12 có vết bẩn lớn, cần giao người vệ sinh",
+				"Lên lịch trình 3 ngày ở Đà Nẵng cho 2 người, ngân sách 10 triệu",
+				"Tìm giúp tôi chuyến bay Hà Nội – TP.HCM sáng thứ Sáu",
+				"Tóm tắt các yêu cầu khách hàng hôm nay và đề xuất cách trả lời",
 				"Đội agent hiện có những ai và mỗi agent phụ trách việc gì?"
 			]
 		},
@@ -381,8 +374,8 @@
 			"fit": "Vừa khung nhìn",
 			"legendLive": "trả lời trong 15 phút qua",
 			"legendIdle": "đã cấu hình, đang rảnh",
-			"resident": "Cư dân",
-			"residentNote": "gửi yêu cầu qua đối tác",
+			"resident": "Khách hàng",
+			"residentNote": "gửi yêu cầu qua kênh kết nối",
 			"you": "Bạn",
 			"youNote": "trò chuyện trực tiếp",
 			"leader": "Leader",
@@ -1084,7 +1077,7 @@
 		"description": "Mô tả agent cần làm gì. Agent Builder dựng bản nháp (lời dặn, công cụ, kiến thức, kịch bản kiểm thử); bạn chỉnh và phát hành ở trang Quản lý agent.",
 		"templates": "Bắt đầu từ mẫu",
 		"role": "Agent này làm gì?",
-		"rolePlaceholder": "Ví dụ: tiếp nhận yêu cầu vệ sinh của cư dân, hỏi đủ vị trí và mức độ, rồi giao cho nhân viên vệ sinh đang trực.",
+		"rolePlaceholder": "Ví dụ: tư vấn khách hàng chọn khách sạn theo ngân sách, hỏi đủ ngày đi và số người, rồi gửi 3 lựa chọn phù hợp.",
 		"team": "Cho phép tách thành một đội nhiều agent",
 		"teamHint": "Builder tự quyết khi việc gồm nhiều chuyên môn khác nhau.",
 		"waiting": "Agent Builder đang dựng bản nháp, có thể mất một đến vài phút.",
@@ -1094,20 +1087,20 @@
 		"creating": "Đang dựng…",
 		"presets": {
 			"reception": {
-				"name": "Lễ tân",
-				"prompt": "Lễ tân của ban quản lý: tiếp nhận yêu cầu của cư dân, hỏi đủ căn hộ, sự cố, thời gian và chuyển đúng bộ phận. Lịch sự, rõ ràng, gọi cư dân là bạn."
+				"name": "Chăm sóc khách hàng",
+				"prompt": "Tiếp nhận yêu cầu của khách hàng, hỏi đủ thông tin cần thiết và chuyển cho đúng agent phụ trách. Lịch sự, rõ ràng, gọi khách hàng là bạn."
 			},
 			"technician": {
-				"name": "Kỹ thuật",
-				"prompt": "Chuyên viên kỹ thuật điện nước: đánh giá sự cố từ mô tả và ảnh của cư dân, nêu mức khẩn cấp, hướng dẫn xử lý tạm thời an toàn và đề xuất loại thợ cần cử."
+				"name": "Hỗ trợ kỹ thuật",
+				"prompt": "Chuyên viên hỗ trợ kỹ thuật: đánh giá sự cố từ mô tả và ảnh khách hàng gửi, nêu mức khẩn cấp, hướng dẫn cách xử lý an toàn và đề xuất bước tiếp theo."
 			},
 			"cleaning": {
 				"name": "Vệ sinh",
-				"prompt": "Điều phối vệ sinh: nhận yêu cầu dọn dẹp khu chung, xác định vị trí và mức độ, giao cho nhân viên vệ sinh đang trực và báo lại thời gian dự kiến."
+				"prompt": "Điều phối dịch vụ vệ sinh: nhận yêu cầu dọn dẹp, xác định địa điểm và mức độ, giao cho nhân viên phù hợp và báo lại thời gian dự kiến."
 			},
 			"report": {
-				"name": "Báo cáo phiếu",
-				"prompt": "Báo cáo cho ban quản lý: tổng hợp tình trạng các phiếu (đang mở, quá hạn, chờ cư dân xác nhận) theo khu, nêu phiếu cần chú ý và lý do."
+				"name": "Báo cáo",
+				"prompt": "Báo cáo định kỳ: tổng hợp tình trạng các yêu cầu (đang mở, quá hạn, chờ khách xác nhận), nêu việc cần chú ý và lý do."
 			}
 		}
 	},
@@ -1117,14 +1110,14 @@
 		"title": "Nhóm chat mới",
 		"description": "Chọn các agent sẽ cùng làm việc. Trưởng nhóm điều phối và giao việc cho các thành viên.",
 		"name": "Tên nhóm",
-		"namePlaceholder": "Ví dụ: Đội chăm sóc cư dân",
+		"namePlaceholder": "Ví dụ: Đội chăm sóc khách hàng",
 		"members": "Thành viên",
 		"selected": "Đã chọn {{count}}",
 		"searchPlaceholder": "Tìm agent…",
 		"leader": "Trưởng nhóm",
 		"makeLeader": "Đặt làm trưởng nhóm",
 		"goal": "Nhóm này làm gì? (không bắt buộc)",
-		"goalPlaceholder": "Mục tiêu chung của nhóm, ví dụ: tiếp nhận và xử lý yêu cầu sửa chữa của cư dân.",
+		"goalPlaceholder": "Mục tiêu chung của nhóm, ví dụ: lên kế hoạch chuyến đi trọn gói cho khách hàng.",
 		"willEnable": "Sẽ bật “Cho phép được mời” cho {{names}} để trưởng nhóm mời được vào nhóm.",
 		"blocked": "Không mời được {{names}}: agent chưa bật “Cho phép được mời” và bạn không có quyền sửa.",
 		"notEnough": "Cần ít nhất 2 agent để lập nhóm, bạn đang có {{count}}.",

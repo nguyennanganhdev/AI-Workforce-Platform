@@ -25,4 +25,4 @@ export type {
 	ProposedAgent,
 	WorkforceAgent,
 } from './workforce';
-export type { AreaOption, AuthUser, DomainOption, LoginRequest, RegisterRequest } from './auth';
+export type { AuthUser, LoginRequest, RegisterRequest } from './auth';

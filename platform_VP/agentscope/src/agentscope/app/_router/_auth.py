@@ -21,13 +21,11 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class RegisterRequest(BaseModel):
-    """Create a local account."""
+    """Create a local customer account; the scope is assigned by the server."""
 
     email: str = Field(min_length=3, max_length=320)
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=12, max_length=1024)
-    domain_id: str = Field(min_length=1, max_length=64)
-    area_id: str = Field(min_length=1, max_length=64)
 
 
 class LoginRequest(BaseModel):
