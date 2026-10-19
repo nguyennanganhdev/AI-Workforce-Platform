@@ -137,8 +137,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	const { t, i18n } = useTranslation();
 	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
 		if (message.role !== 'assistant') return [message];
-		const content = message.content.filter((block) => block.type !== 'hint' && block.type !== 'thinking');
-		if (content.length === 0 && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
+		// Runtime hints stay out of team chats. Thinking is kept: the bubble
+		// folds it into the collapsed trace. A finished reply with nothing
+		// else to show is dropped.
+		const content = message.content.filter((block) => block.type !== 'hint');
+		const hasOutput = content.some((block) => block.type !== 'thinking');
+		if (!hasOutput && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
 		return [{ ...message, content }];
 	}) : msgs, [msgs, teamChat]);
 	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);

@@ -101,7 +101,13 @@
 			"fallback_other": "调用 {{count}} 次工具"
 		},
 		"input": "Input",
-		"output": "Output"
+		"output": "Output",
+		"displayName": {
+			"TeamSay": "给成员发消息",
+			"AgentInvite": "邀请成员",
+			"TeamCreate": "组建团队",
+			"TeamDelete": "解散团队"
+		}
 	},
 	"textInput": {
 		"toComplete": "补全",
@@ -144,7 +150,15 @@
 			"unknown": "回复因未知错误失败。",
 			"quota": "模型服务账户余额不足 —— 请为 API Key 充值或更换凭据。"
 		},
-		"copy": "复制"
+		"copy": "复制",
+		"trace": {
+			"running": "处理中",
+			"done": "处理过程",
+			"steps": "{{count}} 步",
+			"customer": "客户",
+			"teammate": "团队成员",
+			"sendFailed": "发送失败"
+		}
 	},
 	"chat": {
 		"inputPlaceholder": "输入消息...",
