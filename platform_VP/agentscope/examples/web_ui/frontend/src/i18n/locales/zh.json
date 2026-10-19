@@ -1109,7 +1109,7 @@
 		"menuAgent": "创建智能体",
 		"menuGroup": "创建群聊",
 		"title": "新建群聊",
-		"description": "选择一起工作的智能体。组长负责协调并给成员分配任务。",
+		"description": "选择一起工作的智能体。Leader 负责协调并把工作分配给每位成员。",
 		"name": "群聊名称",
 		"namePlaceholder": "例如：客户服务团队",
 		"members": "成员",
@@ -1129,7 +1129,12 @@
 		"entity": "群聊",
 		"kickoff": "这是群聊“{{name}}”。{{goal}}请使用 TeamCreate 创建团队并由你担任组长，然后使用 AgentInvite 邀请成员：{{members}}。成员到齐后，请简要介绍团队并等待我的请求。",
 		"kickoffGoal": "目标：{{goal}}。",
-		"headerNote": "组长 {{leader}} · {{count}} 个智能体"
+		"headerNote": "组长 {{leader}} · {{count}} 个智能体",
+		"needOne": "至少选择 1 个智能体",
+		"defaultName": "新群组",
+		"noAgents": "还没有已发布且允许被邀请的智能体。请先用 Agent Builder 创建智能体。",
+		"noMemberAdded": "未能把任何智能体加入群组，请重试。",
+		"partialFailed": "群组已创建，但以下智能体未能加入：{{names}}"
 	},
 	"agentManagement": {
 		"title": "Agent management",

@@ -1111,7 +1111,7 @@
 		"menuAgent": "Create agent",
 		"menuGroup": "Create group chat",
 		"title": "New group chat",
-		"description": "Pick the agents that will work together. The leader coordinates and hands work to the members.",
+		"description": "Pick the agents who will work together. The Leader coordinates and hands work to each member.",
 		"name": "Group name",
 		"namePlaceholder": "Example: Customer care team",
 		"members": "Members",
@@ -1131,7 +1131,12 @@
 		"entity": "group chat",
 		"kickoff": "This is the group chat “{{name}}”.{{goal}} Use TeamCreate to form the team with you as its leader, then AgentInvite to bring in: {{members}}. Once everyone has joined, briefly introduce the team and wait for my request.",
 		"kickoffGoal": " Goal: {{goal}}.",
-		"headerNote": "Led by {{leader}} · {{count}} agents"
+		"headerNote": "Led by {{leader}} · {{count}} agents",
+		"needOne": "Pick at least 1 agent",
+		"defaultName": "New group",
+		"noAgents": "No published agent allows invitations yet. Create agents with Agent Builder first.",
+		"noMemberAdded": "No agent could be added to the group. Please try again.",
+		"partialFailed": "Group created, but these agents could not be added: {{names}}"
 	},
 	"agentManagement": {
 		"title": "Agent management",

@@ -1108,7 +1108,7 @@
 		"menuAgent": "Tạo agent",
 		"menuGroup": "Tạo nhóm chat",
 		"title": "Nhóm chat mới",
-		"description": "Chọn các agent sẽ cùng làm việc. Trưởng nhóm điều phối và giao việc cho các thành viên.",
+		"description": "Chọn các agent sẽ cùng làm việc. Leader điều phối và giao việc cho từng thành viên.",
 		"name": "Tên nhóm",
 		"namePlaceholder": "Ví dụ: Đội chăm sóc khách hàng",
 		"members": "Thành viên",
@@ -1128,7 +1128,12 @@
 		"entity": "nhóm chat",
 		"kickoff": "Đây là nhóm chat “{{name}}”.{{goal}} Hãy dùng TeamCreate để lập nhóm với bạn là trưởng nhóm, rồi dùng AgentInvite để mời các thành viên: {{members}}. Khi đủ thành viên, hãy giới thiệu ngắn gọn nhóm và chờ yêu cầu của tôi.",
 		"kickoffGoal": " Mục tiêu: {{goal}}.",
-		"headerNote": "Trưởng nhóm {{leader}} · {{count}} agent"
+		"headerNote": "Trưởng nhóm {{leader}} · {{count}} agent",
+		"needOne": "Chọn ít nhất 1 agent",
+		"defaultName": "Nhóm mới",
+		"noAgents": "Chưa có agent nào đã phát hành và cho phép được mời. Hãy tạo agent bằng Agent Builder trước.",
+		"noMemberAdded": "Chưa thêm được agent nào vào nhóm. Hãy thử lại.",
+		"partialFailed": "Đã tạo nhóm nhưng chưa thêm được: {{names}}"
 	},
 	"agentManagement": {
 		"title": "Quản lý Agent",

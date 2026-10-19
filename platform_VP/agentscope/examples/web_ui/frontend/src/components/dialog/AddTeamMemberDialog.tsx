@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 
+import { isInvitableMember } from './team-members';
 import { sessionApi } from '@/api';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
+
 
 interface Props {
 	agentId: string;
@@ -30,11 +32,7 @@ export function AddTeamMemberDialog({ agentId, sessionId, present, disabled, onA
 	// Loaded when the dialog opens, not on every Leader session switch.
 	const { agents, loading, error: loadError, refetch } = useAgents({ fetchOnMount: false });
 	const available = agents.filter((agent) =>
-		agent.id !== agentId && !present.includes(agent.id)
-		&& agent.source === 'user' && agent.data.system_role === 'business'
-		&& agent.data.lifecycle_state === 'published'
-		&& agent.data.invite_config.invitable
-		&& agent.data.invite_config.invite_description?.trim(),
+		agent.id !== agentId && !present.includes(agent.id) && isInvitableMember(agent),
 	);
 	const selectedAgent = available.find((agent) => agent.id === selected);
 
