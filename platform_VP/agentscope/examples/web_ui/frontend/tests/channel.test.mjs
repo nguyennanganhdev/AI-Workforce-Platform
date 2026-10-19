@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-test('channel galleries and records hide DingTalk/Feishu without mutating stored data', async () => {
+test('new-channel gallery hides DingTalk/Feishu; existing records stay manageable', async () => {
 	const records = ['dingtalk', 'telegram', 'feishu', 'discord', 'custom'].map(
 		(channel_type) => ({ channel_type, id: channel_type, enabled: true }),
 	);
@@ -26,11 +26,12 @@ test('channel galleries and records hide DingTalk/Feishu without mutating stored
 		}).outputText,
 		context,
 	);
-	for (const load of [context.exports.channelApi.listTypes, context.exports.channelApi.list]) {
-		assert.deepEqual([...(await load()).map((channel) => channel.channel_type)], [
-			'telegram', 'discord', 'custom',
-		]);
-	}
+	assert.deepEqual([...(await context.exports.channelApi.listTypes()).map((c) => c.channel_type)], [
+		'telegram', 'discord', 'custom',
+	]);
+	assert.deepEqual([...(await context.exports.channelApi.list()).map((c) => c.channel_type)], [
+		'dingtalk', 'telegram', 'feishu', 'discord', 'custom',
+	]);
 	assert.deepEqual(calls, ['/channels/types', '/channels/']);
 	assert.equal(records.length, 5);
 	assert.ok(records.every((channel) => channel.enabled));
