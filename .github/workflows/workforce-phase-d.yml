@@ -85,6 +85,7 @@ jobs:
       - name: Start Builder browser fixture
         env:
           VITE_VIN_EXPERIENCE_ENABLED: "true"
+          VITE_API_BASE_URL: /api
         run: |
           pnpm --dir examples/web_ui/frontend exec vite --host 127.0.0.1 --port 5183 > /tmp/workforce-builder-vite.log 2>&1 &
           echo $! > /tmp/workforce-builder-vite.pid
