@@ -200,3 +200,14 @@ class TestManualTeamMembers(_AgentInviteTestBase):
         )
         team = await self.storage.get_team(self.user_id, session.team_id)
         self.assertFalse(team.data.manual_membership)
+
+    async def test_failed_first_invite_does_not_leave_an_empty_team(self):
+        session = await self.storage.upsert_session(
+            user_id=self.user_id, agent_id=self.leader_agent.id,
+            config=self.leader_session.config,
+        )
+        with patch.object(AgentInvite, "invite_member", side_effect=RuntimeError("workspace unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "workspace unavailable"):
+                await self._add(session_id=session.id)
+        session = await self.storage.get_session(self.user_id, self.leader_agent.id, session.id)
+        self.assertIsNone(session.team_id)
