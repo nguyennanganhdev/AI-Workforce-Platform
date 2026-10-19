@@ -1,0 +1,6 @@
+# Backend-only overlay on the running vinhometest app image
+# (editable install: /app/src is the package source).
+FROM agentscope-platform:df0349b3-vinhometest-20261020
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
+COPY src/ /app/src/
