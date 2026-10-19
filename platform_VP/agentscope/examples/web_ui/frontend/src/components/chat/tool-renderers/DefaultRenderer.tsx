@@ -13,7 +13,7 @@ export function defaultGetDisplayName(call: ToolCallBlock): string {
 export function defaultRenderConfirmBody(call: ToolCallBlock): ReactNode {
 	return (
 		<div className="w-full max-w-full overflow-hidden break-words">
-			<ReadableText text={call.input} className="text-secondary-foreground" />
+			<ReadableText text={call.input} keepIds className="text-secondary-foreground" />
 		</div>
 	);
 }

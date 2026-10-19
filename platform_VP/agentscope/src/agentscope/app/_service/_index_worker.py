@@ -629,4 +629,14 @@ def _sanitise_error(exc: BaseException) -> str:
         return str(exc)
     if isinstance(exc, ValueError) and "media type" in str(exc):
         return "Định dạng tệp này chưa được hỗ trợ."
+    # Provider errors keep their meaning without their (possibly key-bearing) text.
+    provider = {
+        "AuthenticationError": "Khóa API của mô hình embedding không hợp lệ hoặc đã bị thu hồi.",
+        "PermissionDeniedError": "Khóa API không có quyền dùng mô hình embedding này.",
+        "RateLimitError": "Mô hình embedding đang hết hạn mức. Hãy thử lại sau.",
+        "APIConnectionError": "Không kết nối được tới nhà cung cấp mô hình embedding.",
+        "NotFoundError": "Không tìm thấy mô hình embedding đã chọn.",
+    }.get(type(exc).__name__)
+    if provider:
+        return provider
     return "Lập chỉ mục thất bại. Hãy thử tải lại tài liệu."

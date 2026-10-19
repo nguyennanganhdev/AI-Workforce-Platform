@@ -84,6 +84,7 @@ export function CreateGroupDialog({ open, onOpenChange, onCreated }: Props) {
 				}
 			}
 			if (failed.length === selected.length) {
+				await sessionApi.delete(group.session_id, group.agent_id).catch(() => undefined);
 				setError(t('groupChat.noMemberAdded'));
 				return;
 			}

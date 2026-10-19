@@ -56,6 +56,7 @@ const TOOL_MODE: Record<string, { label: string; tone: string }> = {
 	fixture: { label: 'Dữ liệu giả lập', tone: 'bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-300' },
 	simulated: { label: 'Mô phỏng, không ghi', tone: 'bg-muted text-muted-foreground' },
 	error: { label: 'Công cụ không có', tone: 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300' },
+	skipped: { label: 'Bỏ qua · giới hạn ca thử', tone: 'bg-muted text-muted-foreground' },
 };
 
 const FINISHED = new Set(['passed', 'failed', 'error']);

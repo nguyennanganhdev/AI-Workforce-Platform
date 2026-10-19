@@ -367,6 +367,7 @@ _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 # are also written into the stored proposal, so a reload or restart keeps them.
 _eval_runs: dict[tuple[str, str], dict] = {}
 _eval_tasks: dict[tuple[str, str], asyncio.Task] = {}
+_EVAL_RUNS_PER_USER = 2
 
 
 def _fixed_config() -> dict:
@@ -2949,13 +2950,24 @@ async def prepare_builder(
         chat_model_config=body.chat_model_config,
         fixed_config=_fixed_config(),
     )
-    await _persist_builder_turn(
-        storage,
-        user_id,
-        session.id,
-        body.message,
-        proposal,
-    )
+    async with _proposal_locks[user_id]:
+        # A publish (or another rebuild) may have finished while this one
+        # generated; never save a rebuild on top of it.
+        latest = _stored_proposal(
+            await _list_all_builder_messages(storage, user_id, session.id),
+        )
+        if latest is None or latest.revision != previous_proposal.revision or latest.status == "published":
+            raise HTTPException(
+                status_code=409,
+                detail="Plan đã thay đổi hoặc đã phát hành. Hãy tải lại hội thoại.",
+            )
+        await _persist_builder_turn(
+            storage,
+            user_id,
+            session.id,
+            body.message,
+            proposal,
+        )
     return proposal
 
 
@@ -3043,6 +3055,15 @@ async def evaluate_builder(
     agents = _eval_agents(proposal)
     if not agents:
         raise HTTPException(status_code=409, detail="Chưa có agent mới nào để đánh giá.")
+    others = sum(
+        1 for (owner, conversation), task in _eval_tasks.items()
+        if owner == user_id and conversation != body.conversation_id and not task.done()
+    )
+    if others >= _EVAL_RUNS_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail="Bạn đang chạy eval ở hội thoại khác. Hãy chờ lượt đó xong rồi thử lại.",
+        )
     model = await get_model(user_id, proposal.chat_model_config, access)
     previous = _eval_tasks.pop(key, None)
     if previous is not None and not previous.done():
@@ -3071,6 +3092,9 @@ async def get_builder_eval(
     storage: StorageBase = Depends(get_storage),
 ) -> dict:
     """The running evaluation, or the last one saved with the current proposal."""
+    # list_messages does not scope by user; the session lookup does.
+    if await storage.get_session(user_id, _BUILDER_AGENT_ID, conversation_id) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hội thoại Agent Builder.")
     running = _eval_runs.get((user_id, conversation_id))
     messages, _ = await storage.list_messages(user_id, conversation_id, limit=200)
     proposal = _stored_proposal(messages)
@@ -3247,7 +3271,11 @@ async def publish_builder(
                 ],
                 execution_mode=item.execution_mode,
                 generated_skill=item.skill_markdown,
-                evaluation=item.evaluation,
+                # The full eval (answers, cases) stays with the proposal.
+                evaluation={
+                    **{key: value for key, value in item.evaluation.items() if key != "eval"},
+                    **({"eval_report": item.evaluation["eval"].get("report")} if item.evaluation.get("eval") else {}),
+                },
             ),
         )
         await storage.upsert_agent(user_id, record)

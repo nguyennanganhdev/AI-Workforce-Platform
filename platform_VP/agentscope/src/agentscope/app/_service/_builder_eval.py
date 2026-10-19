@@ -36,6 +36,10 @@ from ...model import ChatModelBase, ChatResponse
 
 CASES_PER_AGENT = 5
 MAX_STEPS = 4
+# Bounds the model calls one case can trigger: tool calls served per model
+# step, and generated read results per case.
+MAX_TOOL_CALLS_PER_STEP = 3
+MAX_FIXTURES_PER_CASE = 4
 CALL_TIMEOUT_SECONDS = 120
 CRITERIA = ("task_completion", "evidence", "scope_safety", "tool_use")
 
@@ -158,9 +162,11 @@ async def generate_cases(model: ChatModelBase, agent: EvalAgent) -> list[EvalCas
     allowed = {tool["tool_name"] for tool in agent.tools}
     cases = []
     for case in result.cases[:CASES_PER_AGENT]:
+        # Ids are the server's, never the model's: they key the UI.
+        update: dict[str, Any] = {"id": _generate_id()}
         if case.expect_tool and case.expect_tool not in allowed:
-            case = case.model_copy(update={"expect_tool": ""})
-        cases.append(case)
+            update["expect_tool"] = ""
+        cases.append(case.model_copy(update=update))
     return cases
 
 
@@ -189,6 +195,7 @@ async def run_case(model: ChatModelBase, agent: EvalAgent, case: EvalCase) -> di
         UserMsg(name="customer", content=case.scenario),
     ]
     calls: list[dict] = []
+    fixtures = 0
     answer = ""
     for _ in range(MAX_STEPS):
         response = await _complete(model, messages, schemas)
@@ -198,16 +205,21 @@ async def run_case(model: ChatModelBase, agent: EvalAgent, case: EvalCase) -> di
             answer = text
             break
         blocks: list = [*response.content]
-        for call in tool_calls:
+        for index, call in enumerate(tool_calls):
             tool = by_name.get(call.name)
             try:
                 arguments = json.loads(call.input or "{}")
             except (TypeError, ValueError):
                 arguments = {}
-            if tool is None:
+            if index >= MAX_TOOL_CALLS_PER_STEP:
+                output, mode = "Quá nhiều lời gọi tool cùng lúc trong môi trường thử; hãy gọi ít hơn.", "skipped"
+            elif tool is None:
                 output, mode = "Tool không có trong danh mục của agent.", "error"
-            elif is_read_tool(call.name):
+            elif is_read_tool(call.name) and fixtures < MAX_FIXTURES_PER_CASE:
+                fixtures += 1
                 output, mode = await _fixture(model, case, tool, arguments), "fixture"
+            elif is_read_tool(call.name):
+                output, mode = "Đã đủ dữ liệu thử cho ca này; hãy trả lời từ dữ liệu đã có.", "skipped"
             else:
                 output, mode = (
                     "SIMULATED: thao tác KHÔNG được thực hiện trong môi trường thử; "

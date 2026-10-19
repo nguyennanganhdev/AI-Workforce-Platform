@@ -266,17 +266,27 @@ export function AgentBuilderPage() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	// Poll a running evaluation every 2 seconds; each update re-arms the timer.
+	// Poll a running evaluation every 2 seconds. Each answer (or failed try)
+	// re-arms the timer; an answer for a conversation no longer open is dropped.
+	const [pollTick, setPollTick] = useState(0);
 	useEffect(() => {
 		if (evalRun?.status !== 'running' || !conversationId) return;
+		let current = true;
 		const timer = window.setTimeout(() => {
-			void workforceApi
+			workforceApi
 				.getBuilderEval(conversationId)
-				.then(setEvalRun)
-				.catch(() => undefined);
+				.then((next) => {
+					if (current) setEvalRun(next);
+				})
+				.catch(() => {
+					if (current) setPollTick((tick) => tick + 1);
+				});
 		}, 2000);
-		return () => window.clearTimeout(timer);
-	}, [evalRun, conversationId]);
+		return () => {
+			current = false;
+			window.clearTimeout(timer);
+		};
+	}, [evalRun, conversationId, pollTick]);
 
 	const newConversation = () => {
 		setConversationId(null);
