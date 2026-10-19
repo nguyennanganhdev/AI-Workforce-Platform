@@ -103,7 +103,8 @@
 		"llm": "LLM",
 		"tts": "Chuyển văn bản thành giọng nói",
 		"embedding": "Embedding",
-		"switchToVi": "Chuyển sang tiếng Việt"
+		"switchToVi": "Chuyển sang tiếng Việt",
+		"secondsElapsed": "{{count}} giây"
 	},
 	"panel": {
 		"team": {

@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Onborda, OnbordaProvider } from 'onborda';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
@@ -23,7 +23,6 @@ import { ChannelPage } from '@/pages/channel';
 import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
 import { KnowledgePage } from '@/pages/knowledge';
-import { LandingPage } from '@/pages/landing';
 import { SchedulePage } from '@/pages/schedule';
 import { AgentManagementPage } from '@/pages/workforce/agents';
 import { AgentBuilderPage } from '@/pages/workforce/builder';
@@ -71,12 +70,19 @@ const router = createBrowserRouter([
 	})),
 ]);
 
+// The marketing page and its large stylesheet load only for anonymous visitors on "/".
+const LandingPage = lazy(() =>
+	import('@/pages/landing').then((module) => ({ default: module.LandingPage })),
+);
+
 function App() {
 	const { t } = useTranslation();
 	const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'anonymous'>(
 		'checking',
 	);
 	const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+	// A session that expires mid-use goes to the sign-in form, not the landing page.
+	const [sessionExpired, setSessionExpired] = useState(false);
 	const tours = useMemo(() => [buildChatTour(t)], [t]);
 
 	useEffect(() => {
@@ -87,6 +93,7 @@ function App() {
 			setAuthStatus(user ? 'authenticated' : 'anonymous');
 		});
 		const handleExpired = () => {
+			setSessionExpired(true);
 			setCurrentUser(null);
 			setAuthStatus('anonymous');
 			queryClient.clear();
@@ -107,7 +114,13 @@ function App() {
 	}
 
 	if (authStatus === 'anonymous') {
-		if (window.location.pathname === '/') return <LandingPage />;
+		if (window.location.pathname === '/' && !sessionExpired) {
+			return (
+				<Suspense fallback={<div className="min-h-screen bg-canvas" />}>
+					<LandingPage />
+				</Suspense>
+			);
+		}
 		return (
 			<>
 				<AuthPage
