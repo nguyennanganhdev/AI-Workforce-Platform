@@ -69,6 +69,8 @@ import { useWorkspaceStatus } from '@/hooks/useWorkspaceStatus';
 import { useTranslation } from '@/i18n/useI18n';
 
 interface ChatViewportProps {
+	/** The viewed agent's record data; Builder-bound agents list their assigned tools. */
+	agentData?: AgentData;
 	/**
 	 * The agent that owns the session being viewed. May be the
 	 * user-facing leader agent or — when drilled into a team member
@@ -196,6 +198,7 @@ function closePanelInLayout(layout: PanelKey[][], key: PanelKey): PanelKey[][] {
  * @returns The right-side main JSX of the chat page.
  */
 export function ChatViewport({
+	agentData,
 	agentId,
 	sessionId,
 	onSessionsChanged,
@@ -213,6 +216,12 @@ export function ChatViewport({
 	// public reply appears there under its own name.
 	const teamChatView = sessions.find((v) => v.session.id === sessionId);
 	const isTeamChat = !!teamChatView?.team && teamChatView.team.team.session_id === sessionId;
+	// A Builder-bound business agent's own chat shows its assigned tools
+	// instead of the editable MCP list.
+	const showAssignedTools = agentData?.execution_mode != null
+		&& agentData.system_role === 'business'
+		&& teamChatView?.session.origin.type === 'user'
+		&& !teamChatView.session.team_id;
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);

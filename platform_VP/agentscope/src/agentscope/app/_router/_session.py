@@ -333,7 +333,7 @@ async def create_session(
             is not visible to the caller.
     """
     # Agent must be visible to the caller (own or shared).
-    await access.resolve_agent(user_id, body.agent_id)
+    agent_record = await access.resolve_agent(user_id, body.agent_id)
 
     await _ensure_credential_exists(access, user_id, body.chat_model_config)
     await _ensure_credential_exists(
