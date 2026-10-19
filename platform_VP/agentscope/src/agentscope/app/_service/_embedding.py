@@ -96,7 +96,8 @@ def build_embedding_model(
         kwargs["context_size"] = context_size
 
     model = embedding_cls(**kwargs)
-    if authority is not None:
+    from ..vin_platform._resources import _is_personal
+    if authority is not None and not _is_personal(credential_record, credential_record.user_id):
         model._vin_authority = authority
         model._vin_user_id = billing_user_id or credential_record.user_id
         model._vin_credential_id = config.credential_id

@@ -139,7 +139,9 @@ async def get_model(
         parameters=parameters,
     )
     authority = getattr(getattr(access, "_storage", None), "vin_platform_service", None)
-    if authority is not None:
+    # The quota guard meters the platform's provider account. A customer's
+    # own key bills the customer, so any provider adapter may serve it.
+    if authority is not None and not private:
         from ..vin_platform._model_guard import ModelQuotaGuard
         model._quota_guard = ModelQuotaGuard(authority, user_id, config.credential_id)
 

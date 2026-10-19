@@ -201,3 +201,25 @@ async def test_clearing_an_optional_provider_field_removes_it_and_keeps_the_key(
     credential = storage.upsert_credential.call_args.args[1]
     assert credential.base_url is None
     assert credential.api_key.get_secret_value() == "offline-private-key"
+
+
+@pytest.mark.asyncio
+async def test_any_provider_works_on_a_customer_key_but_the_platform_key_stays_metered(authority, monkeypatch):
+    from agentscope.app._service._model import get_model
+    from agentscope.app.storage import ChatModelConfig
+
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    storage = _FakeStorage()
+    storage.vin_platform_service = authority
+    authority.storage = storage
+    storage.credentials[("alice", "claude")] = CredentialRecord(
+        id="claude", user_id="alice", data={"type": "anthropic_credential", "api_key": "customer-key"})
+    storage.credentials[("alice", "copy")] = CredentialRecord(
+        id="copy", user_id="alice", data={"type": "openai_credential", "name": "Model của platform", "api_key": "platform-key"})
+    access = ResourceAccessService(storage, PersistedResourcePolicy(authority))
+    own = await get_model("alice", ChatModelConfig(type="anthropic_credential", credential_id="claude",
+                                                   model="claude-opus-5-5", parameters={}), access)
+    assert getattr(own, "_quota_guard", None) is None
+    copy = await get_model("alice", ChatModelConfig(type="openai_credential", credential_id="copy",
+                                                    model="gpt-6-luna", parameters={}), access)
+    assert copy._quota_guard is not None
