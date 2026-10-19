@@ -2129,7 +2129,10 @@ class SharedContextService:
             reason = branch.reason if branch.status == "stopped" else ""
             if branch.measured_tokens > self.config.collaboration_max_tokens:
                 reason = "measured token limit exceeded"
-            if branch.model_calls > self.config.collaboration_max_model_calls:
+            if (
+                branch.model_calls - branch.paging_model_calls
+                > self.config.collaboration_max_model_calls
+            ):
                 reason = "model call limit exceeded"
             if branch.active_seconds >= self.config.collaboration_max_active_seconds:
                 reason = "active execution time limit exceeded"
@@ -2664,7 +2667,20 @@ class SharedContextService:
             for branch in task.get("collaboration", {}).values():
                 branch.pop("receipts", None)
                 branch.pop("signatures", None)
-                for key in ("input_tokens", "output_tokens", "tokens", "measured_tokens", "model_calls", "active_seconds", "exchanges", "started_at", "updated_at"):
+                for key in (
+                    "paging_call_ids",
+                    "source_read_progress",
+                    "paging_model_calls",
+                    "input_tokens",
+                    "output_tokens",
+                    "tokens",
+                    "measured_tokens",
+                    "model_calls",
+                    "active_seconds",
+                    "exchanges",
+                    "started_at",
+                    "updated_at",
+                ):
                     branch.pop(key, None)
             for assignment in task.get("assignments", {}).values():
                 assignment.pop("pending_payload", None)
@@ -2833,6 +2849,194 @@ class SharedContextService:
             ],
         }
 
+    async def credit_source_read(
+        self,
+        user_id: str,
+        team_id: str,
+        session_id: str,
+        *,
+        task_id: str,
+        customer_revision: int,
+        paging_call_id: str,
+        source_reads: list[dict],
+    ) -> bool:
+        """Refund one work round only for successful, advancing source reads."""
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            task = record.state.tasks[task_id]
+            if task.latest_customer_revision != customer_revision:
+                raise SharedContextConcurrencyError(
+                    "Customer requirement changed during execution"
+                )
+            branch = self._branch(task, session_id)
+            if branch.status == "stopped":
+                raise CollaborationStoppedError(branch.reason)
+            credited = False
+            for read in sorted(
+                source_reads,
+                key=lambda read: (read["section"], read["offset"]),
+            ):
+                section = read["section"]
+                offset, pages = branch.source_read_progress.get(
+                    section, (0, 0)
+                )
+                end = read["end"]
+                if read["offset"] <= offset < end:
+                    # Packet refreshes cannot refund the same source page twice.
+                    complete_pages = (
+                        (end + 1999) // 2000
+                        if end == read["total_characters"]
+                        else end // 2000
+                    )
+                    if (
+                        complete_pages > pages
+                        and not credited
+                        and paging_call_id not in branch.paging_call_ids
+                        and branch.paging_model_calls < branch.model_calls
+                    ):
+                        credited = True
+                        branch.paging_model_calls += 1
+                        branch.paging_call_ids = (
+                            *branch.paging_call_ids,
+                            paging_call_id,
+                        )
+                    branch.source_read_progress[section] = (
+                        end,
+                        max(pages, complete_pages) if credited else pages,
+                    )
+            await self._commit_mutation(user_id, record)
+            return credited
+
+    async def _reference_packet_sources(
+        self,
+        model: ChatModelBase,
+        packet: dict,
+        budget: int,
+        user_id: str,
+    ) -> tuple[str, int]:
+        """Replace oversized sections with readable, immutable source pages."""
+        packet["coordination"] = [
+            {
+                "task_id": task["id"],
+                "objective_preview": task["objective"][:256],
+                "status": task["status"],
+                "reply_owner_agent_id": task["reply_owner_agent_id"],
+                "pending_question_ids": task["pending_question_ids"],
+                "collaboration": {
+                    session_id: {
+                        "status": branch["status"],
+                        "waiting_for": branch["waiting_for"],
+                    }
+                    for session_id, branch in task["collaboration"].items()
+                },
+            }
+            for task in packet["authoritative_state"]["tasks"]
+        ]
+        sections = [
+            (
+                packet["authoritative_state"],
+                "items",
+                "authoritative_state.items",
+            ),
+            (packet, "recent_events", "recent_events"),
+            (packet, "summary", "summary"),
+            (
+                packet["authoritative_state"],
+                "tasks",
+                "authoritative_state.tasks",
+            ),
+        ]
+        sections.sort(
+            key=lambda entry: len(self._json(entry[0][entry[1]])), reverse=True
+        )
+        references = []
+        for container, key, label in sections:
+            text = self._json(packet)
+            tokens = await self._tokens(model, text)
+            if tokens <= budget:
+                return text, tokens
+            source = self._json(container[key])
+            if len(source) < 512:
+                continue
+            source_ref = hashlib.sha256(source.encode("utf-8")).hexdigest()
+            await self._bus.registry_set(
+                MessageBusKeys.team_context_sources(
+                    user_id,
+                    packet["team_id"],
+                    packet["active_task_id"],
+                ),
+                source_ref,
+                source,
+                ttl_secs=MessageBusKeys.TEAM_SESSION_CONTEXT_TTL_SECS,
+            )
+            container[key] = {
+                "source_ref": source_ref,
+                "section": label,
+                "characters": len(source),
+                "read_with": "SharedContextRead",
+            }
+            references.append(source_ref)
+            packet["source_references"] = references
+        text = self._json(packet)
+        return text, await self._tokens(model, text)
+
+    async def packet_sources_available(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        references: tuple[str, ...],
+    ) -> bool:
+        """Let a long-lived run rebuild sources after a cache restart."""
+        namespace = MessageBusKeys.team_context_sources(
+            user_id, team_id, task_id
+        )
+        for reference in references:
+            if await self._bus.registry_get(namespace, reference) is None:
+                return False
+        return True
+
+    async def read_packet_source(
+        self,
+        *,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        source_ref: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> dict:
+        """Read one bounded page without changing the retained source."""
+        if offset < 0 or not 1 <= limit <= 4000:
+            raise ValueError(
+                "offset must be non-negative; limit must be 1..4000"
+            )
+        if len(source_ref) != 64 or any(
+            c not in "0123456789abcdef" for c in source_ref
+        ):
+            raise ValueError("Invalid shared-context source reference")
+        source = await self._bus.registry_get(
+            MessageBusKeys.team_context_sources(user_id, team_id, task_id),
+            source_ref,
+        )
+        if source is None:
+            raise ValueError(
+                "Source expired; reload the shared-context packet"
+            )
+        if hashlib.sha256(source.encode("utf-8")).hexdigest() != source_ref:
+            raise ValueError("Shared-context source integrity check failed")
+        end = min(len(source), offset + limit)
+        return {
+            "source_ref": source_ref,
+            "offset": offset,
+            "total_characters": len(source),
+            "content": source[offset:end],
+            "next_offset": end if end < len(source) else None,
+        }
+
     async def prepare_packet(
         self,
         *,
@@ -2844,6 +3048,8 @@ class SharedContextService:
         reference_event_ids: tuple[str, ...] = (),
         exclude_event_ids: tuple[str, ...] = (),
         summary_model: ChatModelBase | None = None,
+        allow_source_references: bool = False,
+        max_tokens: int | None = None,
     ) -> tuple[str, int]:
         """Return a replaceable packet and its selected-model token count.
 
@@ -2854,6 +3060,18 @@ class SharedContextService:
 
         if mode == "isolated":
             return "", 0
+        packet_limit = min(
+            self.config.packet_max_tokens,
+            (
+                max_tokens
+                if max_tokens is not None
+                else self.config.packet_max_tokens
+            ),
+        )
+        if packet_limit <= 0:
+            raise SharedContextBudgetError(
+                "No model budget remains for shared context"
+            )
         record = await self._load_or_create(user_id, team_id)
         if record.state.active_task_id is None:
             await self.active_task_id(user_id, team_id)
@@ -2921,9 +3139,9 @@ class SharedContextService:
         # approvals available without resending every historical tool result.
         partner_packet = any(self._partner_evidence_event(e) for e in record.state.events)
         read_tool = "CaseEvidence" if partner_packet else "SharedContextRead"
-        if mode == "task" and tokens > self.config.packet_max_tokens:
+        if mode == "task" and partner_packet and tokens > packet_limit:
             for event in sorted(packet["recent_events"], key=lambda value: len(value.get("content", "")), reverse=True):
-                if tokens <= self.config.packet_max_tokens:
+                if tokens <= packet_limit:
                     break
                 if event["kind"] == "customer_message" or len(event.get("content", "")) < 300:
                     continue
@@ -2939,7 +3157,7 @@ class SharedContextService:
                 key=lambda item: len(item["text"]), reverse=True,
             )
             for item in candidates:
-                if tokens <= self.config.packet_max_tokens:
+                if tokens <= packet_limit:
                     break
                 labels = list(dict.fromkeys(re.findall(r"\bE\d+\b", item["text"])))
                 item["text"] = self._json({
@@ -2952,13 +3170,13 @@ class SharedContextService:
             # If raw tool reads alone were insufficient, archive full older
             # reports as retrievable sources too. Keep live tasks, dependencies,
             # questions, operations and latest customer input in the packet.
-            if tokens > self.config.packet_max_tokens:
+            if tokens > packet_limit:
                 latest_customer = max((e.revision for e in record.state.events
                                        if e.kind == "customer_message"), default=0)
                 event_by_id = {e.id: e for e in record.state.events}
                 for item in sorted(packet["authoritative_state"]["items"],
                                    key=lambda value: len(value["text"]), reverse=True):
-                    if tokens <= self.config.packet_max_tokens:
+                    if tokens <= packet_limit:
                         break
                     source_ids = item.get("source_event_ids") or []
                     if not source_ids or any(event_by_id[sid].revision == latest_customer
@@ -2970,10 +3188,10 @@ class SharedContextService:
                         "read_tool": read_tool, "instruction": "Read before using details; original sources retained."})
                     text = self._json(packet)
                     tokens = await self._tokens(model, text)
-            if tokens > self.config.packet_max_tokens:
+            if tokens > packet_limit:
                 for task in packet["authoritative_state"]["tasks"]:
                     for sid, assignment in task.get("assignments", {}).items():
-                        if tokens <= self.config.packet_max_tokens:
+                        if tokens <= packet_limit:
                             break
                         # Status/dependencies stay visible to every member.
                         for key in ("goal", "expected_output", "done_when", "last_feedback"):
@@ -2996,15 +3214,16 @@ class SharedContextService:
             model,
             self._json(required_packet),
         )
+        referenced_event_count: int | None = None
         budget_error: SharedContextBudgetError | None = None
-        if tokens > self.config.packet_max_tokens:
+        if tokens > packet_limit:
             # Only non-authoritative progress narration may be omitted, and
             # only on whole-event boundaries. The packet explicitly declares
             # the omission so the model cannot mistake a partial narrative for
             # complete history. Results, customer turns, handoffs, HITL and
             # external/correction events fail loudly when they do not fit.
             omitted: list[dict] = []
-            while mode == "task" and tokens > self.config.packet_max_tokens:
+            while mode == "task" and tokens > packet_limit:
                 removable_index = next(
                     (
                         index
@@ -3037,11 +3256,16 @@ class SharedContextService:
                 }
                 text = self._json(packet)
                 tokens = await self._tokens(model, text)
-            if tokens > self.config.packet_max_tokens:
+            if tokens > packet_limit and allow_source_references:
+                referenced_event_count = len(packet["recent_events"])
+                text, tokens = await self._reference_packet_sources(
+                    model, packet, packet_limit, user_id
+                )
+            if tokens > packet_limit:
                 budget_error = SharedContextBudgetError(
                     "Required shared context measured "
                     f"{tokens} tokens; configured packet limit is "
-                    f"{self.config.packet_max_tokens}. No authoritative "
+                    f"{packet_limit}. No authoritative "
                     "state was truncated. Narrow/split the task or store "
                     "large results as referenced artifacts, then retry.",
                 )
@@ -3060,8 +3284,10 @@ class SharedContextService:
             current.state.metrics.last_required_state_tokens = required_state_tokens
             current.state.metrics.last_packet_source_events = source_event_count
             included_event_count = (
-                len(packet["recent_events"]) + projected_event_count
-            )
+                referenced_event_count
+                if referenced_event_count is not None
+                else len(packet["recent_events"])
+            ) + projected_event_count
             current.state.metrics.last_packet_included_events = included_event_count
             current.state.metrics.last_packet_dropped_events = (
                 source_event_count - included_event_count

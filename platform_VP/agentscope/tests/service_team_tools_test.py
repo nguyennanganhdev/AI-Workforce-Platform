@@ -1436,6 +1436,68 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
 
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
+
+    async def test_context_only_builder_agent_drops_default_mcps(self):
+        self.monday_agent.data.execution_mode = "context_only"
+        await self.storage.upsert_agent(self.user_id, self.monday_agent)
+        self.invite_workspace.default_mcps = [SimpleNamespace(name="demo")]
+        tool = AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )
+
+        result = await tool(
+            target=f"Monday@{self.monday_agent.id[:8]}",
+            prompt="Summarize the supplied context.",
+        )
+
+        self.assertEqual(result.state, ToolResultState.RUNNING)
+        self.invite_workspace.remove_mcp.assert_awaited_once()
+        self.invite_workspace.add_mcp.assert_not_awaited()
+
+    async def test_invited_session_inherits_agent_knowledge_bases(self) -> None:
+        self.monday_agent.data.knowledge_base_ids = ["kb-monday"]
+        await self.storage.upsert_agent(self.user_id, self.monday_agent)
+        tool = AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )
+
+        result = await tool(
+            target=f"Monday@{self.monday_agent.id[:8]}",
+            prompt="Use the internal policy when it is relevant.",
+        )
+
+        self.assertEqual(result.state, ToolResultState.RUNNING)
+        leader = await self.storage.get_session(
+            self.user_id,
+            self.leader_agent.id,
+            self.leader_session.id,
+        )
+        team = await self.storage.get_team(self.user_id, leader.team_id)
+        borrowed = await self.storage.get_session(
+            self.user_id,
+            self.monday_agent.id,
+            team.data.members[0].session_id,
+        )
+        self.assertEqual(
+            borrowed.config.knowledge_config.knowledge_base_ids,
+            ["kb-monday"],
+        )
+        self.assertEqual(
+            borrowed.config.knowledge_config.parameters["mode"],
+            "agentic",
+        )
     async def test_invitation_preserves_server_consent_and_ignores_borrowed_primary(self):
         from agentscope.app.storage import MCPRecord
         from agentscope.mcp import HttpMCPConfig, MCPClient

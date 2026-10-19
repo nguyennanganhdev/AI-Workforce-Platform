@@ -351,7 +351,10 @@ async def create_session(
     # Builder bindings belong to the agent; MCP clients belong to each session.
     mcps: list[MCPClient] | None = None
     if (
-        getattr(agent_record.data, "execution_mode", None) is not None
+        (
+            getattr(agent_record.data, "execution_mode", None) is not None
+            or bool(getattr(agent_record.data, "spec", None))
+        )
         and agent_record.data.system_role == "business"
         and agent_record.source == "user"
     ):

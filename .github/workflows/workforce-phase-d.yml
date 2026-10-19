@@ -43,6 +43,7 @@ jobs:
       WORKFORCE_E2E_FACTORY: >-
         tests.workforce.fixtures.release_candidate_factory:factory
       PYTEST_ADDOPTS: "--asyncio-mode=auto"
+      PYTHONPATH: "${{ github.workspace }}/platform_VP/agentscope:${{ github.workspace }}/platform_VP/agentscope/tests"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -132,6 +133,8 @@ jobs:
           tests/team_member_middleware_test.py
           tests/team_say_shared_context_test.py
           tests/team_shared_context_test.py
+          tests/shared_context_budget_recovery_test.py
+          tests/dong_merge_compatibility_test.py
           tests/leader_evidence_middleware_test.py
           tests/service_chat_run_context_test.py
           tests/session_runtime_regression_test.py

@@ -26,7 +26,13 @@ from ...message import HintBlock, TextBlock, ToolResultState
 from ...state import AgentState
 from ...tool import ParamsBase, ToolChunk
 from .._bus_ops import deliver_to_inbox, enqueue_run_trigger
-from ..storage import SessionConfig, TaskAssignment, TeamMember, TeamOrigin
+from ..storage import (
+    SessionConfig,
+    SessionKnowledgeConfig,
+    TaskAssignment,
+    TeamMember,
+    TeamOrigin,
+)
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ._constants import HANDLE_LEN
 from ._team_tool_base import _TeamToolBase
@@ -698,6 +704,15 @@ class AgentInvite(_TeamToolBase):
                     name=f"team:{team.id}/invited:{invited_handle}",
                     chat_model_config=borrowed_chat_model,
                     fallback_chat_model_config=borrowed_fallback_model,
+                    knowledge_config=(
+                        SessionKnowledgeConfig(
+                            knowledge_base_ids=invited.data.knowledge_base_ids,
+                            parameters={"mode": "agentic"},
+                        )
+                        if not invited.data.spec
+                        and invited.data.knowledge_base_ids
+                        else None
+                    ),
                 ),
                 state=worker_state,
                 origin=TeamOrigin(),
@@ -719,7 +734,11 @@ class AgentInvite(_TeamToolBase):
                 # A borrowed Builder agent has an explicit tool allowlist.
                 # Materialise the new team session without deployment-wide
                 # default MCPs before adding those selected declarations.
-                if invited.data.tool_bindings:
+                if (
+                    invited.data.tool_bindings
+                    or invited.data.spec
+                    or invited.data.execution_mode is not None
+                ):
                     for default_mcp in workspace.default_mcps:
                         await workspace.remove_mcp(
                             default_mcp.name,
@@ -755,7 +774,10 @@ class AgentInvite(_TeamToolBase):
                         required = set(spec.confirm_tools or []) | set(confirm.get(mcp_id) or [])
                         spec.confirm_tools = sorted(required.intersection(enabled_tools)) or None
                         mcp_specs.append(spec)
-                else:
+                elif (
+                    not invited.data.spec
+                    and invited.data.execution_mode is None
+                ):
                     # Compatibility for manually-authored invitable agents
                     # created before Builder persisted exact tool bindings.
                     mcp_specs = await workspace.list_mcps(

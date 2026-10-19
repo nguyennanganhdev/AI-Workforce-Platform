@@ -1,14 +1,16 @@
 """Keep isolated/reference handoffs out of an agent's normal memory view."""
 
 import asyncio
+import json
 import time
 from collections.abc import Awaitable, Callable
 
 from ..._logging import logger
-from ...agent import Agent
-from ...message import Msg, UserMsg
+from ...agent import Agent, ContextConfig
+from ...message import Msg, ToolCallBlock, ToolResultState, UserMsg
 from ...middleware import MiddlewareBase
-from ...model import ChatResponse
+from ...model import ChatResponse, ChatModelBase
+from ...tool import ToolResponse
 from .._shared_context import SharedContextBudgetError, SharedContextService
 from ..storage import ContextMode, StorageBase
 
@@ -40,6 +42,8 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         agent_id: str | None = None,
         summary_model: object | None = None,
         project_private_history: bool = False,
+        allow_source_references: bool = False,
+        reference_event_ids: tuple[str, ...] = (),
     ) -> None:
         self._mode = mode
         self._summary_model = summary_model
@@ -54,6 +58,13 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         self._task_id = task_id
         self._membership_storage = membership_storage or service.storage
         self._event_revision: int | None = None
+        self._allow_source_references = allow_source_references
+        self._reference_event_ids = reference_event_ids
+        self._packet_budget: int | None = None
+        self._packet_model: ChatModelBase | None = None
+        self._paging_call_ids: set[str] = set()
+        self._paging_model_call_id = None
+        self._paging_reads: dict[str, dict | None] = {}
         prior_context = prior_context or []
         self._prior_message_ids = {message.id for message in prior_context}
         self._prior_block_ids = {
@@ -92,12 +103,52 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 )
         return current
 
-    async def on_model_call(
-        self,
-        agent: Agent,
-        input_kwargs: dict,
-        next_handler: Callable[..., Awaitable[ChatResponse]],
-    ) -> ChatResponse:
+    async def _refresh_packet(
+        self, agent: Agent, model: ChatModelBase
+    ) -> None:
+        """Refresh before both compression and inference use their budgets."""
+        if self._mode == "isolated":
+            agent.state.middle_context.pop("shared_context_sources", None)
+        packet_budget = None
+        if self._allow_source_references and isinstance(agent, Agent):
+            private_input = await agent._prepare_model_input()
+            base_tokens = await model.count_tokens(
+                private_input["messages"][:1],
+                private_input["tools"],
+            )
+            wrapper_tokens = await model.count_tokens(
+                [
+                    UserMsg(
+                        name="shared_context",
+                        content=self._service.system_attachment("{}", 0),
+                    )
+                ],
+                None,
+            )
+            if self.recall:
+                wrapper_tokens += await model.count_tokens(
+                    [
+                        UserMsg(
+                            name=MEMORY_RECALL_MSG_NAME, content=self.recall
+                        )
+                    ],
+                    None,
+                )
+            packet_budget = min(
+                self._service.config.packet_max_tokens,
+                model.context_size
+                - base_tokens
+                - wrapper_tokens
+                - max(
+                    1,
+                    int(
+                        model.context_size
+                        * self._service.config.output_reserve_ratio
+                    ),
+                )
+                - self._service.config.preflight_margin_tokens
+                - int(model.context_size * agent.context_config.reserve_ratio),
+            )
         # TeamCreate can run inside the first Leader reply, after middleware
         # assembly. Adopt that durable membership before the next model call
         # instead of leaving the long-lived run permanently teamless.
@@ -124,7 +175,30 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         # A long-lived Leader run may receive peer results after its initial
         # snapshot. Refresh by event revision (not metrics writes) before the
         # next model call so new source ids and dependency states are visible.
-        if self._team_id and self._task_id and self._mode == "task":
+        if self._team_id and self._task_id and self._mode != "isolated":
+            grant = agent.state.middle_context.get(
+                "shared_context_sources", {}
+            )
+            scope = {
+                "user_id": self._user_id,
+                "team_id": self._team_id,
+                "task_id": self._task_id,
+                "reply_id": agent.state.reply_id,
+                "mode": self._mode,
+                "reference_event_ids": list(self._reference_event_ids),
+            }
+            if self._allow_source_references and any(
+                grant.get(key) != value for key, value in scope.items()
+            ):
+                grant = {**scope, "references": [], "sources": {}}
+                agent.state.middle_context["shared_context_sources"] = grant
+                self._event_revision = None
+            sources_cached = await self._service.packet_sources_available(
+                self._user_id,
+                self._team_id,
+                self._task_id,
+                grant.get("current_references", ()),
+            )
             record = await self._service.storage.get_team_shared_context(
                 self._user_id, self._team_id
             )
@@ -140,59 +214,190 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 if record
                 else 0
             )
-            if revision != self._event_revision:
+            if not sources_cached or (revision, packet_budget, model) != (
+                self._event_revision,
+                self._packet_budget,
+                self._packet_model,
+            ):
                 packet, tokens = await self._service.prepare_packet(
-                    model=input_kwargs["current_model"],
+                    model=model,
+                    summary_model=self._summary_model,
+                    allow_source_references=self._allow_source_references,
+                    max_tokens=packet_budget,
                     user_id=self._user_id,
                     team_id=self._team_id,
-                    mode="task",
+                    mode=self._mode,
                     task_id=self._task_id,
-                    summary_model=self._summary_model,
+                    reference_event_ids=self._reference_event_ids,
                 )
                 self._packet_attachment = self._service.system_attachment(
                     packet, tokens
                 )
                 self._event_revision = revision
+                self._packet_budget = packet_budget
+                self._packet_model = model
+                if self._allow_source_references:
+                    value = json.loads(packet)
+                    references = value.get("source_references", [])
+                    grant["current_references"] = references
+                    grant["references"] = list(
+                        dict.fromkeys([*grant["references"], *references])
+                    )
+                    for section in (
+                        value["authoritative_state"]["items"],
+                        value["authoritative_state"]["tasks"],
+                        value["recent_events"],
+                        value["summary"],
+                    ):
+                        if (
+                            isinstance(section, dict)
+                            and "source_ref" in section
+                        ):
+                            grant["sources"][section["source_ref"]] = {
+                                **section,
+                                "revision": value["revision"],
+                            }
                 await self._service.pin_session_revision(
                     agent.state.session_id,
                     team_id=self._team_id,
                     task_id=self._task_id,
                     revision=revision,
                 )
-        messages = list(input_kwargs["messages"])
+
+    def _model_messages(self, agent: Agent, messages: list[Msg]) -> list[Msg]:
+        messages = list(messages)
         if self._packet_attachment and not messages:
             raise SharedContextBudgetError(
-                "Cannot attach shared context because the model input has "
-                "no system message.",
+                "Cannot attach shared context without a system message"
             )
-        if self._mode in {"isolated", "references"} or self._project_private_history:
-            # ``messages[1]`` may be the agent's old private summary and is
-            # intentionally excluded. Only the system prompt, this turn's
-            # context delta and the (references) packet are visible.
-            filtered = [messages[0], *self._current_turn_context(agent)]
-        else:
-            filtered = messages
+        filtered = (
+            [messages[0], *self._current_turn_context(agent)]
+            if self._mode in {"isolated", "references"}
+            or self._project_private_history
+            else messages
+        )
         if self.recall:
-            # Fixed for the turn, so it goes before the packet (which changes
-            # within a turn) and after the cached history.
             filtered = [*filtered, UserMsg(name=MEMORY_RECALL_MSG_NAME, content=self.recall)]
         if self._packet_attachment:
-            # The packet changes whenever a teammate reports. Keeping it as
-            # the LAST message leaves the system prompt, tool schemas and the
-            # private history as an unchanged prefix between calls, which is
-            # what provider prompt caching reuses. Appending it to the system
-            # message (the previous design) invalidated the cache for the
-            # whole conversation on every new shared event.
             filtered = [
                 *filtered,
-                UserMsg(name=SHARED_CONTEXT_MSG_NAME, content=self._packet_attachment),
+                UserMsg(
+                    name=SHARED_CONTEXT_MSG_NAME,
+                    content=self._packet_attachment,
+                ),
             ]
+        return filtered
+
+    async def _compression_config(
+        self,
+        agent: Agent,
+        model: ChatModelBase,
+        config: ContextConfig,
+    ) -> ContextConfig:
+        attachment_tokens = (
+            await model.count_tokens(
+                [
+                    UserMsg(
+                        name="shared_context", content=self._packet_attachment
+                    )
+                ],
+                None,
+            )
+            if self._packet_attachment
+            else 0
+        )
+        if self.recall:
+            attachment_tokens += await model.count_tokens(
+                [UserMsg(name=MEMORY_RECALL_MSG_NAME, content=self.recall)],
+                None,
+            )
+        private_limit = (
+            model.context_size
+            - attachment_tokens
+            - max(
+                1,
+                int(
+                    model.context_size
+                    * self._service.config.output_reserve_ratio
+                ),
+            )
+            - self._service.config.preflight_margin_tokens
+        )
+        if private_limit <= 0:
+            raise SharedContextBudgetError(
+                "Shared context leaves no room for private history"
+            )
+        # Compression runs before runtime hints and late inbox delivery.
+        trigger = min(
+            config.trigger_ratio, private_limit / agent.model.context_size
+        )
+        return config.model_copy(
+            update={
+                "trigger_ratio": trigger,
+                "reserve_ratio": min(config.reserve_ratio, trigger * 0.5),
+                "context_buffer_ratio": min(
+                    config.context_buffer_ratio, max(0, trigger - 0.01)
+                ),
+                "compression_fallback_to_truncation": False,
+                "compression_retry_drop_oldest": False,
+            }
+        )
+
+    async def on_model_call(
+        self,
+        agent: Agent,
+        input_kwargs: dict,
+        next_handler: Callable[..., Awaitable[ChatResponse]],
+    ) -> ChatResponse:
+        self._paging_call_ids = set()
+        self._paging_model_call_id = None
+        self._paging_reads = {}
+        await self._refresh_packet(agent, input_kwargs["current_model"])
+        filtered = self._model_messages(agent, input_kwargs["messages"])
 
         current_model = input_kwargs["current_model"]
         prompt_tokens = await current_model.count_tokens(
             filtered,
             input_kwargs["tools"],
         )
+        prompt_limit = (
+            current_model.context_size
+            - max(
+                1,
+                int(
+                    current_model.context_size
+                    * self._service.config.output_reserve_ratio
+                ),
+            )
+            - self._service.config.preflight_margin_tokens
+        )
+        if (
+            prompt_tokens > prompt_limit
+            and self._mode == "task"
+            and isinstance(agent, Agent)
+        ):
+            config = await self._compression_config(
+                agent, current_model, agent.context_config
+            )
+            private_tokens = await agent.model.count_tokens(
+                **await agent._prepare_model_input()
+            )
+            config = config.model_copy(
+                update={
+                    "trigger_ratio": min(
+                        config.trigger_ratio,
+                        private_tokens / agent.model.context_size,
+                    ),
+                }
+            )
+            await agent.compress_context(context_config=config)
+            await self._refresh_packet(agent, current_model)
+            rebuilt = await agent._prepare_model_input()
+            input_kwargs = {**input_kwargs, **rebuilt}
+            filtered = self._model_messages(agent, rebuilt["messages"])
+            prompt_tokens = await current_model.count_tokens(
+                filtered, input_kwargs["tools"]
+            )
         message_tokens = await current_model.count_tokens(filtered, None)
         system_tokens = await current_model.count_tokens(filtered[:1], None)
         tool_tokens = max(0, prompt_tokens - message_tokens)
@@ -321,6 +526,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                 )
             )
             await charge()
+            self._track_paging_call(response)
             return response
 
         async def measured_stream():
@@ -335,6 +541,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         partial_content.extend(chunk.content)
                         if chunk.is_last:
                             complete = True
+                            self._track_paging_call(chunk)
                             usage = chunk.usage
                             output_tokens = (
                                 chunk.usage.output_tokens
@@ -371,6 +578,41 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
 
         return measured_stream()
 
+    def _track_paging_call(self, response: ChatResponse) -> None:
+        calls = [
+            block
+            for block in response.content
+            if isinstance(block, ToolCallBlock)
+        ]
+        if calls and all(call.name == "SharedContextRead" for call in calls):
+            self._paging_call_ids = {call.id for call in calls}
+            self._paging_model_call_id = response.id
+
+    async def on_reply(self, agent, input_kwargs, next_handler):
+        max_iters = agent.react_config.max_iters
+        grant = agent.state.middle_context.get("shared_context_sources", {})
+        if (
+            self._allow_source_references
+            and grant.get("user_id") == self._user_id
+            and grant.get("reply_id") == agent.state.reply_id
+            and grant.get("team_id") == self._team_id
+            and grant.get("task_id") == self._task_id
+            and grant.get("mode") == self._mode
+            and agent.state.get_awaiting_tool_calls(agent.name)
+        ):
+            agent.react_config = agent.react_config.model_copy(
+                update={
+                    "max_iters": max_iters + grant.get("iteration_credits", 0)
+                },
+            )
+        try:
+            async for event in next_handler(**input_kwargs):
+                yield event
+        finally:
+            agent.react_config = agent.react_config.model_copy(
+                update={"max_iters": max_iters},
+            )
+
     async def on_acting(self, agent, input_kwargs, next_handler):
         session_id = getattr(agent.state, "session_id", None)
         if self._team_id is None or session_id is None:
@@ -381,9 +623,45 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             self._user_id, self._team_id, session_id, task_id=self._task_id
         )
         started = time.monotonic()
+        call_id = input_kwargs["tool_call"].id
         try:
             async with asyncio.timeout(remaining):
                 async for result in next_handler(**input_kwargs):
+                    if call_id in self._paging_call_ids and isinstance(
+                        result, ToolResponse
+                    ):
+                        self._paging_reads[call_id] = (
+                            result.metadata.get("shared_context_read")
+                            if result.state == ToolResultState.SUCCESS
+                            else None
+                        )
+                        if self._paging_call_ids == self._paging_reads.keys():
+                            self._paging_call_ids = set()
+                            if all(self._paging_reads.values()):
+                                credited = await self._service.credit_source_read(
+                                    self._user_id,
+                                    self._team_id,
+                                    session_id,
+                                    task_id=self._task_id,
+                                    customer_revision=epoch,
+                                    source_reads=list(
+                                        self._paging_reads.values()
+                                    ),
+                                    paging_call_id=self._paging_model_call_id,
+                                )
+                                if credited:
+                                    grant = agent.state.middle_context[
+                                        "shared_context_sources"
+                                    ]
+                                    grant["iteration_credits"] = (
+                                        grant.get("iteration_credits", 0) + 1
+                                    )
+                                    agent.react_config = agent.react_config.model_copy(
+                                        update={
+                                            "max_iters": agent.react_config.max_iters
+                                            + 1,
+                                        },
+                                    )
                     yield result
         finally:
             await self._service.measure_collaboration(
@@ -403,9 +681,18 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
     ) -> None:
         """Do not rewrite private memory for a context-isolated handoff."""
 
-        if self._mode in {"isolated", "references"}:
+        if (
+            self._mode in {"isolated", "references"}
+            or self._project_private_history
+        ):
             return
-        await next_handler(**input_kwargs)
+        await self._refresh_packet(agent, agent.model)
+        config = await self._compression_config(
+            agent,
+            agent.model,
+            input_kwargs.get("context_config") or agent.context_config,
+        )
+        await next_handler(**{**input_kwargs, "context_config": config})
 
 
 __all__ = ["SharedContextIsolationMiddleware"]

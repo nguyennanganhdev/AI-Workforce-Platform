@@ -811,12 +811,37 @@ class TestCollaboration(IsolatedAsyncioTestCase):
 
     async def test_shared_context_read_pages_only_this_teams_sources(self):
         from agentscope.app._tool import SharedContextRead
+        from agentscope.app.middleware import SharedContextIsolationMiddleware
+        from agentscope.state import AgentState
+        from tests.team_shared_context_test import _MeasuredModel
 
         source = "x" * 5000 + "END"
-        event = await self.service.append_event(
-            user_id="u", team_id="ticket-1", kind="external_event",
-            content=source, source_session_id="worker-session",
+        await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            kind="external_event",
+            content=source,
+            source_session_id="worker-session",
         )
+        self.service.config = replace(
+            self.service.config,
+            packet_max_tokens=600,
+            history_budget_tokens=400,
+        )
+        middleware = SharedContextIsolationMiddleware(
+            "task",
+            self.service,
+            "u",
+            "ticket-1",
+            task_id=self.task,
+            allow_source_references=True,
+        )
+        state = AgentState(session_id="worker-session")
+        await middleware._refresh_packet(
+            SimpleNamespace(state=state), _MeasuredModel()
+        )
+        grant = state.middle_context["shared_context_sources"]
+        reference = grant["references"][0]
         tool = SharedContextRead(
             storage=self.storage, message_bus=self.bus, workspace_manager=object(),
             user_id="u", session_id="worker-session", agent_id="worker",
@@ -824,9 +849,20 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         read, offset = "", 0
         while offset is not None:
-            page = json.loads((await tool(event_id=event.id, offset=offset, limit=2000)).content[0].text)
+            page = json.loads(
+                (
+                    await tool(
+                        source_ref=reference,
+                        offset=offset,
+                        limit=2000,
+                        _agent_state=state,
+                    )
+                )
+                .content[0]
+                .text
+            )
             read += page["content"]
             offset = page["next_offset"]
-        self.assertEqual(source, read)
-        missing = await tool(event_id="another-teams-event")
+        self.assertIn(source, read)
+        missing = await tool(source_ref="0" * 64, _agent_state=state)
         self.assertEqual("error", missing.state)

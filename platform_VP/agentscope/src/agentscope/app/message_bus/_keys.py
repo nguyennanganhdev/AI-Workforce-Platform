@@ -139,6 +139,13 @@ class MessageBusKeys:  # pylint: disable=too-many-public-methods
         return cls._TEAM_HANDOFF_DELIVERY_NS.format(handoff_id=handoff_id)
 
     @classmethod
+    def team_context_sources(
+        cls, user_id: str, team_id: str, task_id: str
+    ) -> str:
+        """Temporary immutable model-input sources, scoped to their owner."""
+        return f"agentscope:team:context_sources:{user_id}:{team_id}:{task_id}"
+
+    @classmethod
     def team_session_context(cls, session_id: str) -> str:
         """Last context revision actually prepared for one agent session."""
 

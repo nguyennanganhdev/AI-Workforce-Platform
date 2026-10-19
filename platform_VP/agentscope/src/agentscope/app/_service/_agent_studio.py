@@ -28,6 +28,7 @@ from ...message import UserMsg
 from ...model import ChatModelBase
 from .._agent_spec import (
     AgentSpec,
+    SpecKnowledge,
     SpecOperation,
     SpecPatchError,
     SpecSource,
@@ -69,7 +70,12 @@ def ensure_spec(record: AgentRecord) -> bool:
         bindings=record.data.tool_bindings,
         policy=BUSINESS_AGENT_EVIDENCE_POLICY,
     )
+    spec.knowledge = [
+        SpecKnowledge(kb_id=kb_id)
+        for kb_id in dict.fromkeys(record.data.knowledge_base_ids)
+    ]
     record.data.spec = spec.model_dump(mode="json")
+    record.data.knowledge_base_ids = []
     if record.data.lifecycle_state == "published" and not record.data.versions:
         record.data.versions = [
             {
@@ -189,6 +195,7 @@ def materialize(
     record.data.lifecycle_state = "published"
     record.data.spec = spec.model_dump(mode="json")
     record.data.draft_spec = None
+    record.data.knowledge_base_ids = []
     record.data.draft_meta = {}
     record.data.evaluation = copy.deepcopy(report)
     record.data.versions = [

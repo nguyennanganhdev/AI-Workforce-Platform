@@ -142,7 +142,10 @@ optional):
     # shell/task/cron tools add schemas and encourage unrelated planning loops.
     is_leader = agent_record.data.system_role == "leader"
     business_runtime = (
-        is_leader or bool(agent_record.data.tool_bindings)
+        is_leader
+        or bool(agent_record.data.tool_bindings)
+        or bool(agent_record.data.spec)
+        or agent_record.data.execution_mode is not None
         or session_record.config.personal_chat is not None
     )
     tools = [] if business_runtime else await workspace.list_tools()
@@ -244,9 +247,13 @@ time or interval"
             )
 
     # A member reads back sources its team packet archived for size.
-    if session_record.team_id and not (
-        session_record.config.personal_chat is not None
-        and session_record.config.personal_chat.kind == "direct"
+    if (
+        shared_context_service is not None
+        and (is_leader or session_record.team_id)
+        and not (
+            session_record.config.personal_chat is not None
+            and session_record.config.personal_chat.kind == "direct"
+        )
     ):
         tools.append(SharedContextRead(**team_tool_kwargs))
 
@@ -290,6 +297,36 @@ time or interval"
         tools += channel_tools
 
     mcps = [] if is_leader else await workspace.list_mcps(agent_id=agent_record.id, session_id=session_record.id)
+    if agent_record.data.spec or agent_record.data.execution_mode is not None:
+        allowed_by_mcp: dict[str, list[str]] = {}
+        for binding in agent_record.data.tool_bindings:
+            mcp_name = str(binding.get("mcp_name") or "")
+            tool_name = str(binding.get("tool_name") or "")
+            if not mcp_name and binding.get("mcp_id"):
+                from ._catalog_resources import resolve_catalog_resource
+
+                record = await resolve_catalog_resource(
+                    storage,
+                    user_id,
+                    "mcp",
+                    binding["mcp_id"],
+                    permission="execute",
+                )
+                mcp_name = record.client.name
+            if mcp_name and tool_name:
+                allowed_by_mcp.setdefault(mcp_name, []).append(tool_name)
+        mcps = [
+            client.model_copy(
+                update={
+                    "enable_tools": list(
+                        dict.fromkeys(allowed_by_mcp[client.name])
+                    )
+                },
+                deep=True,
+            )
+            for client in mcps
+            if client.name in allowed_by_mcp
+        ]
     skills = [] if is_leader else await workspace.list_skills(agent_id=agent_record.id)
     from ._catalog_resources import catalog_authority, list_catalog_resources
 

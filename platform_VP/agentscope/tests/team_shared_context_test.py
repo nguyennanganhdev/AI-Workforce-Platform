@@ -2022,11 +2022,12 @@ class TestOrdinaryTeamArchivesLargeSources(IsolatedAsyncioTestCase):
             model=_MeasuredModel(),  # type: ignore[arg-type]
             user_id="u",
             team_id="ticket-1",
+            allow_source_references=True,
         )
 
         self.assertLessEqual(tokens, 600)
         self.assertIn("SharedContextRead", text)
-        self.assertIn(event.id, text)
+        self.assertTrue(json.loads(text)["source_references"])
         self.assertNotIn("CaseEvidence", text)
         record = await storage.get_team_shared_context("u", "ticket-1")
         self.assertEqual(flights, next(e for e in record.state.events if e.id == event.id).content)

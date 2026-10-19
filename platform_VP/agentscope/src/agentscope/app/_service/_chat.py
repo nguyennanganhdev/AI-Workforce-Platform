@@ -1562,6 +1562,8 @@ class ChatService:
                     for item in (agent_record.data.spec or {}).get("knowledge", [])
                     if item.get("kb_id")
                 ]
+                if not agent_record.data.spec:
+                    spec_kb_ids = list(agent_record.data.knowledge_base_ids)
                 if agent_record.data.resource_workspace_id or (spec_kb_ids and (kb_cfg is None or not kb_cfg.knowledge_base_ids)):
                     kb_cfg = SessionKnowledgeConfig(knowledge_base_ids=spec_kb_ids)
                 if (
@@ -1772,8 +1774,27 @@ class ChatService:
                         mode=shared_context_mode,
                         task_id=context_task_id,
                         reference_event_ids=reference_event_ids,
-                        exclude_event_ids=tuple(msg.id for msg in customer_input_msgs),
+                        exclude_event_ids=tuple(
+                            msg.id for msg in customer_input_msgs
+                        ),
                         summary_model=summary_model,
+                        allow_source_references=not partner_room,
+                        max_tokens=(
+                            max(
+                                1,
+                                int(
+                                    model.context_size
+                                    * (
+                                        1
+                                        - self._shared_context.config.output_reserve_ratio
+                                        - agent_record.data.context_config.reserve_ratio
+                                    )
+                                )
+                                - self._shared_context.config.preflight_margin_tokens,
+                            )
+                            if not partner_room
+                            else None
+                        ),
                     )
                     packet_revision = await self._shared_context.latest_event_revision(
                         user_id,
@@ -1811,6 +1832,8 @@ class ChatService:
                         agent_id=agent_id,
                         summary_model=summary_model,
                         project_private_history=partner_room,
+                        allow_source_references=not partner_room,
+                        reference_event_ids=reference_event_ids,
                     )
                     middlewares.append(isolation)
 
@@ -1834,6 +1857,7 @@ class ChatService:
                         None,
                         membership_storage=self._storage,
                         agent_id=agent_id,
+                        allow_source_references=True,
                     )
                     middlewares.append(isolation)
 
