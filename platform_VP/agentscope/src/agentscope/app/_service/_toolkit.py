@@ -59,6 +59,7 @@ async def get_toolkit(
     shared_context_service: SharedContextService | None = None,
     management_auth_service=None,
     peer_collaboration: bool = False,
+    direct_collaboration: bool = False,
 ) -> Toolkit:
     """Assemble the complete :class:`Toolkit` for one chat turn.
 
@@ -211,7 +212,13 @@ time or interval"
         # Participant selection belongs to the user; no autonomous delegation.
         pass
     elif team_role == "worker":
-        tools.append(TeamSay(**team_tool_kwargs, role="worker"))
+        tools.append(
+            TeamSay(
+                **team_tool_kwargs,
+                role="worker",
+                direct_collaboration=direct_collaboration,
+            ),
+        )
     else:
         tools += [
             TeamCreate(**team_tool_kwargs),
