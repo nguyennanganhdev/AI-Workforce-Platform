@@ -196,7 +196,7 @@ export function TeamPanel({
 					)}
 				>
 					<span className="mt-0.5 shrink-0">
-						<TeamAgentAvatar status={runtime.status} role={role} />
+						<TeamAgentAvatar name={label} status={runtime.status} role={role} />
 					</span>
 					<span className="min-w-0 flex-1">
 						<span className="flex items-center gap-2">

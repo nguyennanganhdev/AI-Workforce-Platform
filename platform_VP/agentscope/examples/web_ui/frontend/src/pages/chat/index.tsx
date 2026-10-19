@@ -17,13 +17,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
 import { workforceApi, type SessionRecord, type SessionSourceKind } from '@/api';
-import sessionTeamMascot from '@/assets/images/session-team-mascot.png';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
 import { AgentSelect } from '@/components/select/AgentSelect';
 import { ChatTourController } from '@/components/tour/ChatTourController';
 import { Button } from '@/components/ui/button';
+import { ClayPortrait } from '@/components/ui/clay-portrait';
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -105,12 +105,7 @@ const ensureLeader = () => {
 function SessionTeamAvatar({ active }: { active: boolean }) {
 	return (
 		<span className={`session-team-avatar${active ? ' is-active' : ''}`} aria-hidden="true">
-			<img
-				className="session-team-avatar__image"
-				src={sessionTeamMascot}
-				alt=""
-				draggable={false}
-			/>
+			<ClayPortrait which="leader" size={36} working={active} />
 		</span>
 	);
 }

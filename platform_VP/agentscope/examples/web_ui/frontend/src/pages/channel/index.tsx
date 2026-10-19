@@ -30,6 +30,7 @@ import { ChannelDetailPanel } from '@/pages/channel/channel-detail-panel';
 import { ChannelStatusBadge } from '@/pages/channel/channel-status';
 import { CreateChannelDialog } from '@/pages/channel/create-channel-dialog';
 import { EditChannelDialog } from '@/pages/channel/edit-channel-dialog';
+import { TelegramSetup } from '@/pages/channel/telegram-setup';
 import { TypeAvatar } from '@/pages/channel/type-avatar';
 
 function ChannelCard({
@@ -195,9 +196,9 @@ export function ChannelPage() {
 	const selected = channels.find((c) => c.id === selectedId) ?? null;
 
 	return (
-		<div className="flex size-full p-2">
+		<div className="channel-page flex size-full min-w-0 p-2">
 			<ResizablePanelGroup orientation="horizontal">
-				<ResizablePanel minSize="24rem">
+				<ResizablePanel minSize="0%">
 					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
 						<div className="px-6 pt-5 pb-4">
 							<div className="text-2xl font-semibold">{t('channel.title')}</div>
@@ -276,6 +277,12 @@ export function ChannelPage() {
 											/>
 										))}
 									</div>
+									<TelegramSetup
+										available={types.some(
+											(type) => type.channel_type === 'telegram',
+										)}
+										onConnect={() => setCreateType('telegram')}
+									/>
 								</>
 							)}
 						</div>

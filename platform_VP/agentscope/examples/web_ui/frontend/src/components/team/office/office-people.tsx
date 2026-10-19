@@ -64,6 +64,7 @@ export function Person({
 				>
 					{actor.kind === 'agent' || actor.kind === 'leader' ? (
 						<TeamAgentAvatar
+							name={actor.name}
 							role={actor.kind === 'leader' ? 'leader' : 'member'}
 							status={actor.status === 'working' ? 'active' : 'idle'}
 							size="lg"

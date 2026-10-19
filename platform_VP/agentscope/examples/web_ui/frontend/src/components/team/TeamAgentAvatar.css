@@ -1,132 +1,26 @@
 .team-agent-avatar {
-	position: relative;
 	display: inline-grid;
-	width: 1.75rem;
-	height: 1.75rem;
+	width: 28px;
+	height: 28px;
 	place-items: center;
-	isolation: isolate;
+	border-radius: 10px;
+	overflow: hidden;
+	flex-shrink: 0;
 }
-
 .team-agent-avatar--sm {
-	width: 1.5rem;
-	height: 1.5rem;
+	width: 24px;
+	height: 24px;
 }
-
 .team-agent-avatar--lg {
-	width: 2.5rem;
-	height: 2.5rem;
+	width: 40px;
+	height: 40px;
+	border-radius: 12px;
 }
-
-.team-agent-avatar::before {
-	position: absolute;
-	inset: 28% 8% 4%;
-	z-index: -1;
-	border-radius: 999px;
-	background: rgb(168 85 247 / 35%);
-	filter: blur(5px);
-	content: '';
-	animation: team-agent-glow 2.8s ease-in-out infinite;
+.team-agent-avatar--waiting {
+	outline: 1px solid #d28b28;
+	outline-offset: 2px;
 }
-
-.team-agent-avatar__image {
-	display: block;
-	width: 100%;
-	height: 100%;
-	object-fit: contain;
-	filter: drop-shadow(0 1px 2px rgb(15 23 42 / 28%));
-	transform-origin: 50% 72%;
-	animation: team-agent-float 2.8s ease-in-out infinite;
-	will-change: transform;
-}
-
-.team-agent-avatar--leader::before {
-	background: rgb(245 158 11 / 42%);
-}
-
-.team-agent-avatar--active .team-agent-avatar__image,
-.team-agent-avatar--communicating .team-agent-avatar__image {
-	animation-name: team-agent-working;
-	animation-duration: 1.05s;
-}
-
-.team-agent-avatar--active::before,
-.team-agent-avatar--communicating::before {
-	animation-duration: 1.05s;
-}
-
-.team-agent-avatar--waiting .team-agent-avatar__image {
-	animation-duration: 1.8s;
-}
-
-li:nth-child(2n) .team-agent-avatar::before,
-li:nth-child(2n) .team-agent-avatar__image {
-	animation-delay: -0.7s;
-}
-
-li:nth-child(3n) .team-agent-avatar::before,
-li:nth-child(3n) .team-agent-avatar__image {
-	animation-delay: -1.35s;
-}
-
-.team-agent-avatar--error .team-agent-avatar__image {
-	animation-name: team-agent-alert;
-	animation-duration: 2.4s;
-}
-
-@keyframes team-agent-float {
-	0%,
-	100% {
-		transform: translateY(0) rotate(-1deg);
-	}
-
-	50% {
-		transform: translateY(-2px) rotate(1deg);
-	}
-}
-
-@keyframes team-agent-working {
-	0%,
-	100% {
-		transform: translateY(0) rotate(-2deg) scale(1);
-	}
-
-	50% {
-		transform: translateY(-2px) rotate(2deg) scale(1.04);
-	}
-}
-
-@keyframes team-agent-alert {
-	0%,
-	92%,
-	100% {
-		transform: translateX(0);
-	}
-
-	94% {
-		transform: translateX(-1px) rotate(-2deg);
-	}
-
-	97% {
-		transform: translateX(1px) rotate(2deg);
-	}
-}
-
-@keyframes team-agent-glow {
-	0%,
-	100% {
-		opacity: 0.45;
-		transform: scale(0.88);
-	}
-
-	50% {
-		opacity: 0.85;
-		transform: scale(1.05);
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.team-agent-avatar::before,
-	.team-agent-avatar__image {
-		animation: none;
-	}
+.team-agent-avatar--error {
+	outline: 1px solid #dc3545;
+	outline-offset: 2px;
 }

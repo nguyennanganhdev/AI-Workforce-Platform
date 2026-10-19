@@ -562,6 +562,22 @@
 		"noTts": "No TTS"
 	},
 	"auth": {
+		"showcase": {
+			"live": "Live",
+			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
+			"statusIdle": "Waiting",
+			"statusBusy": "In progress",
+			"statusDone": "Done",
+			"resident": "Resident",
+			"routed": "Routed: Ocean Park 1 · Plumbing",
+			"request": "A pipe burst in my flat, please send a plumber.",
+			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
+			"agents": {
+				"reception": "Reception",
+				"technical": "Technical",
+				"hotel": "Hotel"
+			}
+		},
 		"eyebrow": "Agent orchestration platform",
 		"secureAccess": "Secure workspace access",
 		"heroTitle": "Build an AI workforce. Operate as one team.",
@@ -759,6 +775,17 @@
 		}
 	},
 	"channel": {
+		"telegramSetup": {
+			"available": "Supported by this server",
+			"unavailable": "Unavailable on the current server",
+			"connect": "Connect Telegram",
+			"supportedHint": "Use your bot token and select an agent in the existing connection form.",
+			"unsupportedHint": "Telegram is not enabled on this server yet. You can prepare a bot and connect when this channel becomes available.",
+			"guide": "Prepare your connection",
+			"stepBot": "prepare your Telegram bot.",
+			"stepToken": "Keep the bot token private. Enter it in the secure form when the connector is available.",
+			"stepRouting": "Select an agent, model and routing rules in the channel creation form."
+		},
 		"credentialBinding": {
 			"tab": "Scan QR code",
 			"manualTab": "Enter manually",

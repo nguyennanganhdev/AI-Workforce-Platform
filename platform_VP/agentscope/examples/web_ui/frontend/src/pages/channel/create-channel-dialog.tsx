@@ -82,7 +82,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[560px] !max-w-[560px]">
+			<DialogContent className="channel-dialog">
 				<DialogHeader>
 					<DialogTitle>
 						{picked
@@ -92,7 +92,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 					<DialogDescription>{t('channel.create.description')}</DialogDescription>
 				</DialogHeader>
 
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4 pt-1">
+				<div className="channel-dialog-scroll no-scrollbar -mx-4 overflow-y-auto px-4 pt-1">
 					<ChannelForm
 						mode="create"
 						value={form}
