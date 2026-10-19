@@ -6,7 +6,8 @@ import {
 	CircleAlert,
 	Database,
 	Ellipsis,
-	Hammer,
+	PanelLeft,
+	UsersRound,
 	MessageSquare,
 	MessageSquareDashed,
 	Plus,
@@ -16,6 +17,7 @@ import {
 	Settings2,
 	Trash2,
 	Wrench,
+	X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -41,6 +43,7 @@ import { Bubble, BubbleContent } from '@/components/ui/bubble';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -73,11 +76,7 @@ function prefersVietnamese(text: string) {
 	);
 }
 
-function PlannedAgentCard({
-	agent,
-}: {
-	agent: BuilderProposal['planned_agents'][number];
-}) {
+function PlannedAgentCard({ agent }: { agent: BuilderProposal['planned_agents'][number] }) {
 	return (
 		<Card className="border-border/70 shadow-none">
 			<CardHeader className="pb-3">
@@ -136,7 +135,9 @@ function PlannedAgentCard({
 							))}
 						</div>
 					) : (
-						<p className="text-xs text-muted-foreground">Không đề xuất Knowledge Base.</p>
+						<p className="text-xs text-muted-foreground">
+							Không đề xuất Knowledge Base.
+						</p>
 					)}
 				</section>
 				{agent.reuse_agent_name && (
@@ -144,8 +145,8 @@ function PlannedAgentCard({
 						<CircleAlert className="mt-0.5 size-4 shrink-0" />
 						<span>
 							Có thể tái sử dụng agent đã phát hành{' '}
-							<strong>{agent.reuse_agent_name}</strong>. Builder sẽ không tạo lại agent
-							này khi sinh cấu hình.
+							<strong>{agent.reuse_agent_name}</strong>. Builder sẽ không tạo lại
+							agent này khi sinh cấu hình.
 						</span>
 					</div>
 				)}
@@ -301,13 +302,11 @@ function AgentProposalCard({
 
 export function AgentBuilderPage() {
 	const { knowledgeBases, loading: knowledgeBasesLoading } = useKnowledgeBases();
-	const {
-		agents: agentViews,
-		refetch: refetchAgentViews,
-		remove: removeAgent,
-	} = useAgents();
+	const { agents: agentViews, refetch: refetchAgentViews, remove: removeAgent } = useAgents();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [message, setMessage] = useState('');
+	const [historyOpen, setHistoryOpen] = useState(false);
+	const [rosterOpen, setRosterOpen] = useState(false);
 	const [conversationId, setConversationId] = useState<string | null>(() =>
 		searchParams.get('conversation_id'),
 	);
@@ -317,8 +316,7 @@ export function AgentBuilderPage() {
 	const [agents, setAgents] = useState<WorkforceAgent[]>([]);
 	const [working, setWorking] = useState(false);
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
-	const [selectedBuilderModel, setSelectedBuilderModel] =
-		useState<ChatModelConfig | null>(null);
+	const [selectedBuilderModel, setSelectedBuilderModel] = useState<ChatModelConfig | null>(null);
 	const [buildProgress, setBuildProgress] = useState<BuilderProgress | null>(null);
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
@@ -507,11 +505,24 @@ export function AgentBuilderPage() {
 
 	return (
 		<>
-			<div className="grid size-full min-h-0 gap-2 p-2 xl:grid-cols-[260px_minmax(0,1fr)_320px]">
-				<aside className="flex min-h-0 flex-col overflow-hidden rounded-[22px] bg-card p-2 shadow-panel">
+			<div className="builder-layout">
+				<aside
+					id="builder-history"
+					data-open={historyOpen}
+					className="builder-history flex flex-col overflow-hidden p-2"
+				>
 					<div className="flex items-center justify-between px-2 py-3">
 						<div>
 							<h2 className="text-sm font-medium">Hội thoại Builder</h2>
+							<Button
+								className="builder-panel-close"
+								variant="ghost"
+								size="icon"
+								aria-label="Đóng lịch sử Builder"
+								onClick={() => setHistoryOpen(false)}
+							>
+								<X />
+							</Button>
 							<p className="text-xs text-muted-foreground">
 								Lịch sử làm việc với Agent Builder
 							</p>
@@ -601,12 +612,29 @@ export function AgentBuilderPage() {
 						)}
 					</div>
 				</aside>
-				<main className="flex min-h-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
-					<header className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-5">
+				<main className="builder-main flex min-h-0 flex-col overflow-hidden bg-card">
+					<header className="builder-header flex flex-wrap items-center justify-between border-b">
 						<div className="flex items-center gap-3">
-							<div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-								<Hammer className="size-5" />
-							</div>
+							<Button
+								className="builder-history-toggle"
+								variant="ghost"
+								size="icon"
+								aria-label="Hội thoại Builder"
+								aria-controls="builder-history"
+								aria-expanded={historyOpen}
+								onClick={() => {
+									setHistoryOpen(!historyOpen);
+									setRosterOpen(false);
+								}}
+							>
+								<PanelLeft />
+							</Button>
+							<ClayAvatar
+								id="builder"
+								label="Agent Builder"
+								size={36}
+								working={working}
+							/>
 							<div>
 								<h1 className="text-xl font-medium tracking-tight">
 									Agent Builder
@@ -617,7 +645,21 @@ export function AgentBuilderPage() {
 								</p>
 							</div>
 						</div>
-						<div className="grid min-w-72 gap-3 sm:grid-cols-2">
+						<Button
+							className="builder-roster-toggle"
+							variant="ghost"
+							size="icon"
+							aria-label="Agent trong platform"
+							aria-controls="builder-roster"
+							aria-expanded={rosterOpen}
+							onClick={() => {
+								setRosterOpen(!rosterOpen);
+								setHistoryOpen(false);
+							}}
+						>
+							<UsersRound />
+						</Button>
+						<div className="builder-models grid gap-3 sm:grid-cols-2">
 							<div>
 								<p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
 									Model runtime
@@ -653,13 +695,36 @@ export function AgentBuilderPage() {
 					<div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
 						<div className="mx-auto max-w-4xl space-y-6">
 							{conversation.length === 0 ? (
-								<div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
-									<div className="mb-4 flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
-										<MessageSquare className="size-5" />
+								<div className="builder-empty flex flex-col items-center justify-center text-center">
+									<div
+										className="mb-5 flex items-end -space-x-3"
+										aria-hidden="true"
+									>
+										<ClayAvatar
+											id="planner"
+											label="Planner"
+											size={56}
+											className="border-4 border-white"
+										/>
+										<ClayAvatar
+											id="builder"
+											label="Agent Builder"
+											size={72}
+											className="border-4 border-white"
+										/>
+										<ClayAvatar
+											id="leader"
+											label="Leader"
+											size={56}
+											className="border-4 border-white"
+										/>
 									</div>
-									<p className="font-medium">Bắt đầu với một yêu cầu rõ ràng</p>
+									<p className="text-xl font-semibold tracking-tight">
+										Bạn cần đội agent làm gì?
+									</p>
 									<p className="mt-1 max-w-md text-sm text-muted-foreground">
-										Mô tả công việc, dữ liệu cần dùng và kết quả bạn muốn agent tạo ra.
+										Mô tả công việc, dữ liệu cần dùng và kết quả bạn muốn agent
+										tạo ra.
 									</p>
 								</div>
 							) : (
@@ -669,8 +734,13 @@ export function AgentBuilderPage() {
 										align={item.role === 'user' ? 'end' : 'start'}
 									>
 										{item.role === 'builder' && (
-											<MessageAvatar className="self-start bg-primary text-primary-foreground">
-												<Hammer className="size-4" />
+											<MessageAvatar className="self-start bg-transparent">
+												<ClayAvatar
+													id="builder"
+													label="Agent Builder"
+													size={32}
+													working={working}
+												/>
 											</MessageAvatar>
 										)}
 										<MessageContent>
@@ -679,7 +749,7 @@ export function AgentBuilderPage() {
 													Agent Builder
 												</p>
 											)}
-											<Bubble variant={item.role === 'user' ? 'default' : 'secondary'}>
+											<Bubble variant="secondary">
 												<BubbleContent className="px-4 py-3">
 													<Markdown>{item.text}</Markdown>
 												</BubbleContent>
@@ -700,8 +770,8 @@ export function AgentBuilderPage() {
 											</Badge>
 										</div>
 										<p className="mt-1 text-sm text-muted-foreground">
-											Kiểm tra agent, tool, Knowledge Base và khả năng tái sử dụng
-											trước khi sinh cấu hình.
+											Kiểm tra agent, tool, Knowledge Base và khả năng tái sử
+											dụng trước khi sinh cấu hình.
 										</p>
 									</div>
 									<div className="grid gap-3 md:grid-cols-2">
@@ -739,7 +809,8 @@ export function AgentBuilderPage() {
 									<div>
 										<h2 className="font-medium">Cấu hình đã sinh</h2>
 										<p className="mt-1 text-sm text-muted-foreground">
-											Xem prompt, skill, tool và Knowledge Base trước khi phát hành.
+											Xem prompt, skill, tool và Knowledge Base trước khi phát
+											hành.
 										</p>
 									</div>
 									{proposal.agents.map((agent, agentIndex) => (
@@ -780,7 +851,7 @@ export function AgentBuilderPage() {
 							)}
 						</div>
 					</div>
-					<div className="border-t bg-card px-6 py-4">
+					<div className="builder-composer bg-card">
 						<div className="mx-auto max-w-4xl">
 							<div className="flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
 								<Textarea
@@ -824,10 +895,25 @@ export function AgentBuilderPage() {
 					</div>
 				</main>
 
-				<aside className="min-h-0 overflow-y-auto rounded-[22px] bg-card p-4 shadow-panel">
+				<aside
+					id="builder-roster"
+					data-open={rosterOpen}
+					className="builder-roster overflow-y-auto p-4"
+				>
 					<div className="mb-4 flex items-center justify-between">
 						<div>
-							<h2 className="font-medium">Agent trong platform</h2>
+							<div className="flex items-center justify-between gap-2">
+								<h2 className="font-medium">Agent trong platform</h2>
+								<Button
+									className="builder-panel-close"
+									variant="ghost"
+									size="icon"
+									aria-label="Đóng danh sách agent"
+									onClick={() => setRosterOpen(false)}
+								>
+									<X />
+								</Button>
+							</div>
 							<p className="text-xs text-muted-foreground">
 								Chỉ agent đang phát hành xuất hiện trong Chat
 							</p>
@@ -836,10 +922,19 @@ export function AgentBuilderPage() {
 					</div>
 					<div className="space-y-2">
 						{agents.map((agent) => (
-							<div key={agent.agent_id} className="rounded-xl border p-3">
+							<div key={agent.agent_id} className="builder-roster-item border p-3">
 								<div className="flex items-start justify-between gap-2">
 									<div className="min-w-0">
-										<p className="truncate text-sm font-medium">{agent.name}</p>
+										<div className="flex min-w-0 items-center gap-2">
+											<ClayAvatar
+												id={agent.agent_id}
+												label={agent.name}
+												size={32}
+											/>
+											<p className="truncate text-sm font-medium">
+												{agent.name}
+											</p>
+										</div>
 										<p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
 											{agent.objective}
 										</p>
@@ -850,8 +945,9 @@ export function AgentBuilderPage() {
 											variant="ghost"
 											onClick={() => setAgentToEditId(agent.agent_id)}
 											disabled={
-												!agentViews.find((item) => item.id === agent.agent_id)
-													?.editable
+												!agentViews.find(
+													(item) => item.id === agent.agent_id,
+												)?.editable
 											}
 											aria-label={`Cài đặt ${agent.name}`}
 											title="Cài đặt"

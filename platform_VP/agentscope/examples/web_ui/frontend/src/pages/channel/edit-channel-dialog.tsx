@@ -68,13 +68,13 @@ export function EditChannelDialog({ channel, open, onOpenChange, onUpdated }: Pr
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[560px] !max-w-[560px]">
+			<DialogContent className="channel-dialog">
 				<DialogHeader>
 					<DialogTitle>{t('channel.edit.title')}</DialogTitle>
 					<DialogDescription>{t('channel.edit.description')}</DialogDescription>
 				</DialogHeader>
 
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4 pt-1">
+				<div className="channel-dialog-scroll no-scrollbar -mx-4 overflow-y-auto px-4 pt-1">
 					<ChannelForm
 						mode="edit"
 						value={form}

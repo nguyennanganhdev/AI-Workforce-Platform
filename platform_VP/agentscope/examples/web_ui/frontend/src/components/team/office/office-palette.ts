@@ -26,19 +26,19 @@ export const SCREEN = { off: '#30343f', on: '#5b8def', frame: '#1d2029', text: '
 export const KEYBOARD = '#cfd3dc';
 
 export const ROOM = {
-	floor: '#faf7f2',
+	floor: '#f7f8fa',
 	grid: 'rgba(120,100,70,0.08)',
 	/** The wall along x = 0, and the wall along y = 0. */
-	wallLeft: '#ebe5da',
-	wallBack: '#f5f0e8',
-	wallRim: '#d8cfc0',
+	wallLeft: '#e7e9ee',
+	wallBack: '#f4f5f7',
+	wallRim: '#d8dce4',
 	/** The slab's cut faces: the x side, then the y side. */
-	slabRight: '#e3dbcd',
-	slabLeft: '#ece5d8',
-	meeting: '#eef2ff',
+	slabRight: '#dce0e7',
+	slabLeft: '#e6e9ee',
+	meeting: '#eef3f8',
 	approval: '#fff4dc',
 	reception: '#e9f7f1',
-	background: '#f3f1ec',
+	background: '#f4f5f7',
 };
 
 export const BOARD = { fill: '#ffffff', stroke: '#c9ccd6' };

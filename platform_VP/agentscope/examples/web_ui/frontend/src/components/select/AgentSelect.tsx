@@ -56,7 +56,7 @@ export function AgentSelect({ agents, value, onChange, placeholder, className, .
 				className="gap-2.5"
 				onSelect={() => onChange?.(agent.id)}
 			>
-				<TeamAgentAvatar size="sm" />
+				<TeamAgentAvatar name={agent.data.name} size="sm" />
 				<span className="min-w-0 flex-1 truncate">{agent.data.name}</span>
 				{!agent.editable && (
 					<Badge
@@ -83,7 +83,7 @@ export function AgentSelect({ agents, value, onChange, placeholder, className, .
 					className={cn('justify-between gap-1 font-normal', className)}
 					{...props}
 				>
-					{selected ? <TeamAgentAvatar size="sm" /> : null}
+					{selected ? <TeamAgentAvatar name={selected.data.name} size="sm" /> : null}
 					<span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
 					<ChevronDown className="size-3.5 text-muted-foreground" />
 				</Button>

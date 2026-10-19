@@ -560,6 +560,22 @@
 		"noTts": "不使用语音合成"
 	},
 	"auth": {
+		"showcase": {
+			"live": "实时",
+			"caption": "示意：住户的请求由 Leader 路由到合适的智能体并完成处理",
+			"statusIdle": "等待请求",
+			"statusBusy": "处理中",
+			"statusDone": "已完成",
+			"resident": "住户",
+			"routed": "已路由：Ocean Park 1 · 水电",
+			"request": "我家水管爆了，请帮忙叫维修师傅。",
+			"reply": "已预约师傅今天 14:00 上门，工单号 SC-1042。",
+			"agents": {
+				"reception": "前台",
+				"technical": "技术",
+				"hotel": "酒店"
+			}
+		},
 		"eyebrow": "智能体编排平台",
 		"secureAccess": "安全访问工作空间",
 		"heroTitle": "构建 AI 团队，像一个组织一样协同运行。",
@@ -757,6 +773,17 @@
 		}
 	},
 	"channel": {
+		"telegramSetup": {
+			"available": "服务器支持此渠道",
+			"unavailable": "当前服务器暂不支持",
+			"connect": "连接 Telegram",
+			"supportedHint": "使用机器人令牌并在现有连接表单中选择智能体。",
+			"unsupportedHint": "当前服务器尚未启用 Telegram。您可以先准备机器人，待此渠道可用后再连接。",
+			"guide": "准备连接",
+			"stepBot": "准备您的 Telegram 机器人。",
+			"stepToken": "请妥善保管机器人令牌。连接器可用后，在安全表单中输入令牌。",
+			"stepRouting": "在创建渠道表单中选择智能体、模型和路由规则。"
+		},
 		"credentialBinding": {
 			"tab": "扫码授权",
 			"manualTab": "手动填写",

@@ -358,6 +358,7 @@ export function MeetingRoomView({
 									<li key={participant.agentId}>
 										<TeamAgentAvatar
 											role={participant.role}
+											name={participant.name}
 											status={runtime.status}
 											size="sm"
 										/>

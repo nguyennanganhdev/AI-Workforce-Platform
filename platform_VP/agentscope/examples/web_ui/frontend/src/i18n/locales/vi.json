@@ -1,5 +1,147 @@
 {
+	"channel": {
+		"telegramSetup": {
+			"available": "Kênh được máy chủ hỗ trợ",
+			"unavailable": "Chưa khả dụng trên máy chủ hiện tại",
+			"connect": "Kết nối Telegram",
+			"supportedHint": "Dùng bot token và chọn agent trong biểu mẫu kết nối hiện có.",
+			"unsupportedHint": "Máy chủ hiện tại chưa bật Telegram. Bạn có thể chuẩn bị bot và kết nối khi kênh được hỗ trợ.",
+			"guide": "Chuẩn bị kết nối",
+			"stepBot": "chuẩn bị bot Telegram của bạn.",
+			"stepToken": "Giữ bot token riêng tư. Nhập token vào biểu mẫu bảo mật khi connector khả dụng.",
+			"stepRouting": "Chọn agent, model và quy tắc định tuyến trong biểu mẫu tạo kênh."
+		},
+		"credentialBinding": {
+			"tab": "Quét mã QR",
+			"manualTab": "Nhập thủ công",
+			"scanHint": "Quét bằng ứng dụng của nền tảng và phê duyệt để tạo thông tin xác thực.",
+			"authorized": "Đã phê duyệt. Thông tin xác thực đã sẵn sàng.",
+			"failed": "Không thể hoàn tất liên kết.",
+			"unsafeUrl": "Nền tảng trả về liên kết không thể hiển thị an toàn.",
+			"retry": "Thử lại"
+		},
+		"title": "Kênh kết nối",
+		"subtitle": "Kết nối các kênh nhắn tin được máy chủ hỗ trợ để agent tiếp nhận và trả lời tin nhắn.",
+		"status": "Trạng thái",
+		"connected": "Đã kết nối",
+		"enable": "Bật",
+		"disable": "Tắt",
+		"deleteEntity": "kênh kết nối",
+		"routing": "Định tuyến",
+		"routingDesc": "Ghép tin nhắn đến với tác nhân và phạm vi phiên. Quy tắc cuối áp dụng cho mọi tin nhắn còn lại.",
+		"sectionActive": "Đã kết nối",
+		"sectionAdd": "Thêm kênh",
+		"rules": "{{count}} quy tắc",
+		"empty": {
+			"title": "Chưa có kênh kết nối",
+			"description": "Chọn một nền tảng được hỗ trợ bên dưới để tạo kênh kết nối."
+		},
+		"create": {
+			"title": "Tạo kênh",
+			"titleFor": "Kết nối {{name}}",
+			"description": "Kết nối tác nhân với nền tảng nhắn tin bên ngoài.",
+			"channelType": "Nền tảng",
+			"nameLabel": "Tên",
+			"namePlaceholder": "Ví dụ: Bộ phận hỗ trợ",
+			"nameDesc": "Phân biệt các kênh trên cùng nền tảng",
+			"modelDesc": "Mô hình ban đầu cho phiên mới",
+			"permissionMode": "Chế độ quyền",
+			"permissionModeDesc": "Chế độ quyền ban đầu cho phiên mới",
+			"showToolMessages": "Hiển thị tin nhắn công cụ",
+			"showToolMessagesDesc": "Hiển thị lời gọi và kết quả công cụ trong kênh.",
+			"showThinking": "Hiển thị suy luận",
+			"showThinkingDesc": "Hiển thị quá trình suy luận của mô hình trong kênh."
+		},
+		"fields": {
+			"app_id": {
+				"title": "ID ứng dụng",
+				"description": "ID ứng dụng Feishu"
+			},
+			"app_secret": {
+				"title": "Khóa bí mật ứng dụng",
+				"description": "Khóa bí mật ứng dụng Feishu"
+			},
+			"bot_token": {
+				"title": "Token bot"
+			},
+			"application_id": {
+				"title": "ID ứng dụng"
+			},
+			"only_at_reply": {
+				"title": "Chỉ phản hồi khi được nhắc tên",
+				"description": "Trong nhóm chat, chỉ phản hồi khi bot được @nhắc tên"
+			},
+			"show_tool_process": {
+				"title": "Hiển thị quá trình dùng công cụ",
+				"description": "Hiển thị lời gọi và kết quả công cụ trong phản hồi"
+			},
+			"show_thinking": {
+				"title": "Hiển thị suy luận",
+				"description": "Hiển thị suy luận của mô hình trong phản hồi"
+			}
+		},
+		"edit": {
+			"title": "Chỉnh sửa kênh",
+			"description": "Cập nhật định tuyến, mô hình và cài đặt phản hồi. Không thể thay đổi nền tảng và thông tin xác thực."
+		},
+		"sessionScope": {
+			"per_chat": "Theo cuộc trò chuyện",
+			"per_chat_user": "Theo người dùng trong cuộc trò chuyện"
+		},
+		"sessions": {
+			"title": "Các phiên",
+			"empty": "Chưa có phiên",
+			"openInChat": "Mở trong trò chuyện"
+		},
+		"detail": {
+			"config": "Cấu hình",
+			"configDesc": "Cấu hình ban đầu áp dụng cho phiên mới",
+			"configItem": "Mục",
+			"configValue": "Giá trị",
+			"condition": "Điều kiện",
+			"created": "Ngày tạo",
+			"deleteChannel": "Xóa kênh",
+			"routingDesc": "Cách tin nhắn đến được ghép với tác nhân và phạm vi phiên",
+			"sessionsDesc": "Các phiên được tạo bởi kênh này",
+			"selectHint": "Chọn kênh để xem chi tiết"
+		},
+		"state": {
+			"stopped": "Đã dừng",
+			"connecting": "Đang kết nối",
+			"retrying": "Đang kết nối lại",
+			"connected": "Đã kết nối",
+			"failed": "Thất bại"
+		},
+		"binding": {
+			"rule": "Quy tắc đối chiếu",
+			"matchKey": "Trường đối chiếu",
+			"matchValue": "Giá trị đối chiếu",
+			"matchValuePlaceholder": "Ví dụ: chat_id",
+			"routeTo": "Định tuyến tới",
+			"scope": "Phạm vi phiên",
+			"fallback": "Quy tắc dự phòng",
+			"fallbackDesc": "Tin nhắn không khớp quy tắc nào ở trên sẽ được chuyển tới đây",
+			"catchAll": "Mọi tin nhắn còn lại",
+			"addRule": "Thêm quy tắc"
+		}
+	},
 	"auth": {
+		"showcase": {
+			"live": "Đang hoạt động",
+			"caption": "Minh hoạ: yêu cầu được Leader giao cho đúng agent và được xử lý",
+			"statusIdle": "Chờ yêu cầu",
+			"statusBusy": "Đang xử lý",
+			"statusDone": "Hoàn tất",
+			"resident": "Khách hàng",
+			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
+			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
+			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
+			"agents": {
+				"reception": "Lễ tân",
+				"technical": "Kỹ thuật",
+				"hotel": "Khách sạn"
+			}
+		},
 		"eyebrow": "Nền tảng điều phối agent",
 		"secureAccess": "Truy cập workspace an toàn",
 		"heroTitle": "Xây đội ngũ AI. Vận hành như một tổ chức.",
