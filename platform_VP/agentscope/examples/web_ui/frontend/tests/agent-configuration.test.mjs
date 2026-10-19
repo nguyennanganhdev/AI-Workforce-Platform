@@ -371,18 +371,22 @@ test('agent management hides read-only mutations and publishes through the exist
 			'@/hooks/useAgents': {
 				useAgents: () => ({ agents, refetch: async () => calls.push('refetch') }),
 			},
+			'@/lib/utils': { cn: (...classes) => classes.filter(Boolean).join(' ') },
 		},
 		{},
 	);
 	const tree = await ui.settle();
 	const articles = nodes(tree, 'article');
 	const buttons = (article) => nodes({ type: 'article', props: article }, 'Button');
+	const menuItems = (article) => nodes({ type: 'article', props: article }, 'DropdownMenuItem');
+	// Read-only: only "open chat", no configure button or actions menu.
 	assert.equal(buttons(articles[1]).length, 1);
-	const publish = buttons(articles[0]).find((button) =>
-		button.children?.includes('agentManagement.publish'),
+	assert.equal(menuItems(articles[1]).length, 0);
+	const publish = menuItems(articles[0]).find((item) =>
+		item.children?.includes('agentManagement.publish'),
 	);
 	assert.ok(publish);
-	await publish.onClick();
+	await publish.onSelect();
 	await flush();
 	assert.deepEqual(calls, [['agent', 'published'], 'refetch']);
 });

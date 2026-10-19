@@ -1169,6 +1169,25 @@
 		"draft": "Draft",
 		"published": "Published",
 		"withdrawn": "Withdrawn",
-		"panels": "Show side panels"
+		"panels": "Show side panels",
+		"configureShort": "配置",
+		"more": "更多操作",
+		"noDescription": "暂无工作描述。",
+		"createWithBuilder": "用 Agent Builder 创建",
+		"createWithBuilderHint": "描述要做的工作，Builder 为你提出并搭建智能体团队。",
+		"createManual": "手动创建",
+		"createManualHint": "自己设置一个智能体的名称、指令和配置。",
+		"heroEyebrow": "你的智能体团队",
+		"heroTitle": "管理为你工作的智能体",
+		"heroDescription": "查看状态、打开对话、配置并发布智能体。已发布的智能体可被邀请进群组。",
+		"statTotal": "智能体",
+		"statPublished": "已发布",
+		"statDraft": "草稿",
+		"filter": {
+			"all": "全部",
+			"published": "已发布",
+			"draft": "草稿"
+		},
+		"leaderDescription": "协调整个团队：接收你的请求，把工作交给合适的智能体并为你汇总结果。"
 	}
 }
