@@ -71,7 +71,7 @@ from .._team_turn import (
     mark_team_awaiting_user,
     set_team_turn_task,
     start_team_turn,
-    team_is_awaiting_user,
+    team_is_paused,
 )
 from .._tool._constants import HANDLE_LEN
 from .._types import (
@@ -139,6 +139,21 @@ class _WorkerContext:
 
 
 _TeamContext = _LeaderContext | _WorkerContext
+
+
+def _team_chat_message(message: Msg, agent_id: str, session_id: str) -> Msg:
+    """Project public activity while retaining its author and reply identity."""
+
+    projected = message.model_copy(deep=True)
+    projected.metadata = {
+        **projected.metadata,
+        "team_agent_id": agent_id,
+        "team_session_id": session_id,
+    }
+    projected.content = [
+        block for block in projected.content if block.type not in {"thinking", "hint"}
+    ]
+    return projected
 
 
 def _role_model_config(config, system_role: str, model_tier: str = "standard"):
@@ -891,7 +906,7 @@ class ChatService:
             start_event = ReplyStartEvent(
                 session_id=session_id,
                 reply_id=reply_id,
-                name=agent_id,
+                name=worker_name or agent_id,
             )
             end_event = ReplyEndEvent(
                 session_id=session_id,
@@ -902,9 +917,13 @@ class ChatService:
 
             reply_msg = AssistantMsg(
                 id=reply_id,
-                name=agent_id,
+                name=worker_name or agent_id,
                 content=[],
+                metadata={"team_agent_id": agent_id, "team_session_id": session_id},
             )
+            # A worker's failure also shows in the team's shared chat.
+            if output_session_id is None and isinstance(team_ctx, _WorkerContext):
+                output_session_id = team_ctx.leader_session_id
             for event in (start_event, end_event):
                 reply_msg.append_event(event)
                 await publish_session_event(
@@ -914,14 +933,15 @@ class ChatService:
                 )
                 if output_session_id and output_session_id != session_id:
                     await publish_session_event(self._message_bus, output_session_id,
-                        {**event.model_dump(mode="json"), "session_id": output_session_id})
+                        {**event.model_dump(mode="json"), "session_id": output_session_id,
+                         "metadata": reply_msg.metadata})
             await self._storage.upsert_message(
                 user_id,
                 session_id,
                 reply_msg,
             )
             if output_session_id and output_session_id != session_id:
-                await self._storage.upsert_message(user_id, output_session_id, reply_msg)
+                await self._storage.upsert_message(user_id, output_session_id, reply_msg.model_copy(deep=True))
         except Exception:
             logger.exception(
                 "Failed to report a failure for session %r; the original "
@@ -1287,7 +1307,8 @@ class ChatService:
                             and isinstance(input_msg, (Msg, list))
                             and (
                                 turn_state is None
-                                or turn_state.status == "awaiting_user_input"
+                                or turn_state.status
+                                in {"awaiting_user_input", "completed"}
                             )
                         ):
                             # Channel/partner messages do not pass through the
@@ -1487,7 +1508,12 @@ class ChatService:
                         ),
                     )
                 # Equip the member middleware for loop control
-                if isinstance(team_ctx, _WorkerContext) and not is_reply_owner:
+                # A specialist answering its own customer question still owes
+                # its requester a result.
+                if isinstance(team_ctx, _WorkerContext) and (
+                    not is_reply_owner
+                    or (turn_state is not None and turn_state.mode == "specialist_question")
+                ):
                     middlewares.append(
                         TeamMemberLoopMiddleware(
                             leader_name=(report_target_name or team_ctx.leader_name),
@@ -1849,36 +1875,48 @@ class ChatService:
                             f"{name} ({team_roster_roles[name]})" if team_roster_roles.get(name) else name
                             for name in dict.fromkeys(team_roster_names)
                         )
-                        + ". Ask the responsible peer directly for an internal "
-                        "dependency; do not ask the customer to relay it."
+                        + ". Choose the peer whose role matches the dependency "
+                        "and ask that peer directly; never ask the customer to "
+                        "relay it."
                     )
                 if isinstance(team_ctx, _LeaderContext):
                     attachment += (
-                        " You are the only customer-facing speaker for this "
-                        "team turn. Team members report internally; combine "
-                        "duplicate requests for missing information into one "
-                        "concise question. Before asking it, call "
-                        "TeamSay(kind='ask_customer', content=<question>) "
-                        "once, then ask it in your final reply."
+                        " You compose the team, delegate work and synthesize "
+                        "completed reports. Never ask a task-specific customer "
+                        "question; assign missing-information intake to the "
+                        "responsible specialist."
                     )
                 elif isinstance(team_ctx, _WorkerContext):
-                    if is_reply_owner:
+                    if is_reply_owner and turn_state is not None and turn_state.mode == "specialist_question":
+                        attachment += (
+                            " You temporarily own this customer clarification. "
+                            "Use the answer to finish your assigned work, then "
+                            "report its result to the original assignment "
+                            "requester; Leader owns final synthesis. Ask another "
+                            "question only when genuinely required, registering "
+                            "it first with TeamSay(kind='requires_user_input')."
+                        )
+                    elif is_reply_owner:
                         attachment += (
                             " The user explicitly addressed you, so you own "
                             "the customer reply for this turn. Reply directly "
                             "once. Other members are internal collaborators. "
                             "Before asking the user for missing information, "
-                            "call TeamSay(kind='need_customer_info', "
+                            "call TeamSay(kind='requires_user_input', "
                             "content=<question>) once."
                         )
                     else:
                         attachment += (
                             " You are an internal collaborator. Never address "
-                            "the customer directly; finish with "
-                            "TeamSay(kind='result') or TeamSay(kind='error'), "
-                            "which reach the current reply owner "
-                            f"{(report_target_name or team_ctx.leader_name)!r} "
-                            "automatically."
+                            "the customer unless you first call "
+                            "TeamSay(kind='requires_user_input') for information "
+                            "your own assignment genuinely needs. Answer peer "
+                            "questions with kind='answer'. A received answer is "
+                            "input: resume your original assignment, then report "
+                            "its result to the requester rather than "
+                            "acknowledging the respondent. Work Leader assigned "
+                            "reports to "
+                            f"{(report_target_name or team_ctx.leader_name)!r}."
                         )
 
                 # Channel-bound sessions: tell the agent which chat it serves.
@@ -2033,6 +2071,12 @@ class ChatService:
             # 7. Run the agent (still under the session lock)
             # -----------------------------------------------------------------
             events_key = MessageBusKeys.session_events(session_id)
+            team_chat_session_id = (
+                team_ctx.leader_session_id
+                if team is not None and isinstance(team_ctx, _WorkerContext)
+                and personal is None and not partner_room
+                else None
+            )
 
             async def _publish_run_event(event: AgentEvent) -> None:
                 if (
@@ -2213,18 +2257,41 @@ class ChatService:
                     )
 
                 payload = event.model_dump(mode="json")
+                if isinstance(event, ReplyStartEvent):
+                    payload["metadata"] = {
+                        **payload.get("metadata", {}),
+                        "team_agent_id": agent_id,
+                        "team_session_id": session_id,
+                    }
                 await publish_session_event(
                     self._message_bus,
                     session_id,
                     payload,
                 )
-                if customer_output_session_id != session_id:
+                for output_id in dict.fromkeys(
+                    target for target in (customer_output_session_id, team_chat_session_id)
+                    if target and target != session_id
+                ):
+                    # The shared team chat shows each member's public reply
+                    # under its own name; private reasoning stays in the
+                    # member's session.
+                    if output_id == team_chat_session_id and output_id != customer_output_session_id and (
+                        event.type.startswith("THINKING_BLOCK_")
+                        or event.type == "HINT_BLOCK"
+                        or isinstance(event, CustomEvent)
+                    ):
+                        continue
                     customer_payload = {**payload}
+                    customer_payload["metadata"] = {
+                        **payload.get("metadata", {}),
+                        "team_agent_id": agent_id,
+                        "team_session_id": session_id,
+                    }
                     if "session_id" in customer_payload:
-                        customer_payload["session_id"] = customer_output_session_id
+                        customer_payload["session_id"] = output_id
                     await publish_session_event(
                         self._message_bus,
-                        customer_output_session_id,
+                        output_id,
                         customer_payload,
                     )
 
@@ -2324,7 +2391,11 @@ class ChatService:
                                         id=event.reply_id,
                                         name=event.name,
                                         content=[],
-                                        metadata={"audience": "management"} if management_output else {},
+                                        metadata={
+                                            "team_agent_id": agent_id,
+                                            "team_session_id": session_id,
+                                            **({"audience": "management"} if management_output else {}),
+                                        },
                                     )
                                 elif reply_msg is not None:
                                     reply_msg.append_event(event)
@@ -2580,7 +2651,7 @@ class ChatService:
                     if (
                         team is not None
                         and not is_reply_owner
-                        and await team_is_awaiting_user(
+                        and await team_is_paused(
                             self._message_bus,
                             team.id,
                             storage=self._shared_context.storage,
@@ -2660,6 +2731,12 @@ class ChatService:
                                     user_id,
                                     customer_output_session_id,
                                     msg.model_copy(deep=True),
+                                )
+                            if team_chat_session_id not in {None, session_id, customer_output_session_id}:
+                                await self._storage.upsert_message(
+                                    user_id,
+                                    team_chat_session_id,
+                                    _team_chat_message(msg, agent_id, session_id),
                                 )
                             await publish_session_event(
                                 self._message_bus, customer_output_session_id,

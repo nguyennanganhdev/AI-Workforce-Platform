@@ -522,6 +522,31 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             ],
         )
 
+    @staticmethod
+    def _is_customer_intake(text: str) -> bool:
+        """Return whether the fixed Leader is asking for customer input."""
+
+        normalized = " ".join(text.casefold().split())
+        return any(
+            marker in normalized
+            for marker in (
+                "bạn cung cấp",
+                "bạn cho biết",
+                "bạn xuất phát từ đâu",
+                "vui lòng cung cấp",
+                "vui lòng cho biết",
+                "hãy cung cấp",
+                "hãy cho biết",
+                "where will you depart",
+                "where are you departing",
+                "how many people",
+                "please provide",
+                "please tell me",
+                "could you provide",
+                "could you tell me",
+            )
+        )
+
     async def on_reply(
         self,
         agent: Agent,
@@ -532,7 +557,6 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
 
         review_nudges = 0
         refresh_nudges = 0
-        repair_nudges = 0
         supported_partial = ""
         rounds = 0
         dispatched_seen = 0
@@ -618,6 +642,23 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 )
                 continue
 
+            if _team_exists and self._is_customer_intake(current_text):
+                discard_text()
+                if review_nudges >= self._max_nudges:
+                    for replacement in self._replacement(
+                        agent, event, self._incomplete_text(agent)
+                    ):
+                        yield replacement
+                    continue
+                review_nudges += 1
+                self._nudge(
+                    agent,
+                    "The fixed Workforce Leader must not ask the customer for "
+                    "task-specific information. Delegate intake to the single "
+                    "best-matched specialist. Only that specialist may call "
+                    "TeamSay(kind=requires_user_input) and ask the customer.",
+                )
+                continue
             review = await self._review()
             if review and review_nudges < self._max_nudges:
                 discard_text()
@@ -652,78 +693,21 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     "Do not emit an intermediate progress update.",
                 )
                 continue
-            safe_without_evidence = self._safe_without_evidence(current_text)
-            # A long factual answer does not become a safe clarification just
-            # because it ends with "Which option do you want?".  Validate
-            # concrete anchors for every non-empty reply.  The support set also
-            # contains customer-confirmed messages, so repeating dates/budgets
-            # while asking a real clarification remains valid.
-            validation = await self._claim_validation(current_text, agent)
-            if validation.unsupported:
-                partial = validation.supported_text
-                if supported_partial:
-                    prior = (await self._claim_validation(supported_partial, agent)).supported_text
-                    if prior and prior not in partial:
-                        partial = prior + "\n\n" + partial
-                supported_partial = (
-                    (await self._claim_validation(partial, agent)).supported_text if partial else ""
+            # The Leader reviews content; the runtime does not rewrite or
+            # bounce its answer for missing evidence.
+            for text_event in buffered_text:
+                yield text_event
+            buffered_text.clear()
+            if has_current_evidence and self._on_verified_answer is not None:
+                session = await self._storage.get_session(
+                    self._user_id, self._agent_id, self._session_id
                 )
-                discard_text()
-                if repair_nudges >= self._max_repairs:
-                    for replacement in self._replacement(
-                        agent, event, await self._partial_text(agent, supported_partial)
-                    ):
-                        yield replacement
-                    continue
-                repair_nudges += 1
-                self._nudge(
-                    agent,
-                    "Repair only the unsupported concrete claims: "
-                    + ", ".join(validation.unsupported[:12])
-                    + ". Match entity, field, value and unit to one current source. "
-                    "Keep the supported result below; do not restart team review "
-                    "unless the evidence itself conflicts. Do not invent missing details. "
-                    "Supported result: " + supported_partial,
-                )
-                continue
-            if has_current_evidence or safe_without_evidence:
-                for text_event in buffered_text:
-                    yield text_event
-                buffered_text.clear()
-                if has_current_evidence and self._on_verified_answer is not None:
-                    session = await self._storage.get_session(
-                        self._user_id, self._agent_id, self._session_id
-                    )
-                    if session is not None and session.team_id is not None:
-                        try:
-                            self._on_verified_answer(session.team_id)
-                        except Exception:  # noqa: BLE001 - learning is optional
-                            pass
-                yield event
-                continue
-
-            discard_text()
-            if review_nudges >= self._max_nudges:
-                for replacement in self._replacement(
-                    agent, event, await self._partial_text(agent, supported_partial)
-                ):
-                    yield replacement
-                continue
-
-            review_nudges += 1
-            self._nudge(
-                agent,
-                (
-                    "This customer-facing answer has no current worker or MCP "
-                    "evidence. Delegate the domain task to a published agent, "
-                    "ask one concise REQUIRED clarification question, or explicitly say "
-                    "that the capability/data cannot be verified. Never supply "
-                    "names, prices, addresses, availability or recommendations "
-                    "from model memory. If the user already supplied the core "
-                    "inputs needed for read-only lookup, delegate now; do not "
-                    "delay work to ask optional preferences."
-                ),
-            )
+                if session is not None and session.team_id is not None:
+                    try:
+                        self._on_verified_answer(session.team_id)
+                    except Exception:  # noqa: BLE001 - learning is optional
+                        pass
+            yield event
 
 
 __all__ = ["LeaderEvidenceMiddleware"]

@@ -207,6 +207,10 @@ export function ChatViewport({
 	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
 	// Personal conversations are not partner tickets: never apply the ticket scope to them.
 	const { sessions, refetch: refetchSessions } = useSessions(agentId, privateAccount ? undefined : sessionScope ?? (ticketView ? 'leader' : undefined));
+	// The Leader session hosting a team is its shared chat: every member's
+	// public reply appears there under its own name.
+	const teamChatView = sessions.find((v) => v.session.id === sessionId);
+	const isTeamChat = !!teamChatView?.team && teamChatView.team.team.session_id === sessionId;
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
@@ -293,6 +297,7 @@ export function ChatViewport({
 		subagentHitl,
 		interrupt,
 	} = useMessages(agentId, sessionId, {
+		teamChat: isTeamChat,
 		onTeamUpdated: handleTeamUpdated,
 		onStateUpdated: handleStateUpdated,
 		onSessionUpdated: handleSessionUpdated,
@@ -1037,6 +1042,7 @@ export function ChatViewport({
 										phase={phase}
 										disabled={selectedModel === null}
 										onSend={send}
+										teamChat={isTeamChat}
 										autoComplete={completeTeamMention}
 										onUserConfirm={onUserConfirm}
 										onInterrupt={interrupt}

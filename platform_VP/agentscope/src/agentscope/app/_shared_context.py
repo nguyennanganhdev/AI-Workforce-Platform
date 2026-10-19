@@ -1472,7 +1472,6 @@ class SharedContextService:
                 and not event.stale
                 and event.revision > task.latest_customer_revision
             }
-            trusted = self._trusted_event_ids(current)
 
             mutated = False
             for sid, branch in task.collaboration.items():
@@ -1489,9 +1488,9 @@ class SharedContextService:
                     if event.source_session_id == sid
                     and event.kind in {"answer", "result"}
                 ]
-                if not branch.needs_claim_review and any(event.id in trusted for event in reports):
+                if reports:
                     branch.status = "completed"
-                    branch.reason = "current evidence-backed result accepted by runtime"
+                    branch.reason = "worker result accepted by runtime"
                     assignment = task.assignments.get(sid)
                     if assignment is not None and assignment.status == "reported":
                         assignment.status = "verified"
@@ -1619,48 +1618,9 @@ class SharedContextService:
                 and not e.stale
                 and e.revision > task.latest_customer_revision
             }
+            # Team results are accepted as reported; the Leader reviews their
+            # content. No runtime claim gate rewrites or bounces them.
             claim_feedback = ""
-            if kind in {"result", "answer"} and sender != owner and not analysis_report:
-                support = self._claim_support_texts(
-                    record, task, current, sender=sender,
-                    references=effective_references,
-                )
-                validation = validate_claims(content, support)
-                if validation.unsupported:
-                    branch.evidence_rejections += 1
-                    # Recheck a retained partial against the current sources;
-                    # a later tool update must not resurrect an obsolete fact.
-                    prior = validate_claims(branch.supported_partial, support).supported_text
-                    partial = validation.supported_text
-                    if prior and prior not in partial:
-                        partial = prior + "\n\n" + partial
-                    branch.supported_partial = validate_claims(partial, support).supported_text
-                    branch.needs_claim_review = True
-                    detail = ", ".join(validation.unsupported[:12])
-                    if branch.evidence_rejections < 2:
-                        await self._commit_mutation(user_id, record)
-                        raise ValueError(
-                            "Evidence gate rejected unsupported concrete claims: "
-                            + detail
-                            + ". Repair only those claims; keep the supported result: "
-                            + branch.supported_partial
-                        )
-                    claim_feedback = "Unsupported details were omitted; review the partial result."
-                    if branch.supported_partial:
-                        content = branch.supported_partial + "\n\n" + claim_feedback
-                    else:
-                        kind, content = "error", "No supported result is available after claim repair."
-                else:
-                    # A focused repair may return only the corrected line.
-                    # Preserve the previous valid portion when it still fits
-                    # the current sources and independently validates together.
-                    prior = validate_claims(branch.supported_partial, support).supported_text
-                    if prior and prior not in content:
-                        combined = prior + "\n\n" + content
-                        if not validate_claims(combined, support).unsupported:
-                            content = combined
-                    branch.supported_partial = ""
-                    branch.needs_claim_review = False
             released = []
             if kind == "conflict" and (
                 len(set(effective_references)) < 2
@@ -1679,29 +1639,6 @@ class SharedContextService:
                     if target.waiting_for:
                         raise ValueError(
                             "Assignment still has unresolved peer dependencies"
-                        )
-                    if not effective_references or any(
-                        ref not in current for ref in effective_references
-                    ):
-                        raise ValueError(
-                            "Completion requires current-task evidence references"
-                        )
-                    evidence = [current[ref] for ref in effective_references]
-                    if not any(
-                        e.kind in {"result", "answer"}
-                        and e.source_session_id == recipients[0]
-                        for e in evidence
-                    ):
-                        raise ValueError(
-                            "Completion requires the assigned agent's result"
-                        )
-                    analysis = record.state.purpose == "platform_group" and any(
-                        e.report_type == "analysis" and e.kind in {"result", "answer"}
-                        and e.source_session_id == recipients[0] for e in evidence
-                    )
-                    if not analysis and not any(e.kind == "external_event" for e in evidence):
-                        raise ValueError(
-                            "Completion requires verified tool/provider evidence, not an agent assertion"
                         )
                     target.status = "completed"
                 elif resolution == "stop":

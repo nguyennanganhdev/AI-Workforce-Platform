@@ -6,7 +6,7 @@ import {
 	type TextBlock,
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
-import { GitBranch, TriangleAlert } from 'lucide-react';
+import { GitBranch, TriangleAlert, X } from 'lucide-react';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
@@ -82,7 +82,9 @@ interface ChatContentProps {
 	 */
 	phase: ReplyPhase;
 	disabled: boolean;
-	onSend: (content: ContentBlock[]) => void;
+	onSend: (content: ContentBlock[], targetAgentId?: string) => void;
+	/** The Leader's team chat: members' replies show under their own names. */
+	teamChat?: boolean;
 	onUserConfirm: (
 		toolCall: ToolCallBlock,
 		confirm: boolean,
@@ -133,6 +135,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	phase,
 	disabled,
 	onSend,
+	teamChat = false,
 	onUserConfirm,
 	autoComplete,
 	mentions,
@@ -184,16 +187,33 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 		return () => clearTimeout(timer);
 	}, [loading]);
 
+	// Team chat shows each member's public reply; private working stays in
+	// that member's own session.
+	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
+		if (message.role !== 'assistant') return [message];
+		const content = message.content.filter((block) => block.type !== 'hint' && block.type !== 'thinking');
+		if (content.length === 0 && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
+		return [{ ...message, content }];
+	}) : msgs, [msgs, teamChat]);
+	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
+	useEffect(() => setReplyTarget(null), [sessionId]);
+	const handleSend = (content: ContentBlock[]) => {
+		onSend(content, replyTarget?.agentId);
+		setReplyTarget(null);
+	};
+
 	const toConfirmedToolCalls = useMemo(() => {
 		if (msgs.length === 0) return [];
 
-		return msgs.filter((message) => message.role === 'assistant').flatMap((message) => {
+		return msgs.filter((message) => message.role === 'assistant' &&
+			// Mirrored member requests use the subagent card and its routing.
+			(!message.metadata?.team_session_id || message.metadata.team_session_id === sessionId)).flatMap((message) => {
 			const resolved = new Set(getContentBlocks(message, 'tool_result').map((result) => result.id));
 			return getContentBlocks(message, 'tool_call')
 				.filter((tc) => tc.state === 'asking' && !resolved.has(tc.id))
 				.map((tc) => ({ replyId: message.id, toolCall: tc }));
 		});
-	}, [msgs]);
+	}, [msgs, sessionId]);
 	const cardVisible = toConfirmedToolCalls.length > 0 || footerSlot != null;
 
 	// Left-aligned with a 16px gutter, Cue-style: no centred reading column.
@@ -244,8 +264,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					<MessageScroller>
 						<MessageScrollerViewport>
 							<MessageScrollerContent className="px-4 pt-2 pb-4">
-								{msgs.map((message, index) => {
-									const previous = msgs[index - 1];
+								{visibleMsgs.map((message, index) => {
+									const previous = visibleMsgs[index - 1];
 									const at = new Date(message.created_at);
 									const previousAt = previous
 										? new Date(previous.finished_at ?? previous.created_at)
@@ -269,6 +289,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 											<ASMessageBubble
 												message={message}
 												onUserConfirm={onUserConfirm}
+												onReplyTo={teamChat ? (targetAgentId, name) => setReplyTarget({ agentId: targetAgentId, name }) : undefined}
 											/>
 										</MessageScrollerItem>
 									);
@@ -344,6 +365,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 							footerSlot
 						)}
 					</FlipCard>
+					{replyTarget && (
+						<div className="mb-2 flex w-full items-center justify-between rounded-xl bg-muted px-3 py-2 text-sm">
+							<span>Trả lời {replyTarget.name}</span>
+							<Button variant="ghost" size="icon-xs" aria-label="Hủy trả lời agent" onClick={() => setReplyTarget(null)}><X /></Button>
+						</div>
+					)}
 					<TextInput
 						className="w-full"
 						placeholder={
@@ -352,7 +379,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 								? t('chat.messagePlaceholder', { name: agentName })
 								: undefined)
 						}
-						onSend={onSend}
+						onSend={handleSend}
 						disabled={disabled}
 						autoComplete={autoComplete}
 						mentions={mentions}
