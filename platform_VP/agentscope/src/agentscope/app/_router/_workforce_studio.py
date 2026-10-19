@@ -235,7 +235,12 @@ async def _models(
     """The working model (spec tier) and the judge/copilot model."""
 
     config = await _model_config(storage, user_id)
-    strong = os.getenv("WORKFORCE_LEADER_MODEL_NAME", "").strip()
+    from ..vin_platform import enabled
+    from ..vin_platform._resources import PLATFORM_PROVIDER_ID
+    # The deployment's strong model name belongs to the platform provider; a
+    # customer's own provider keeps the model chosen for that key.
+    own_key = enabled() and config.credential_id != PLATFORM_PROVIDER_ID
+    strong = "" if own_key else os.getenv("WORKFORCE_LEADER_MODEL_NAME", "").strip()
     strong_config = config.model_copy(update={"model": strong}) if strong else config
     working = strong_config if spec is not None and spec.model_tier == "strong" else config
     copilot = await get_model(user_id, strong_config, access)
