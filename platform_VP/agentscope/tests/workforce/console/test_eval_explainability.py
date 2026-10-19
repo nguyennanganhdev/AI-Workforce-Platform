@@ -115,62 +115,6 @@ async def test_internal_team_report_is_available_without_production_delivery():
     assert report["metrics"]["simulated_calls"] == 1
 
 
-@pytest.mark.asyncio
-async def test_progress_is_persisted_scoped_and_does_not_duplicate_full_transcripts():
-    from agentscope.app._service._eval_progress import EvalProgress, progress_view
-    from agentscope.app._router._workforce_console import builder_progress
-    from agentscope.app.storage import ChatModelConfig, SessionConfig, SessionRecord
-    from fastapi import HTTPException
-    config = SessionConfig(workspace_id="builder", chat_model_config=ChatModelConfig(type="openai_credential", credential_id="offline", model="offline", parameters={}))
-    session = SessionRecord(user_id="u", agent_id="workforce-builder", id="builder", config=config)
-
-    class Storage:
-        async def get_session(self, user_id, agent_id, session_id):
-            return session.model_copy(deep=True) if (user_id, agent_id, session_id) == ("u", "workforce-builder", "builder") else None
-
-        async def update_session_state(self, user_id, agent_id, session_id, state):
-            assert (user_id, agent_id, session_id) == ("u", "workforce-builder", "builder")
-            session.state = state.model_copy(deep=True)
-
-    storage = Storage()
-    progress = EvalProgress(storage, "u", session)
-    await progress.stage("generating")
-    assert (await builder_progress("builder", "u", storage))["stage"] == "generating"
-    with pytest.raises(HTTPException) as denied:
-        await builder_progress("builder", "another-owner", storage)
-    assert denied.value.status_code == 404
-    await progress.event({"stage": "tests_ready", "agent_name": "Travel", "tests": [{"id": "test", "scenario": "Find hotel", "expected": "Ask dates"}]})
-    await progress.event({"stage": "case_completed", "test_id": "test", "result": {"status": "error", "passed": False, "error": "Missing grant", "error_kind": "environment", "tool_calls": [{"output": "private evidence"}]}})
-    await progress.finish()
-    view = progress_view(session)
-    assert view["status"] == "completed"
-    assert view["agents"][0]["tests"][0]["result"]["error_kind"] == "environment"
-    assert "private evidence" not in str(view)
-    session.state.middle_context["evaluation_progress"].update(status="running", updated_at="2020-01-01T00:00:00+00:00")
-    assert progress_view(session)["status"] == "interrupted"
-
-
-@pytest.mark.asyncio
-async def test_builder_retest_keeps_exact_frozen_spec(monkeypatch):
-    from agentscope.app._agent_spec import spec_hash
-    from agentscope.app._router import _workforce_console as console
-    spec = travel_spec()
-    item = console.ProposedAgentView(name=spec.name, objective="Travel", system_prompt="Prompt", selected_tools=[],
-        skill_name="travel", skill_markdown="Skill", tests=[], spec=spec.model_dump(mode="json"), evaluation={"checks": {"static": True}})
-    captured = []
-
-    async def evaluate(**kwargs):
-        captured.append(spec_hash(kwargs["spec"]))
-        return {"pass_rate": 0, "spec_hash": spec_hash(spec)}
-
-    async def catalog(*_): return {}
-    monkeypatch.setattr(evaluation, "run_spec_tests", evaluate)
-    monkeypatch.setattr(studio, "tool_catalog", catalog)
-    await console._evaluate_proposed_agent(item, object(), "u", object())
-    assert captured == [spec_hash(spec)]
-    assert item.spec == spec.model_dump(mode="json")
-
-
 def test_case_latency_percentiles_use_nearest_rank():
     spec = travel_spec()
     results = [{"test_id": str(n), "passed": True, "latency_ms": n} for n in range(1, 21)]

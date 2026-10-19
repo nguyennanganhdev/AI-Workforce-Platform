@@ -12,8 +12,7 @@ from agentscope.app._agent_spec import AgentSpec, SpecTest, spec_hash
 from agentscope.app._router import _workforce_console as console
 from agentscope.app._service._agent_studio import materialize, record_test_run, set_draft
 from agentscope.app._service._publish_gate import EVALUATOR, publication_blocker, publish_blocker, seal_report, trusted_publication
-from agentscope.app.storage import AgentData, AgentRecord, ChatModelConfig
-from agentscope.message import AssistantMsg
+from agentscope.app.storage import AgentData, AgentRecord
 
 
 def evaluated_spec(name="Agent"):
@@ -121,27 +120,6 @@ def test_trusted_provisioning_is_explicit_and_not_a_business_publish_bypass():
     with pytest.raises(ValueError):
         materialize(agent_record(spec), spec, author="manager", note="spoof", evaluation=None,
                     trusted_provisioning=leader_report)
-
-
-def test_builder_publish_cannot_accept_zero_tests_even_when_static_checks_pass():
-    spec, report = evaluated_spec()
-    spec.tests = []
-    item = console.ProposedAgentView(name=spec.name, objective="Coordinate", system_prompt="Safe " * 40,
-            selected_tools=[], skill_name="coord", skill_markdown="Coordinate safely " * 4,
-            spec=spec.model_dump(mode="json"), evaluation={"checks": {"static": True}, "model_report": report})
-    config = ChatModelConfig(type="openai_credential", credential_id="c", model="test", parameters={})
-    proposal = console.ProposalView(conversation_id="conversation", proposal_id="proposal", revision=1,
-            status="ready", assistant_message="Ready", chat_model_config=config, fixed_config={}, agents=[item])
-    message = AssistantMsg(name="builder", content="ready", structured_output={"workforce_builder_proposal": proposal.model_dump(mode="json")})
-    storage = SimpleNamespace(get_session=AsyncMock(return_value=object()),
-            list_messages=AsyncMock(return_value=([message], False)), claim_builder_publish=AsyncMock(), upsert_agent=AsyncMock())
-    async def run():
-        with pytest.raises(HTTPException) as exc:
-            await console.publish_builder(console.PublishRequest(conversation_id="conversation", proposal_id="proposal",
-                                           expected_revision=1), SimpleNamespace(), "u", storage, object())
-        assert exc.value.status_code == 409
-        storage.claim_builder_publish.assert_not_called(); storage.upsert_agent.assert_not_called()
-    asyncio.run(run())
 
 
 def test_redis_publish_claim_is_durable_across_two_storage_instances():

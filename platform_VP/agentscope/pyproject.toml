@@ -61,6 +61,8 @@ dependencies = [
 model-gemini = ["google-genai"]
 model-ollama = ["ollama>=0.5.4"]
 model-xai = ["xai-sdk"]
+classifier-jev = ["typesafe-sdk>=0.7"]
+classifiers = ["agentscope[classifier-jev]"]
 models = [
     "agentscope[model-gemini]",
     "agentscope[model-ollama]",
@@ -188,6 +190,7 @@ mem0 = ["agentscope[memory-mem0]"]
 reme = ["agentscope[memory-reme]"]
 # ------------ Full ------------
 full = [
+    "agentscope[classifiers]",
     "agentscope[models]",
     "agentscope[service]",
     "agentscope[storage-redis]",

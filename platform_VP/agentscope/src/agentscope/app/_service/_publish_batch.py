@@ -71,6 +71,10 @@ async def proposal_for(storage, user_id, body):
     tools = []
     for index in selected(proposal, body):
         item = proposal.agents[index]
+        # This worker handles the former AgentSpec batch flow. The restored
+        # Dong Builder publishes synchronously and must never enter it.
+        if not getattr(item, "spec", None):
+            raise PlatformError("BUILDER_FLOW_CHANGED", 409)
         spec = AgentSpec.model_validate(item.spec)
         if publish_blocker(spec, item.evaluation.get("model_report")) or not all(item.evaluation.get("checks", {}).values()):
             raise PlatformError("PUBLICATION_EVALUATION_REQUIRED", 409)

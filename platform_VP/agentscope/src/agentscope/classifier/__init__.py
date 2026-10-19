@@ -17,6 +17,7 @@ from ._response import (
     ScoreAnswer,
 )
 from ._usage import ClassifierUsage
+from ._jev import JevClassifierModel
 
 __all__ = [
     "BinaryAnswer",
@@ -29,6 +30,7 @@ __all__ = [
     "ClassifierQuestion",
     "ClassifierResponse",
     "ClassifierUsage",
+    "JevClassifierModel",
     "ScoreAnswer",
     "ScoreQuestion",
 ]
