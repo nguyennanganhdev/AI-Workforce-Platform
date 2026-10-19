@@ -359,6 +359,10 @@ time or interval"
             storage, user_id, "skill", permission="execute",
         )}
         skills = [item for item in skills if getattr(item, "name", None) in granted_skills]
+    if any(t.get("tool_name", "").startswith("vh_management_") for t in (agent_record.data.spec or {}).get("tools", [])):
+        # Vinhomes test pack: a fresh Domain grant per run (see _management_mcp).
+        from ._management_mcp import manager_clients
+        mcps = await manager_clients(storage, user_id, agent_record, mcps)
     return Toolkit(
         tools=tools,
         skills_or_loaders=skills,
