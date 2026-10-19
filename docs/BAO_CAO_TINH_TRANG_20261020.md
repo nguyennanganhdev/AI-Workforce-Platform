@@ -13,7 +13,7 @@ model thật.
 | Cài đặt Leader | **Đã sửa và deploy**: hướng dẫn thêm + số bước suy luận |
 | Eval | **Đã sửa và deploy**: hết fail do công cụ tra cứu không có dữ liệu, thử lại lỗi model tạm thời |
 | Review code | 4 lỗi tìm được, đã sửa cả 4 trước deploy |
-| Vận hành | 401 lặp lại ~68 lần/phút, ổ đĩa 79%, sao lưu ngoài máy không chạy |
+| Vận hành | Đã xử lý 20/10: hết 401 lặp lại, ổ đĩa 79% xuống 52%, sao lưu ngoài máy chạy và đã gửi bản mới nhất |
 
 ## Bản đang chạy
 
@@ -151,8 +151,9 @@ chuyển (2). Hai lỗi có sẵn: `service_chat_locking_test` (waiter) và
 
 | Vấn đề | Mức | Ghi chú |
 | --- | --- | --- |
-| VPS Domain gọi API lịch sử sự kiện đối tác bằng khoá hỏng | Cao | ~68 request 401 mỗi phút, làm đầy log; cần thay khoá `platform-sync` trên VPS Domain |
-| Ổ đĩa VPS Platform 79% | Trung bình | 14 bản sao lưu chiếm 8,4 GB; mỗi lần deploy thêm ~700 MB. Cần quyết định giữ bao nhiêu bản |
-| Sao lưu ngoài máy không chạy | Cao | `awp-platform-offsite.timer` inactive; bản sao lưu chỉ nằm trên chính VPS |
+| Domain gọi API đối tác của Platform, nhận 401 | Đã xử lý | Khoá của Domain vẫn đúng và còn hiệu lực. Platform từ chối vì API đối tác bị tắt: lớp đăng nhập của bản open platform (19/10 00:10 UTC) chặn trước, rồi phase 1 đặt `WORKFORCE_PARTNER_API=false` theo quyết định bỏ cư dân/BQL. Đã dừng `platform-sync` trên VPS Domain (restart=no); `api` của Domain giữ nguyên. Bật lại: `docker update --restart=unless-stopped vinhomes-domain-platform-sync-1 && docker start vinhomes-domain-platform-sync-1`, và chỉ có tác dụng khi Platform bật lại API đối tác |
+| Ổ đĩa VPS Platform | Đã xử lý | 79% xuống 52%: xoá 11 bản sao lưu cũ, 30 ảnh Docker cũ, 23 file nén ảnh ở release cũ; giữ 3 bản sao lưu gần nhất (đã kiểm mã băm) và ảnh/tag để quay lui 3 lần deploy gần nhất. Nhật ký: `/opt/awp-platform/cleanup-20261020.log` |
+| Sao lưu ngoài máy | Đang chạy | Báo cáo trước ghi "không chạy" là sai: không có timer riêng, việc gửi chạy sau bản sao lưu hằng ngày 03:30 giờ VN, mã hoá bằng age, gửi sang VPS Domain và kiểm lại khi truyền. Bản mới nhất (sau phase 1 và Leader settings) đã gửi thủ công 20/10. Bản sao lưu lúc deploy không tự gửi |
+| Bên nhận sao lưu không tự xoá bản cũ | Trung bình | VPS Domain đang giữ 8,5 GB, tăng ~700 MB mỗi ngày, còn ~14 GB trống: khoảng 3 tuần là đầy. Cần chọn giữ bao nhiêu ngày |
 | Phiên thử của Leader chạy peer, phiếu thật chạy collaborative | Thấp | Phiên thử không phản ánh đúng phiếu thật |
 | Mục còn mở ghi nhận 19/10, chưa kiểm lại hôm nay | | DNS rebinding chưa chặn; tài khoản bị đình chỉ có khoá riêng không bị quota chặn; `/workspace/mcp` lỗi 500 với playwright; peer mode chưa có learning hook |
