@@ -198,9 +198,9 @@
 			"hint": "No desired options? Just type your reply.",
 			"continue": "Continue",
 			"options": [
-				"A resident of S1.01-1201 reports water leaking under the kitchen sink since this morning; please handle it",
-				"A resident reports a living-room socket smoking with a burning smell",
-				"The 12th-floor corridor has a large stain; assign someone to clean it",
+				"Plan a 3-day trip to Da Nang for 2 people, budget 10M VND",
+				"Find me a Hanoi – Ho Chi Minh City flight on Friday morning",
+				"Summarise today's customer requests and suggest replies",
 				"Who is on the agent team and what does each agent handle?"
 			]
 		},
@@ -622,13 +622,13 @@
 		"noTts": "No TTS"
 	},
 	"auth": {
-		"heroTitle": "Build and operate agents for your area",
-		"heroDescription": "Create an Area Manager account, manage your agents, and receive requests routed to the correct domain and area.",
+		"heroTitle": "Build and run AI agent teams for your work",
+		"heroDescription": "Create an account, set up a team of specialised AI agents and hand them work in a single conversation.",
 		"securityHint": "Short-lived access tokens and rotating secure sessions",
 		"loginTitle": "Welcome back",
 		"loginDescription": "Sign in with your email address or username.",
 		"registerTitle": "Create your account",
-		"registerDescription": "Select the domain and area you are responsible for.",
+		"registerDescription": "All you need is an email, a username and a password.",
 		"login": "Sign in",
 		"register": "Register",
 		"logout": "Sign out",
@@ -637,27 +637,22 @@
 		"username": "Username",
 		"password": "Password",
 		"passwordHint": "Use at least 12 characters.",
-		"domain": "Domain",
-		"area": "Area",
-		"selectDomain": "Select domain",
-		"selectArea": "Select area",
 		"createAccount": "Create account",
-		"connectedTo": "Service:",
 		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it.",
 		"showcase": {
 			"live": "Live",
-			"caption": "Illustration: a resident's request is routed by the Leader to the right agent and handled",
+			"caption": "Illustration: a customer's request is handed by the Leader to the right agent and handled",
 			"statusIdle": "Waiting",
 			"statusBusy": "In progress",
 			"statusDone": "Done",
-			"resident": "Resident",
-			"routed": "Routed: Ocean Park 1 · Plumbing",
-			"request": "A pipe burst in my flat, please send a plumber.",
-			"reply": "A plumber is booked for 14:00 today, ticket SC-1042.",
+			"customer": "Customer",
+			"routed": "Assigned to: Hotel agent",
+			"request": "Find me a beachfront hotel in Da Nang for 2 people this weekend.",
+			"reply": "I found 3 beachfront hotels from 1.2M VND per night. Want the details?",
 			"agents": {
-				"reception": "Reception",
-				"technical": "Technical",
-				"hotel": "Hotel"
+				"planner": "Itinerary",
+				"hotel": "Hotel",
+				"flight": "Flights"
 			}
 		},
 		"brand": "VAgents Platform",
@@ -667,9 +662,7 @@
 			"invalidEmail": "invalid email address",
 			"invalidUsername": "username must be 3-64 lowercase letters, numbers, ., _, or -",
 			"invalidPassword": "password must be 12-1024 bytes",
-			"alreadyExists": "email or username already exists",
-			"scopeRequired": "domain_id and area_id are required",
-			"invalidArea": "area does not belong to the selected domain"
+			"alreadyExists": "email or username already exists"
 		}
 	},
 	"setup": {
@@ -1029,8 +1022,8 @@
 			"fit": "Fit to view",
 			"legendLive": "replied in the last 15 minutes",
 			"legendIdle": "configured, idle",
-			"resident": "Residents",
-			"residentNote": "send requests through a partner",
+			"resident": "Customer",
+			"residentNote": "sends requests through a channel",
 			"you": "You",
 			"youNote": "chat directly",
 			"leader": "Leader",
@@ -1090,7 +1083,7 @@
 		"description": "Describe what the agent should do. The Agent Builder drafts it (instructions, tools, knowledge, test cases); you adjust and publish it in agent management.",
 		"templates": "Start from a template",
 		"role": "What does this agent do?",
-		"rolePlaceholder": "E.g. take residents' cleaning requests, ask for the place and how bad it is, then assign the cleaner on duty.",
+		"rolePlaceholder": "Example: help customers pick a hotel within budget, ask for dates and party size, then send 3 matching options.",
 		"team": "Allow splitting into a team of agents",
 		"teamHint": "The Builder decides when the work needs different specialities.",
 		"waiting": "The Agent Builder is drafting; this can take a minute or more.",
@@ -1100,20 +1093,20 @@
 		"creating": "Building…",
 		"presets": {
 			"reception": {
-				"name": "Reception",
-				"prompt": "Front desk of the management board: take residents' requests, ask for the apartment, problem and time, and route them to the right team. Polite and clear."
+				"name": "Customer care",
+				"prompt": "Receive customer requests, ask for the details needed and hand them to the right agent. Polite and clear."
 			},
 			"technician": {
-				"name": "Technician",
-				"prompt": "Electrical and plumbing specialist: assess an issue from the resident's description and photos, state the urgency, give safe interim steps and propose which technician to send."
+				"name": "Tech support",
+				"prompt": "Technical support specialist: assess the issue from the customer's description and photos, state the urgency, explain a safe workaround and suggest the next step."
 			},
 			"cleaning": {
 				"name": "Cleaning",
-				"prompt": "Cleaning coordinator: take requests to clean common areas, pin down the place and extent, assign the cleaner on duty and report the expected time."
+				"prompt": "Cleaning service coordinator: take cleaning requests, confirm location and scope, assign the right staff member and report the expected time."
 			},
 			"report": {
-				"name": "Ticket report",
-				"prompt": "Reporting for the management board: summarise tickets by area (open, overdue, waiting for the resident's confirmation) and point out the ones that need attention and why."
+				"name": "Reports",
+				"prompt": "Periodic report: summarise request status (open, overdue, awaiting customer confirmation) and flag what needs attention and why."
 			}
 		}
 	},
@@ -1123,14 +1116,14 @@
 		"title": "New group chat",
 		"description": "Pick the agents that will work together. The leader coordinates and hands work to the members.",
 		"name": "Group name",
-		"namePlaceholder": "e.g. Resident care team",
+		"namePlaceholder": "Example: Customer care team",
 		"members": "Members",
 		"selected": "{{count}} selected",
 		"searchPlaceholder": "Search agents…",
 		"leader": "Leader",
 		"makeLeader": "Make leader",
 		"goal": "What is this group for? (optional)",
-		"goalPlaceholder": "The group's shared goal, e.g. take in and handle residents' repair requests.",
+		"goalPlaceholder": "The team's shared goal, e.g. plan complete trips for customers.",
 		"willEnable": "“Allow invites” will be turned on for {{names}} so the leader can bring them in.",
 		"blocked": "Can't invite {{names}}: invites are off and you can't edit this agent.",
 		"notEnough": "A group needs at least 2 agents; you have {{count}}.",

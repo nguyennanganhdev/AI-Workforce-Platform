@@ -196,9 +196,9 @@
 			"hint": "没有合适的选项？直接输入你的回复。",
 			"continue": "继续",
 			"options": [
-				"S1.01-1201 住户报告厨房水槽下方从早上开始漏水，请处理",
-				"住户报告客厅插座冒烟并有焦味",
-				"12 楼走廊有大块污渍，请安排保洁",
+				"为 2 人规划岘港 3 日行程，预算 1000 万越南盾",
+				"帮我查周五上午河内到胡志明市的航班",
+				"总结今天的客户请求并建议回复",
 				"现在的智能体团队有哪些成员，各自负责什么？"
 			]
 		},
@@ -620,13 +620,13 @@
 		"noTts": "不使用语音合成"
 	},
 	"auth": {
-		"heroTitle": "为您的区域构建和运营智能体",
-		"heroDescription": "创建区域管理员账户，管理智能体，并接收正确路由到所属业务域和区域的请求。",
+		"heroTitle": "为您的工作构建和运营 AI 智能体团队",
+		"heroDescription": "创建账户，组建专业的 AI 智能体团队，在一次对话中把工作交给他们。",
 		"securityHint": "短期访问令牌和自动轮换的安全会话",
 		"loginTitle": "欢迎回来",
 		"loginDescription": "使用邮箱或用户名登录。",
 		"registerTitle": "创建账户",
-		"registerDescription": "请选择您负责的业务域和区域。",
+		"registerDescription": "只需邮箱、用户名和密码即可开始。",
 		"login": "登录",
 		"register": "注册",
 		"logout": "退出登录",
@@ -635,27 +635,22 @@
 		"username": "用户名",
 		"password": "密码",
 		"passwordHint": "请至少使用 12 个字符。",
-		"domain": "业务域",
-		"area": "区域",
-		"selectDomain": "选择业务域",
-		"selectArea": "选择区域",
 		"createAccount": "创建账户",
-		"connectedTo": "服务地址：",
 		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。",
 		"showcase": {
 			"live": "实时",
-			"caption": "示意：住户的请求由 Leader 路由到合适的智能体并完成处理",
+			"caption": "示意：客户的请求由 Leader 交给合适的智能体并完成处理",
 			"statusIdle": "等待请求",
 			"statusBusy": "处理中",
 			"statusDone": "已完成",
-			"resident": "住户",
-			"routed": "已路由：Ocean Park 1 · 水电",
-			"request": "我家水管爆了，请帮忙叫维修师傅。",
-			"reply": "已预约师傅今天 14:00 上门，工单号 SC-1042。",
+			"customer": "客户",
+			"routed": "已分配：酒店智能体",
+			"request": "帮我找本周末岘港海边适合 2 人的酒店。",
+			"reply": "找到 3 家海边酒店，每晚 120 万越南盾起。要看详情吗？",
 			"agents": {
-				"reception": "前台",
-				"technical": "技术",
-				"hotel": "酒店"
+				"planner": "行程",
+				"hotel": "酒店",
+				"flight": "机票"
 			}
 		},
 		"brand": "VAgents Platform",
@@ -665,9 +660,7 @@
 			"invalidEmail": "invalid email address",
 			"invalidUsername": "username must be 3-64 lowercase letters, numbers, ., _, or -",
 			"invalidPassword": "password must be 12-1024 bytes",
-			"alreadyExists": "email or username already exists",
-			"scopeRequired": "domain_id and area_id are required",
-			"invalidArea": "area does not belong to the selected domain"
+			"alreadyExists": "email or username already exists"
 		}
 	},
 	"setup": {
@@ -1027,8 +1020,8 @@
 			"fit": "适应视图",
 			"legendLive": "最近 15 分钟内有回复",
 			"legendIdle": "已配置，空闲",
-			"resident": "住户",
-			"residentNote": "通过合作方发送请求",
+			"resident": "客户",
+			"residentNote": "通过渠道发送请求",
 			"you": "你",
 			"youNote": "直接对话",
 			"leader": "Leader",
@@ -1088,7 +1081,7 @@
 		"description": "描述智能体要做什么。Agent Builder 生成草稿（指令、工具、知识、测试用例），你在智能体管理中调整并发布。",
 		"templates": "从模板开始",
 		"role": "这个智能体做什么？",
-		"rolePlaceholder": "例如：接收住户的保洁请求，问清位置和程度，再分派给值班保洁员。",
+		"rolePlaceholder": "例如：按预算为客户推荐酒店，问清日期和人数，再给出 3 个合适的选项。",
 		"team": "允许拆分为多个智能体组成的团队",
 		"teamHint": "工作涉及不同专业时由 Builder 决定。",
 		"waiting": "Agent Builder 正在生成草稿，可能需要一到几分钟。",
@@ -1098,20 +1091,20 @@
 		"creating": "生成中…",
 		"presets": {
 			"reception": {
-				"name": "前台",
-				"prompt": "物业前台：接收住户请求，问清房号、问题和时间，转给对应部门。礼貌、清楚。"
+				"name": "客户服务",
+				"prompt": "接收客户请求，问清所需信息并转交给负责的智能体。礼貌、清晰。"
 			},
 			"technician": {
-				"name": "技术",
-				"prompt": "水电技术员：根据住户的描述和照片评估问题，说明紧急程度，给出安全的临时处理方法并建议派哪类师傅。"
+				"name": "技术支持",
+				"prompt": "技术支持专员：根据客户的描述和照片评估问题，说明紧急程度，给出安全的临时处理方法并建议下一步。"
 			},
 			"cleaning": {
 				"name": "保洁",
-				"prompt": "保洁调度：接收公共区域清洁请求，确认位置和程度，分派值班保洁员并告知预计时间。"
+				"prompt": "保洁服务调度：接收保洁请求，确认地点和范围，安排合适的人员并告知预计时间。"
 			},
 			"report": {
-				"name": "工单报告",
-				"prompt": "为物业出报告：按区域汇总工单（进行中、逾期、待住户确认），指出需要关注的工单及原因。"
+				"name": "报告",
+				"prompt": "定期报告：汇总请求状态（处理中、逾期、待客户确认），指出需要关注的事项及原因。"
 			}
 		}
 	},
@@ -1121,14 +1114,14 @@
 		"title": "新建群聊",
 		"description": "选择一起工作的智能体。组长负责协调并给成员分配任务。",
 		"name": "群聊名称",
-		"namePlaceholder": "例如：住户服务团队",
+		"namePlaceholder": "例如：客户服务团队",
 		"members": "成员",
 		"selected": "已选 {{count}} 个",
 		"searchPlaceholder": "搜索智能体…",
 		"leader": "组长",
 		"makeLeader": "设为组长",
 		"goal": "这个群聊做什么？（可选）",
-		"goalPlaceholder": "群聊的共同目标，例如：受理并处理住户的维修请求。",
+		"goalPlaceholder": "团队的共同目标，例如：为客户规划完整行程。",
 		"willEnable": "将为 {{names}} 开启“允许被邀请”，以便组长邀请其加入。",
 		"blocked": "无法邀请 {{names}}：未开启“允许被邀请”，且你无权编辑该智能体。",
 		"notEnough": "群聊至少需要 2 个智能体，你目前有 {{count}} 个。",

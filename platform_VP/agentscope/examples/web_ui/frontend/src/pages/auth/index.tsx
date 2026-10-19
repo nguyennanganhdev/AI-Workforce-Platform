@@ -1,9 +1,9 @@
 import { CircleAlert, Loader2, ShieldCheck } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { AuthShowcase } from './AuthShowcase';
 import { authApi } from '@/api';
-import type { AreaOption, AuthUser, DomainOption } from '@/api';
+import type { AuthUser } from '@/api';
 import { ApiError } from '@/api/client';
 import heroSquad from '@/assets/images/brand/hero-squad-768.webp';
 import { BRAND_NAME, BrandMark } from '@/components/layout/Brand';
@@ -12,13 +12,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select';
 import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
@@ -40,63 +33,8 @@ export function AuthPage({ onAuthenticated }: Props) {
 	const [email, setEmail] = useState('');
 	const [username, setUsername] = useState('');
 	const [password, setPassword] = useState('');
-	const [domainId, setDomainId] = useState('');
-	const [areaId, setAreaId] = useState('');
-	const [domains, setDomains] = useState<DomainOption[]>([]);
-	const [areas, setAreas] = useState<AreaOption[]>([]);
-	const [loadingDirectory, setLoadingDirectory] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [errorMessage, setErrorMessage] = useState('');
-
-	useEffect(() => {
-		let active = true;
-		setLoadingDirectory(true);
-		authApi
-			.listDomains()
-			.then((items) => {
-				if (!active) return;
-				setDomains(items);
-				if (items.length > 0) setDomainId((current) => current || items[0].id);
-			})
-			.catch(() => {
-				// Login remains available even if directory loading fails.
-			})
-			.finally(() => {
-				if (active) setLoadingDirectory(false);
-			});
-		return () => {
-			active = false;
-		};
-	}, []);
-
-	useEffect(() => {
-		if (!domainId) {
-			setAreas([]);
-			setAreaId('');
-			return;
-		}
-		let active = true;
-		setLoadingDirectory(true);
-		authApi
-			.listAreas(domainId)
-			.then((items) => {
-				if (!active) return;
-				setAreas(items);
-				setAreaId(items[0]?.id ?? '');
-			})
-			.catch(() => {
-				if (active) {
-					setAreas([]);
-					setAreaId('');
-				}
-			})
-			.finally(() => {
-				if (active) setLoadingDirectory(false);
-			});
-		return () => {
-			active = false;
-		};
-	}, [domainId]);
 
 	const switchMode = (next: Mode) => {
 		setMode(next);
@@ -115,8 +53,6 @@ export function AuthPage({ onAuthenticated }: Props) {
 							email: email.trim(),
 							username: username.trim(),
 							password,
-							domain_id: domainId,
-							area_id: areaId,
 						});
 			onAuthenticated(user);
 		} catch (error) {
@@ -285,56 +221,6 @@ export function AuthPage({ onAuthenticated }: Props) {
 									)}
 								</Field>
 
-								{mode === 'register' && (
-									<div className="grid gap-4 sm:grid-cols-2">
-										<Field>
-											<FieldLabel>{t('auth.domain')}</FieldLabel>
-											<Select
-												value={domainId}
-												onValueChange={setDomainId}
-												disabled={loadingDirectory}
-											>
-												<SelectTrigger className="w-full">
-													<SelectValue
-														placeholder={t('auth.selectDomain')}
-													/>
-												</SelectTrigger>
-												<SelectContent>
-													{domains.map((domain) => (
-														<SelectItem
-															key={domain.id}
-															value={domain.id}
-														>
-															{domain.name}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</Field>
-										<Field>
-											<FieldLabel>{t('auth.area')}</FieldLabel>
-											<Select
-												value={areaId}
-												onValueChange={setAreaId}
-												disabled={loadingDirectory || areas.length === 0}
-											>
-												<SelectTrigger className="w-full">
-													<SelectValue
-														placeholder={t('auth.selectArea')}
-													/>
-												</SelectTrigger>
-												<SelectContent>
-													{areas.map((area) => (
-														<SelectItem key={area.id} value={area.id}>
-															{area.name}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</Field>
-									</div>
-								)}
-
 								{errorMessage && (
 									<Alert variant="destructive">
 										<CircleAlert />
@@ -346,10 +232,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 									type="submit"
 									size="lg"
 									className="vg-auth-cta h-11 w-full rounded-full text-[15px] font-semibold"
-									disabled={
-										submitting ||
-										(mode === 'register' && (!domainId || !areaId))
-									}
+									disabled={submitting}
 								>
 									{submitting && <Loader2 className="size-4 animate-spin" />}
 									{mode === 'login' ? t('auth.login') : t('auth.createAccount')}
