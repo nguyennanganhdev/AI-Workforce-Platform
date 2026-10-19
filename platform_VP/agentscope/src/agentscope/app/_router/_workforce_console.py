@@ -723,6 +723,10 @@ async def _builder_structured_call(
     return response, prompt_tokens, reserved_output_tokens
 
 
+class _BuilderPlanError(ValueError):
+    """A plan change the Builder cannot apply; the message is shown to the user."""
+
+
 def _validate_resource_selection(
     outline: BuilderOutline,
     tools: list[BuilderTool],
@@ -731,7 +735,9 @@ def _validate_resource_selection(
     """Reject invented IDs and cross-agent tool duplication before review."""
     names = [agent.name for agent in outline.agents]
     if len(names) != len(set(names)):
-        raise ValueError("Agent names must be unique")
+        raise _BuilderPlanError(
+            "Tên các agent trong kế hoạch bị trùng. Hãy đặt tên khác nhau cho từng agent."
+        )
     available = {tool.id for tool in tools}
     knowledge_ids = {knowledge.id for knowledge in knowledge_bases}
     claimed: set[str] = set()
@@ -746,8 +752,9 @@ def _validate_resource_selection(
             or duplicates
             or not set(agent.suggested_knowledge_base_ids) <= knowledge_ids
         ):
-            raise ValueError(
-                "Resource selection contains unavailable or duplicate resources"
+            raise _BuilderPlanError(
+                "Kế hoạch dùng tool không còn trong danh mục hoặc gán một tool cho "
+                "nhiều agent. Hãy thử lại hoặc kiểm tra kết nối MCP."
             )
         if agent.reuse_agent_id:
             continue
@@ -1700,14 +1707,20 @@ def _apply_outline_update(
     previous_names = {agent.name for agent in previous}
     removed = set(update.removed_agent_names)
     if len(names) != len(set(names)):
-        raise ValueError("Agent names must be unique")
+        raise _BuilderPlanError(
+            "Tên các agent trong kế hoạch bị trùng. Hãy đặt tên khác nhau cho từng agent."
+        )
     if update.operation == "add_tools":
         if not names or not set(names) <= previous_names:
-            raise ValueError("Tool additions must target existing agents")
+            raise _BuilderPlanError(
+                "Chỉ thêm được tool cho agent đã có trong kế hoạch. Hãy nêu rõ tên agent cần thêm tool."
+            )
         by_name = {agent.name: agent for agent in previous}
         for agent in update.agents:
             if not agent.tool_requirements:
-                raise ValueError("Tool additions must describe the requested operations")
+                raise _BuilderPlanError(
+                    "Hãy mô tả thao tác cần thêm cho agent, ví dụ: tra cứu chuyến bay."
+                )
             original = by_name[agent.name]
             agent.peer_dependencies = list(original.peer_dependencies)
             agent.suggested_tool_ids = [tool.id for tool in original.suggested_tools]
@@ -1723,7 +1736,9 @@ def _apply_outline_update(
         or not removed <= previous_names
         or removed.intersection(names)
     ):
-        raise ValueError("Only explicit edits may remove existing agent names")
+        raise _BuilderPlanError(
+            "Muốn bỏ agent khỏi kế hoạch, hãy nói rõ agent nào cần bỏ."
+        )
     retained = [
         agent for agent in previous
         if update.operation != "replace"
@@ -2667,6 +2682,8 @@ async def prepare_builder(
                 )
         except HTTPException:
             raise
+        except _BuilderPlanError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
             _raise_builder_model_error(exc, body.chat_model_config)
         by_id = {tool.id: tool for tool in tools}
