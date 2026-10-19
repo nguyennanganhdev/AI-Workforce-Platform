@@ -2,7 +2,9 @@
 
 Scripted storage and bus only; no model or provider calls.
 """
+import json
 import os
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
@@ -189,3 +191,103 @@ class TestDefaultMode(IsolatedAsyncioTestCase):
 
         stored = TeamData(name="Room", direct_member_routing=True).model_dump(mode="json")
         self.assertEqual("reviewed", OldTeamData.model_validate(stored).collaboration_mode)
+
+
+class TestHandedPartIsNotOwnWork(_Base):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from agentscope.app.storage._model._team_context import TaskAssignment
+        await self.service.record_assignments("u", "ticket-1", {
+            "peer-session": TaskAssignment(goal="Own Leader task"),
+            "worker-session": TaskAssignment(goal="Worker Leader task"),
+        })
+
+    async def test_returning_a_handed_part_keeps_own_assignment_open(self):
+        await self.say("worker", kind="handoff", to="Peer", content="Look up options")
+        await self.say("peer", kind="result", to="Worker", content="No matching options were returned.")
+        ledger = self.storage.context.state.tasks[self.task].assignments
+        self.assertEqual("assigned", ledger["peer-session"].status)
+        self.assertNotIn(self.branch("peer").status, {"review", "completed"})
+        pending = await self.service.collaboration_review("u", "ticket-1", "leader-session", working_only=True)
+        self.assertIn("peer-session", pending)
+        completed, _errors, _facts, _waiting = await self.service.team_evidence_status(
+            "u", "ticket-1", leader_session_id="leader-session",
+        )
+        self.assertEqual(0, completed)
+
+    async def test_own_result_still_counts_afterwards(self):
+        await self.say("worker", kind="handoff", to="Peer", content="Look up options")
+        await self.say("peer", kind="result", to="Worker", content="No matching options were returned.")
+        await self.say("peer", kind="result", content="My own task found no matching options.")
+        ledger = self.storage.context.state.tasks[self.task].assignments
+        self.assertEqual("reported", ledger["peer-session"].status)
+
+
+class TestLeaderDoesNotPoll(_Base):
+    """19/10 incident: a peer Leader sent 7 reminders in 15 s, accepted work
+    that was never done, and the member was put to sleep without running."""
+
+    mode = "peer"
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from agentscope.app.storage._model._team_context import TaskAssignment
+        await self.service.record_assignments("u", "ticket-1", {"peer-session": TaskAssignment(goal="Find bus trips")})
+
+    async def test_reminder_to_a_working_member_is_refused(self):
+        reminder = await self.tool("leader")(kind="handoff", to="Peer", content="Any update on the bus trips?")
+        self.assertEqual("error", reminder.state)
+        self.assertIn("end your turn", reminder.content[0].text)
+        self.assertEqual("assigned", self.storage.context.state.tasks[self.task].assignments["peer-session"].status)
+
+    async def test_unreported_work_cannot_be_accepted(self):
+        accept = await self.tool("leader")(kind="review", to="Peer", decision="accept", content="Looks done")
+        self.assertEqual("error", accept.state)
+        self.assertNotEqual("completed", self.storage.context.state.tasks[self.task].collaboration.get(
+            "peer-session", SimpleNamespace(status="running")).status)
+
+    async def test_reported_work_can_be_accepted_and_followed_up(self):
+        await self.say("peer", kind="result", to="Leader", content="No bus trips were returned for that date.")
+        await self.say("leader", kind="review", to="Peer", decision="accept", content="Accepted")
+        await self.say("leader", kind="handoff", to="Peer", content="Now check the next day as well.")
+
+    async def test_a_new_customer_message_allows_a_new_handoff(self):
+        await self.service.append_event(user_id="u", team_id="ticket-1", kind="customer_message",
+                                        content="Actually make it 3 passengers", event_id="customer-2")
+        await self.say("leader", kind="handoff", to="Peer", content="Redo the search for 3 passengers.")
+
+
+class TestPeerLeaderStopsAfterDispatch(_Base):
+    mode = "peer"
+
+    async def test_leader_answers_without_tools_after_a_handoff(self):
+        from agentscope.agent import Agent, InjectionConfig, ReActConfig
+        from agentscope.app.middleware._peer_leader_middleware import (
+            PeerLeaderDispatchMiddleware,
+        )
+        from agentscope.message import TextBlock, ToolCallBlock, UserMsg
+        from agentscope.model import ChatResponse
+        from agentscope.tool import Toolkit
+        from tests.utils import MockModel
+
+        seen = []
+
+        class Recording(MockModel):
+            async def _call_api(self, *args, **kwargs):
+                seen.append(kwargs.get("tool_choice"))
+                return await super()._call_api(*args, **kwargs)
+
+        model = Recording()
+        model.set_responses([
+            ChatResponse(content=[ToolCallBlock(id="h", name="TeamSay", input=json.dumps(
+                {"kind": "handoff", "to": "Peer", "content": "Find bus trips Hanoi to Da Nang on 20/10 for 2"}))], is_last=True),
+            ChatResponse(content=[TextBlock(text="Peer is handling it; the answer will appear here.")], is_last=True),
+        ])
+        agent = Agent(name="Leader", system_prompt="Lead", model=model,
+                      toolkit=Toolkit(tools=[self.tool("leader")]), react_config=ReActConfig(max_iters=6),
+                      middlewares=[PeerLeaderDispatchMiddleware()],
+                      injection_config=InjectionConfig(inject_runtime_state=False))
+        async for _ in agent.reply_stream(UserMsg("user", "Bus from Hanoi to Da Nang on 20/10 for 2")):
+            pass
+        self.assertEqual(2, model.cnt)
+        self.assertEqual("none", getattr(seen[-1], "mode", None))

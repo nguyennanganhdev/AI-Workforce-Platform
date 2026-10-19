@@ -1197,6 +1197,7 @@ class SharedContextService:
             and event.revision > latest_customer
             and event.source_session_id != leader_session_id
         ]
+        handoff_event_ids = {event.id for event in current if event.kind == "handoff"}
         delivered_handoff_ids: set[str] = set()
         for event in current:
             if event.kind not in {
@@ -1238,6 +1239,7 @@ class SharedContextService:
                     event.kind == "result"
                     and event.recipient_session_ids
                     and leader_session_id not in event.recipient_session_ids
+                    and event.in_reply_to not in handoff_event_ids
                 )
             )
         }
@@ -1637,6 +1639,28 @@ class SharedContextService:
                 raise ValueError(
                     "Conflicts require at least two current source references"
                 )
+            if kind == "handoff" and sender == owner and not resolution:
+                last_customer = max(
+                    (
+                        event.created_at
+                        for event in record.state.events
+                        if event.task_id == task.id and event.kind == "customer_message"
+                    ),
+                    default=None,
+                )
+                for sid in recipients:
+                    assignment = task.assignments.get(sid)
+                    if (
+                        assignment is not None
+                        and assignment.status in {"assigned", "queued"}
+                        and (last_customer is None or assignment.updated_at >= last_customer)
+                    ):
+                        raise ValueError(
+                            "This member is already working on its assignment and "
+                            "has not reported yet. Do not send reminders or repeat "
+                            "the task; end your turn. Its result arrives "
+                            "automatically"
+                        )
             if resolution:
                 if sender != owner or len(recipients) != 1:
                     raise ValueError(
@@ -1647,6 +1671,15 @@ class SharedContextService:
                     if target.waiting_for:
                         raise ValueError(
                             "Assignment still has unresolved peer dependencies"
+                        )
+                    if not any(
+                        event.source_session_id == recipients[0]
+                        and event.kind in {"result", "answer"}
+                        for event in current.values()
+                    ):
+                        raise ValueError(
+                            "This member has not reported a result, so there is "
+                            "nothing to accept; wait for it or stop the assignment"
                         )
                     target.status = "completed"
                 elif resolution == "stop":
@@ -1752,6 +1785,7 @@ class SharedContextService:
                         target.status = "running"
                         target.waiting_for.clear()
             routed = [*recipients, *released]
+            handed_back = own_still_open = False
             if (
                 kind in {"result", "answer", "error"}
                 and sender != owner
@@ -1777,6 +1811,10 @@ class SharedContextService:
                         )
                     ]
                     if resolved:
+                        handed_back = handed_back or any(
+                            qid in current and current[qid].kind == "handoff"
+                            for qid in resolved
+                        )
                         for qid in resolved:
                             del waiting.waiting_for[qid]
                         if not waiting.waiting_for and waiting.status == "waiting_peer":
@@ -1789,7 +1827,17 @@ class SharedContextService:
                         routed.append(sid)
                 if share_report and notify_owner:
                     routed.append(owner)
-                if not branch.waiting_for:
+                own = task.assignments.get(sender)
+                # Returning a part a teammate handed over is not this
+                # member's own Leader assignment; that one is still owed.
+                own_still_open = (
+                    kind == "result"
+                    and handed_back
+                    and own is not None
+                    and not own.assigned_by
+                    and own.status in {"assigned", "challenged"}
+                )
+                if not branch.waiting_for and not own_still_open:
                     branch.status = "review"
             if reason:
                 branch.status, branch.reason = "stopped", reason
@@ -1824,6 +1872,7 @@ class SharedContextService:
                 resolution=resolution,
                 stopped=bool(reason),
                 labels=recipient_labels or {},
+                own_still_open=own_still_open if not reason else False,
             )
             receipt = {
                 "kind": kind,
@@ -1850,6 +1899,7 @@ class SharedContextService:
         resolution: str | None,
         stopped: bool,
         labels: dict[str, tuple[str, str]] | None = None,
+        own_still_open: bool = False,
     ) -> None:
         """Keep the task ledger in step with one coordinated exchange."""
 
@@ -1896,6 +1946,8 @@ class SharedContextService:
         elif kind == "error":
             assignment.status = "failed"
             assignment.last_report_event_id = handoff_id
+        elif own_still_open:
+            return
         elif kind == "result" or (kind == "answer" and owner in recipients):
             assignment.status = "reported"
             assignment.last_report_event_id = handoff_id

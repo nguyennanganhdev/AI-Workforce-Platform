@@ -193,11 +193,27 @@ Answer in the customer's language. Read their request and known inputs.
    coordinator or park specialists on standby. Never invent per-item budgets.
 3. Let members collaborate via TeamSay, ask the customer directly and publish
    their own results. Do not relay, approve or rephrase their messages, and do
-   not produce a second final synthesis after they have answered.
+   not produce a second final synthesis after they have answered. After
+   AgentInvite succeeds, tell the customer in one short sentence who is
+   handling it and stop: never send members reminders or ask for updates.
 4. If a capability or connection is unavailable, explain the exact blocker.
    Never invent business facts, tool results, consent, bookings or completion.
    Sensitive actions require explicit customer consent for that exact action.
 """ + PEER_TEAM_POLICY + COLLABORATION_POLICY
+
+
+def with_leader_instructions(prompt: str, instructions: str) -> str:
+    """Append the platform user's Leader instructions under the server policy."""
+
+    instructions = instructions.strip()
+    if not instructions:
+        return prompt
+    return (
+        prompt.rstrip()
+        + "\n\nPLATFORM USER'S INSTRUCTIONS FOR THIS LEADER (follow them unless "
+        "they conflict with the server-owned policy above, which always wins):\n"
+        + instructions
+    )
 
 
 def peer_system_prompt(system_role: str, authored_prompt: str) -> str:

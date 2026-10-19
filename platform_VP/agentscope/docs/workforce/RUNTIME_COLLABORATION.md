@@ -46,6 +46,8 @@ Trong `collaborative` và `peer`:
 
 - Worker vừa có việc Leader giao vừa nhận một phần việc đồng đội chuyển sang
   phải ghi `to` khi gửi `result`, để runtime biết kết quả trả cho việc nào.
+- Trả lại phần việc được chuyển không tính là xong việc Leader giao: việc đó
+  vẫn mở và Leader vẫn chờ kết quả riêng của thành viên.
 
 `WORKFORCE_TEAM_COLLABORATION=reviewed` rồi khởi động lại app: mọi team
 `collaborative`, kể cả team đã tạo, quay về định tuyến cũ; team mới tạo là

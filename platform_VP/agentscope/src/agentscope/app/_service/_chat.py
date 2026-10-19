@@ -81,7 +81,12 @@ from .._types import (
     EventProjector,
     SubAgentTemplate,
 )
-from .._workforce_policy import conversation_policy, governed_system_prompt, peer_system_prompt
+from .._workforce_policy import (
+    conversation_policy,
+    governed_system_prompt,
+    peer_system_prompt,
+    with_leader_instructions,
+)
 from .._personal_chat import group_root, group_prompt, personal_prompt
 from ..channel import ChatKind
 from ..message_bus import MessageBus, MessageBusKeys
@@ -1528,6 +1533,16 @@ class ChatService:
                     if team is not None and isinstance(team_ctx, _LeaderContext) and team.data.collaboration_mode != "peer":
                         team.data.collaboration_mode = "peer"
                         await self._storage.upsert_team(user_id, team)
+                if peer_collaboration and agent_record.data.system_role == "leader":
+                    from ..middleware._peer_leader_middleware import (
+                        PeerLeaderDispatchMiddleware,
+                    )
+
+                    middlewares.append(PeerLeaderDispatchMiddleware())
+                if agent_record.data.system_role == "leader":
+                    runtime_system_prompt = with_leader_instructions(
+                        runtime_system_prompt, agent_record.data.leader_instructions,
+                    )
                 if ((agent_record.data.system_role == "leader" and personal is None)
                     or (personal_root is not None and isinstance(team_ctx, _LeaderContext))) and not partner_case and not peer_collaboration:
                     middlewares.append(

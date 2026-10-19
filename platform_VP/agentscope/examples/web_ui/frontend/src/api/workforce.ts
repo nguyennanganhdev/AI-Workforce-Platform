@@ -169,6 +169,12 @@ export interface LeaderSession {
 	is_test?: boolean;
 }
 
+export interface LeaderSettings {
+	name: string;
+	instructions: string;
+	max_iters: number;
+}
+
 export const workforceApi = {
 	prepare: (
 		message: string,
@@ -215,6 +221,9 @@ export const workforceApi = {
 			{ state },
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
+	leaderSettings: () => client.get<LeaderSettings>('/workforce/console/leader/settings', undefined, { silent: true }),
+	saveLeaderSettings: (body: Pick<LeaderSettings, 'instructions' | 'max_iters'>) =>
+		client.put<LeaderSettings>('/workforce/console/leader/settings', body, undefined, { silent: true }),
 	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
 	createLeaderTest: () => client.post<LeaderSession>('/workforce/console/leader/tests'),
 	room: (sessionId: string) =>

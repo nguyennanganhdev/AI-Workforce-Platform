@@ -121,6 +121,10 @@ class AgentData(BaseModel):
     build_description: SkipJsonSchema[str] = ""
     """Original business objective used for reuse detection."""
 
+    leader_instructions: SkipJsonSchema[str] = Field(default="", max_length=4000)
+    """Leader only: the platform user's extra instructions, appended after
+    the server-owned Leader policy, which always wins on conflict."""
+
     tool_bindings: SkipJsonSchema[list[dict]] = Field(default_factory=list)
     """Builder-selected, server-validated MCP tool references."""
 

@@ -24,6 +24,7 @@ export type {
 	BuilderTool,
 	DuplicateDecision,
 	LeaderSession,
+	LeaderSettings,
 	PlannedAgent,
 	SimilarAgent,
 	RoomEntry,
