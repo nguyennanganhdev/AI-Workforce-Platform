@@ -6,6 +6,7 @@ import type {
 	InterruptSessionResponse,
 	SessionListResponse,
 	SessionRecord,
+	TeamDetailResponse,
 	UpdateSessionRequest,
 	Msg,
 } from './types';
@@ -41,6 +42,10 @@ export function takeFreshlyCreated(sessionId: string): boolean {
 }
 
 export const sessionApi = {
+	addTeamMember: (sessionId: string, agentId: string, memberId: string) =>
+		client.post<TeamDetailResponse>(`/sessions/${sessionId}/team/members`,
+			{ agent_id: memberId }, { agent_id: agentId }),
+
 	list: (agentId: string) => client.get<SessionListResponse>('/sessions/', { agent_id: agentId }),
 
 	create: async (body: CreateSessionRequest) => {

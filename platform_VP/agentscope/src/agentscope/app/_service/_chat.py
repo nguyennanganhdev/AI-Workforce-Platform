@@ -1041,6 +1041,12 @@ class ChatService:
                         )
                     elif team.session_id == session_record.id:
                         team_ctx = _LeaderContext()
+                        if team.data.manual_membership:
+                            runtime_system_prompt += (
+                                "\nThe user controls this team's membership. Work with the selected roster; "
+                                "do not invite agents or dissolve the team. If a specialist is missing, "
+                                "explain why and ask the user to add it using the + button in the Team panel."
+                            )
                     else:
                         leader = await _resolve_team_leader(
                             self._storage,

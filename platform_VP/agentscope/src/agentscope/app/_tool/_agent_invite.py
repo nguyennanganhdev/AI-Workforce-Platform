@@ -403,6 +403,15 @@ class AgentInvite(_TeamToolBase):
     ) -> ToolChunk:
         """Validate the complete batch before inviting; keep single-call compatibility."""
         try:
+            team = await self._require_leader_team("invite members")
+            if team.data.manual_membership:
+                return _error(
+                    "AgentInvite: the user controls this team's membership. "
+                    "Suggest any missing specialist and ask the user to add it with the + button.",
+                )
+        except Exception as exc:  # pylint: disable=broad-except
+            return _error(f"AgentInvite: {exc}")
+        try:
             request = _AgentInviteParams.model_validate({
                 "target": target, "prompt": prompt,
                 "additional_assignments": additional_assignments or [],
@@ -433,7 +442,7 @@ class AgentInvite(_TeamToolBase):
         if coverage_error is not None:
             return _error(coverage_error)
         if not request.additional_assignments:
-            return await self._invite_one(request.target, request.prompt)
+            return await self.invite_member(request.target, request.prompt)
         content = []
         invited_targets = []
         failed_targets = []
@@ -443,7 +452,7 @@ class AgentInvite(_TeamToolBase):
         # Dormant peers are awakened later by the first relevant TeamSay.
         for index, (name, task) in enumerate(assignments):
             staged_count = len(staged_workers)
-            result = await self._invite_one(
+            result = await self.invite_member(
                 name,
                 task,
                 wake=False,
@@ -474,7 +483,7 @@ class AgentInvite(_TeamToolBase):
             },
         )
 
-    async def _invite_one(
+    async def invite_member(
         self,
         target: str,
         prompt: str,

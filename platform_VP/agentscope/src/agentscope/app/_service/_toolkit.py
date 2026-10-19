@@ -201,11 +201,17 @@ time or interval"
     }
     team_say_kwargs = {**team_tool_kwargs, "is_reply_owner": is_reply_owner}
     if is_leader:
+        team = (
+            await storage.get_team(user_id, session_record.team_id)
+            if session_record.team_id else None
+        )
+        manual_membership = team is not None and team.data.manual_membership
         tools += [
             TeamCreate(**team_tool_kwargs),
             TeamSay(**team_say_kwargs, role="leader"),
-            TeamDelete(**team_tool_kwargs),
         ]
+        if not manual_membership:
+            tools.append(TeamDelete(**team_tool_kwargs))
         # Conditionally attach AgentInvite. Skipping construction when
         # the user has no invitable agents keeps the input_schema enum
         # non-empty (an empty enum would break tool-schema validators
@@ -231,7 +237,7 @@ time or interval"
             and view.data.invite_config.invitable
             and (view.data.invite_config.invite_description or "").strip()
         ]
-        if invitable_pool:
+        if invitable_pool and not manual_membership:
             tools.append(
                 AgentInvite(
                     **team_tool_kwargs,

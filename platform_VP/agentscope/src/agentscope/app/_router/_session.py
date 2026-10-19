@@ -16,10 +16,12 @@ from ..deps import (
     get_message_bus,
     get_resource_access_service,
     get_session_service,
+    get_shared_context_storage,
     get_storage,
     get_workspace_manager,
 )
 from ._schema import (
+    AddTeamMemberRequest,
     CreateSessionRequest,
     CreateSessionResponse,
     InterruptSessionResponse,
@@ -56,6 +58,11 @@ from ...state import ToolContext
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ...event import CustomEvent
 from ..workspace_manager import WorkspaceManagerBase
+from .._shared_context import SharedContextService
+from .._bus_ops import publish_session_event
+from .._tool import AgentInvite, TeamCreate
+from .._tool._agent_invite import _display_name
+from ...message import ToolResultState
 
 
 async def _build_team_detail(
@@ -126,6 +133,82 @@ session_router = APIRouter(
     tags=["sessions"],
     responses={404: {"description": "Not found"}},
 )
+
+
+@session_router.post(
+    "/{session_id}/team/members",
+    response_model=TeamDetailResponse,
+    summary="Manually add a dormant team member",
+)
+async def add_team_member(
+    session_id: str,
+    body: AddTeamMemberRequest,
+    agent_id: str = Query(description="Leader agent the session belongs to."),
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    access: ResourceAccessService = Depends(get_resource_access_service),
+    message_bus: MessageBus = Depends(get_message_bus),
+    workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    shared_storage: StorageBase = Depends(get_shared_context_storage),
+) -> TeamDetailResponse:
+    """Reuse the invite primitive without starting a worker or invoking the leader."""
+    session = await storage.get_session(user_id, agent_id, session_id)
+    if session is None or session.agent_id != agent_id:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    leader = await access.resolve_agent(user_id, agent_id)
+    if leader.data.system_role != "leader":
+        raise HTTPException(status_code=403, detail="Add members from the leader session.")
+    invited = await access.resolve_agent(user_id, body.agent_id)
+    if (
+        invited.id == leader.id
+        or invited.source != "user"
+        or invited.data.system_role != "business"
+        or invited.data.lifecycle_state != "published"
+        or not invited.data.invite_config.invitable
+        or not (invited.data.invite_config.invite_description or "").strip()
+    ):
+        raise HTTPException(status_code=400, detail="Agent is not available for invitation.")
+
+    lock_key = MessageBusKeys.session_lock(session_id)
+    if not await message_bus.try_lock(lock_key):
+        raise HTTPException(status_code=409, detail="Wait for the current leader operation to finish before adding a member.")
+    try:
+        shared_context = SharedContextService(shared_storage, message_bus)
+        kwargs = dict(
+            storage=storage, message_bus=message_bus,
+            workspace_manager=workspace_manager, user_id=user_id,
+            session_id=session_id, agent_id=agent_id,
+            shared_context_service=shared_context,
+        )
+        session = await storage.get_session(user_id, agent_id, session_id)
+        if session is None or session.agent_id != agent_id:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        if session.team_id is None:
+            result = await TeamCreate(**kwargs)(
+                name=session.config.name or "Team", description="",
+            )
+            if result.state == ToolResultState.ERROR:
+                raise HTTPException(status_code=400, detail=result.content[0].text)
+        result = await AgentInvite(
+            **kwargs, invitable_pool=[invited], resource_access_service=access,
+        ).invite_member(
+            _display_name(invited.data.name, invited.id),
+            invited.data.invite_config.invite_description or "",
+            wake=False, start_task=False,
+        )
+        if result.state == ToolResultState.ERROR:
+            raise HTTPException(status_code=400, detail=result.content[0].text)
+        session = await storage.get_session(user_id, agent_id, session_id)
+        team = await storage.get_team(user_id, session.team_id)
+        team.data.manual_membership = True
+        await storage.upsert_team(user_id, team)
+        await publish_session_event(
+            message_bus, session_id,
+            CustomEvent(name="team_updated", value={}).model_dump(mode="json"),
+        )
+        return await _build_team_detail(storage, access, user_id, team)
+    finally:
+        await message_bus.unlock(lock_key)
 
 
 async def _ensure_credential_exists(

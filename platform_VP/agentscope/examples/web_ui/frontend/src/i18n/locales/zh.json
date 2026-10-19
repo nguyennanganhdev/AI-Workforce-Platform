@@ -793,6 +793,12 @@
 		},
 		"loading": "加载中…",
 		"team": {
+			"addMember": "添加成员",
+			"manualDescription": "新智能体将等待任务。添加后，由您管理成员，协调智能体不会自动邀请其他成员。",
+			"noAvailableAgents": "没有可添加的已发布智能体。",
+			"selectAgent": "选择智能体",
+			"manualMembership": "您管理成员 · 已关闭自动邀请",
+			"agents": "团队智能体",
 			"membersHeading": "成员",
 			"noMembers": "工单需要时，Leader 会邀请合适的智能体。",
 			"emptyTitle": "没有团队",

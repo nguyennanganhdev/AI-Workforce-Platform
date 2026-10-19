@@ -57,6 +57,11 @@ This is irreversible.
         """
         try:
             team = await self._require_leader_team("dissolve the team")
+            if team.data.manual_membership:
+                return ToolChunk(
+                    content=[TextBlock(text="TeamDelete: the user controls this team's membership; keep the selected roster.")],
+                    state=ToolResultState.ERROR,
+                )
 
             # Local import to avoid a circular dependency between
             # ``_tools`` and ``_service`` at module load.

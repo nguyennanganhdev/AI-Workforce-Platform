@@ -92,6 +92,7 @@ from ._knowledge_base import (
     UploadKnowledgeDocumentResponse,
 )
 from ._session import (
+    AddTeamMemberRequest,
     CreateSessionRequest,
     CreateSessionResponse,
     InterruptSessionResponse,
@@ -106,6 +107,7 @@ from ._session import (
 )
 
 __all__ = [
+    "AddTeamMemberRequest",
     # Health
     "ComponentStatus",
     "HealthResponse",

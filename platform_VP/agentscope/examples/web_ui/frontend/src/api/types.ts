@@ -64,6 +64,7 @@ export interface AgentData {
 
 export interface AgentView extends RecordBase {
 	user_id: string;
+	source: 'user' | 'team';
 	data: AgentData;
 	/**
 	 * Whether the current viewer may PATCH/DELETE this agent. `false`
@@ -316,6 +317,7 @@ export interface WorkspaceStatus {
 // ─── Team ─────────────────────────────────────────────────────────────────────
 
 export interface TeamData {
+	manual_membership: boolean;
 	name: string;
 	description: string;
 	/** Worker agent ids belonging to the team. */

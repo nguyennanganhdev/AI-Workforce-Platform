@@ -53,6 +53,12 @@ class TeamDetailResponse(BaseModel):
     )
 
 
+class AddTeamMemberRequest(BaseModel):
+    """Select a published business agent for a manually managed team."""
+
+    agent_id: str = Field(min_length=1)
+
+
 class CreateSessionRequest(BaseModel):
     """Request body for creating a new session."""
 

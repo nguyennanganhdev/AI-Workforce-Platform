@@ -166,6 +166,7 @@ function LeaderPageInner() {
 					<Button variant="ghost" size="icon" aria-label="Tạo phiên" disabled={creating} onClick={createTicket}><Plus /></Button>
 				</div>
 				<ChatViewport
+					agentRole="leader"
 					agentId={leader.agent_id}
 					sessionId={selectedSessionId}
 					onSessionsChanged={refetch}

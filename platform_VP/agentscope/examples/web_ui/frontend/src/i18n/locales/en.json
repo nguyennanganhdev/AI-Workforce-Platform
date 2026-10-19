@@ -795,6 +795,12 @@
 		},
 		"loading": "Loading…",
 		"team": {
+			"addMember": "Add member",
+			"manualDescription": "The new agent waits for an assignment. After adding, you control membership; the coordinator cannot invite more agents automatically.",
+			"noAvailableAgents": "No published agents are available to add.",
+			"selectAgent": "Select an agent",
+			"manualMembership": "You manage members · Automatic invitations disabled",
+			"agents": "Agents in team",
 			"membersHeading": "Members",
 			"noMembers": "The Leader invites the right agents when the ticket needs them.",
 			"emptyTitle": "No team",

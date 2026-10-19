@@ -65,6 +65,11 @@ class TeamMember(BaseModel):
 class TeamData(BaseModel):
     """The team data model."""
 
+    manual_membership: bool = Field(
+        default=False,
+        description="The user controls membership; agents cannot invite or dissolve this team.",
+    )
+
     name: str = Field(
         description="Display name of the team.",
         title="Name",

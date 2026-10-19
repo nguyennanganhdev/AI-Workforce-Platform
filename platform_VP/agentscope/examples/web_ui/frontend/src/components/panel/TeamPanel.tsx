@@ -17,6 +17,7 @@ import { useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
+import { AddTeamMemberDialog } from '@/components/dialog/AddTeamMemberDialog';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
@@ -33,6 +34,9 @@ import { cn } from '@/lib/utils';
 interface TeamPanelProps {
 	team: TeamDetailResponse | null;
 	currentSessionId: string | null;
+	agentId: string | null;
+	canManage: boolean;
+	onMembersChanged: () => Promise<void>;
 }
 
 const STATUS_STYLE: Record<TeamRuntimeStatus, string> = {
@@ -97,7 +101,7 @@ const activityIcon = (item: TeamActivityItem): ReactNode => {
  * runtime events such as status, tools and TeamSay traffic. Private model
  * reasoning is reduced to the neutral state "Đang phân tích yêu cầu".
  */
-export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
+export function TeamPanel({ team, currentSessionId, agentId, canManage, onMembersChanged }: TeamPanelProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const participants = useMemo<TeamActivityParticipant[]>(() => {
@@ -122,14 +126,26 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 		return rows;
 	}, [team]);
 	const { runtimeBySession, activities } = useTeamActivity(participants);
+	const addMember = canManage && agentId && currentSessionId ? (
+		<AddTeamMemberDialog key={currentSessionId} agentId={agentId} sessionId={currentSessionId}
+			present={team?.members.map(({ agent }) => agent.id) ?? []}
+			disabled={runtimeBySession[currentSessionId]?.status === 'active'}
+			onAdded={onMembersChanged} />
+	) : null;
 
 	if (!team) {
 		return (
-			<PanelEmpty
-				icon={UsersRound}
-				title={t('panel.team.emptyTitle')}
-				description={t('panel.team.emptyDescription')}
-			/>
+			<div className="flex min-h-0 flex-1 flex-col">
+				<div className="flex items-center justify-between px-2">
+					<span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('panel.team.agents')}</span>
+					{addMember}
+				</div>
+				<PanelEmpty
+					icon={UsersRound}
+					title={t('panel.team.emptyTitle')}
+					description={t('panel.team.emptyDescription')}
+				/>
+			</div>
 		);
 	}
 
@@ -285,8 +301,12 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 					<span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
 						Agent trong team
 					</span>
-					<span className="text-[10px] text-muted-foreground">{participants.length} agent</span>
+					<div className="flex items-center gap-1">
+						<span className="text-[10px] text-muted-foreground">{participants.length} agent</span>
+						{addMember}
+					</div>
 				</div>
+				{team.team.data.manual_membership && <p className="px-2 pb-2 text-[11px] text-muted-foreground">{t('panel.team.manualMembership')}</p>}
 				<ul className="flex flex-col">
 					{team.leader_agent && renderLeader(team.leader_agent)}
 					{team.members.map(renderMember)}

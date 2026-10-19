@@ -68,6 +68,7 @@ import { useTranslation } from '@/i18n/useI18n';
 interface ChatViewportProps {
 	agentName?: string;
 	agentData?: AgentData;
+	agentRole?: AgentData['system_role'];
 	/**
 	 * The agent that owns the session being viewed. May be the
 	 * user-facing leader agent or — when drilled into a team member
@@ -183,6 +184,7 @@ function closePanelInLayout(layout: PanelKey[][], key: PanelKey): PanelKey[][] {
 export function ChatViewport({
 	agentName,
 	agentData,
+	agentRole = agentData?.system_role,
 	agentId,
 	sessionId,
 	readOnly = false,
@@ -532,13 +534,16 @@ export function ChatViewport({
 					</span>
 				),
 				icon: <UsersRound className="size-4" />,
-				content: <TeamPanel team={view?.team ?? null} currentSessionId={sessionId} />,
+				content: <TeamPanel team={view?.team ?? null} currentSessionId={sessionId}
+					agentId={agentId} canManage={agentRole === 'leader' && !inspectingMember}
+					onMembersChanged={handleTeamUpdated} />,
 			},
 		}),
 		[
 			t,
 			tasksContext,
 			agentData,
+			agentRole,
 			showAssignedTools,
 			mcps,
 			mcpsLoading,
@@ -558,6 +563,9 @@ export function ChatViewport({
 			handleKnowledgeConfigChange,
 			sessionId,
 			view,
+			agentId,
+			inspectingMember,
+			handleTeamUpdated,
 		],
 	);
 
