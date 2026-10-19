@@ -118,6 +118,9 @@ class TaskAssignment(BaseModel):
     depends_on: tuple[str, ...] = Field(default=(), max_length=20)
     """Session ids of the assignments that must report first."""
     status: AssignmentStatus = "assigned"
+    assigned_by: str = Field(default="", max_length=255)
+    """Session of the teammate that handed this part over; empty when the
+    Leader (reply owner) assigned it."""
     challenges: int = Field(default=0, ge=0)
     last_report_event_id: str | None = Field(default=None, max_length=255)
     last_feedback: str = Field(default="", max_length=4_000)

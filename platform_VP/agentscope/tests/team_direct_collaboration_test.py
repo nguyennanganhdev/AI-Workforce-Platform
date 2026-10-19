@@ -1,0 +1,191 @@
+"""Members hand work and results to each other without a Leader relay.
+
+Scripted storage and bus only; no model or provider calls.
+"""
+import os
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import patch
+
+from agentscope.app._tool import TeamSay
+from agentscope.app.storage._model._team import TeamData, direct_routing_default
+from tests import team_collaboration_test as collaboration
+
+
+class _Base(IsolatedAsyncioTestCase):
+    tool = collaboration.TestCollaboration.tool
+    say = collaboration.TestCollaboration.say
+    branch = collaboration.TestCollaboration.branch
+    mode = "collaborative"
+
+    async def asyncSetUp(self):
+        await collaboration.TestCollaboration.asyncSetUp(self)
+        self.storage.team.data = self.storage.team.data.model_copy(
+            update={
+                "collaboration_mode": "peer" if self.mode == "peer" else "reviewed",
+                "direct_member_routing": self.mode == "collaborative",
+            }
+        )
+
+    def recipients(self, result):
+        handoff_id = result.metadata["handoff_id"]
+        return {
+            h.recipient_session_id
+            for h in self.storage.handoffs.values()
+            if h.handoff_id == handoff_id
+        }
+
+
+class TestCollaborativeTeam(_Base):
+    async def test_worker_hands_part_to_peer_and_result_returns_without_leader(self):
+        handoff = await self.say(
+            "worker", kind="handoff", to="Peer",
+            content="Look up the available options for the customer's dates",
+        )
+        self.assertEqual({"peer-session"}, self.recipients(handoff))
+        self.assertEqual(
+            "waiting_peer",
+            await self.service.collaboration_pause("u", "ticket-1", "worker-session"),
+        )
+        ledger = self.storage.context.state.tasks[self.task].assignments
+        self.assertIn("peer-session", ledger)
+
+        # The peer omits ``to``: its result goes back to the worker that
+        # handed the part over, and the Leader gets no copy.
+        result = await self.say("peer", kind="result", content="No matching options were returned.")
+        self.assertEqual({"worker-session"}, self.recipients(result))
+        self.assertIsNone(
+            await self.service.collaboration_pause("u", "ticket-1", "worker-session")
+        )
+
+        # The worker then reports its own assignment to the Leader.
+        final = await self.say("worker", kind="result", content="No matching options were returned.")
+        self.assertEqual({"leader-session"}, self.recipients(final))
+
+    async def test_result_with_teammate_recipient_skips_leader_but_counts_as_done(self):
+        result = await self.say(
+            "worker", kind="result", to="Peer",
+            content="No matching options were returned.",
+        )
+        self.assertEqual({"peer-session"}, self.recipients(result))
+        completed, errors, _facts, _waiting = await self.service.team_evidence_status(
+            "u", "ticket-1", leader_session_id="leader-session",
+        )
+        self.assertEqual((1, 0), (completed, errors))
+
+    async def test_error_still_reaches_the_leader(self):
+        error = await self.say("worker", kind="error", content="The lookup tool is unavailable.")
+        self.assertIn("leader-session", self.recipients(error))
+
+    async def test_handoff_needs_a_teammate_not_the_leader(self):
+        to_leader = await self.tool("worker")(kind="handoff", to="Leader", content="Finish this")
+        self.assertEqual("error", to_leader.state)
+        missing = await self.tool("worker")(kind="handoff", content="Finish this")
+        self.assertEqual("error", missing.state)
+        unknown = await self.tool("worker")(kind="handoff", to="Nobody", content="Finish this")
+        self.assertEqual("error", unknown.state)
+
+    async def test_worker_cannot_resolve_with_a_handoff(self):
+        result = await self.tool("worker")(
+            kind="handoff", to="Peer", content="Done", resolution="complete",
+        )
+        self.assertEqual("error", result.state)
+
+    async def test_handoff_entry_names_the_teammate(self):
+        await self.say("worker", kind="handoff", to="Peer", content="Look up options")
+        entry = self.storage.context.state.tasks[self.task].assignments["peer-session"]
+        self.assertEqual(("peer", "Peer", "worker-session"),
+                         (entry.agent_id, entry.agent_name, entry.assigned_by))
+
+    async def test_worker_with_two_jobs_must_name_the_recipient(self):
+        from agentscope.app.storage._model._team_context import TaskAssignment
+        await self.service.record_assignments(
+            "u", "ticket-1", {"peer-session": TaskAssignment(goal="Own Leader task")},
+        )
+        await self.say("worker", kind="handoff", to="Peer", content="Look up options")
+        ambiguous = await self.tool("peer")(kind="result", content="No matching options were returned.")
+        self.assertEqual("error", ambiguous.state)
+        explicit = await self.say(
+            "peer", kind="result", to="Worker", content="No matching options were returned.",
+        )
+        self.assertEqual({"worker-session"}, self.recipients(explicit))
+
+    async def test_rollback_switch_turns_off_existing_collaborative_team(self):
+        with patch.dict(os.environ, {"WORKFORCE_TEAM_COLLABORATION": "reviewed"}):
+            handoff = await self.tool("worker")(kind="handoff", to="Peer", content="Look up options")
+            self.assertEqual("error", handoff.state)
+            result = await self.say(
+                "worker", kind="result", to="Peer", content="No matching options were returned.",
+            )
+            self.assertEqual({"peer-session", "leader-session"}, self.recipients(result))
+
+    async def test_peer_question_and_answer_are_unchanged(self):
+        question = await self.say("worker", kind="question", to="Peer", content="Provide the price")
+        answer = await self.say("peer", kind="answer", content="The price was not returned")
+        self.assertEqual({"worker-session"}, self.recipients(answer))
+        self.assertEqual(question.metadata["handoff_id"], next(
+            e.in_reply_to for e in self.storage.context.state.events
+            if e.id == answer.metadata["handoff_id"]
+        ))
+
+
+class TestReviewedTeam(_Base):
+    mode = "reviewed"
+
+    async def test_handoff_between_members_is_rejected(self):
+        result = await self.tool("worker")(kind="handoff", to="Peer", content="Look up options")
+        self.assertEqual("error", result.state)
+        self.assertIn("kind='question'", result.content[0].text)
+
+    async def test_result_to_a_teammate_still_copies_the_leader(self):
+        result = await self.say(
+            "worker", kind="result", to="Peer",
+            content="No matching options were returned.",
+        )
+        self.assertEqual({"peer-session", "leader-session"}, self.recipients(result))
+
+
+class TestPeerTeam(_Base):
+    mode = "peer"
+
+    async def test_handed_part_returns_to_teammate_not_the_customer(self):
+        await self.say("worker", kind="handoff", to="Peer", content="Look up options")
+        result = await self.say("peer", kind="result", content="No matching options were returned.")
+        self.assertNotIn("customer_reply", result.metadata)
+        self.assertEqual({"worker-session"}, self.recipients(result))
+
+
+class TestWorkerToolSurface(IsolatedAsyncioTestCase):
+    def _tool(self, **kwargs):
+        return TeamSay(
+            storage=object(), message_bus=object(), workspace_manager=object(),
+            user_id="u", session_id="s", agent_id="a", role="worker", **kwargs,
+        )
+
+    def test_direct_team_shows_handoff_and_recipient_for_results(self):
+        tool = self._tool(direct_collaboration=True)
+        self.assertIn("handoff", tool.input_schema["properties"]["kind"]["enum"])
+        self.assertIn("Optional for result", tool.input_schema["properties"]["to"]["description"])
+
+    def test_reviewed_team_keeps_the_question_only_surface(self):
+        tool = self._tool()
+        self.assertNotIn("handoff", tool.input_schema["properties"]["kind"]["enum"])
+
+
+class TestDefaultMode(IsolatedAsyncioTestCase):
+    def test_new_teams_collaborate_unless_reviewed_is_configured(self):
+        with patch.dict(os.environ, {"WORKFORCE_TEAM_COLLABORATION": ""}):
+            self.assertTrue(direct_routing_default())
+        with patch.dict(os.environ, {"WORKFORCE_TEAM_COLLABORATION": "reviewed"}):
+            self.assertFalse(direct_routing_default())
+
+    def test_an_older_release_can_read_a_collaborative_team(self):
+        from typing import Literal
+
+        from pydantic import BaseModel
+
+        class OldTeamData(BaseModel):
+            name: str
+            collaboration_mode: Literal["reviewed", "peer"] = "reviewed"
+
+        stored = TeamData(name="Room", direct_member_routing=True).model_dump(mode="json")
+        self.assertEqual("reviewed", OldTeamData.model_validate(stored).collaboration_mode)

@@ -23,6 +23,35 @@ tham gia đọc dữ liệu chung, không yêu cầu người dùng gửi lại 
 Trao đổi độc lập dùng `context_mode=isolated`, mặc định `result_scope=caller`;
 nội dung riêng không tự phát ra shared packet hay gửi cho Leader.
 
+## Ba chế độ định tuyến của team
+
+Chế độ do server gán khi tạo team. `peer` lưu ở `TeamData.collaboration_mode`.
+`collaborative` là team `reviewed` có cờ `TeamData.direct_member_routing=true`;
+dùng cờ riêng để bản phát hành cũ đọc team này như `reviewed` khi quay lui.
+
+| Chế độ | Dùng cho | Thành viên với nhau | Trả lời khách |
+| --- | --- | --- | --- |
+| `reviewed` | Team tạo trước 19/10/2026, nhóm BQL | Chỉ `question`/`answer` | Leader |
+| `collaborative` | Phiếu đối tác và team của kênh tạo mới | `question`/`answer`, `handoff`, `result` có `to` | Leader |
+| `peer` | Chat của người dùng trên web | Như `collaborative` | Thành viên tự đăng kết quả |
+
+Trong `collaborative` và `peer`:
+
+- Worker gửi `handoff` cho một đồng đội: đăng ký phụ thuộc như `question`, người
+  gửi ngủ ở `waiting_peer`. Đồng đội trả `result` không kèm `to`; runtime gửi về
+  người đã chuyển việc, không gửi Leader. Không được `handoff` cho Leader.
+- Worker gửi `result` có `to=<đồng đội>`: chỉ người nhận đó nhận. Leader không
+  nhận bản sao nhưng vẫn tính thành viên đó đã xong khi chờ báo cáo.
+- `error` luôn đến Leader, vì Leader quyết định phần việc bị lỗi.
+
+- Worker vừa có việc Leader giao vừa nhận một phần việc đồng đội chuyển sang
+  phải ghi `to` khi gửi `result`, để runtime biết kết quả trả cho việc nào.
+
+`WORKFORCE_TEAM_COLLABORATION=reviewed` rồi khởi động lại app: mọi team
+`collaborative`, kể cả team đã tạo, quay về định tuyến cũ; team mới tạo là
+`reviewed`. Team `peer` không đổi. Trong team `reviewed`, `handoff` giữa thành
+viên bị từ chối với hướng dẫn dùng `question`.
+
 ## Leader quyết định điểm dừng
 
 `TeamSay(to=<worker>, kind="handoff", resolution=...)`:

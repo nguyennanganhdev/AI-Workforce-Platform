@@ -29,6 +29,7 @@ from ..storage import (
     ContextResultScope,
     TeamHandoffRecord,
 )
+from ..storage._model._team import direct_collaboration_enabled
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ._constants import HANDLE_LEN
 from ._team_tool_base import _TeamToolBase
@@ -245,6 +246,47 @@ _WORKER_INPUT_SCHEMA = {
     "required": ["kind", "content"],
 }
 
+_WORKER_DIRECT_DESCRIPTION = """
+Your team works directly, without the Leader relaying messages:
+- kind="handoff" (to=<roster handle>): give ONE teammate a bounded part of
+  your assignment that their tools own, with the inputs they need. Your
+  assignment pauses until their result comes back to you; then finish it.
+- kind="result" with to=<roster handle>: pass your finished output straight
+  to the teammate who continues the work (for example the one combining the
+  results). Omit to when you report your own assignment to whoever gave it.
+- Received a handoff: do that part, then send kind="result" (omit to); it
+  returns to the teammate who handed it to you.
+"""
+
+_WORKER_DIRECT_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": [
+                "result",
+                "error",
+                "question",
+                "answer",
+                "handoff",
+                "requires_user_input",
+            ],
+        },
+        "to": {
+            "type": "string",
+            "description": (
+                "Roster handle of one teammate. Required for question and "
+                "handoff. Optional for result: a teammate handle passes your "
+                "output to that teammate only; omit it to report to whoever "
+                "gave you the work. Omit for error, answer and "
+                "requires_user_input."
+            ),
+        },
+        "content": {"type": "string"},
+    },
+    "required": ["kind", "content"],
+}
+
 _DECISION_TO_RESOLUTION = {
     "accept": "complete",
     "challenge": "verify",
@@ -292,6 +334,7 @@ class TeamSay(_TeamToolBase):
         role: str = "leader",
         management_group: bool = False,
         is_reply_owner: bool | None = None,
+        direct_collaboration: bool = False,
         **kwargs: Any,
     ) -> None:
         """Initialise with role-specific description.
@@ -303,6 +346,10 @@ class TeamSay(_TeamToolBase):
             is_reply_owner (`bool | None`):
                 Whether this turn may resolve assignments. If omitted, use
                 the role default; runtime authorization is always rechecked.
+            direct_collaboration (`bool`, defaults to ``False``):
+                Whether the team lets members hand work and results to each
+                other directly. Only changes what the model is shown; the
+                runtime rechecks the team's mode on every call.
             *args:
                 Forwarded to :class:`_TeamToolBase.__init__`.
             **kwargs:
@@ -328,6 +375,9 @@ class TeamSay(_TeamToolBase):
         self.input_schema = (
             _LEADER_INPUT_SCHEMA if role == "leader" else _WORKER_INPUT_SCHEMA
         )
+        if role == "worker" and (direct_collaboration or self._peer_collaboration):
+            self.description += _WORKER_DIRECT_DESCRIPTION
+            self.input_schema = _WORKER_DIRECT_INPUT_SCHEMA
         if management_group:
             self.input_schema = json.loads(json.dumps(self.input_schema))
             self.input_schema["properties"]["report_type"] = {
@@ -435,6 +485,7 @@ class TeamSay(_TeamToolBase):
                 context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
             peer_mode = team.data.collaboration_mode == "peer"
+            direct_mode = direct_collaboration_enabled(team.data)
             customer_result = peer_mode and self._role == "worker" and kind == "result" and to is None
             analysis_report = report_type == "analysis" and team.data.purpose == "platform_group" and kind in {"result", "answer"}
             if report_type == "analysis" and team.data.purpose != "platform_group":
@@ -589,6 +640,107 @@ class TeamSay(_TeamToolBase):
                 task_id=effective_task_id,
             )
             names_by_session = {sid: name for name, (sid, _aid) in directory.items()}
+            if self._role == "worker" and kind == "handoff":
+                if not direct_mode:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: this team does not hand work "
+                                    "between members. Ask the teammate with "
+                                    "kind='question' instead."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                if resolution is not None:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text="TeamSay: only the reply owner resolves assignments.",
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                if not to or to not in directory:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: a handoff needs to=<one teammate>. "
+                                    f"Known members: {sorted(directory)}."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                if directory[to][0] == leader.session_id:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: return work to the Leader with "
+                                    "kind='result' or kind='error', not a "
+                                    "handoff."
+                                ),
+                            ),
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+            if (
+                direct_mode
+                and self._role == "worker"
+                and kind == "result"
+                and to is None
+            ):
+                # A teammate handed this worker part of its assignment; the
+                # finished part goes back to that teammate, not the Leader.
+                handed = await shared_context.pending_question_for(
+                    self._user_id,
+                    team.id,
+                    self._session_id,
+                    kinds=frozenset({"handoff"}),
+                )
+                if handed is not None:
+                    snapshot = await shared_context.storage.get_team_shared_context(
+                        self._user_id, team.id
+                    )
+                    task_state = (
+                        snapshot.state.tasks.get(effective_task_id)
+                        if snapshot is not None
+                        else None
+                    )
+                    own = (
+                        task_state.assignments.get(self._session_id)
+                        if task_state is not None
+                        else None
+                    )
+                    if (
+                        own is not None
+                        and not own.assigned_by
+                        and own.status in {"assigned", "challenged"}
+                    ):
+                        return ToolChunk(
+                            content=[
+                                TextBlock(
+                                    text=(
+                                        "TeamSay: you have your own assignment "
+                                        "and a part handed over by "
+                                        f"{names_by_session.get(handed[0])!r}. "
+                                        "Set to=<that teammate> for the "
+                                        "handed part, or to="
+                                        f"{leader.name!r} "
+                                        "for your own assignment."
+                                    ),
+                                ),
+                            ],
+                            state=ToolResultState.ERROR,
+                        )
+                    asker_session, handoff_ref = handed
+                    to = names_by_session.get(asker_session)
+                    in_reply_to = in_reply_to or handoff_ref
+                    customer_result = False
             if kind == "answer" and (to is None or in_reply_to is None):
                 asked = await shared_context.pending_question_for(
                     self._user_id,
@@ -1141,12 +1293,27 @@ class TeamSay(_TeamToolBase):
                 based_on_revision=based_on_revision,
                 share_report=effective_scope == "shared",
                 analysis_report=analysis_report,
+                recipient_labels={
+                    sid: (aid, names_by_session.get(sid, ""))
+                    for sid, aid in recipients
+                },
                 # A direct peer answer already wakes its requester and remains
                 # durable in Shared Context. Sending the same answer to the
                 # Leader inbox duplicates model work before the requesting worker's
                 # final result arrives.
                 notify_owner=not (
-                    customer_result or (kind == "answer"
+                    customer_result
+                    or (
+                        direct_mode
+                        and self._role == "worker"
+                        and kind in {"result", "answer"}
+                        and bool(recipients)
+                        and all(
+                            sid != coordination_owner_session_id
+                            for sid, _aid in recipients
+                        )
+                    )
+                    or (kind == "answer"
                     and in_reply_to is not None
                     and self._session_id != leader.session_id)
                 ),
