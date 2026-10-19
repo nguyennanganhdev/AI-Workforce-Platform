@@ -27,14 +27,22 @@ import { formatApiErrorForAlert } from '@/lib/api-error';
 
 interface Props {
 	onCreated?: () => void;
-	children: ReactNode;
+	/** The trigger. Omit it and pass `open`/`onOpenChange` to open from elsewhere, e.g. a menu. */
+	children?: ReactNode;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }
 
-export function AgentDialog({ onCreated, children }: Props) {
+export function AgentDialog({ onCreated, children, open: controlledOpen, onOpenChange }: Props) {
 	const { create } = useAgents();
 	const { t } = useTranslation();
 	const { schema } = useAgentSchema();
-	const [open, setOpen] = useState(false);
+	const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+	const open = controlledOpen ?? uncontrolledOpen;
+	const setOpen = (next: boolean) => {
+		setUncontrolledOpen(next);
+		onOpenChange?.(next);
+	};
 	const [submitting, setSubmitting] = useState(false);
 	const [values, setValues] = useState<AgentFormValues | null>(null);
 	const [errorMsg, setErrorMsg] = useState('');
@@ -86,7 +94,7 @@ export function AgentDialog({ onCreated, children }: Props) {
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger asChild>{children}</DialogTrigger>
+			{children && <DialogTrigger asChild>{children}</DialogTrigger>}
 			<DialogContent className="!w-[500px] !max-w-[calc(100vw-2rem)]">
 				<DialogHeader>
 					<DialogTitle>{t('dialog-agent-create.title')}</DialogTitle>
