@@ -1,4 +1,4 @@
-import { ApiError, client, getAccessToken, getBaseUrl } from './client';
+import { ApiError, apiUrl, client, getAccessToken } from './client';
 import type {
 	CreateKnowledgeBaseRequest,
 	CreateKnowledgeBaseResponse,
@@ -99,7 +99,7 @@ function uploadDocumentXhr(
 		}
 
 		const xhr = new XMLHttpRequest();
-		const url = new URL(`/knowledge_bases/${knowledgeBaseId}/documents`, getBaseUrl());
+		const url = apiUrl(`/knowledge_bases/${knowledgeBaseId}/documents`);
 		xhr.open('POST', url.toString(), true);
 		xhr.withCredentials = true;
 		const token = getAccessToken();
@@ -253,10 +253,7 @@ export const knowledgeBaseApi = {
 		token: string,
 		download = false,
 	) => {
-		const url = new URL(
-			`/knowledge_bases/${knowledgeBaseId}/documents/${documentId}`,
-			getBaseUrl(),
-		);
+		const url = apiUrl(`/knowledge_bases/${knowledgeBaseId}/documents/${documentId}`);
 		url.searchParams.set('token', token);
 		if (download) url.searchParams.set('download', 'true');
 		return url.toString();
