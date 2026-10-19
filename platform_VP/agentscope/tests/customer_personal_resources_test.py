@@ -175,3 +175,22 @@ async def test_customer_key_outranks_the_platform_provider_for_new_and_existing_
     assert await prefer_personal_model(storage, "bob", platform) is platform
     own = platform.model_copy(update={"credential_id": "other"})
     assert await prefer_personal_model(storage, "alice", own) is own
+
+
+@pytest.mark.asyncio
+async def test_plaintext_legacy_copy_of_platform_key_is_listed_read_only(authority, monkeypatch):
+    # Production shape: the pre-Vin console wrote the platform key in plaintext.
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    storage = _FakeStorage()
+    storage.vin_platform_service = authority
+    authority.storage = storage
+    storage.credentials[("alice", "copy")] = CredentialRecord(
+        id="copy", user_id="alice",
+        data={"type": "openai_credential", "name": "Model của platform", "api_key": "platform-key"},
+    )
+    access = ResourceAccessService(storage, PersistedResourcePolicy(authority))
+    listed = await access.list_resource("alice", ResourceKind.CREDENTIAL)
+    assert [view.editable for view in listed] == [False]
+    with pytest.raises(HTTPException) as denied:
+        await access.resolve_for_edit("alice", ResourceKind.CREDENTIAL, "copy")
+    assert denied.value.status_code == 403

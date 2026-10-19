@@ -18,15 +18,20 @@ def _is_owned(record, user_id):
                 and not record.data.get("secret_ref"))
 
 
+def is_platform_copy(record):
+    """A legacy per-user copy of the platform key: read-only for its owner."""
+    platform_key = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
+    return bool(record and (record.data.get("name") == LEGACY_PLATFORM_COPY_NAME
+                            or (platform_key and record.data.get("api_key") == platform_key)))
+
+
 def _is_personal(record, user_id):
     """A provider the customer added with their own key.
 
     Legacy copies of the platform key are owned by the user too, but they
     spend the platform's account, so they keep the platform token quota.
     """
-    platform_key = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
-    return (_is_owned(record, user_id) and record.data.get("name") != LEGACY_PLATFORM_COPY_NAME
-            and not (platform_key and record.data.get("api_key") == platform_key))
+    return _is_owned(record, user_id) and not is_platform_copy(record)
 
 
 async def _owned_record(service, user_id, credential_id):
