@@ -1,0 +1,6 @@
+# Backend-only overlay on the running invitefix app image
+# (editable install: /app/src is the package source).
+FROM agentscope-platform:28aaf71f-invitefix-20261019
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
+COPY src/ /app/src/
