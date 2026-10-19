@@ -341,6 +341,8 @@ const MCP_TOOL_PREFIX = 'mcp__';
 
 // Task-management tools are all surfaced under one "updated todos" summary.
 const TODO_TOOLS = new Set(['TaskGet', 'TaskUpdate', 'TaskList', 'TaskCreate']);
+// Errors the customer can act on themselves; the rest get the ticket-safe text.
+const TICKET_ERROR_DETAIL = new Set(['quota', 'authentication', 'context_budget', 'collaboration_limit']);
 
 /**
  * Bucket a group's calls into per-category counts and total inserted/deleted
@@ -492,6 +494,14 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 		if (block.type === 'text' && /^(Đã gửi (tin cho người dùng|cho người dùng)|Đã giao việc cho phòng, chờ báo cáo)\.?$/.test(block.text.trim())) return false;
 		return true;
 	});
+	// Ticket view: the agents' working folds into one disclosure; the prose
+	// and messages to the customer stay in the chat.
+	const traceBlocks = ticketView && !isUser ? visibleBlocks.filter(isTraceBlock) : [];
+	const shownBlocks = traceBlocks.length > 0 ? visibleBlocks.filter((block) => !isTraceBlock(block)) : visibleBlocks;
+	// A finished reply left with nothing to show (e.g. only runtime-state
+	// hints) would render as an empty bubble.
+	if (ticketView && !isUser && !isRunning && visibleBlocks.length === 0 && !ticket?.request
+		&& message.finished_reason !== ReplyFinishedReason.ERROR) return null;
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
@@ -506,7 +516,8 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
 				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
 				{ticket?.request && <TicketCard request={ticket.request} facts={ticket.facts ?? []} />}
-				{visibleBlocks
+				{traceBlocks.length > 0 && <TraceDisclosure blocks={traceBlocks} running={isRunning} />}
+				{shownBlocks
 					.map((block, index) => (
 						// Only the agent's prose gets a bubble. Thinking, hints and
 						// tool runs stay bare one-line disclosures — bubbling each
@@ -536,9 +547,8 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 						<TriangleAlert />
 						<AlertTitle>{t('messageBubble.error.title')}</AlertTitle>
 						<AlertDescription>
-							{ticketView ? (String(message.error?.type) === 'context_budget'
-								? 'Lượt trước bị gián đoạn do hội thoại quá dài. Dữ liệu phiếu vẫn được lưu; hãy tiếp tục trao đổi.'
-								: 'Lượt xử lý chưa hoàn tất. Vui lòng kiểm tra trạng thái phiếu và thử lại.') : t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
+							{ticketView && !TICKET_ERROR_DETAIL.has(String(message.error?.type))
+								? 'Lượt xử lý chưa hoàn tất. Vui lòng kiểm tra trạng thái phiếu và thử lại.' : t(`messageBubble.error.${message.error?.type ?? 'unknown'}`, {
 								defaultValue:
 									message.error?.message ?? t('messageBubble.error.unknown'),
 							})}
@@ -608,6 +618,35 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
  * new object.
  */
 export const ASMessageBubble = memo(ASMessageBubbleComponent);
+
+// Dialog tools that speak to the customer are the conversation, not working.
+const CUSTOMER_DIALOG_TOOLS = new Set(['CaseSay', 'CaseFinalize']);
+
+function isTraceBlock(block: ExtendedContentBlock) {
+	if (block.type === 'dialog') return !CUSTOMER_DIALOG_TOOLS.has(block.pair.call.name);
+	return ['thinking', 'hint', 'tool_call', 'tool_result', 'tool_call_group'].includes(block.type);
+}
+
+/** One collapsed line for a reply's thinking, tool runs and agent hand-offs. */
+function TraceDisclosure({ blocks, running }: { blocks: ExtendedContentBlock[]; running: boolean }) {
+	const steps = blocks.reduce((count, block) => count + (block.type === 'tool_call_group' ? block.calls.length : 1), 0);
+	return (
+		<Collapsible className="px-2">
+			<CollapsibleTrigger asChild>
+				<button
+					type="button"
+					className={cn('group flex items-center gap-2 text-left text-sm text-muted-foreground hover:text-primary', running && 'shimmer')}
+				>
+					<span>{running ? 'Đang xử lý' : 'Quá trình xử lý'} · {steps} bước</span>
+					<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
+				</button>
+			</CollapsibleTrigger>
+			<CollapsibleContent className="mt-2 flex flex-col gap-2 border-l pl-3">
+				{blocks.map((block, index) => <ASBlock key={index} block={block} />)}
+			</CollapsibleContent>
+		</Collapsible>
+	);
+}
 
 /**
  * A thinking block with a live-ticking "thinking for Xs" header. Kept as its

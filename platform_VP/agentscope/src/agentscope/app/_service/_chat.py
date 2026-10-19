@@ -551,7 +551,8 @@ class ChatService:
         """Callback for the Leader: learn from a verified ticket in background."""
 
         async def models():
-            base = session_record.config.chat_model_config
+            from ..vin_platform._resources import prefer_personal_model
+            base = await prefer_personal_model(self._storage, user_id, session_record.config.chat_model_config)
             strong = _role_model_config(base, "leader")
             return (
                 _background(await get_model(user_id, base, self._access)),
@@ -1675,6 +1676,8 @@ class ChatService:
                         status_code=404,
                         detail=(f"No model configuration found for agent {agent_id}"),
                     )
+                from ..vin_platform._resources import prefer_personal_model
+                model_cfg = await prefer_personal_model(self._storage, user_id, model_cfg)
                 base_model_cfg = model_cfg
                 model_cfg = _role_model_config(
                     model_cfg,

@@ -148,20 +148,7 @@ async def ticket_metrics(
             for sid, assignment in getattr(task, "assignments", {}).items()
         ]
     view.event_counts = dict(Counter(event.kind for event in state.events))
-    metrics = state.metrics
-    view.context = {
-        "packets_built": metrics.packets_built,
-        "compactions": metrics.compactions,
-        "compaction_failures": metrics.compaction_failures,
-        "peak_packet_tokens": metrics.peak_packet_tokens,
-        "peak_total_prompt_tokens": metrics.peak_total_prompt_tokens,
-        "total_measured_prompt_tokens": metrics.total_measured_prompt_tokens,
-        "model_calls_measured": metrics.model_calls_measured,
-        "summary_model_calls": metrics.summary_model_calls,
-        "prompt_budget_failures": metrics.prompt_budget_failures,
-        "packet_budget_failures": metrics.packet_budget_failures,
-        "token_counter": metrics.last_token_counter,
-    }
+    view.context = state.metrics.summary()
     return view
 
 

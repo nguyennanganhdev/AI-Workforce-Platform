@@ -36,6 +36,17 @@ async def install_templates(storage, workspaces, access, user_id, pack_id, owner
         if current is not None and current.data.lifecycle_state == "published":
             installed.append(ident)
             continue
+        if (current is not None and current.data.lifecycle_state == "withdrawn"
+                and current.data.spec == spec.model_dump(mode="json")):
+            # Reinstall: the copy's workspace can still hold live MCP connections
+            # from earlier team runs, so serve the same version again instead
+            # of staging its declarations a second time.
+            restored = current.model_copy(deep=True)
+            restored.data.lifecycle_state = "published"
+            restored.data.invite_config = restored.data.invite_config.model_copy(update={"invitable": True})
+            await storage.upsert_agent(user_id, restored)
+            installed.append(ident)
+            continue
         record = current or AgentRecord(id=ident, user_id=user_id, data=AgentData(
             name=template.data.name, context_config=_FIXED_CONTEXT.model_copy(deep=True),
             react_config=_FIXED_REACT.model_copy(deep=True), invite_config=InviteConfig(invitable=False),

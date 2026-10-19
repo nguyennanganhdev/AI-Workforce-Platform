@@ -534,8 +534,11 @@ async def _model_config(storage: StorageBase, user_id: str, *, authority=None) -
         if authority is None:
             raise HTTPException(status_code=503, detail="MODEL_AUTHORITY_UNAVAILABLE")
         from ..vin_platform._contracts import PlatformError
-        from ..vin_platform._resources import platform_model_config
+        from ..vin_platform._resources import personal_model_config, platform_model_config
 
+        personal = await personal_model_config(storage, user_id)
+        if personal is not None:
+            return personal
         try:
             return await platform_model_config(authority, user_id)
         except PlatformError as exc:
@@ -2611,6 +2614,7 @@ class RoomView(BaseModel):
     packet_tokens: int = 0
     peak_packet_tokens: int = 0
     packet_budget: int = 0
+    context: dict[str, int | str] = Field(default_factory=dict)
 
 
 def _room_tool_line(content: str) -> str:
@@ -2744,6 +2748,7 @@ async def session_room(
         packet_tokens=state.metrics.last_packet_tokens,
         peak_packet_tokens=state.metrics.peak_packet_tokens,
         packet_budget=SharedContextConfig.from_env().packet_max_tokens,
+        context=state.metrics.summary(),
     )
 
 

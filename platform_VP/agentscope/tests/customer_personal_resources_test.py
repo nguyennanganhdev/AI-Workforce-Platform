@@ -89,7 +89,7 @@ async def test_editing_provider_name_preserves_the_write_only_key():
 
 
 @pytest.mark.asyncio
-async def test_private_model_runs_with_its_owner_key_and_keeps_quota_and_revocation(authority):
+async def test_private_model_runs_with_its_owner_key_outside_token_quota_and_keeps_revocation(authority):
     from vin_provider_boundary_test import model_for
     from agentscope.app.vin_platform import PlatformError
     from agentscope.app.vin_platform._model_guard import ModelQuotaGuard
@@ -107,7 +107,10 @@ async def test_private_model_runs_with_its_owner_key_and_keeps_quota_and_revocat
         assert endpoint.call_args.kwargs["model"] == "private-model"
         assert endpoint.call_args.kwargs["max_completion_tokens"] == 100
         usage = await authority.quota.usage(await authority.context("alice"))
-        assert all(bucket["used"] == 15 and bucket["reserved"] == 0 for bucket in usage["buckets"])
+        # The customer's provider account pays: platform token windows stay untouched.
+        assert all(bucket["used"] == 0 and bucket["reserved"] == 0 for bucket in usage["buckets"])
+        alice = await authority.context("alice")
+        await authority.quota.reserve(alice, budget=10**9, purpose="chat", model="private-model", private_credential_id="personal")
         with pytest.raises(PlatformError, match="MODEL_NOT_ENTITLED"):
             await authority.quota.reserve(await authority.context("bob"), budget=1, purpose="chat", model="private-model", private_credential_id="personal")
         storage.credentials.pop(("alice", "personal"))
@@ -124,3 +127,51 @@ def test_personal_credential_payload_cannot_replace_managed_provider(data):
     with pytest.raises(HTTPException) as denied:
         _private_payload(data)
     assert denied.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_legacy_copy_of_platform_key_keeps_the_platform_token_quota(authority, monkeypatch):
+    from vin_provider_boundary_test import model_for
+    from agentscope.app.vin_platform import PlatformError
+
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    model, _, _ = await model_for(authority)
+    await model.client.close()
+    storage = _FakeStorage()
+    for ident, data in (("copy", {"name": "Model của platform", "api_key": "rotated-old-key"}),
+                        ("same-key", {"name": "Renamed", "api_key": "platform-key"})):
+        storage.credentials[("alice", ident)] = CredentialRecord(
+            id=ident, user_id="alice", data={"type": "openai_credential", **data})
+    authority.storage = storage
+    alice = await authority.context("alice")
+    for ident in ("copy", "same-key"):
+        with pytest.raises(PlatformError, match="QUOTA_EXCEEDED"):
+            await authority.quota.reserve(alice, budget=10**9, purpose="chat", model="test-model", private_credential_id=ident)
+
+
+@pytest.mark.asyncio
+async def test_customer_key_outranks_the_platform_provider_for_new_and_existing_sessions(monkeypatch):
+    from agentscope.app.storage import ChatModelConfig
+    from agentscope.app.vin_platform._resources import personal_model_config, prefer_personal_model
+
+    monkeypatch.setenv("VIN_PLATFORM_ENABLED", "true")
+    monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
+    monkeypatch.setenv("WORKFORCE_MODEL_NAME", "gpt-6-luna")
+    storage = _FakeStorage()
+    platform = ChatModelConfig(type="openai_credential", credential_id="vin-platform-openai",
+                               model="gpt-6-luna", parameters={"max_tokens": 256})
+    storage.credentials[("alice", "copy")] = CredentialRecord(
+        id="copy", user_id="alice", data={"type": "openai_credential", "name": "Model của platform", "api_key": "platform-key"})
+    assert await personal_model_config(storage, "alice") is None
+    assert await prefer_personal_model(storage, "alice", platform) is platform
+
+    storage.credentials[("alice", "mine")] = CredentialRecord(
+        id="mine", user_id="alice", data={"type": "openai_credential", "name": "Open", "api_key": "customer-key"})
+    fresh = await personal_model_config(storage, "alice")
+    assert (fresh.credential_id, fresh.model) == ("mine", "gpt-6-luna")
+    swapped = await prefer_personal_model(storage, "alice", platform)
+    assert (swapped.credential_id, swapped.model, swapped.parameters) == ("mine", "gpt-6-luna", {"max_tokens": 256})
+    # Another user's key is never borrowed, and a non-platform config is left alone.
+    assert await prefer_personal_model(storage, "bob", platform) is platform
+    own = platform.model_copy(update={"credential_id": "other"})
+    assert await prefer_personal_model(storage, "alice", own) is own

@@ -251,6 +251,28 @@ class SharedContextMetrics(BaseModel):
     bootstrap_events: int = Field(default=0, ge=0)
     last_token_counter: str = Field(default="unknown", max_length=255)
 
+    def summary(self) -> dict[str, int | str]:
+        """The context/compaction counters shown to people (no payloads)."""
+        return {
+            "packets_built": self.packets_built,
+            "compactions": self.compactions,
+            "compaction_failures": self.compaction_failures,
+            "peak_packet_tokens": self.peak_packet_tokens,
+            "peak_total_prompt_tokens": self.peak_total_prompt_tokens,
+            "total_measured_prompt_tokens": self.total_measured_prompt_tokens,
+            "model_calls_measured": self.model_calls_measured,
+            "summary_model_calls": self.summary_model_calls,
+            "last_summary_input_tokens": self.last_summary_input_tokens,
+            "last_summary_output_tokens": self.last_summary_output_tokens,
+            "last_system_prompt_tokens": self.last_system_prompt_tokens,
+            "last_tool_schema_tokens": self.last_tool_schema_tokens,
+            "last_history_tokens": self.last_history_tokens,
+            "last_model_context_size": self.last_model_context_size,
+            "prompt_budget_failures": self.prompt_budget_failures,
+            "packet_budget_failures": self.packet_budget_failures,
+            "token_counter": self.last_token_counter,
+        }
+
 
 class TeamSharedContextState(BaseModel):
     """One source of shared truth for a team/ticket."""
