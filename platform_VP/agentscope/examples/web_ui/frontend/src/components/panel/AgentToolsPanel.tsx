@@ -48,7 +48,13 @@ export function AgentToolsPanel({ bindings, mcps, loading }: AgentToolsPanelProp
 				<div className="flex flex-col flex-1 min-h-0 gap-y-2 overflow-y-auto scroll-fade-y">
 					{filtered.map((binding) => {
 						const mcp = mcps.find((client) => client.name === binding.mcp_name);
-						const tool = mcp?.tools.find((item) => item.name === binding.tool_name);
+						// The workspace API returns runtime names; bindings store upstream names.
+						const names = new Set([
+							binding.tool_name,
+							`mcp__${binding.mcp_name}__${binding.tool_name}`,
+							`mcp__${binding.mcp_name}__${binding.tool_name.replace(/[^a-zA-Z0-9_-]/g, 'x')}`,
+						]);
+						const tool = mcp?.tools.find((item) => names.has(item.name));
 						const available = !!mcp?.is_healthy && !!tool;
 						const description = tool?.description || binding.description;
 						const status = t(available ? 'panel.mcp.healthy' : 'panel.agentTools.unavailable');
