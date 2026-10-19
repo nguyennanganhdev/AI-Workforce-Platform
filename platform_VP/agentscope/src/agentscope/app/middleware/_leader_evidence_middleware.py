@@ -107,6 +107,12 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id, self._session_id
         )
 
+    async def _has_team(self) -> bool:
+        session = await self._storage.get_session(
+            self._user_id, self._agent_id, self._session_id
+        )
+        return session is not None and session.team_id is not None
+
     async def _pending_consent(self) -> bool:
         return bool(
             await pending_chat_actions(
@@ -413,7 +419,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 return
 
             current_text = self._buffered_text(buffered_text)
-            if not self._usable_partial_text(current_text):
+            # Progress placeholders only replace a synthesis after team work;
+            # a plain Leader chat keeps its answer (e.g. "Tôi sẽ hỗ trợ...").
+            if await self._has_team() and not self._usable_partial_text(current_text):
                 discard_text()
                 if nudges >= self._max_nudges:
                     yield event.model_copy(
@@ -432,7 +440,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     "TeamSay resolution=complete/stop closes internal work, "
                     "not this run. Review any remaining assignments, then "
                     "synthesize the verified results and limitations for the "
-                    "customer in Vietnamese. Do not emit an instruction to "
+                    "customer in the customer's language. Do not emit an instruction to "
                     "end the run or a progress-only placeholder.",
                 )
                 continue
