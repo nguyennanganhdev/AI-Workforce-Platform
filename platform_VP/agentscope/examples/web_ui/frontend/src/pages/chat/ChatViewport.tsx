@@ -12,6 +12,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
+	AgentData,
 	ChatModelConfig,
 	PermissionMode,
 	SessionKnowledgeConfig,
@@ -26,6 +27,7 @@ import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
 import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
+import { AgentToolsPanel } from '@/components/panel/AgentToolsPanel';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
 import { McpPanel } from '@/components/panel/McpPanel';
 import { PanelDock, type PanelDescriptor, type PanelKey } from '@/components/panel/PanelDock.tsx';
@@ -487,9 +489,15 @@ export function ChatViewport({
 				content: <TaskPanel tasksContext={tasksContext} />,
 			},
 			mcp: {
-				title: 'MCP',
+				title: showAssignedTools ? t('panel.agentTools.title') : 'MCP',
 				icon: <MCPSvg className="size-4" />,
-				content: (
+				content: showAssignedTools ? (
+					<AgentToolsPanel
+						bindings={agentData.tool_bindings ?? []}
+						mcps={mcps}
+						loading={mcpsLoading}
+					/>
+				) : (
 					<McpPanel
 						mcps={mcps}
 						loading={mcpsLoading}
@@ -572,6 +580,8 @@ export function ChatViewport({
 		[
 			t,
 			tasksContext,
+			agentData,
+			showAssignedTools,
 			mcps,
 			mcpsLoading,
 			addMcps,
