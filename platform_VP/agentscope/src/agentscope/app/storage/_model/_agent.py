@@ -109,6 +109,8 @@ class AgentData(BaseModel):
     )
 
     system_role: SkipJsonSchema[Literal["business", "leader"]] = "business"
+    purpose: SkipJsonSchema[Literal["personal", "domain_service", "system"]] = "personal"
+    visibility: SkipJsonSchema[Literal["private", "entitled_catalog"]] = "private"
     """Server-owned role. The fixed leader is never authored in Builder."""
 
     lifecycle_state: SkipJsonSchema[
@@ -121,6 +123,14 @@ class AgentData(BaseModel):
 
     tool_bindings: SkipJsonSchema[list[dict]] = Field(default_factory=list)
     """Builder-selected, server-validated MCP tool references."""
+
+    knowledge_base_ids: SkipJsonSchema[list[str]] = Field(default_factory=list)
+    """Legacy Dong bindings, retained until adoption into Agent Spec."""
+
+    execution_mode: SkipJsonSchema[
+        Literal["context_only", "tool_backed"] | None
+    ] = None
+    """Legacy Builder execution contract; an empty tool set is intentional."""
 
     generated_skill: SkipJsonSchema[str] = ""
     """Builder-generated SKILL.md body installed into the agent workspace."""

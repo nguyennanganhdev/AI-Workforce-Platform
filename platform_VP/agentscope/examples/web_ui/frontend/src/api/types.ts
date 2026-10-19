@@ -50,7 +50,9 @@ export interface AgentData {
 	system_role?: 'business' | 'leader';
 	lifecycle_state?: 'draft' | 'published' | 'withdrawn';
 	build_description?: string;
+	execution_mode?: 'context_only' | 'tool_backed' | null;
 	tool_bindings?: Array<{
+		id?: string;
 		mcp_id: string;
 		mcp_name: string;
 		tool_name: string;
@@ -149,6 +151,7 @@ export interface SessionConfig {
 	/** Who owns `name` — see the backend's `SessionNaming`. */
 	naming: { auto: boolean };
 	chat_model_config: ChatModelConfig;
+	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/** Fallback model used when the primary model fails. */
 	fallback_chat_model_config: ChatModelConfig | null;
 	/** TTS model configuration. null means TTS is not enabled. */
@@ -187,6 +190,7 @@ export interface CreateSessionRequest {
 	personal?: boolean;
 	workspace_id?: string;
 	chat_model_config?: ChatModelConfig | null;
+	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/** Optional fallback model. Omit (or pass null) for no fallback. */
 	fallback_chat_model_config?: ChatModelConfig | null;
 	/** Optional TTS model. Omit (or pass null) for no TTS. */
@@ -206,6 +210,7 @@ export interface InterruptSessionResponse {
 export interface UpdateSessionRequest {
 	name?: string;
 	chat_model_config?: ChatModelConfig;
+	sub_agent_chat_model_config?: ChatModelConfig | null;
 	/**
 	 * New fallback model. PATCH semantics:
 	 *   - omit the field → leave unchanged
@@ -515,8 +520,12 @@ export interface ToolInfo {
 	description?: string | null;
 }
 
-export interface MCPClientStatus extends MCPClient {
-	is_healthy: boolean;
+export interface MCPClientStatus {
+	name: string;
+	is_stateful?: boolean;
+	/** Omitted for server-managed catalog resources. */
+	mcp_config?: StdioMCPConfig | HttpMCPConfig;
+	is_healthy: boolean | null;
 	tools: ToolInfo[];
 	/**
 	 * Why listing this MCP's tools failed. `null` when healthy — a red dot
@@ -715,6 +724,8 @@ export interface MCPView {
 	card_id: string | null;
 	version: string | null;
 	tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
+	/** False for a granted pack/domain MCP: view and use only. */
+	editable?: boolean;
 	catalog_revision: number;
 	last_synced_at: string | null;
 	last_sync_error: string | null;

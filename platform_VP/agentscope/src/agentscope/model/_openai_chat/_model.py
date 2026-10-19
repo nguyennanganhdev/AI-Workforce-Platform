@@ -296,6 +296,8 @@ class OpenAIChatModel(ChatModelBase):
             kwargs["stream_options"] = {"include_usage": True}
 
         start_datetime = datetime.now()
+        from .._call_observer import authorize_provider_payload
+        await authorize_provider_payload(self, kwargs)
         response = await self.client.chat.completions.create(**kwargs)
 
         audio_cfg = kwargs.get("audio")

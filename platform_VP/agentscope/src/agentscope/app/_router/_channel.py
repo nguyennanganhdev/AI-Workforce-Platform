@@ -17,7 +17,8 @@
     GET    /channels/{id}/status        Aggregated runtime status
     GET    /channels/{id}/chat_ids      Known chats (for routing config)
 """
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..channel import (
     ChannelError,
@@ -56,6 +57,43 @@ from ._schema import (
 )
 
 channel_router = APIRouter(prefix="/channels", tags=["channels"])
+
+
+class DiscordIdentityCompletion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: str = Field(min_length=40, max_length=200)
+    code: str = Field(min_length=1, max_length=2000)
+    issuer: str
+
+
+async def _discord_identity_call(operation, storage, user_id, **kwargs):
+    from .._service import _discord_identity
+    from ..vin_platform import PlatformError
+    try:
+        authority, context = await _discord_identity.scope(storage, user_id)
+        return await getattr(_discord_identity, operation)(authority, context, **kwargs)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
+@channel_router.get("/discord/identity")
+async def discord_identity(storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    return await _discord_identity_call("identity", storage, user_id)
+
+
+@channel_router.post("/discord/identity/start")
+async def start_discord_identity(storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    return await _discord_identity_call("start", storage, user_id)
+
+
+@channel_router.post("/discord/identity/complete")
+async def complete_discord_identity(body: DiscordIdentityCompletion, storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    return await _discord_identity_call("complete", storage, user_id, **body.model_dump())
+
+
+@channel_router.delete("/discord/identity", status_code=204)
+async def revoke_discord_identity(storage: StorageBase = Depends(get_storage), user_id: str = Depends(get_current_user_id)):
+    await _discord_identity_call("revoke", storage, user_id)
 
 
 @channel_router.post("/{channel_id}/webhook")
@@ -164,6 +202,28 @@ async def _owned(
     if record.user_id != user_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied.")
     return record
+
+
+@channel_router.get("/{channel_id}/runs")
+async def personal_channel_runs(channel_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage), cursor: str | None = None, limit: int = Query(25, ge=1, le=100)):
+    from .._service._personal_jobs import ledger
+    from ..vin_platform import PlatformError
+    await _owned(channel_id, user_id, storage)
+    try:
+        return await ledger(storage, user_id, "channel-event", channel_id, cursor=cursor, limit=limit)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
+@channel_router.post("/{channel_id}/runs/{job_id}/repair-delivery")
+async def repair_channel_delivery(channel_id: str, job_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._personal_jobs import repair_delivery
+    from ..vin_platform import PlatformError
+    await _owned(channel_id, user_id, storage)
+    try:
+        return await repair_delivery(storage, user_id, "channel-event", channel_id, job_id)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
 
 
 @channel_router.get("/types")

@@ -30,6 +30,9 @@ async def get_tts_model(
         `TTSModelBase`:
             The TTS model instance.
     """
+    if getattr(getattr(access, "_storage", None), "vin_platform_service", None) is not None:
+        from ..vin_platform import PlatformError
+        raise PlatformError("TTS_QUOTA_ADAPTER_UNSUPPORTED", 403)
     credential_record = await access.resolve_credential(
         user_id,
         config.credential_id,

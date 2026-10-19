@@ -218,6 +218,7 @@
 		"groupWorkforce": "Workforce",
 		"leader": "Leader",
 		"builder": "Builder",
+		"packs": "Pack library",
 		"agentStudio": "Agent management",
 		"groupOperations": "Operations",
 		"groupCapabilities": "What agents can use",
@@ -807,6 +808,14 @@
 			"total": "Total: {{count}}",
 			"emptyTitle": "No tasks yet",
 			"emptyDescription": "Tasks the agent plans will show up here."
+		},
+		"agentTools": {
+			"title": "Tools",
+			"description": "The tools assigned to this agent.",
+			"searchPlaceholder": "Search assigned tools",
+			"emptyTitle": "No tools assigned",
+			"emptyDescription": "Configure this agent's tools in Agent Builder.",
+			"unavailable": "This tool is unavailable in this session"
 		},
 		"mcp": {
 			"description": "The MCP servers equipped in the workspace.",

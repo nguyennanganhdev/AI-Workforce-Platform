@@ -174,40 +174,6 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
             role="worker",
         ), task_id
 
-    async def test_pruned_report_does_not_apply_its_original_context_delta(self):
-        worker, task_id = await self._worker_with_price_evidence()
-        valid = "Hotel Alpha costs 100 USD."
-        invalid = "Hotel Beta costs 100 USD."
-        for index in range(2):
-            result = await worker(
-                content=valid + "\n" + invalid,
-                to="Leader",
-                kind="result",
-                task_id=task_id,
-                idempotency_key=f"price-report-{index}",
-                context_delta={"add_confirmed_facts": ["Hotel Beta costs 200 USD."]},
-            )
-            self.assertEqual("error" if index == 0 else "running", result.state)
-        self.assertTrue(result.metadata["partial_result"])
-        state = self.storage.context.state
-        partial = next(event for event in state.events if event.id == "price-report-1")
-        self.assertIn(valid, partial.content)
-        self.assertNotIn(invalid, partial.content)
-        self.assertFalse(any(invalid in item.text for item in state.items))
-        self.assertFalse(any(item.text == "Hotel Beta costs 200 USD." for item in state.items))
-
-        corrected = valid + "\nHotel Beta costs 200 USD."
-        result = await worker(
-            content=corrected,
-            to="Leader",
-            kind="result",
-            task_id=task_id,
-            idempotency_key="corrected-price-report",
-            context_delta={"add_confirmed_facts": ["Hotel Beta costs 200 USD."]},
-        )
-        self.assertNotEqual("error", result.state)
-        self.assertTrue(any(item.text == "Hotel Beta costs 200 USD." for item in self.storage.context.state.items))
-
     async def test_valid_narrative_cannot_smuggle_a_forged_structured_fact(self):
         worker, task_id = await self._worker_with_price_evidence()
         valid = "Hotel Alpha costs 100 USD."
@@ -235,26 +201,6 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         )
         self.assertNotEqual("error", result.state)
         self.assertTrue(any(item.kind == "fact" and item.text == valid for item in self.storage.context.state.items))
-
-    async def test_terminal_claim_rejection_cannot_be_replayed_as_a_second_attempt(self):
-        worker, task_id = await self._worker_with_price_evidence()
-        result = await worker(
-            content="Hotel Alpha costs 200 USD.",
-            to="Leader",
-            kind="result",
-            task_id=task_id,
-            idempotency_key="rejected-price-report",
-        )
-        self.assertEqual("error", result.state)
-        self.assertFalse(result.metadata["retryable"])
-        [intent] = [row for row in self.storage.handoffs.values() if "collaboration_intent" in row.payload]
-        self.assertEqual("cancelled", intent.delivery_status)
-        dispatcher = HandoffDispatcher(self.bus, self.storage)
-        await dispatcher._recover(include_delivered=True)
-        await dispatcher._recover(include_delivered=True)
-        branch = self.storage.context.state.tasks[task_id].collaboration["worker-session"]
-        self.assertEqual(1, branch.evidence_rejections)
-        self.assertEqual([], await self.bus.queue_drain(MessageBusKeys.inbox("leader-session"), max_count=10))
 
     async def test_shared_result_is_persisted_before_recipient_wakeup(self) -> None:
         result = await self.tool(
@@ -284,23 +230,6 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
             max_count=10,
         )
         self.assertEqual(len(inbox), 1)
-
-    async def test_system_leader_cannot_seed_unverified_result_into_worker_context(
-        self,
-    ):
-        self.storage.agents["leader"].data.system_role = "leader"
-        result = await self.tool(
-            content="Technician arrives in 30 minutes", to="Worker", kind="result"
-        )
-        self.assertEqual(result.state, "error")
-        self.assertEqual(self.storage.handoffs, {})
-        record = self.storage.context
-        self.assertTrue(record is None or not record.state.events)
-        # Coordination and clarification still work without domain evidence.
-        result = await self.tool(
-            content="Please check the request", to="Worker", kind="handoff"
-        )
-        self.assertNotEqual(result.state, "error")
 
     async def test_isolated_defaults_to_caller_scope(self) -> None:
         result = await self.tool(

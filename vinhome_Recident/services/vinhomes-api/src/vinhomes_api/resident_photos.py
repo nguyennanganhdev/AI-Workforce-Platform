@@ -88,11 +88,16 @@ async def accessible_photo(scope, file_id: UUID, *, operations: bool = False):
         intake = (await db.execute(text(f"select 1 from vh_resident_photos where tenant_id={TENANT} and case_id=:case and file_id=:file"), {"case": case, "file": file_id})).first()
         if not intake and row["public_status"] not in {"confirmation", "completed"}:
             fail(404, "PHOTO_NOT_FOUND", "Không tìm thấy ảnh.")
-    row = (await db.execute(text(f"""select f.id,f.original_name,o.object_key,o.mime_type,o.location_id
+    return await verified_file(scope, file_id)
+
+
+async def verified_file(scope, file_id: UUID):
+    """Resolve scanned image bytes after the caller has authorized this file."""
+    row = (await scope[0].execute(text(f"""select f.id,f.original_name,o.object_key,o.mime_type,o.location_id
       from files f join file_objects o on o.id=f.accepted_object_id and o.tenant_id=f.tenant_id
       join storage_locations s on s.id=o.location_id and s.tenant_id=o.tenant_id
       where f.id=:file and f.tenant_id={TENANT} and f.status='ready' and f.deleted_at is null
-        and o.status='ready' and o.scan_status='clean' and o.verified_at is not null and s.provider='{object_storage.provider()}' and s.status!='disabled'"""), params)).mappings().first()
+        and o.status='ready' and o.scan_status='clean' and o.verified_at is not null and s.provider='{object_storage.provider()}' and s.status!='disabled'"""), {"file": file_id})).mappings().first()
     if row is None or row['mime_type'] not in PHOTO_TYPES:
         fail(404, "PHOTO_NOT_FOUND", "Không tìm thấy ảnh đã xác minh.")
     return dict(row)
@@ -169,6 +174,10 @@ async def content(scope, file_id: UUID, request: Request, access: str, *, operat
     local_only(request)
     verify_access(scope, file_id, request, access)
     row = await accessible_photo(scope, file_id, operations=operations)
+    return file_response(row)
+
+
+def file_response(row):
     path = object_path(row["object_key"])
     if not path.is_file():
         fail(404, "PHOTO_NOT_FOUND", "Không tìm thấy nội dung ảnh.")

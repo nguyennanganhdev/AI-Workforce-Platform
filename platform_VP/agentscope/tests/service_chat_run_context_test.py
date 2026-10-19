@@ -459,7 +459,7 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
         self.assertIsNotNone(shared_storage.team_turn)
         assert shared_storage.record is not None
         assert shared_storage.team_turn is not None
-        self.assertEqual(shared_storage.team_turn.status, "awaiting_user_input")
+        self.assertEqual(shared_storage.team_turn.status, "completed")
         self.assertEqual(
             shared_storage.team_turn.task_id,
             shared_storage.record.state.active_task_id,

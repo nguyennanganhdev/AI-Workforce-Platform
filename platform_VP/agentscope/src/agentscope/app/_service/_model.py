@@ -131,6 +131,10 @@ async def get_model(
         model=config.model,
         parameters=parameters,
     )
+    authority = getattr(getattr(access, "_storage", None), "vin_platform_service", None)
+    if authority is not None:
+        from ..vin_platform._model_guard import ModelQuotaGuard
+        model._quota_guard = ModelQuotaGuard(authority, user_id, config.credential_id)
 
     # Override the context size and the formatter's input types with the
     # built-in model card's when one matches; custom models have no card,

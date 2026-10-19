@@ -43,6 +43,7 @@ jobs:
       WORKFORCE_E2E_FACTORY: >-
         tests.workforce.fixtures.release_candidate_factory:factory
       PYTEST_ADDOPTS: "--asyncio-mode=auto"
+      PYTHONPATH: "${{ github.workspace }}/platform_VP/agentscope:${{ github.workspace }}/platform_VP/agentscope/tests:${{ github.workspace }}/platform_VP/agentscope/tests/workforce/console"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -82,6 +83,9 @@ jobs:
           pnpm --dir examples/web_ui/frontend lint
           pnpm --dir examples/web_ui/frontend build
       - name: Start Builder browser fixture
+        env:
+          VITE_VIN_EXPERIENCE_ENABLED: "true"
+          VITE_API_BASE_URL: /api
         run: |
           pnpm --dir examples/web_ui/frontend exec vite --host 127.0.0.1 --port 5183 > /tmp/workforce-builder-vite.log 2>&1 &
           echo $! > /tmp/workforce-builder-vite.pid
@@ -123,6 +127,8 @@ jobs:
         run: python -m pytest tests/workforce/e2e --import-mode=importlib -q -rs --junitxml=.artifacts/phase-d/e2e.xml
       - name: Run console and evaluation tooling gates
         continue-on-error: true
+        env:
+          VIN_UI_TEST_URL: http://127.0.0.1:5183
         run: python -m pytest tests/workforce/console tests/workforce/eval --import-mode=importlib -q -rs --junitxml=.artifacts/phase-d/console.xml
       - name: Run team collaboration and shared-context gates
         continue-on-error: true
@@ -132,6 +138,8 @@ jobs:
           tests/team_member_middleware_test.py
           tests/team_say_shared_context_test.py
           tests/team_shared_context_test.py
+          tests/shared_context_budget_recovery_test.py
+          tests/dong_merge_compatibility_test.py
           tests/leader_evidence_middleware_test.py
           tests/service_chat_run_context_test.py
           tests/session_runtime_regression_test.py

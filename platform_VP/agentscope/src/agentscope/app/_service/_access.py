@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal, TypeVar, overload
 
 from fastapi import HTTPException, status
-from pydantic import AliasChoices, BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 from ..access import (
     ResourceAccessPolicyBase,
@@ -59,6 +59,12 @@ class CredentialView(CredentialRecord):
             "Whether the current viewer may PATCH/DELETE this credential."
         ),
     )
+
+    @field_validator("data")
+    @classmethod
+    def safe_payload(cls, value):
+        # API views never reveal a secret, including legacy owner credentials.
+        return {key: value[key] for key in ("type", "name") if key in value}
 
 
 class KnowledgeBaseStatusCounts(BaseModel):
@@ -267,9 +273,21 @@ class ResourceAccessService:
         else:
             own = await self._storage.list_knowledge_bases(viewer_id)
 
+        authority = getattr(self._storage, "vin_platform_service", None)
+        customer_credentials = kind is ResourceKind.CREDENTIAL and authority is not None and (await authority.context(viewer_id)).role == "VIN_USER"
+        if customer_credentials:
+            allowed = {r["resource_id"] for r in await authority.catalog(await authority.context(viewer_id), "credential", "view")}
+            own = [record for record in own if record.id in allowed]
         views: list[BaseModel] = [
-            self._build_view(record, viewer_id, True) for record in own
+            self._build_view(record, viewer_id, not customer_credentials) for record in own
         ]
+        if kind is ResourceKind.CREDENTIAL and authority is not None:
+            from ..vin_platform._resources import PLATFORM_PROVIDER_ID
+            rows = await authority.catalog(await authority.context(viewer_id), "credential", "view")
+            for row in rows:
+                if row["resource_id"] == PLATFORM_PROVIDER_ID:
+                    views.append(CredentialView(id=PLATFORM_PROVIDER_ID, user_id=row["owner_id"],
+                        data={"type": "openai_credential", "name": row["name"]}, editable=False))
         seen = {(record.user_id, record.id) for record in own}
 
         for ref in await self._list_refs(viewer_id, kind):
@@ -344,8 +362,23 @@ class ResourceAccessService:
         is masked for shared entries — use :meth:`resolve_credential`
         for runtime provider calls.
         """
+        authority = getattr(self._storage, "vin_platform_service", None)
+        if kind is ResourceKind.CREDENTIAL and authority is not None:
+            from ..vin_platform._resources import PLATFORM_PROVIDER_ID
+            if resource_id == PLATFORM_PROVIDER_ID:
+                rows = await authority.catalog(await authority.context(viewer_id), "credential", "view")
+                entry = next((r for r in rows if r["resource_id"] == resource_id), None)
+                if entry is None:
+                    raise self._not_found(kind, resource_id)
+                return CredentialView(id=resource_id, user_id=entry["owner_id"], editable=False,
+                    data={"type": "openai_credential", "name": entry["name"]})
         own = await self._get_owned(kind, viewer_id, resource_id)
         if own is not None:
+            if kind is ResourceKind.CREDENTIAL and authority is not None and (await authority.context(viewer_id)).role == "VIN_USER":
+                allowed = await authority.catalog(await authority.context(viewer_id), "credential", "view")
+                if not any(r["resource_id"] == resource_id for r in allowed):
+                    raise self._not_found(kind, resource_id)
+                return self._build_view(own, viewer_id, False)
             # Owner-side reads bypass the ``team`` filter on purpose:
             # runtime paths legitimately load the owner's ``source ==
             # "team"`` agents, and we want a single call site.
@@ -386,8 +419,17 @@ class ResourceAccessService:
         provider client. Restrict use to trusted runtime paths
         (chat / embedding / TTS model construction).
         """
+        authority = getattr(self._storage, "vin_platform_service", None)
+        if authority is not None:
+            from ..vin_platform._resources import resolve_platform_credential
+            managed = await resolve_platform_credential(authority, viewer_id, credential_id)
+            if managed is not None:
+                return managed
         record = await self._storage.get_credential(viewer_id, credential_id)
         if record is not None:
+            if authority is not None:
+                from ..vin_platform._resources import hydrate_platform_credential
+                record = hydrate_platform_credential(record)
             return record
 
         for ref in await self._list_refs(viewer_id, ResourceKind.CREDENTIAL):
@@ -398,6 +440,9 @@ class ResourceAccessService:
                 ref.resource_id,
             )
             if record is not None:
+                if authority is not None:
+                    from ..vin_platform._resources import hydrate_platform_credential
+                    record = hydrate_platform_credential(record)
                 return record
         raise self._not_found(ResourceKind.CREDENTIAL, credential_id)
 
@@ -560,7 +605,7 @@ class ResourceAccessService:
         """
         if isinstance(record, CredentialRecord):
             payload = record.model_dump()
-            if record.user_id != viewer_id:
+            if record.user_id != viewer_id or getattr(self._storage, "vin_platform_service", None) is not None:
                 payload["data"] = {
                     k: payload["data"][k]
                     for k in ("type", "name")

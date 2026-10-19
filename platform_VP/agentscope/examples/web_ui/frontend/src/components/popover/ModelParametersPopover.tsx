@@ -71,7 +71,7 @@ function resolveType(prop: ParameterProperty): ResolvedType {
 		if (variant.type && variant.type !== 'null') {
 			return {
 				type: variant.type,
-				enumValues: variant.enum ?? prop.enum ?? null,
+				enumValues: prop.enum ?? variant.enum ?? null,
 			};
 		}
 	}
@@ -120,7 +120,7 @@ function BooleanField({ id, label, prop, value, onChange }: FieldProps) {
 function EnumField({ id, label, required, prop, value, onChange }: FieldProps) {
 	const enumValues = resolveType(prop).enumValues ?? [];
 	// TODO: experiment with using prop.description as placeholder text
-	const displayValue = value !== undefined && value !== null ? String(value) : '';
+	const displayValue = String(value ?? prop.default ?? '');
 
 	return (
 		<>

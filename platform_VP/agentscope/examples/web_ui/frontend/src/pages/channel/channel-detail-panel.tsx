@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { ChannelRecord, ChannelStatus, ChannelTypeSchema, SessionRecord } from '@/api';
 import { channelApi } from '@/api';
+import { PersonalRuns } from '@/components/PersonalRuns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -142,6 +143,7 @@ export function ChannelDetailPanel({
 			</div>
 
 			<div className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 pb-5">
+				<PersonalRuns kind="channels" sourceId={channel.id} />
 				{status?.last_error && (
 					<Alert variant="destructive">
 						<CircleAlert />

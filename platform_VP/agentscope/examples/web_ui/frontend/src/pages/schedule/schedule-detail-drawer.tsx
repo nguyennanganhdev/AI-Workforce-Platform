@@ -7,6 +7,7 @@ import type { ScheduleRecord, SessionRecord } from '@/api';
 import { scheduleApi } from '@/api';
 import { StatusBadge } from '@/components/badge/StatusBadge';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { PersonalRuns } from '@/components/PersonalRuns';
 import { Button } from '@/components/ui/button';
 import {
 	Drawer,
@@ -163,6 +164,7 @@ export function ScheduleDetailDrawer({
 							</div>
 						</div>
 						<Separator />
+						<PersonalRuns kind="schedule" sourceId={schedule.id} />
 						<div className="space-y-2 flex flex-col flex-1 overflow-hidden">
 							<h3 className="text-sm font-semibold">
 								{t('schedule.executionHistory')}

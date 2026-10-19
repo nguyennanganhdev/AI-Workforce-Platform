@@ -92,7 +92,7 @@ function CreateAgentDialog({
 						<Textarea
 							value={description}
 							rows={6}
-							placeholder="Ví dụ: Agent tiếp nhận sự cố điện nước của cư dân. Luôn hướng dẫn an toàn trước, không báo giá khi chưa có ảnh, sự cố khẩn cấp thì báo bảo vệ…"
+							placeholder="Ví dụ: Agent tìm chuyến bay theo ngày và số khách. So sánh giá, nói rõ điều kiện vé, chưa đặt vé khi khách chưa đồng ý…"
 							onChange={(event) => setDescription(event.target.value)}
 						/>
 						<div className="flex flex-wrap items-center gap-1.5 text-xs">

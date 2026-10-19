@@ -12,6 +12,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
+	AgentData,
 	ChatModelConfig,
 	PermissionMode,
 	SessionKnowledgeConfig,
@@ -26,6 +27,7 @@ import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { RoomContext, TeamRosterContext, TicketViewContext, useRoom } from '@/components/chat/team-roster';
 import { cleanName } from '@/components/chat/teamDialogText';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
+import { AgentToolsPanel } from '@/components/panel/AgentToolsPanel';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
 import { McpPanel } from '@/components/panel/McpPanel';
 import { PanelDock, type PanelDescriptor, type PanelKey } from '@/components/panel/PanelDock.tsx';
@@ -52,6 +54,7 @@ import {
 	ResizablePanelGroup,
 } from '@/components/ui/resizable.tsx';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { liveSessionPresentation } from '@/features/workforce/session/live-adapter';
 import { officeFromSession } from '@/features/workforce/session/presentation';
 import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
@@ -66,6 +69,8 @@ import { useWorkspaceStatus } from '@/hooks/useWorkspaceStatus';
 import { useTranslation } from '@/i18n/useI18n';
 
 interface ChatViewportProps {
+	/** The viewed agent's record data; Builder-bound agents list their assigned tools. */
+	agentData?: AgentData;
 	/**
 	 * The agent that owns the session being viewed. May be the
 	 * user-facing leader agent or — when drilled into a team member
@@ -193,6 +198,7 @@ function closePanelInLayout(layout: PanelKey[][], key: PanelKey): PanelKey[][] {
  * @returns The right-side main JSX of the chat page.
  */
 export function ChatViewport({
+	agentData,
 	agentId,
 	sessionId,
 	onSessionsChanged,
@@ -203,7 +209,19 @@ export function ChatViewport({
 	sessionScope,
 }: ChatViewportProps) {
 	const { t } = useTranslation();
-	const { sessions, refetch: refetchSessions } = useSessions(agentId, sessionScope ?? (ticketView ? 'leader' : undefined));
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
+	// Personal conversations are not partner tickets: never apply the ticket scope to them.
+	const { sessions, refetch: refetchSessions } = useSessions(agentId, privateAccount ? undefined : sessionScope ?? (ticketView ? 'leader' : undefined));
+	// The Leader session hosting a team is its shared chat: every member's
+	// public reply appears there under its own name.
+	const teamChatView = sessions.find((v) => v.session.id === sessionId);
+	const isTeamChat = !!teamChatView?.team && teamChatView.team.team.session_id === sessionId;
+	// A Builder-bound business agent's own chat shows its assigned tools
+	// instead of the editable MCP list.
+	const showAssignedTools = agentData?.execution_mode != null
+		&& agentData.system_role === 'business'
+		&& teamChatView?.session.origin.type === 'user'
+		&& !teamChatView.session.team_id;
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
@@ -290,6 +308,7 @@ export function ChatViewport({
 		subagentHitl,
 		interrupt,
 	} = useMessages(agentId, sessionId, {
+		teamChat: isTeamChat,
 		onTeamUpdated: handleTeamUpdated,
 		onStateUpdated: handleStateUpdated,
 		onSessionUpdated: handleSessionUpdated,
@@ -479,9 +498,15 @@ export function ChatViewport({
 				content: <TaskPanel tasksContext={tasksContext} />,
 			},
 			mcp: {
-				title: 'MCP',
+				title: showAssignedTools ? t('panel.agentTools.title') : 'MCP',
 				icon: <MCPSvg className="size-4" />,
-				content: (
+				content: showAssignedTools ? (
+					<AgentToolsPanel
+						bindings={agentData.tool_bindings ?? []}
+						mcps={mcps}
+						loading={mcpsLoading}
+					/>
+				) : (
 					<McpPanel
 						mcps={mcps}
 						loading={mcpsLoading}
@@ -564,6 +589,8 @@ export function ChatViewport({
 		[
 			t,
 			tasksContext,
+			agentData,
+			showAssignedTools,
 			mcps,
 			mcpsLoading,
 			addMcps,
@@ -1020,7 +1047,7 @@ export function ChatViewport({
 										groupChat={view?.session.config.personal_chat?.kind === 'group'}
 										className="w-full"
 										showWorkspace={!isTicketView && !view?.session.config.personal_chat}
-										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? 'Ban quản lý trao đổi với Leader hoặc @agent…' : undefined}
+										composerPlaceholder={group ? t('personal.sendGroup') : isTicketView ? 'Trao đổi với Leader hoặc @agent của bạn…' : undefined}
 										agentName={agentName}
 										msgs={transcript}
 										loading={messagesLoading}
@@ -1034,6 +1061,7 @@ export function ChatViewport({
 										phase={phase}
 										disabled={selectedModel === null}
 										onSend={send}
+										teamChat={isTeamChat}
 										autoComplete={completeTeamMention}
 										onUserConfirm={onUserConfirm}
 										onInterrupt={interrupt}

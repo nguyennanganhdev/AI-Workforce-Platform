@@ -66,6 +66,7 @@ class ChannelService:
             session (`SessionSettings`): Derived-session settings.
             enabled (`bool`): Whether to start the channel immediately.
         """
+        platform_config = await self._discord_config(user_id, channel_type, platform_config, creating=True)
         from pydantic import ValidationError
 
         channel_cls = self._types.get(channel_type)
@@ -119,6 +120,10 @@ class ChannelService:
             updates (`dict`): Field changes to apply.
         """
         record = await self._require(channel_id)
+        if "platform_config" in updates:
+            updates = {**updates, "platform_config": await self._discord_config(
+                record.user_id, record.channel_type, updates["platform_config"],
+            )}
         updates.pop("credentials", None)
         updates.pop("channel_type", None)
         updated = record.model_copy(
@@ -242,6 +247,32 @@ class ChannelService:
         return sorted(fields.keys())
 
     # -- internals --
+
+    async def _discord_config(self, user_id, channel_type, config, *, creating=False):
+        if channel_type != "discord":
+            return config
+        from ..channel._discord._channel import DiscordChannel
+
+        options = DiscordChannel.Config.model_validate(config)
+        authority = getattr(self._storage, "vin_platform_service", None)
+        context = await authority.context(user_id) if authority is not None else None
+        if context is not None and context.role == "VIN_USER":
+            from ._discord_identity import verified_owner
+            from ..vin_platform import PlatformError
+            try:
+                owner = (await verified_owner(authority, context))["discord_user_id"]
+            except PlatformError as exc:
+                raise ChannelError(exc.code, exc.status) from exc
+            if options.owner_user_id and options.owner_user_id != owner:
+                raise ChannelError("DISCORD_OWNER_MISMATCH", 403)
+            options.owner_user_id = owner
+            if options.allowed_user_ids is None:
+                options.allowed_user_ids = [options.owner_user_id]
+            if creating and options.owner_user_id not in options.allowed_user_ids:
+                raise ChannelError("Allowed Discord user IDs must include the owner; an empty list blocks everyone.", 400)
+            if "approver_user_ids" not in options.model_fields_set:
+                options.approver_user_ids = [options.owner_user_id]
+        return options.model_dump(exclude_unset=True)
 
     async def _require(self, channel_id: str) -> ChannelRecord:
         """Load a channel record or raise a 404 ``ChannelError``.

@@ -3,6 +3,7 @@ import { Bot, FlaskConical, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
+import { CustomerCases } from './CustomerCases';
 import { sessionApi, workforceApi } from '@/api';
 import type { LeaderSession, SessionView } from '@/api';
 import { sessionTime } from '@/components/chat/session-row-utils';
@@ -14,6 +15,8 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { Spinner } from '@/components/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AudioProvider } from '@/context/AudioContext';
+import { useCurrentUser } from '@/context/CurrentUserContext';
+import { usePlatformAccess } from '@/context/platform-access';
 import { useSessions } from '@/hooks/useSessions';
 import { ChatViewport } from '@/pages/chat/ChatViewport';
 
@@ -40,7 +43,10 @@ function rowPreview(view: SessionView): string {
  * each, and the selected session's chat (and its room) beside them.
  */
 function LeaderPageInner() {
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
+	const access = usePlatformAccess();
 	const queryClient = useQueryClient();
+	const personal = access?.workspace?.kind === 'personal';
 	const [leader, setLeader] = useState<LeaderSession | null>(null);
 	const [scope, setScope] = useState<'leader' | 'leader_tests'>('leader');
 	const [selection, setSelection] = useState<Record<string, string | null>>({});
@@ -48,7 +54,8 @@ function LeaderPageInner() {
 	const [creating, setCreating] = useState(false);
 	const [bootstrapError, setBootstrapError] = useState(false);
 	const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
-	const { sessions, refetch, error, loading: sessionsLoading } = useSessions(leader?.agent_id ?? null, scope);
+	// A personal account's conversations are not partner tickets, so no ticket/test scope.
+	const { sessions, refetch, error, loading: sessionsLoading } = useSessions(leader?.agent_id ?? null, personal ? undefined : scope);
 	const selectedSessionId = selection[scope] ?? sessions[0]?.session.id ?? null;
 	const isTest = scope === 'leader_tests';
 	const setSelectedSessionId = (id: string | null) => setSelection((value) => ({ ...value, [scope]: id }));
@@ -74,13 +81,20 @@ function LeaderPageInner() {
 	const createTest = async () => {
 		setCreating(true);
 		try {
+			if (personal) {
+				const value = await workforceApi.createTicket();
+				setLeader(value);
+				setSelection((current) => ({ ...current, leader: value.session_id }));
+				await refetch();
+				return;
+			}
 			const value = await workforceApi.createLeaderTest();
 			setLeader(value);
 			setScope('leader_tests');
 			setSelection((current) => ({ ...current, leader_tests: value.session_id }));
 			await queryClient.invalidateQueries({ queryKey: ['sessions', value.agent_id] });
 		} catch {
-			toast.error('Chưa tạo được phiên thử. Hãy thử lại.');
+			toast.error(personal ? 'Chưa tạo được cuộc trò chuyện. Hãy thử lại.' : 'Chưa tạo được phiên thử. Hãy thử lại.');
 		} finally {
 			setCreating(false);
 		}
@@ -110,7 +124,7 @@ function LeaderPageInner() {
 						<Bot />
 					</EmptyMedia>
 					<EmptyTitle>Leader chưa thể khởi tạo</EmptyTitle>
-					<EmptyDescription>{bootstrapError ? 'Không tải được Leader. Kiểm tra kết nối rồi tải lại trang.' : 'Hãy kiểm tra model credential rồi tải lại trang.'}</EmptyDescription>
+					<EmptyDescription>{access ? 'Dịch vụ AI chưa sẵn sàng cho tài khoản này. Vui lòng thử lại sau hoặc liên hệ quản trị để kiểm tra quyền và hạn mức.' : bootstrapError ? 'Không tải được Leader. Kiểm tra kết nối rồi tải lại trang.' : 'Hãy kiểm tra model credential rồi tải lại trang.'}</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		);
@@ -122,13 +136,13 @@ function LeaderPageInner() {
 				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
 					<div className="min-w-0">
 						<h1 className="truncate text-[15px]/5 font-semibold">Leader</h1>
-						<p className="truncate text-xs text-muted-foreground">{isTest ? 'Phiên thử nội bộ · Ban quản lý' : 'Phiếu cư dân · Ban quản lý điều hành'}</p>
+						<p className="truncate text-xs text-muted-foreground">{personal ? 'Không gian cá nhân · Leader của bạn' : isTest ? 'Phiên thử nội bộ · Ban quản lý' : 'Phiếu cư dân · Ban quản lý điều hành'}</p>
 					</div>
 					<Button
 						variant="ghost"
 						size="icon"
-						aria-label="Tạo phiên thử"
-						title="Tạo phiên thử"
+						aria-label={personal ? 'Tạo cuộc trò chuyện' : 'Tạo phiên thử'}
+						title={personal ? 'Tạo cuộc trò chuyện' : 'Tạo phiên thử'}
 						disabled={creating}
 						onClick={createTest}
 					>
@@ -136,7 +150,7 @@ function LeaderPageInner() {
 					</Button>
 				</header>
 				<Tabs value={scope} onValueChange={(value) => setScope(value as typeof scope)} className="min-h-0 flex-1 gap-0">
-					<TabsList aria-label="Loại phiên Leader" className="mx-3 mb-2 w-auto shrink-0">
+					<TabsList aria-label="Loại phiên Leader" className={personal ? 'hidden' : 'mx-3 mb-2 w-auto shrink-0'}>
 						<TabsTrigger value="leader" className="min-h-9">Phiếu cư dân</TabsTrigger>
 						<TabsTrigger value="leader_tests" className="min-h-9"><FlaskConical className="size-3.5" />Phiên thử</TabsTrigger>
 					</TabsList>
@@ -145,11 +159,11 @@ function LeaderPageInner() {
 						<div role="alert" className="px-3 py-4 text-sm">Không tải được danh sách phiên. <Button variant="link" onClick={() => void refetch()}>Thử lại</Button></div>
 					) : sessionsLoading ? <div role="status" className="flex justify-center py-4"><Spinner /><span className="sr-only">Đang tải phiên</span></div> : sessions.length === 0 ? (
 						<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
-							{isTest ? 'Chưa có phiên thử. Chọn dấu + để bắt đầu.' : 'Chưa có phiếu cư dân. Phiếu từ đối tác sẽ hiện ở đây.'}
+							{personal ? 'Bắt đầu cuộc trò chuyện mới với Leader.' : isTest ? 'Chưa có phiên thử. Chọn dấu + để bắt đầu.' : 'Chưa có phiếu cư dân. Phiếu từ đối tác sẽ hiện ở đây.'}
 						</p>
 					) : (
 						<>
-						<label className="block px-1 md:hidden"><span className="sr-only">{isTest ? 'Chọn phiên thử' : 'Chọn phiếu cư dân'}</span>
+						<label className="block px-1 md:hidden"><span className="sr-only">{personal ? 'Chọn cuộc trò chuyện' : isTest ? 'Chọn phiên thử' : 'Chọn phiếu cư dân'}</span>
 							<select className="min-h-11 w-full rounded-md border bg-background px-3 text-sm" value={selectedSessionId ?? ''} onChange={(event) => setSelectedSessionId(event.target.value)}>
 								{sessions.map((view) => <option key={view.session.id} value={view.session.id}>{rowTitle(view.session.config.name)}</option>)}
 							</select>
@@ -192,14 +206,15 @@ function LeaderPageInner() {
 
 			<main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				{isTest && <div className="flex shrink-0 items-start gap-2 border-b px-4 py-2 text-xs text-muted-foreground"><FlaskConical className="mt-0.5 size-3.5 shrink-0" /><p>Phiên thử để trao đổi với Leader, không liên kết phiếu cư dân.</p></div>}
+				{privateAccount && selectedSessionId && <CustomerCases key={selectedSessionId} agentId={leader.agent_id} sessionId={selectedSessionId} />}
 				<div className="flex min-h-0 flex-1 overflow-hidden">
 				<ChatViewport
 					agentId={leader.agent_id}
 					sessionId={selectedSessionId}
 					onSessionsChanged={refetch}
 					agentName="Leader"
-					ticketView={!isTest}
-					sessionScope={scope}
+					ticketView={personal || !isTest}
+					sessionScope={personal ? undefined : scope}
 				/>
 				</div>
 			</main>

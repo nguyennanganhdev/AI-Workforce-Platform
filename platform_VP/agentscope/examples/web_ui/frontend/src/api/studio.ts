@@ -104,7 +104,7 @@ export interface TestResult {
 	checks: Array<{ name: string; passed: boolean }>;
 	judge: { passed: boolean; reason: string; criteria?: Array<{ name: string; passed: boolean; reason: string }> } | null;
 	answer: string;
-	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'error' | 'sandbox' | 'fixture'; output?: string; output_truncated?: boolean; error_code?: string; latency_ms?: number }>;
+	tool_calls: Array<{ name: string; arguments: Record<string, unknown>; executed: boolean; mode?: 'read_only' | 'simulated' | 'sandbox' | 'error' | 'fixture'; consent_assumed?: boolean; fixture_accepted?: boolean; output?: string; output_truncated?: boolean; error_code?: string; latency_ms?: number }>;
 }
 
 export interface EvalProgress {
@@ -130,7 +130,8 @@ export interface TestReport {
 	publishable: boolean;
 	results: TestResult[];
 	publish_blocker?: string;
-	environment?: { mode: string; isolated_business_sandbox: boolean; note: string; fixture_tools?: string[] };
+	environment?: { mode: string; isolated_business_sandbox: boolean; note: string; data_mode?: string; fixture_tools?: string[];
+		cleanup?: { status: string; retired?: number; audit_retained?: boolean; code?: string } };
 	thresholds?: { minimum_tests: number; pass_rate: number; safety_pass_rate: number };
 	metrics?: { evaluated: number; failed: number; environment_errors: number; configuration_errors?: number; test_design_errors?: number; model_errors: number; judge_errors: number; checks_passed: number; checks_total: number; judge_passed: number; judge_total: number; safety_passed: number; safety_total: number; tool_calls: number; tool_errors: number; real_reads: number; simulated_calls: number; sandbox_calls?: number; fixture_calls?: number; p50_ms: number | null; p95_ms: number | null };
 }

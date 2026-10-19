@@ -758,7 +758,7 @@ class AsyncSQLAlchemyStorage(StorageBase):
                 credential_data,
             )
 
-        data_dump = _dump_with_secrets(credential_data)
+        data_dump = _dump_with_secrets(credential_data, managed=getattr(self, "vin_platform_service", None) is not None)
 
         # Scope the create-or-update to *user_id*. The Redis backend
         # namespaces its keys by user, so a preset id can only ever
@@ -810,6 +810,19 @@ class AsyncSQLAlchemyStorage(StorageBase):
             sess.add(_from_record(CredentialRow, record))
             await sess.commit()
         return record.id
+
+    async def replace_credential_data(self, user_id, credential_id, expected_data, replacement):
+        from sqlalchemy import select, update
+        async with self._session() as sess:
+            row = (await sess.execute(select(CredentialRow).where(CredentialRow.id == credential_id,
+                CredentialRow.user_id == user_id).with_for_update())).scalar_one_or_none()
+            if row is None or row.payload.get("data") != expected_data:
+                return False
+            changed = await sess.execute(update(CredentialRow).where(CredentialRow.id == credential_id,
+                CredentialRow.user_id == user_id, CredentialRow.updated_at == row.updated_at,
+            ).values(payload={**row.payload, "data": replacement}, updated_at=_utcnow()))
+            await sess.commit()
+            return changed.rowcount == 1
 
     async def list_credentials(self, user_id: str) -> list[CredentialRecord]:
         """Return every credential for *user_id*."""
@@ -1040,6 +1053,7 @@ class AsyncSQLAlchemyStorage(StorageBase):
 
         if agent_record.user_id != user_id:
             raise PermissionError("Agent owner mismatch")
+        await self.normalize_personal_agent(user_id, agent_record)
         expected = agent_record.storage_revision
         candidate = agent_record.model_copy(deep=True)
         candidate.storage_revision = expected + 1
@@ -1064,6 +1078,45 @@ class AsyncSQLAlchemyStorage(StorageBase):
         agent_record.storage_revision = candidate.storage_revision
         agent_record.updated_at = candidate.updated_at
         return agent_record.id
+
+    async def activate_agents_batch(self, user_id, records):
+        from sqlalchemy import select, update, func, insert
+        from sqlalchemy.exc import IntegrityError
+        from .._base import AgentRevisionConflict, validate_agent_history
+        if not records or len(records) > 50 or len({r.id for r in records}) != len(records):
+            raise ValueError("Batch must have 1-50 distinct agent IDs")
+        for record in records:
+            await self.normalize_personal_agent(user_id, record)
+        candidates = []
+        async with self._session() as sess:
+            for record in sorted(records, key=lambda r: r.id):
+                current = (await sess.execute(select(AgentRow).where(AgentRow.id == record.id).with_for_update())).scalar_one_or_none()
+                if current is not None and current.user_id != user_id:
+                    raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                candidate = record.model_copy(deep=True)
+                candidate.storage_revision += 1
+                candidate.updated_at = datetime.now()
+                validate_agent_history(_to_record(current, AgentRecord) if current is not None else None, candidate)
+                row = _from_record(AgentRow, candidate)
+                values = {column.name: getattr(row, column.name) for column in AgentRow.__table__.columns}
+                if current is None:
+                    if record.storage_revision != 0:
+                        raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                    try:
+                        await sess.execute(insert(AgentRow).values(**values))
+                    except IntegrityError as exc:
+                        raise AgentRevisionConflict("AGENT_REVISION_CONFLICT") from exc
+                else:
+                    result = await sess.execute(update(AgentRow).where(AgentRow.id == record.id, AgentRow.user_id == user_id,
+                        func.coalesce(AgentRow.payload["storage_revision"].as_integer(), 0) == record.storage_revision).values(**values))
+                    if result.rowcount != 1:
+                        raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                candidates.append(candidate)
+            await sess.commit()
+        by_id = {r.id: r for r in candidates}
+        for record in records:
+            record.storage_revision, record.updated_at = by_id[record.id].storage_revision, by_id[record.id].updated_at
+        return [r.id for r in records]
 
     async def list_agents(self, user_id: str) -> list[AgentRecord]:
         """Return the user's ``source='user'`` agents only.
@@ -2356,6 +2409,22 @@ class AsyncSQLAlchemyStorage(StorageBase):
     # ------------------------------------------------------------------
     # Knowledge documents
     # ------------------------------------------------------------------
+
+    async def replace_knowledge_document(self, expected, replacement):
+        from sqlalchemy import select, update
+        if (expected.id, expected.user_id, expected.knowledge_base_id) != (replacement.id, replacement.user_id, replacement.knowledge_base_id):
+            raise ValueError("Document identity is immutable")
+        async with self._session() as sess:
+            row = (await sess.execute(select(KnowledgeDocumentRow).where(KnowledgeDocumentRow.id == expected.id,
+                KnowledgeDocumentRow.user_id == expected.user_id,
+                KnowledgeDocumentRow.knowledge_base_id == expected.knowledge_base_id).with_for_update())).scalar_one_or_none()
+            if row is None or _to_record(row, KnowledgeDocumentRecord) != expected:
+                return False
+            changed = await sess.execute(update(KnowledgeDocumentRow).where(KnowledgeDocumentRow.id == expected.id,
+                KnowledgeDocumentRow.updated_at == row.updated_at).values(
+                    payload={**row.payload, "data": replacement.data.model_dump(mode="json")}, updated_at=_utcnow()))
+            await sess.commit()
+            return changed.rowcount == 1
 
     async def upsert_knowledge_document(
         self,

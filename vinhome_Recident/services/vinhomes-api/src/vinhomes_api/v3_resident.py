@@ -98,6 +98,8 @@ class ResidentTicketCreate(BaseModel):
 @router.post("/resident/chats", status_code=201, summary="Create a resident chat")
 async def create_chat(body: CreateChat, scope: ResidentScope) -> dict[str, object]:
     db, actor_id = scope
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(db, actor_id)
     channel_id = str(uuid4())
     result = await db.execute(text("""
         insert into channels (id, name, description, tenant_id, kind, created_by)
@@ -175,6 +177,8 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
                        background: BackgroundTasks) -> dict[str, object]:
     db, actor_id = scope
     await _owned_chat(scope, channel_id, lock=True)
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(db, actor_id)
     content = {"text": body.text}
     if body.file_ids:
         content['fileIds'] = [str(fid) for fid in dict.fromkeys(body.file_ids)]
@@ -244,10 +248,18 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
              summary="Create a ticket for my verified unit in this chat")
 async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate, request: Request,
                              scope: ResidentScope) -> dict[str, object]:
+    from .intake_cohorts import require_legacy_intake
+    await require_legacy_intake(*scope)
     # The resident app sends an Idempotency-Key header and gets the stored receipt back;
     # agent callers use body.idempotency_key and get the AgentBusinessResponse snapshot.
     return await create_resident_ticket(channel_id, body, scope,
                                         receipt_key=request.headers.get("Idempotency-Key"), requires_plan=False)
+
+
+@router.get("/resident/intake-policy")
+async def intake_policy(scope: ResidentScope):
+    from .intake_cohorts import policy
+    return await policy(*scope)
 
 
 async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,

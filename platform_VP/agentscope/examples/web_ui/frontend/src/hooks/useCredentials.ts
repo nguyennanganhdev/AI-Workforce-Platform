@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useCallback } from 'react';
 
+import { useCatalogManagement } from './useCatalogManagement';
 import { credentialApi } from '../api';
 import type { CredentialView, CreateCredentialRequest, UpdateCredentialRequest } from '../api';
 import { AVAILABLE_MODELS_KEY } from './useAvailableModels';
@@ -10,6 +11,7 @@ import { AVAILABLE_MODELS_KEY } from './useAvailableModels';
  * Fetches on mount and automatically re-fetches after each mutation.
  */
 export function useCredentials() {
+	const canManage = useCatalogManagement();
 	const [credentials, setCredentials] = useState<CredentialView[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
@@ -44,30 +46,33 @@ export function useCredentials() {
 	/** Stores a new credential and refreshes the list. */
 	const create = useCallback(
 		async (body: CreateCredentialRequest) => {
+			if (!canManage) throw new Error('CATALOG_READ_ONLY');
 			const res = await credentialApi.create(body);
 			await refresh();
 			return res;
 		},
-		[refresh],
+		[refresh, canManage],
 	);
 
 	/** Replaces a credential's payload and refreshes the list. */
 	const update = useCallback(
 		async (credentialId: string, body: UpdateCredentialRequest) => {
+			if (!canManage) throw new Error('CATALOG_READ_ONLY');
 			const res = await credentialApi.update(credentialId, body);
 			await refresh();
 			return res;
 		},
-		[refresh],
+		[refresh, canManage],
 	);
 
 	/** Permanently deletes a credential and refreshes the list. */
 	const remove = useCallback(
 		async (credentialId: string) => {
+			if (!canManage) throw new Error('CATALOG_READ_ONLY');
 			await credentialApi.delete(credentialId);
 			await refresh();
 		},
-		[refresh],
+		[refresh, canManage],
 	);
 
 	return { credentials, loading, error, refetch, create, update, remove };

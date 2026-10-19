@@ -50,6 +50,21 @@ def validate_agent_history(current: AgentRecord | None, candidate: AgentRecord) 
 class StorageBase(ABC):
     """The storage abstract base class."""
 
+    async def normalize_personal_agent(self, user_id, record):
+        if record.user_id != user_id:
+            raise PermissionError("Agent owner mismatch")
+        authority = getattr(self, "vin_platform_service", None)
+        if authority is not None:
+            context = await authority.context(user_id)
+            async with authority.engine.begin() as db:
+                await authority.assert_active(db, context)
+            if context.role == "VIN_USER":
+                record.data.purpose, record.data.visibility = "personal", "private"
+
+    async def activate_agents_batch(self, user_id: str, records: list[AgentRecord]) -> list[str]:
+        """Atomically CAS prepared agent pointers; workspace staging is external."""
+        raise NotImplementedError("Atomic batch activation requires a CAS-capable adapter")
+
     async def __aenter__(self) -> Self:
         """Start the storage backend (open connection pool, etc.)."""
         return self
@@ -95,6 +110,10 @@ class StorageBase(ABC):
             `str`:
                 The credential id.
         """
+
+    async def replace_credential_data(self, user_id: str, credential_id: str, expected_data: dict, replacement: dict) -> bool:
+        """CAS migration preserving IDs referenced by agents and KB configs."""
+        raise NotImplementedError("Credential reference migration requires a CAS-capable adapter")
 
     @abstractmethod
     async def list_credentials(self, user_id: str) -> list[CredentialRecord]:
@@ -1289,6 +1308,10 @@ class StorageBase(ABC):
     # ------------------------------------------------------------------
     # Knowledge document persistence
     # ------------------------------------------------------------------
+
+    async def replace_knowledge_document(self, expected: KnowledgeDocumentRecord, replacement: KnowledgeDocumentRecord) -> bool:
+        """CAS reviewed metadata; false when content/lifecycle changed since read."""
+        raise NotImplementedError("Document review requires a CAS-capable adapter")
 
     @abstractmethod
     async def upsert_knowledge_document(

@@ -57,6 +57,9 @@ async def test_call_stream_scope_missing_usage_and_failed_attempt_persist(store)
         await observed_call(model, fail, "second")
     calls = await store.list_model_calls("u", since="2000", limit=100)
     assert len(calls) == 3
+    # Redis scores can tie; storage iteration order is not part of this test.
+    calls.sort(key=lambda call: (call["purpose"], call["status"]))
+    assert [call["purpose"] for call in calls] == ["eval", "shared_summary", "unclassified"]
     assert calls[0]["provider_response_id"] == "resp-real" and calls[0]["workflow_id"] == "w"
     assert calls[1]["purpose"] == "shared_summary" and not calls[1]["usage_complete"]
     assert calls[2]["status"] == "failed" and calls[2]["error_type"] == "RuntimeError"
@@ -133,6 +136,7 @@ async def test_public_model_and_structured_output_each_record_exactly_one_sdk_at
     assert result.content == {"ok": True}
     calls = await store.list_model_calls("u", since="2000")
     assert len(calls) == model.client.responses.create.await_count == 2
+    calls.sort(key=lambda call: call["provider_response_id"])
     assert [c["provider_response_id"] for c in calls] == ["response-1", "response-2"]
     assert all(c["usage_complete"] and c["cached_input_tokens"] == 3 and c["service_tier"] == "flex" for c in calls)
     assert all(c["provider_model"] == "provider-model-revision" for c in calls)

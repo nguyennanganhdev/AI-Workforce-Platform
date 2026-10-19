@@ -19,6 +19,7 @@ import {
 	FileText,
 	FileVideo2,
 	Loader2,
+	Reply,
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
@@ -44,6 +45,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Bubble, BubbleContent } from '@/components/ui/bubble.tsx';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -403,6 +405,7 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
+	onReplyTo?: (agentId: string, name: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -428,7 +431,7 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
+function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	const ticketView = useContext(TicketViewContext);
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
@@ -438,7 +441,9 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		? (message.metadata?.ticket as { request?: string; facts?: string[] } | undefined)
 		: undefined;
 
-	const isRunning = !message.finished_at;
+	// A terminal reason is authoritative even for legacy rows that were
+	// persisted before their finished_at timestamp was repaired.
+	const isRunning = !message.finished_at && !message.finished_reason;
 	const hasUsage =
 		!!message.usage &&
 		((message.usage.input_tokens ?? 0) > 0 || (message.usage.output_tokens ?? 0) > 0);
@@ -467,9 +472,13 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		.filter((b): b is TextBlock => b.type === 'text')
 		.map((b) => b.text)
 		.join('\n\n');
-
+	const teamAgentId = message.metadata?.team_agent_id;
 	const startMs = new Date(message.created_at).getTime();
-	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
+	const terminalTime =
+		message.finished_at ??
+		[...message.content].reverse().find((block) => block.finished_at)?.finished_at ??
+		message.created_at;
+	const endMs = isRunning ? now : new Date(terminalTime).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
 	const visibleBlocks = blocks.filter((block) => {
@@ -487,6 +496,12 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
+				{!isUser && message.name && (
+					<div className="mb-2 flex items-center gap-2 px-2 pt-2 text-sm font-medium text-muted-foreground" data-agent-name={message.name}>
+						<ClayAvatar id={String(message.metadata?.team_agent_id ?? message.name)} label={message.name} size={28} />
+						{message.name}
+					</div>
+				)}
 				{message.metadata?.group_event && <p className="mb-1 text-xs text-muted-foreground">{message.name}{message.metadata.group_to ? ` → ${String(message.metadata.group_to)}` : ''} · {t(`personal.kind_${String(message.metadata.group_kind)}`)}{message.metadata.group_analysis ? ` · ${t('personal.analysis')}` : ''}</p>}
 				{ticketView && message.metadata?.actor === 'management' && <p className="text-xs text-muted-foreground">Ban quản lý · trao đổi nội bộ</p>}
 				{ticketView && message.metadata?.audience === 'management' && <p className="text-xs text-muted-foreground">Trả lời Ban quản lý</p>}
@@ -573,6 +588,11 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
+						{onReplyTo && typeof teamAgentId === 'string' && (
+							<Button variant="ghost" size="xs" onClick={() => onReplyTo(teamAgentId, message.name)} aria-label={`Trả lời ${message.name}`}>
+								<Reply className="size-3" /> Trả lời
+							</Button>
+						)}
 					</MessageFooter>
 				)}
 			</MessageContent>

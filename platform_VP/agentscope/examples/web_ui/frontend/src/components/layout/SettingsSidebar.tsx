@@ -7,6 +7,7 @@ import {
 	Hammer,
 	KeyRound,
 	LibraryBig,
+	Package,
 	Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -27,6 +28,8 @@ import {
 	SidebarMenuItem,
 	useSidebar,
 } from '@/components/ui/sidebar';
+import { usePlatformAccess } from '@/context/platform-access';
+import { mayVisit } from '@/features/workforce/shell/access';
 import { useTranslation } from '@/i18n/useI18n';
 
 interface SettingsItem {
@@ -61,6 +64,7 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	{
 		label: 'shell.groupCapabilities',
 		items: [
+			{ label: 'shell.packs', icon: Package, path: '/packs' },
 			{ label: 'common.credential', icon: KeyRound, path: '/credential' },
 			{ label: 'common.mcp-hub', icon: MCPSvg, path: '/mcp', prefix: true },
 			{ label: 'common.skill-hub', icon: BookText, path: '/skill', prefix: true },
@@ -85,6 +89,9 @@ export function SettingsSidebar() {
 	const location = useLocation();
 	const { t } = useTranslation();
 	const { isMobile, setOpenMobile } = useSidebar();
+	const access = usePlatformAccess();
+	const groups = GROUPS.map((group) => ({ ...group, items: group.items.filter((item) =>
+		!access || (access.workspace && mayVisit(access.workspace, item.path))) })).filter((group) => group.items.length > 0);
 
 	const go = (path: string) => {
 		navigate(path);
@@ -113,7 +120,7 @@ export function SettingsSidebar() {
 				</SidebarMenu>
 			</SidebarHeader>
 			<SidebarContent>
-				{GROUPS.map((group) => (
+				{groups.map((group) => (
 					<SidebarGroup key={group.label ?? group.items[0].path} className="px-2 py-1">
 						{group.label && (
 							<SidebarGroupLabel

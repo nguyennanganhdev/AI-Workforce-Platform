@@ -167,6 +167,11 @@ class CollaborationBranch(BaseModel):
     """
     exchanges: int = 0
     model_calls: int = 0
+    paging_model_calls: int = 0
+    paging_call_ids: tuple[str, ...] = ()
+    source_read_progress: dict[str, tuple[int, int]] = Field(
+        default_factory=dict
+    )
     measured_tokens: int = 0
     active_seconds: float = 0
     verifications: int = 0
@@ -300,12 +305,12 @@ class TeamTurnRecord(_RecordBase):
     user_id: str
     team_id: str
     turn_id: str
-    mode: Literal["leader", "direct_mention"] = "leader"
+    mode: Literal["leader", "direct_mention", "specialist_question"] = "leader"
     reply_owner_session_id: str
     reply_owner_agent_id: str
     customer_session_id: str
     task_id: str | None = None
-    status: Literal["running", "awaiting_user_input"] = "running"
+    status: Literal["running", "awaiting_user_input", "completed"] = "running"
     pending_question_ids: tuple[str, ...] = ()
     pending_question_keys: tuple[str, ...] = ()
 

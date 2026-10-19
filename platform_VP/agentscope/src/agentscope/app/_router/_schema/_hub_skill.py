@@ -51,6 +51,7 @@ class SkillView(BaseModel):
     archive_cached: bool = False
     source_agent_id: str | None = None
     source_version: int | None = None
+    editable: bool = True
 
     @classmethod
     def from_record(cls, record: SkillRecord) -> "SkillView":

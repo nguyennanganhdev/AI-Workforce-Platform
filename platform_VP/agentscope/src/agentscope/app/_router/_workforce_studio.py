@@ -11,6 +11,8 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Literal
 
+from .._service._catalog_resources import resolve_catalog_resource
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
@@ -247,6 +249,7 @@ async def _create_record(
     user_id: str,
     spec: AgentSpec,
 ) -> AgentRecord:
+    config = await _model_config(storage, user_id)
     record = AgentRecord(
         user_id=user_id,
         data=AgentData(
@@ -274,7 +277,7 @@ async def _create_record(
         config=SessionConfig(
             workspace_id=workspace_id,
             name="Agent Studio primary session",
-            chat_model_config=await _model_config(storage, user_id),
+            chat_model_config=config,
         ),
     )
     return record
@@ -284,10 +287,11 @@ async def _create_record(
 
 
 @workforce_studio_router.get("/agents/{agent_id}/resources")
-async def effective_resources(agent_id: str, user_id=Depends(get_current_user_id), storage=Depends(get_storage)):
+async def effective_resources(agent_id: str, user_id=Depends(get_current_user_id), storage=Depends(get_storage),
+                              access=Depends(get_resource_access_service)):
     from .._service._agent_readiness import resource_manifest
     record = await _business_agent(storage, user_id, agent_id)
-    return await resource_manifest(storage, user_id, record)
+    return await resource_manifest(storage, user_id, record, access=access)
 
 
 @workforce_studio_router.get("/templates")
@@ -515,7 +519,7 @@ async def compose_agent(
     )
     _, copilot_model = await _models(storage, user_id, access)
     catalog = await tool_catalog(storage, user_id)
-    knowledge = await knowledge_catalog(storage, user_id)
+    knowledge = await knowledge_catalog(storage, user_id, access=access)
     skills = await skill_catalog(storage, user_id)
     plan = await plan_composition(
         model=copilot_model,
@@ -622,7 +626,7 @@ async def copilot(
         spec=draft_spec(record),
         message=body.message,
         catalog=await tool_catalog(storage, user_id),
-        knowledge=await knowledge_catalog(storage, user_id),
+        knowledge=await knowledge_catalog(storage, user_id, access=access),
         skills=await skill_catalog(storage, user_id),
     )
     async with _locks[agent_id]:
@@ -693,6 +697,7 @@ async def publish(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> AgentDetailView:
     async with _locks[agent_id]:
         record = await _business_agent(storage, user_id, agent_id)
@@ -709,6 +714,7 @@ async def publish(
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
             install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous, stage=True,
+            access=access,
         )
         # CAS activates the version and its prepared resources together. A
         # failed/losing publication never mutates the active workspace.
@@ -724,6 +730,7 @@ async def rollback(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> AgentDetailView:
     async with _locks[agent_id]:
         record = await _business_agent(storage, user_id, agent_id)
@@ -751,6 +758,7 @@ async def rollback(
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
             install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous, stage=True,
+            access=access,
         )
         await _save_agent(storage, user_id, record)
     return _detail(record)
@@ -777,7 +785,7 @@ def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent
     """Put one library skill into the agent's workspace (re-fetched from its hub)."""
 
     async def install(workspace, skill_id: str) -> None:
-        record = await storage.get_skill(user_id, skill_id)
+        record = await resolve_catalog_resource(storage, user_id, "skill", skill_id)
         if record is None or not getattr(record, "enabled", True) or getattr(record, "review_status", "approved") != "approved":
             raise HTTPException(status_code=409, detail=f"Skill {skill_id} không còn trong thư viện.")
         present = {getattr(item, "name", item) for item in await workspace.list_skills(agent_id=agent_id)}
@@ -802,7 +810,8 @@ def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent
             await cache_archive(record, archive.stream, archive.format)
             await service.install_skill(workspace, byte_stream(archive_bytes(record)), archive.format, record.name, agent_id=agent_id)
             # Cache only after the existing archive validator accepted it.
-            await storage.upsert_skill(user_id, record)
+            if record.user_id == user_id:
+                await storage.upsert_skill(user_id, record)
         else:
             await service.install_skill(workspace, archive.stream, archive.format, record.name, agent_id=agent_id)
 

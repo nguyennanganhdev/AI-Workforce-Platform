@@ -106,6 +106,23 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         self.assertEqual("answer", event.kind)
 
+    async def test_coordinator_waits_for_every_specialist_it_asked(self):
+        self.storage.agents["peer2"] = self.storage.agents["peer"].model_copy(deep=True, update={"id": "peer2"})
+        self.storage.agents["peer2"].data.name = "Peer2"
+        self.storage.sessions["peer2-session"] = self.storage.sessions["peer-session"].model_copy(
+            update={"id": "peer2-session", "agent_id": "peer2"})
+        self.storage.team.data.members.append(
+            TeamMember(owner_id="u", agent_id="peer2", session_id="peer2-session", role="created"))
+        first = await self.say("worker", to="Peer", kind="question", content="Search flights within 3M total")
+        second = await self.say("worker", to="Peer2", kind="question", content="Search hotels within 3M total")
+        self.assertEqual("waiting_peer", await self.service.collaboration_pause("u", "ticket-1", "worker-session"))
+        await self.say("peer", to="Worker", kind="answer", content="No flights matched the dates",
+                       in_reply_to=first.metadata["handoff_id"])
+        self.assertEqual("waiting_peer", await self.service.collaboration_pause("u", "ticket-1", "worker-session"))
+        await self.say("peer2", to="Worker", kind="answer", content="No hotels matched the dates",
+                       in_reply_to=second.metadata["handoff_id"])
+        self.assertIsNone(await self.service.collaboration_pause("u", "ticket-1", "worker-session"))
+
     async def test_shared_peer_answer_releases_all_waiters_for_that_provider(self):
         first = await self.say(
             "worker", to="Peer", kind="question", content="Provide the price"
@@ -268,33 +285,18 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual((0, 0, 0, False), (completed, errors, verified, waiting))
         self.assertEqual([], await self.bus.dequeue_wakeups(max_count=10))
 
-    async def test_complete_needs_current_evidence_does_not_close_ticket(self):
+    async def test_complete_accepts_a_report_and_does_not_close_ticket(self):
         result = await self.say(
             "worker", to="Leader", kind="result", content="Option available"
         )
-        refused = await self.tool("leader")(
-            to="Worker",
-            kind="handoff",
-            content="Enough",
-            resolution="complete",
-            reference_event_ids=(result.metadata["handoff_id"],),
-        )
-        self.assertEqual("error", refused.state)
-        await self.service.append_event(
-            user_id="u",
-            team_id="ticket-1",
-            kind="external_event",
-            content="Verified option",
-            event_id="tool-1",
-            source_session_id="worker-session",
-        )
+        # The Leader reviews content; completion needs no tool event.
         await self.say(
             "leader",
             to="Worker",
             kind="handoff",
-            content="Enough verified information",
+            content="Enough information",
             resolution="complete",
-            reference_event_ids=(result.metadata["handoff_id"], "tool-1"),
+            reference_event_ids=(result.metadata["handoff_id"],),
         )
         self.assertEqual("completed", self.branch("worker").status)
         self.assertEqual("running", self.storage.context.state.tasks[self.task].status)
@@ -312,28 +314,10 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual(1, self.branch("worker").exchanges)
         self.assertEqual(self.task, self.storage.context.state.active_task_id)
 
-    async def test_review_auto_completes_only_current_tool_backed_result(self):
+    async def test_review_accepts_a_reported_result(self):
         result = await self.say(
-            "worker", to="Leader", kind="result", content="Option available"
+            "worker", to="Leader", kind="result", content="Unverified proposal"
         )
-        self.assertEqual("review", self.branch("worker").status)
-        self.assertEqual(
-            ["worker-session"],
-            await self.service.collaboration_review(
-                "u", "ticket-1", "leader-session"
-            ),
-        )
-
-        await self.service.append_event(
-            user_id="u",
-            team_id="ticket-1",
-            task_id=self.task,
-            kind="external_event",
-            content="Verified option",
-            event_id="tool-result",
-            source_session_id="worker-session",
-        )
-
         self.assertEqual(
             [],
             await self.service.collaboration_review(
@@ -341,29 +325,8 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             ),
         )
         self.assertEqual("completed", self.branch("worker").status)
-        self.assertIn("evidence-backed", self.branch("worker").reason)
+        self.assertEqual("worker result accepted by runtime", self.branch("worker").reason)
         self.assertEqual(result.metadata["kind"], "result")
-
-    async def test_review_keeps_unverified_report_for_leader(self):
-        await self.say(
-            "worker", to="Leader", kind="result", content="Unverified proposal"
-        )
-
-        self.assertEqual(
-            ["worker-session"],
-            await self.service.collaboration_review(
-                "u", "ticket-1", "leader-session"
-            ),
-        )
-        self.assertEqual("review", self.branch("worker").status)
-        # It waits for the Leader's decision, not for the worker: it must not
-        # keep the Leader from being woken to make that decision.
-        self.assertEqual(
-            [],
-            await self.service.collaboration_review(
-                "u", "ticket-1", "leader-session", working_only=True
-            ),
-        )
 
     async def test_delivered_worker_error_stops_branch_without_blocking_leader(self):
         report = await self.say(
@@ -805,3 +768,101 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual(
             "running", self.storage.context.state.tasks[workflow.workflow_id].status
         )
+
+    async def test_specialist_asks_customer_then_returns_result_to_leader(self):
+        question = await self.say(
+            "worker",
+            kind="requires_user_input",
+            content="Which account should I inspect?",
+        )
+        self.assertEqual("requires_user_input", question.metadata["kind"])
+        self.assertEqual("specialist_question", self.storage.turn.mode)
+        self.assertEqual("worker-session", self.storage.turn.reply_owner_session_id)
+
+        from agentscope.app._team_turn import start_team_turn
+
+        await start_team_turn(
+            self.bus,
+            "ticket-1",
+            reply_owner_session_id="worker-session",
+            reply_owner_agent_id="worker",
+            customer_session_id="leader-session",
+            mode="specialist_question",
+            task_id=self.task,
+            storage=self.storage,
+            user_id="u",
+        )
+        await self.say(
+            "worker",
+            kind="result",
+            content="Account A has been inspected; no issue was found.",
+        )
+        self.assertEqual("leader", self.storage.turn.mode)
+        self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
+
+    async def test_leader_cannot_ask_the_customer_task_questions(self):
+        self.storage.agents["leader"].data.system_role = "leader"
+        result = await self.tool("leader")(
+            kind="ask_customer",
+            content="Which date do you travel?",
+        )
+        self.assertEqual("error", result.state)
+        self.assertIsNone(self.storage.turn)
+
+    async def test_shared_context_read_pages_only_this_teams_sources(self):
+        from agentscope.app._tool import SharedContextRead
+        from agentscope.app.middleware import SharedContextIsolationMiddleware
+        from agentscope.state import AgentState
+        from tests.team_shared_context_test import _MeasuredModel
+
+        source = "x" * 5000 + "END"
+        await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            kind="external_event",
+            content=source,
+            source_session_id="worker-session",
+        )
+        self.service.config = replace(
+            self.service.config,
+            packet_max_tokens=600,
+            history_budget_tokens=400,
+        )
+        middleware = SharedContextIsolationMiddleware(
+            "task",
+            self.service,
+            "u",
+            "ticket-1",
+            task_id=self.task,
+            allow_source_references=True,
+        )
+        state = AgentState(session_id="worker-session")
+        await middleware._refresh_packet(
+            SimpleNamespace(state=state), _MeasuredModel()
+        )
+        grant = state.middle_context["shared_context_sources"]
+        reference = grant["references"][0]
+        tool = SharedContextRead(
+            storage=self.storage, message_bus=self.bus, workspace_manager=object(),
+            user_id="u", session_id="worker-session", agent_id="worker",
+            shared_context_service=self.service,
+        )
+        read, offset = "", 0
+        while offset is not None:
+            page = json.loads(
+                (
+                    await tool(
+                        source_ref=reference,
+                        offset=offset,
+                        limit=2000,
+                        _agent_state=state,
+                    )
+                )
+                .content[0]
+                .text
+            )
+            read += page["content"]
+            offset = page["next_offset"]
+        self.assertIn(source, read)
+        missing = await tool(source_ref="0" * 64, _agent_state=state)
+        self.assertEqual("error", missing.state)

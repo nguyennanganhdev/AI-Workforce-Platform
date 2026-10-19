@@ -72,7 +72,7 @@ def mcp_snapshot(ticket_id):
 
 
 def publish_platform_confirmation(ticket_id):
-    """Simulate Platform publishing its confirmation step, only in the disposable HTTP test DB."""
+    """Record an applied result receipt, only in the disposable HTTP test DB."""
     owner=os.environ['VINHOMES_MCP_TEST_OWNER_URL']
     parts=urlsplit(owner)
     assert parts.hostname in ('127.0.0.1','localhost') and parts.path.startswith('/maintain_flow_test_')
@@ -81,6 +81,16 @@ def publish_platform_confirmation(ticket_id):
         db=await asyncpg.connect(owner)
         try:
             assert await db.fetchval("select status='resolved' from tickets where id=$1",UUID(ticket_id))
+            # Publication is authorized by the acknowledged job result. Moving
+            # the workflow stage alone does not publish a resident decision.
+            await db.execute("""insert into platform_outbox(event_id,tenant_id,ticket_id,client_reference,
+                external_job_id,event_type,provider_version,occurred_at,data,status,receipt)
+                select $2,t.tenant_id,t.id,'http-confirmation:'||w.id::text,w.id::text,
+                    'job.result_published',t.version,now(),
+                    '{"summary":"Offline HTTP result","photo_count":0,"reported_by":"HTTP fixture"}'::jsonb,
+                    'sent','{"ingestion_status":"applied"}'::jsonb
+                from tickets t join work_orders w on w.ticket_id=t.id and w.tenant_id=t.tenant_id
+                where t.id=$1 and w.status='completed'""",UUID(ticket_id),uuid4())
             await db.execute("update platform_links set state='awaiting_confirmation',next_action='confirm_close' where ticket_id=$1",UUID(ticket_id))
         finally:await db.close()
     asyncio.run(publish())
@@ -195,7 +205,7 @@ def test_full_confirmation_retry_and_concurrent_decisions():
         return httpx.post(f"{URL}/resident/approvals/{approval}/decision",headers={"Idempotency-Key":key},json=body,timeout=20)
     with ThreadPoolExecutor(2) as pool:
         responses = list(pool.map(decide, keys))
-    assert sorted(r.status_code for r in responses)==[200,409]
+    assert sorted(r.status_code for r in responses)==[200,409], [(r.status_code, r.text) for r in responses]
     winner=next(i for i,r in enumerate(responses) if r.status_code==200)
     assert decide(keys[winner]).json()==responses[winner].json()
     assert call("GET", f"/resident/tickets/{ticket}")["ticket"]["status"] == "closed"

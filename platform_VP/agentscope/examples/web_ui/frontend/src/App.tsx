@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Onborda, OnbordaProvider } from 'onborda';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sonner';
@@ -9,12 +9,15 @@ import { authApi } from '@/api';
 import type { AuthUser } from '@/api';
 import { AUTH_EXPIRED_EVENT } from '@/api/client';
 import { RouteError } from '@/components/error/RouteError';
+import { CapabilityShell, RoutedAdminPage } from '@/components/layout/CapabilityShell';
 import { ChatLayout } from '@/components/layout/ChatLayout';
 import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { buildChatTour } from '@/components/tour/chatTourSteps';
 import { TourCard } from '@/components/tour/TourCard';
 import { CurrentUserProvider } from '@/context/CurrentUserContext';
+import { PlatformAccessProvider } from '@/context/PlatformAccessContext';
 import { UploadProvider } from '@/context/UploadContext';
+import { VIN_EXPERIENCE_ENABLED } from '@/features/workforce/shell/flags';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
 import { AdminPage } from '@/pages/admin';
@@ -29,7 +32,9 @@ function page<T extends Record<string, unknown>>(load: () => Promise<T>, name: k
 	return async () => ({ Component: (await load())[name] as ComponentType });
 }
 
-const router = createBrowserRouter([
+const AccessProvider = VIN_EXPERIENCE_ENABLED ? PlatformAccessProvider : Fragment;
+
+const router = createBrowserRouter([{ element: <CapabilityShell />, children: [
 	// Two shells. The chat gets the whole window; everything that is
 	// configured rather than talked to lives behind its own navigation.
 	{
@@ -77,15 +82,19 @@ const router = createBrowserRouter([
 					{ path: '/skill/:hubId', lazy: page(() => import('./pages/skill'), 'SkillHubPage') },
 					{ path: '/knowledge', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
 					{ path: '/knowledge/:kbId', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
+					{ path: '/account', lazy: page(() => import('@/pages/account'), 'AccountPage') },
+					{ path: '/connections/*', lazy: page(() => import('@/pages/connections'), 'ConnectionsPage') },
+					{ path: '/packs', lazy: page(() => import('@/pages/packs'), 'PacksPage') },
 				],
 			},
 		],
 	},
 	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
+	{ path: '/admin', element: <RoutedAdminPage />, errorElement: <RouteError /> },
 	// Auth is rendered above the router. A restored session may still be on
 	// an authentication URL, so resolve it to the user's chat instead of a 404.
 	...['/login', '/register', '/auth'].map((path) => ({ path, element: <Navigate to="/chat" replace /> })),
-]);
+]}]);
 
 function PlatformApp() {
 	const { t } = useTranslation();
@@ -129,7 +138,9 @@ function PlatformApp() {
 					onAuthenticated={(user) => {
 						queryClient.clear();
 						try { localStorage.setItem(`session-workspace:view:${user.id}`, 'chat'); } catch { /* Optional browser preference. */ }
-						void router.navigate('/chat');
+						const callback = window.location.pathname === '/connections/callback/vinhomes';
+						void router.navigate(VIN_EXPERIENCE_ENABLED && callback ? window.location.pathname + window.location.search
+							: VIN_EXPERIENCE_ENABLED ? (user.role === 'PLATFORM_ADMIN' || user.role === 'DOMAIN_ADMIN' ? '/admin' : '/') : '/chat');
 						setCurrentUser(user);
 						setAuthStatus('authenticated');
 					}}
@@ -139,7 +150,7 @@ function PlatformApp() {
 		);
 	}
 
-	if (currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
+	if (!VIN_EXPERIENCE_ENABLED && currentUser && (currentUser.role === 'PLATFORM_ADMIN' || currentUser.role === 'DOMAIN_ADMIN')) {
 		// Administrators manage accounts, domains and areas; agents and tickets belong to BQL accounts.
 		return (
 			<>
@@ -166,9 +177,11 @@ function PlatformApp() {
 					cardTransition={{ type: 'spring', duration: 0.4 }}
 				>
 					<CurrentUserProvider value={currentUser}>
+						<AccessProvider>
 						<UploadProvider>
 							<RouterProvider router={router} />
 						</UploadProvider>
+						</AccessProvider>
 					</CurrentUserProvider>
 					<Toaster richColors position="top-right" />
 				</Onborda>

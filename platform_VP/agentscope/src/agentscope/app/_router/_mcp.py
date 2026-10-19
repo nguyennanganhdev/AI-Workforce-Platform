@@ -111,6 +111,15 @@ async def list_mcps(
     storage: StorageBase = Depends(get_storage),
 ) -> list[MCPView]:
     """Return every MCP the user has installed, ordered by name."""
+    authority = getattr(storage, "vin_platform_service", None)
+    if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
+        from ..vin_platform._resources import catalog_records
+        granted = [MCPView.from_record(record).model_copy(update={"editable": False,
+            "url": None, "last_sync_error": None}) for _, record in await catalog_records(authority, user_id, "mcp")]
+        # The user's own MCPs are editable; granted pack/domain MCPs are view/use only.
+        ids = {view.id for view in granted}
+        own = [MCPView.from_record(record) for record in await storage.list_mcps(user_id) if record.id not in ids]
+        return granted + sorted(own, key=lambda view: view.name)
     records = await storage.list_mcps(user_id)
     return sorted(
         (MCPView.from_record(r) for r in records),

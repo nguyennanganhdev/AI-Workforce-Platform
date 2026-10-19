@@ -347,7 +347,7 @@ class RedisStorage(StorageBase):
                 credential_data,
             )
 
-        data_dump = _dump_with_secrets(credential_data)
+        data_dump = _dump_with_secrets(credential_data, managed=getattr(self, "vin_platform_service", None) is not None)
 
         if credential_data.id:
             key = self._key(
@@ -384,6 +384,27 @@ class RedisStorage(StorageBase):
         await self._set_with_ttl(key, record.model_dump_json())
         await self._client.sadd(index_key, record.id)
         return record.id
+
+    async def replace_credential_data(self, user_id, credential_id, expected_data, replacement):
+        from redis.exceptions import WatchError
+        key = self._key(self.key_config.credential, user_id=user_id, credential_id=credential_id)
+        async with self._client.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                raw = await pipe.get(key)
+                if raw is None:
+                    return False
+                record = CredentialRecord.model_validate_json(raw)
+                if record.user_id != user_id or record.data != expected_data:
+                    return False
+                record.data = replacement
+                record.updated_at = datetime.now()
+                pipe.multi()
+                pipe.set(key, record.model_dump_json(), keepttl=True)
+                await pipe.execute()
+                return True
+            except WatchError:
+                return False
 
     async def list_credentials(self, user_id: str) -> list[CredentialRecord]:
         """Return all credential records belonging to the given user.
@@ -767,6 +788,7 @@ class RedisStorage(StorageBase):
 
         if agent_record.user_id != user_id:
             raise PermissionError("Agent owner mismatch")
+        await self.normalize_personal_agent(user_id, agent_record)
         index_key = self._key(self.key_config.agent_index, user_id=user_id)
         expected = agent_record.storage_revision
         candidate = agent_record.model_copy(deep=True)
@@ -793,6 +815,41 @@ class RedisStorage(StorageBase):
         agent_record.storage_revision = candidate.storage_revision
         agent_record.updated_at = candidate.updated_at
         return agent_record.id
+
+    async def activate_agents_batch(self, user_id, records):
+        from ._base import AgentRevisionConflict, validate_agent_history
+        if not records or len(records) > 50 or len({r.id for r in records}) != len(records):
+            raise ValueError("Batch must have 1-50 distinct agent IDs")
+        for record in records:
+            await self.normalize_personal_agent(user_id, record)
+        keys = [self._key(self.key_config.agent, user_id=user_id, agent_id=r.id) for r in records]
+        candidates = []
+        async with self._client.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(*keys)
+                for key, record in zip(keys, records):
+                    raw = await pipe.get(key)
+                    current = AgentRecord.model_validate_json(raw) if raw else None
+                    if (current.storage_revision if current else 0) != record.storage_revision:
+                        raise AgentRevisionConflict("AGENT_REVISION_CONFLICT")
+                    candidate = record.model_copy(deep=True)
+                    candidate.storage_revision += 1
+                    candidate.updated_at = datetime.now()
+                    validate_agent_history(current, candidate)
+                    candidates.append(candidate)
+                pipe.multi()
+                index = self._key(self.key_config.agent_index, user_id=user_id)
+                for key, record in zip(keys, candidates):
+                    pipe.set(key, record.model_dump_json())
+                    if self.key_ttl is not None:
+                        pipe.expire(key, self.key_ttl)
+                    pipe.sadd(index, record.id)
+                await pipe.execute()
+            except _watch_error() as exc:
+                raise AgentRevisionConflict("AGENT_REVISION_CONFLICT") from exc
+        for record, candidate in zip(records, candidates):
+            record.storage_revision, record.updated_at = candidate.storage_revision, candidate.updated_at
+        return [r.id for r in records]
 
     async def list_agents(self, user_id: str) -> list[AgentRecord]:
         """Return user-facing agent records (``source='user'``).
@@ -2526,6 +2583,27 @@ class RedisStorage(StorageBase):
     ) -> str:
         """Encode (user_id, kb_id, doc_id) for the global sweeper index."""
         return f"{user_id}:{knowledge_base_id}:{document_id}"
+
+    async def replace_knowledge_document(self, expected, replacement):
+        from redis.exceptions import WatchError
+        if (expected.id, expected.user_id, expected.knowledge_base_id) != (replacement.id, replacement.user_id, replacement.knowledge_base_id):
+            raise ValueError("Document identity is immutable")
+        key = self._document_key(expected.user_id, expected.knowledge_base_id, expected.id)
+        async with self._client.pipeline(transaction=True) as pipe:
+            try:
+                await pipe.watch(key)
+                raw = await pipe.get(key)
+                if not raw or KnowledgeDocumentRecord.model_validate_json(raw) != expected:
+                    return False
+                current = expected.model_copy(deep=True)
+                current.data = replacement.data
+                current.updated_at = datetime.now()
+                pipe.multi()
+                pipe.set(key, current.model_dump_json(), keepttl=True)
+                await pipe.execute()
+                return True
+            except WatchError:
+                return False
 
     async def upsert_knowledge_document(
         self,

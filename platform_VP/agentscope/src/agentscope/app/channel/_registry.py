@@ -96,6 +96,8 @@ class ChannelTypeRegistry:
         channel_id: str,
         credentials: dict,
         config: dict,
+        *,
+        owner_role: str | None = None,
     ) -> "ChannelBase":
         """Validate stored credentials/config against the class's nested
         models and build the channel instance.
@@ -121,7 +123,15 @@ class ChannelTypeRegistry:
             channel_id,
             channel_cls.Credentials(**open_credentials(credentials)),
             channel_cls.Config(**config),
+            **({"private_account": owner_role == "VIN_USER"} if channel_type == "discord" else {}),
         )
+
+    async def create_for_record(self, storage, record) -> "ChannelBase":
+        """Build private Discord behavior from the server's owner, never user config."""
+        authority = getattr(storage, "vin_platform_service", None)
+        context = await authority.context(record.user_id) if authority is not None and record.channel_type == "discord" else None
+        return self.create_channel(record.channel_type, record.id, record.credentials,
+            record.platform_config, owner_role=context.role if context is not None else None)
 
     def seal_credentials(self, channel_type: str, credentials: dict) -> dict:
         """Encrypt the type's secret (``format: password``) fields for storage."""

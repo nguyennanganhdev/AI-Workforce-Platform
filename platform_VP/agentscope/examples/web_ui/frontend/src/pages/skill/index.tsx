@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/sidebar.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { Textarea } from '@/components/ui/textarea';
+import { useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useResourceDrawer } from '@/hooks/useResourceDrawer.ts';
 import { useSkillHubCards } from '@/hooks/useSkillHubCards.ts';
 import { useSkillHubs } from '@/hooks/useSkillHubs.ts';
@@ -63,6 +64,7 @@ interface CardItemProps {
 }
 
 function CardItem({ card, installed, installing, now, onInstall, onOpen }: CardItemProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 
 	return (
@@ -145,7 +147,7 @@ function CardItem({ card, installed, installing, now, onInstall, onOpen }: CardI
 					) : (
 						<Button
 							className="h-7 rounded-full px-3.5 text-xs font-normal hover:opacity-86"
-							disabled={installing}
+							disabled={!canManage || installing}
 							// Installing straight from the row must not also
 							// open the drawer behind it.
 							onClick={(e) => {
@@ -171,6 +173,7 @@ interface HubPanelProps {
 }
 
 function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
 	const [installingId, setInstallingId] = useState<string | null>(null);
@@ -191,6 +194,7 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 	// A skill needs no configuration, so there is nothing to ask for —
 	// unlike an MCP install, this goes straight through without a dialog.
 	const handleInstall = async (card: SkillCard) => {
+		if (!canManage) return;
 		setInstallingId(card.id);
 		try {
 			await hubApi.skill.install(card.hub_id, card.id);
@@ -286,7 +290,7 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 				action={
 					<Button
 						disabled={
-							drawer.opened !== null &&
+							!canManage || drawer.opened !== null &&
 							(installedNames.has(drawer.opened.name) ||
 								installingId === (drawer.opened as SkillCard).id)
 						}
@@ -317,6 +321,7 @@ interface MinePanelProps {
 }
 
 function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
+	const canManage = useCatalogManagement();
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
 	const [saving, setSaving] = useState(false);
@@ -352,7 +357,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 					: undefined
 			}
 		>
-			<details className="m-4 rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">Tạo skill nội bộ để dùng lại</summary>
+			{canManage && <details className="m-4 rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">Tạo skill nội bộ để dùng lại</summary>
 				<form className="mt-3 space-y-3" onSubmit={async event => {
 					event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); setSaving(true);
 					try { await skillApi.create({ name: String(data.get('name')), description: String(data.get('description')), markdown: String(data.get('markdown')) }); form.reset(); await onRefresh(); }
@@ -362,10 +367,10 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 					<label className="block text-sm">Tên phiên bản<Input name="name" pattern="[a-z0-9][a-z0-9-]{1,79}" placeholder="evidence-review-v1" required /></label>
 					<label className="block text-sm">Mô tả<Input name="description" required maxLength={1000} /></label>
 					<label className="block text-sm">Hướng dẫn SKILL.md<Textarea name="markdown" required minLength={40} maxLength={100000} rows={8} /></label>
-					<p className="text-xs text-muted-foreground">Lưu thành bản chờ duyệt. Không đặt mật khẩu hoặc dữ liệu cư dân trong skill.</p>
+					<p className="text-xs text-muted-foreground">Lưu thành bản chờ duyệt. Không đặt mật khẩu hoặc dữ liệu cá nhân trong skill.</p>
 					<Button size="sm" disabled={saving}>Lưu bản chờ duyệt</Button>
 				</form>
-			</details>
+			</details>}
 			{loading ? (
 				<div className="flex justify-center py-10">
 					<Spinner />
@@ -443,7 +448,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 
 							<ItemActions>
 								<Badge variant="outline">{skill.review_status === 'candidate' ? 'Chờ duyệt' : skill.review_status === 'revoked' ? 'Đã thu hồi' : 'Đã duyệt'}{skill.archive_cached ? ' · Đã lưu nội bộ' : ''}</Badge>
-								<Button size="sm" variant="outline" disabled={saving} onClick={async event => { event.stopPropagation(); setSaving(true); try { await skillApi.review(skill.id, skill.review_status === 'approved' || !skill.review_status ? 'revoked' : 'approved'); await onRefresh(); } catch (error) { toast.error(error instanceof Error ? error.message : 'Không cập nhật được skill'); } finally { setSaving(false); } }}>{skill.review_status === 'approved' || !skill.review_status ? 'Thu hồi' : 'Duyệt'}</Button>
+								<Button size="sm" variant="outline" disabled={!canManage || saving} onClick={async event => { event.stopPropagation(); setSaving(true); try { await skillApi.review(skill.id, skill.review_status === 'approved' || !skill.review_status ? 'revoked' : 'approved'); await onRefresh(); } catch (error) { toast.error(error instanceof Error ? error.message : 'Không cập nhật được skill'); } finally { setSaving(false); } }}>{skill.review_status === 'approved' || !skill.review_status ? 'Thu hồi' : 'Duyệt'}</Button>
 								{skill.version && (
 									<span className="text-xs text-muted-foreground whitespace-nowrap">
 										{skill.version}
@@ -458,6 +463,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 										e.stopPropagation();
 										onRemove(skill.id);
 									}}
+									disabled={!canManage}
 									title={t('common.delete')}
 								>
 									<Trash2 />
@@ -477,6 +483,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 				action={
 					<Button
 						variant="destructive"
+						disabled={!canManage}
 						onClick={() => {
 							if (drawer.opened) onRemove((drawer.opened as SkillView).id);
 							drawer.close();

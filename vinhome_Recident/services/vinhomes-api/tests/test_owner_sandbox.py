@@ -498,7 +498,9 @@ def test_synthetic_api_mcp_staff_resident_happy_case(
         UUID(job),
     )[0]["id"]
     with person(database, "sim-resident-1") as resident:
-        assert not any(
+        # The applied result receipt publishes the completion decision.
+        # Workflow wording/stage is not the authority for this resident step.
+        assert any(
             str(a["id"]) == str(approval)
             for a in resident.get("/resident/approvals").json()["items"]
         )

@@ -1,0 +1,497 @@
+# Người 2 — handoff các slice từ baseline PR #99
+
+**Mới nhất S18:** đã cấu hình local cho chủ dự án tự dùng `gpt-6-luna` từ provider `awp-develop2-app-1`, cấp 1 MCP Vinhomes/8 tool, 3 skill và 1 kho hướng dẫn đã review. Không gọi model thật. Discord còn thiếu OAuth; eval MCP còn thiếu profile/link sandbox. Xem [runbook owner-use](vin-platform/N2_OWNER_USE_RUNBOOK_20261018.md). Fixture S16/S17 là bằng chứng lịch sử, không áp nguyên sang runtime đã đổi provider/image.
+
+> Kết quả mới nhất: **S17** sửa lỗi cửa đăng nhập staff trên staging. Form login thật desktop/mobile **2 PASS/0 SKIP**, hết vòng 401; lỗi nằm ở nginx fixture N2, không sửa source staff N1. Các gate S16 vẫn giữ nguyên: PostgreSQL 16 PASS/0 SKIP, concurrency 1 PASS/0 SKIP, CMD smoke 2 PASS/0 SKIP, restore 4/4 kho, bảy journey image-bundle 7 PASS/0 SKIP. Đây chưa phải chữ ký UAT/model-quality/agent tự giao staff. Xem manifest `docs/vin-platform/evidence/n2-s16-20261018.json` và runbook RC.
+
+Phạm vi theo hai kế hoạch đã chốt ngày 18/10 và chỉ dẫn mới nhất của chủ dự án.
+Không dashboard BQL, exception queue, operator grant/approval bridge hoặc bot Discord chung.
+Khách hàng dùng cùng UI/các trang Platform, dữ liệu riêng; Provider/MCP/Skill được cấp chỉ xem/chọn/dùng.
+Không chạy test bằng model key thật; không bật production/cutover bằng kết quả fixture.
+
+**Trạng thái mới nhất:** các sửa review R01/R02 bên dưới đã được kiểm tra trên bản ghép hai branch.
+S00–S06 là lịch sử kiểm thử trước review, không phải trạng thái hiện tại. S03 chưa nghiệm thu E2E;
+contract gate offline hiện **PASS 24 / SKIP 0 / ERROR 0 / FAIL 0**. Không coi các test SKIP là PASS.
+
+## S00 — Rebase
+
+- WIP đã commit trước đó: `e6cb3495`, `88098c39`, `f64a07fc`; không còn file chưa commit trước rebase.
+- Backup local: `backup/vin-user2-pre-rebase-20261018`.
+- Rebase lên đúng `fe56707a966864ec7915be30421762d30cba4d15`, giữ eval sandbox/lịch/Discord của PR #99.
+- Commit sau rebase: `45f02c27` (model resolver), `4b44dd3f` (shared KB), `3365b8c7` (UI consumer cũ).
+- Một conflict tại `frontend/tests/client.test.mjs`: giữ bản upstream vì đã có origin mock và regression login.
+- Kiểm tra: worktree sạch sau rebase; xem diff 50 file PR #99 và hướng dẫn eval/schedule/channel;
+  test chức năng sẽ chạy lại theo từng slice tiếp theo, không tái dùng số test trước rebase làm proof.
+- Chờ Người 1: commit C01/C02/C03 hoàn thiện để tích hợp. Hiện producer đang ở WIP `48e922bd`, cũng đã rebase.
+
+## Yêu cầu cho owner Người 1 (không sửa file lane Người 1)
+
+1. C01: capability view/bind/execute/manage cho catalog, agent, lịch và kênh; giữ BQL/admin cũ. Không dùng
+   UI role làm authority. Chốt active workspace server; không cần một bộ chọn workspace mới để dùng AI cá nhân.
+2. C02: resolver MCP/skill dùng chung callable có permission và owner/version. Public list/detail/schema
+   chỉ trả allowlist, không secret. Credential alias phải có trong model picker mà không persist key user.
+3. C05/C07: private customer session/Leader/case binding, self context và event/replay/consent receipt.
+   `origin=platform` không phát `start_workflow` vào partner route hoặc Leader BQL; cần regression Domain.
+4. C09: atomic logical-run claim, lease/fence, once-consumed trước dispatch, run outcome + delivery outbox
+   độc lập; verified Discord user identity mặc định owner, bot credential reference và per-user sessions.
+   Cấu hình allowlist trống phải deny; không suy owner từ người gửi đầu tiên.
+5. N2-04 cần durable batch publish manifest/stable IDs/status/repair cursor + storage/CAS API. Boolean
+   `claim_builder_publish` hiện tại không đủ phục hồi crash/partial activation; không dùng dict thay authority.
+
+N2_CONTRACT_HANDOFF và N2_KET_QUA cũ là ảnh chụp trước rebase. Handoff này và các slice tiếp theo cập nhật
+phạm vi mới; các đề xuất operator/BQL dashboard trong báo cáo cũ không còn thuộc phạm vi.
+
+## S01 — Giữ UI hiện có, catalog chỉ đọc
+
+- Khôi phục sidebar icon rail và nút quay về chat của baseline; bỏ bộ chọn scope trình bày
+  chưa có API đổi workspace. Workspace/revision lấy từ C01; đổi revision xóa cache và remount consumer.
+- Khách hàng vẫn vào Provider/MCP/Skill, Lịch và Kênh. Catalog không có quyền manage không có
+  create/edit/install/import/review/sync/delete khả dụng; mutation callback của các hook cũng chặn.
+  Chọn tài nguyên trong các picker hiện có được giữ. API/resolver Người 1 vẫn là authority.
+- Hạn mức và liên kết Vinhomes nằm trong menu tài khoản hiện có. Admin giữ AdminPage cũ;
+  không thay điều hướng của BQL, không thêm dashboard hoặc menu theo role.
+- File mới `frontend/src/hooks/useCatalogManagement.ts` thuộc lane frontend Người 2.
+- Kiểm tra sau rebase: TypeScript/build đạt; ESLint đạt; test consumer C01 8/8;
+  browser Chromium với HTTP fixture 12/12 (375px/1280px, đăng ký, callback/revoke,
+  fail-closed C01, shared catalog thấy được và không phát mutation). Không kết nối Domain/model.
+- Browser dùng build với `VITE_VIN_EXPERIENCE_ENABLED=true`, `VITE_API_BASE_URL=/api`,
+  preview `127.0.0.1:4182`; asset không lỗi, request ngoài origin bị abort.
+  Ảnh local trong `P/.artifacts/vin-shell-browser/`, đã xem ảnh desktop.
+- Chờ Người 1: C01 capability chi tiết và C02 list/resolver đã được sửa trong WIP nhưng chưa có
+  commit handoff ổn định; usage chưa có limit/remaining. Catalog browser hiện là fixture đúng DTO,
+  chưa chứng minh bind/execute xuyên hai branch hoặc API reject bằng integration.
+
+## S02 — Lịch một lần không lặp khi lỗi (PR #99 extension)
+
+- Lưu disabled + `DISPATCH_OUTCOME_PENDING` trước tạo session/dispatch đối với `once`;
+  lỗi cũng giữ disabled và lưu loại lỗi. Trigger cũ đọc lại trạng thái nên không tự chạy lần nữa.
+- Khi lưu trạng thái thất bại: không tạo session và không dispatch. Không đổi schema/storage lane Người 1.
+- Test mới `tests/workforce/console/test_schedule_once_failure.py` thuộc Người 2 theo scheduler;
+  kiểm dispatch lỗi, thành công, lỗi persistence và gọi lại cùng trigger bằng fakeredis.
+- `scripts/workforce/check_builder.py --automation` thêm regression schedule/router/Discord PR #99
+  vào cùng harness xóa credential và cấm network. Script kiểm thử/đóng gói thuộc Người 2.
+- Kết quả: 181 passed, 13 skipped, 0 lỗi; 0 network attempt, 0 paid model call.
+  Skip gồm browser cần preview riêng (đã chạy ở S01) và producer package chưa tích hợp vào branch.
+- Gate chưa đạt: C09 atomic claim/lease/fence/run-ledger/outbox cho hai process/crash/unknown outcome.
+  Upsert hiện tại chỉ hỗ trợ mô hình một scheduler owner của PR #99; chưa có chứng minh exactly-once
+  nhiều worker hoặc delivery retry. Không bật automation cho cohort production bằng slice này.
+
+## S03 — Consumer catalog MCP/Skill — CHỜ TÍCH HỢP, chưa xong
+
+- Khai báo owner trước khi sửa: helper consumer mới `A/_service/_catalog_resources.py` và test
+  `tests/workforce/console/test_shared_catalog_consumer.py` thuộc Người 2; không định nghĩa authority.
+  Helper gọi C02 `VinPlatformService.resolve_catalog`/`catalog_records` của Người 1, chuyển lỗi sang HTTP,
+  không fallback sang resource tự sở hữu khi Vin enabled nhưng authority thiếu.
+- Call sites dự kiến: Builder/Studio catalog, bind/eval/readiness, workspace from-library và runtime preflight.
+  Quyền tool/version/audience phải được resolver Người 1 kiểm tra; không suy từ prompt hoặc tên tool.
+- Schema đọc workspace `A/_router/_schema/_workspace.py` thuộc consumer workspace Người 2 trong slice này:
+  thêm DTO an toàn không kế thừa cấu hình MCP chứa header/secret; không sửa schema catalog của Người 1.
+- Đã nối Builder/Studio catalog, stage binding, readiness, eval read runner, PR #99 sandbox,
+  workspace from-library và toolkit. Runtime bỏ snapshot đã mất grant, dùng config hiện tại từ authority;
+  grant được kiểm trước fixture/grant sandbox và từng tool call của sandbox.
+- Workspace raw MCP config, skill path/upload đòi `catalog.manage`; picker from-library còn dùng được.
+  Shared skill không ghi cache vào thư viện của cư dân. DTO workspace chỉ trả tên/tool/status, không URL/header.
+  UI giữ panel cũ và hỗ trợ trạng thái kết nối chưa kiểm tra, không báo khỏe giả.
+- Test kết hợp producer SQL tạm từ worktree Người 1 (chỉ overlay module `vin_platform`, không copy WIP):
+  `check_builder.py --runtime --automation`: **390 passed, 13 skipped**, network attempts **0**, paid model calls **0**.
+  13 skip: 12 browser chạy riêng + một legacy integration gate có môi trường riêng. Producer C01/C03/C02
+  tests chạy trong kết quả này; không dùng kết quả skip của branch độc lập làm proof integration.
+  ESLint/TypeScript đạt; Ruff F821/F811/F401 helper/test mới đạt (unused import MCPClient baseline ở console còn nguyên).
+- Chờ Người 1 commit C02 ổn định và kiểm version/audience/tool allowlist nhất quán trong `resolve_catalog`.
+  Catalog version/artifact manifest chưa được pin xuyên cả publish → runtime; C08 fixture theo customer
+  và C05/C07 flow Domain chưa được producer giao. Chưa release hoặc công bố N2-02/N2-05 hoàn tất.
+
+## S04 — Discord riêng: gate inbound/delivery
+
+- Test mới `tests/workforce/console/test_private_discord_access.py` thuộc Người 2 theo Discord runtime.
+  Mở rộng Config của adapter PR #99 để giới hạn Discord ID trước download attachment/emit/quota.
+- Legacy khi flag Vin tắt và chưa cấu hình allowlist giữ hành vi cũ. Danh sách đã cấu hình trống luôn deny;
+  Vin bật nhưng thiếu danh sách cũng deny. Kênh cá nhân chỉ nhận DM để không đưa dữ liệu riêng vào guild.
+- Chờ C09 verified owner identity/secret ref/lease/outbox: chưa tự suy owner từ sender hoặc nhập ID.
+  Default owner và mapping theo từng người phải được server cung cấp; slice này chưa hoàn tất N2-07.
+- Đã kiểm tra cả approval clicker với allowlist hiện hành; requester/approver đã bị bỏ khỏi danh sách
+  không còn được bấm. Delivery thiếu recipient được cấp hoặc metadata DM bị chặn trước Discord IO.
+- 14 test mới: deny None/empty/ngoài list, trước attachment/emit, DM/guild, revoke quyền duyệt,
+  tương thích legacy khi flag tắt, ID không hợp lệ, chặn delivery ra guild/người ngoài.
+- Harness kết hợp C02 producer + runtime/automation: **404 passed, 13 skipped**, 0 network attempts,
+  0 paid model calls; Ruff kiểm undefined/unused ở file sửa đạt. Không đăng nhập/gọi Discord thật.
+
+## S05 — Hiển thị bằng chứng eval PR #99
+
+- Helper frontend mới `src/features/workforce/evaluation/presentation.ts` và test
+  `frontend/tests/evaluation-presentation.test.mjs` thuộc Người 2. Chỉ phân loại báo cáo hiện có,
+  không viết eval engine/sandbox thứ hai hoặc tự cấp quyền production.
+- `sandbox` và `consent_assumed` giữ đúng DTO backend: tool chạy sandbox có nhãn riêng,
+  consent giả định được hiển thị rõ. Lỗi môi trường/model/judge là chưa kết luận;
+  kể cả báo cáo cũ mâu thuẫn `passed=true` cũng không hiện ca đạt/đủ điều kiện phát hành.
+- Node test 3/3 gồm render React report thật với fixture sandbox/consent và báo cáo lỗi mâu thuẫn.
+  ESLint và Vin-enabled build/TypeScript đạt. Chưa chạy model hoặc business sandbox thật.
+- Chờ C08 customer fixture/reset receipts, N1-07 sandbox và C03 integration hoàn thiện để
+  nghiệm thu eval theo cư dân; giữ engine PR #99 và endpoint allowlist admin hiện có.
+
+## S06 — Execution scope cho chat/job
+
+- Theo handoff C03 của Người 1 tại `d6700de1`, dùng `vin_platform._context.execution_scope`
+  ở `ChatService.run`, điểm chung HTTP/wakeup/lịch/kênh. Không tạo SDK client/model gateway mới.
+- Test mới `tests/workforce/console/test_vin_runtime_attribution.py` thuộc Người 2 theo ChatService.
+  Context được authority dựng lại từ user hiện hành; purpose lấy origin session server, không lấy body.
+- Đã inject scope + usage attribution vào điểm chạy chung; context cha được khôi phục khi kết thúc/lỗi.
+  Hai run song song khác user giữ billing subject riêng. Vin enabled thiếu authority không vào runtime.
+- Harness có producer overlay: **409 passed, 13 skipped**, 0 network attempts, 0 paid model calls;
+  Ruff test mới và diff whitespace đạt. Browser bản build mới nhất chạy riêng **12/12**;
+  frontend C01 **8/8**, eval presentation/render **3/3**, client PR #99 **5/5**; ESLint/build đạt.
+- Đây là consumer attribution, không thay reserve/settle C03 và không chứng minh job exactly-once.
+
+## Yêu cầu tích hợp tiếp theo và gate còn mở
+
+- S01 `d19388dd`; S02 `984d4e81`; S03 `042ce76b`; S04 `dbc894f4`; S05 `f9d9cb34`.
+  S00/rebase `f650b325`; S06 xem commit đi kèm mục này. Tất cả local trên branch Người 2, chưa push/deploy.
+- Producer mới nhất đã thấy: `d6700de1` C03. Các sửa C02/C05/C07/C09 vẫn có WIP trong worktree Người 1;
+  test overlay chỉ lấy package `vin_platform`, **không** tích hợp storage/foundation/bootstrap WIP của Người 1.
+- **C02/N2-02**: chốt schema/version/artifact/tool allowlist, MCP/skill shared public projection và resolver;
+  kiểm tra alias model picker và KB upload/index/citation qua outbound guard sau khi tích hợp đầy đủ hai lane.
+- **C05/C06/C07/N2-03**: giao fixture/schema event có version, sequence/cursor/receipt, customer Leader session
+  binding và proof Domain `origin=platform` không start route/Leader BQL. Phần UI case/consent/timeline chưa hoàn tất.
+- **C09/N2-04/06/07**: `_jobs.py` mới của Người 1 đang phụ thuộc foundation/storage/migration WIP
+  (personal job owner). Cần commit DTO/method lifecycle, schema migration và bootstrap hook trước khi
+  consumer worker được mount. Chưa có batch stage/activate/repair cursor, logical-run worker, lease/heartbeat,
+  outbox delivery retry, verified Discord owner mặc định và secret-reference binding chạy end-to-end.
+- **N2-08**: catalog read-only UI đã có; quota admin theo nhóm/người, thư viện KB Vin và usage limit/remaining
+  còn chờ API/fixture producer hoàn thiện và chưa nghiệm thu.
+- **C08/N2-05**: nhãn UI/revalidation có; customer sandbox fixture/grant/reset/cleanup receipts còn chờ.
+- **C10/N2-09A/N2-10/N2-09B**: chưa có migration/config manifest đã ký; chưa RC rehearsal/restore,
+  load/security UAT/pilot/cutover. Giữ feature flag mặc định off, không rollout bằng kết quả offline.
+- U01–U30 **chưa được đánh dấu đạt tổng thể**. Các số test trên là offline/scripted hoặc browser fixture.
+  Skip SQL concurrent runtime trong harness là gate PostgreSQL, không phải coverage SQL đã đạt.
+
+## R01 — Sửa review Người 2 ngày 18/10 — ĐÃ SỬA, kiểm thử offline
+
+- Worktree sạch trước rebase; backup `backup/vin-user2-before-review-rebase-20261018`.
+- Đã fetch/rebase lên `origin/dev_Chien@83e3e6d3`, không conflict; không sửa WIP Người 1.
+- Owner bổ sung: `channel/_registry.py`, `_clients.py`, `_dispatcher.py` theo lane channel runtime Người 2;
+  cập nhật nơi dựng instance để role chủ bot do server quyết định, không đọc flag toàn cục trong Discord.
+- C02/fixture chung và `vin_platform.enabled()` chưa có commit ở lần kiểm tra đầu (N1 HEAD `d6700de1`);
+  sẽ tích hợp commit đã chốt, không coi module overlay WIP là bản ghép hai branch đã đạt.
+- Đã sửa: Discord private theo role chủ bot do authority resolve hoặc allowlist explicit, không đọc env;
+  BQL không list vẫn nhận guild mention kể cả Vin bật. Khách tạo bot bắt buộc owner Discord ID,
+  mặc định allowlist/approver là owner; form giải thích danh sách đã lưu rỗng chặn hết. ID nhập chưa là verified identity.
+- `_model_config`: Vin tắt giữ compatibility key chung cũ cho BQL, không tạo thêm credential ở lần hai;
+  Vin bật bắt buộc resolver, thiếu authority không seed/fallback. Test chỉ dùng sentinel giả và không dựng SDK.
+- Eval disabled/revoked MCP dùng `EvalToolError(TOOL_UNAVAILABLE)` và report environment, không RuntimeError/HTTP fail;
+  bỏ kiểm tra None/disabled đã chết sau revalidate. Skill from-library kiểm enabled/approved trước decode archive.
+- Test độc lập Người 2 sau sửa: `--automation` **PASS 237 / SKIP 16 / FAIL 0 / ERROR 0**,
+  network attempt 0, paid model call 0. Các skip gồm browser chạy riêng và contract cần bản ghép;
+  kết quả này **không** đóng S03. Node form **PASS 2 / SKIP 0 / FAIL 0**; TypeScript/ESLint đạt.
+- Owner test mới `test_vin_review_regressions.py` theo eval/workspace lane Người 2.
+
+## R02 — Tích hợp C01/C02/C03 và fixture chung — CONTRACT GATE PASS
+
+- Đã nhận commit Người 1: C01 `e67a56d9`, C02 `f5126e4b`, C03 `bb485b92`, fixture `dded5f66`.
+- Chuyển consumer từ auth DDL rút gọn sang `vin_fixtures.authority` + `seed_policy_catalog`;
+  không copy WIP của Người 1. Harness `--contracts-only` coi bất kỳ SKIP nào là gate fail.
+- `vin_platform.enabled()` chưa có trong các commit đã nhận; đã gửi yêu cầu bổ sung helper đúng owner,
+  không sửa package authority từ lane Người 2.
+- Đã nhận thêm helper tại `2e2caa00`; console/catalog consumer dùng `vin_platform.enabled()` thay parser riêng.
+  N2 cần package N1 trong bản tích hợp để chạy; không tạo parser/fallback package giả trong production.
+- Lượt ghép đầu `9caf36ed`: **PASS 14 / SKIP 0 / ERROR 10 / FAIL 0**, lỗi đăng ký dependency fixture
+  ở test consumer (đã sửa); chưa đóng S03 bằng lượt này. Browser đầu **PASS 12 / FAIL 1** do favicon từ
+  schema Discord trong fixture bị outbound guard chặn; fixture đổi icon rỗng, giữ chặn outbound.
+- Commit sửa Người 2: `ccb6e303` (R01), `c70f91cf` (fixture chung/harness), `30f26f11`
+  (helper flag/đăng ký fixture). Đã rebase nhánh lên `origin/dev_Chien@83e3e6d3`; SHA S00–S06 cũ
+  là mốc trước rebase, xem lịch sử Git cho SHA mới tương ứng. Worktree Người 1 và WIP không bị sửa.
+- Bản ghép kiểm thử **`13e4605a403fd6b7b21efa7a2b938a25f6364596`**, branch
+  `integration/vin-n1-n2-review-20261018`, worktree `E:/AI-Workforce-Platform-vin-integration-20261018`.
+  Gồm Người 1 đến `2e2caa00` và Người 2 đến `30f26f11`; merge commit đã chốt, không module overlay.
+
+### Kết quả chạy lại trên bản ghép
+
+| Gate | PASS | SKIP | FAIL | ERROR | Ghi chú |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `check_builder.py --contracts-only` | 24 | 0 | 0 | 0 | N1 fixture thật theo auth migrations + consumer C01/C02/C03, catalog/KB/workspace |
+| `check_builder.py --runtime --automation` | 451 | 14 | 0 | 0 | Browser không nằm trong harness cấm socket; một gate SQL concurrent cần PostgreSQL |
+| Browser Chromium bản build ghép | 13 | 0 | 0 | 0 | 375/1280px; catalog, link, auth; Discord owner bắt buộc, auto-fill allowlist và hướng dẫn rỗng=chặn hết |
+| Frontend C01 / form / eval render / client PR #99 | 18 | 0 | 0 | 0 | Lần lượt 8 + 2 + 3 + 5 |
+
+- 13/14 SKIP ở runtime là 13 browser đã chạy riêng và PASS; SKIP còn lại là
+  `personal_chat_test::test_group_runs_real_agents_and_dispatcher_with_deterministic_provider[sql]`
+  (SQLite không thay kiểm thử concurrency PostgreSQL). Không cộng trùng hai suite thành coverage tổng.
+- Build ghép (`VITE_VIN_EXPERIENCE_ENABLED=true`, `VITE_API_BASE_URL=/api`), TypeScript, ESLint,
+  Ruff F821/F811/F401 các module/test sửa: **PASS**. Build còn cảnh báo chunk size, không phải lỗi.
+- Logs tại `P/.artifacts/n2-review-contracts.log`, `n2-review-integrated-runtime.log`,
+  `n2-review-browser.log`, `n2-review-integrated-build.log` trong worktree ghép. Không commit log/artifact.
+- Harness: **external network attempts 0, paid model calls 0**; browser chặn mọi request ngoài origin.
+  Không đọc .env hoặc dùng key model thật, không đăng nhập Discord/Domain thật, không push/deploy.
+- Đã đáp ứng 8 điểm review trong phạm vi sửa code/contract offline. S03 vẫn **CHỜ E2E** cho
+  pin resource/artifact xuyên publish→runtime, KB upload/index/citation thật và gate còn mở ở kế hoạch;
+  không đánh dấu task N2-02/N2-05/N2-07 hay U01–U30 hoàn tất chỉ từ các số PASS này.
+
+### Đối chiếu SHA helper sau rebase của Người 1
+
+- Chủ dự án xác nhận SHA mới `95021844c1d2adda20f1ab342c38de13395d94b5` tương ứng SHA cũ `2e2caa00`.
+  Đã kiểm tra Git: nội dung `vin_platform/__init__.py` giữa hai SHA giống nhau (diff rỗng).
+- Console/catalog consumer đã gọi helper này từ `30f26f11`; không còn chờ helper.
+  Kết quả test R02 vẫn gắn với bản ghép `13e4605a` nêu trên, không tự áp sang các commit N1 mới hơn.
+- Lần cập nhật này chỉ sửa handoff/đối chiếu source; không chạy lại runtime hoặc dùng model key.
+
+## S07 — N2-03 trên bản ghép 18/10 — ĐANG TRIỂN KHAI
+
+- Local dev_Chien đã merge N1 b27f0c9c và N2 69e869f1: e7b80da6; nhánh Người 2 rebase lên mốc này. Chưa push/deploy.
+- Owner bổ sung theo lane console/runtime: `_service/_customer_cases.py`, `_tool/_customer_service.py`, test `test_vin_customer_cases.py`; frontend API/component/test customer cases. Không sửa package authority/storage/Domain của Người 1.
+- Dùng C05/C06/C07 qua adapter/contract hiện có, lưu liên kết session-case bằng automation CAS của authority. Tool Leader chỉ đọc/tạo/materialize; quyết định ký intent chỉ do nút UI gọi endpoint C06, không có tool quyết định hoặc ticket-grant.
+- Test dùng fixture chung + fake transport; chưa ghi PASS khi chưa chạy.
+
+### S07 — Kết quả slice C05/C07 + xác nhận kết quả
+
+- Leader VIN_USER có tool `CustomerService` (context/create/progress); recheck owner/role/session mỗi lần. C05 tạo case trước IO, consumer gắn session bằng authority automation CAS; retry giữ nguyên case key và ticket command/version. Không gọi ticket-grants hoặc partner/BQL workflow.
+- Trang Leader giữ shell/chat hiện có, thêm mục thu gọn yêu cầu dịch vụ. C07 hiển thị sync_status/as_of/next_action, timeline có phân trang, tiến độ staff, kết quả và ảnh qua authenticated proxy. Link bị thu hồi/lỗi/gap không được hiện là dữ liệu hiện hành hoặc mở xác nhận.
+- Tool không có operation quyết định. UI mở thẻ review rồi cú bấm xác nhận cuối mới POST C06; server ký exact payload/version. Retry UI giữ key và note; stale revision bị Domain từ chối. Prompt riêng theo server role cho biết phải xác nhận trên thẻ, không route sang BQL.
+- Contract harness: **31 PASS / 0 SKIP / 0 FAIL / 0 ERROR** (7 ca consumer mới + 24 baseline). Real shared authority/migrations, actual C05/C06/C07 adapters + in-process fake Domain HTTP; không model IO.
+- Runtime + automation harness: **456 PASS / 17 SKIP / 0 FAIL / 0 ERROR**. 16 SKIP browser đã chạy riêng trên build mới: **16 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, gồm 3 ca customer card mới (375/1280px, không ký khi xem/mở/hủy thẻ; sync pending khóa nút). Một SKIP còn lại là concurrency PostgreSQL của personal_chat_test, chưa nghiệm thu gate đó.
+- TypeScript, ESLint, Ruff F401/F811/F821, Vin-enabled frontend build: PASS; build chỉ còn cảnh báo chunk size. Log `.artifacts/n2-customer-{contracts,runtime,all-browser,build}.log`, không commit artifact.
+- External network attempts trong harness: 0; browser chặn ngoài origin; paid model calls: 0. Không đọc key/.env, không dùng Domain/Discord thật, không push/deploy.
+- **N2-03 chưa nghiệm thu toàn task**: cần N1 bổ sung C07 `pending_decisions[].version` (revision work approval, không phải ticket_version), projection phương án (`plan_id`, own revision, title/amount/steps/canDecide) và route đọc phương án nếu cần. Consumer không đoán revision hoặc bật duyệt khi thiếu. Test mong đợi: quote/plan cập nhật giữa review/click bị từ chối; đúng owner + đúng revision có receipt, replay không duyệt lần hai. Các consumer decision này sẽ nối khi owner giao contract; chưa sửa Domain/authority của N1.
+- Đính chính phạm vi lint: Ruff F401 cho console còn 1 import MCPClient không dùng đã có ở baseline; không xóa dead code ngoài slice. Ruff F821/F811 toàn file sửa và F401 các module/test mới đạt. Không tính lỗi nền này là PASS.
+
+## S08 — N2-06/07 C09 và danh tính Discord — ĐANG TRIỂN KHAI
+
+- Owner bổ sung theo lane schedule/channel/runtime: `_service/_discord_identity.py`, `_service/_personal_jobs.py`, `_manager/_wakeup_dispatcher.py` (mount consumer personal jobs vào dispatcher hiện có), test `test_vin_personal_automation.py` và `test_vin_discord_identity.py`; frontend identity/run-ledger component/API/test. Không sửa lifecycle/bootstrap hoặc C09 persistence của N1.
+- Dùng C09 claim/lease/fence/checkpoint, một run không tự lặp sau crash; delivery outbox lưu body riêng, retry không gọi lại model. Chủ bot phải từ OAuth identify server, không tin ID nhập tay.
+- WIP checkpoint trước tích hợp N1 f52420d9: OAuth suite 262 PASS / 16 browser SKIP / 0 FAIL / 0 ERROR. Lượt đầu consumer C09 mới: 263 PASS / 16 SKIP / 0 FAIL / 6 ERROR (fixture thiếu required AgentData/ChatModelConfig; đang sửa); chưa ghi S08 xong. Cần 0023 và jobs.context_for(job) mới của N1 trước worker acceptance.
+
+### S08 — C09 context/migration và consumer đã tích hợp
+
+- WIP `34402a59`, merge N1 `f52420d9` vào nhánh N2 tại `0b68fc95`. Không sửa file N1 ngoài nội dung commit producer đã giao. Worker/Chat dùng `jobs.context_for(job)`; worker gọi check_schema trước claim để từ chối schema chưa nâng cấp 0023.
+- Lịch VIN_USER enqueue theo logical slot, once chỉ tắt sau queue durable; worker C09 claim/heartbeat/fence, kiểm lại owner/agent/config và lưu run ledger. Discord dedup channel/message ID trước model, server recheck DM/allowlist/verified owner. BQL đi luồng cũ.
+- Run lưu reply theo personal_job_id; outbox body/recipient/identity revision/nonce bất biến, retry chỉ gửi body đã lưu. Checkpoint có endpoint/UI phục hồi cửa sổ mất outbox sau run, không chạy lại model. Mất lease hủy worker; crash run giữ OUTCOME_UNKNOWN. Discord nonce chỉ bảo đảm trong vài phút nên consumer chặn retry sau 120 giây và báo unknown, không hứa exactly-once vô thời hạn.
+- Chủ bot lấy qua OAuth code + PKCE/state/issuer, server gọi identify rồi revoke token; không persist access/refresh token. Form chỉ đọc ID đã xác minh, tự điền owner/allowlist; revoke/relink được kiểm lại ở input/delivery. Cần cấu hình DISCORD_OAUTH_CLIENT_ID/CLIENT_SECRET/REDIRECT_URI (URI trang /channel); chưa cấu hình thì không cho tạo bot khách. Không dùng bot chung.
+- Owner test/UI bổ sung: `vin_personal_consumer_postgres_test.py`, `test_vin_discord_identity_browser.py`, `hooks/useDiscordIdentity.ts`, `components/PersonalRuns.tsx` theo lane Người 2.
+- Strict contract gate trên bản ghép N1 mới: **46 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, gồm shared authority, C09 producer và consumer, OAuth fake transport. External network attempts 0, paid model calls 0.
+- PostgreSQL disposable loopback với pgvector, migrations thật đến 0023: **8 PASS / 0 SKIP / 0 FAIL / 0 ERROR** (5 migration/storage + 3 consumer PG). Nâng 0022→0023 giữ 2 job legacy, upgrade head hai lần, check_schema và personal enqueue/claim/complete đạt; consumer hai timer/once, delivery retry, stale fence đạt. DB test tự xóa đúng namespace sau test. Lượt fixture plain postgres ban đầu **4 PASS / 0 SKIP / 1 FAIL** vì thiếu extension vector; đã thay riêng container fixture, không sửa DB ứng dụng.
+- Browser build mới: **18 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, gồm shell/catalog/link, customer card, readonly Discord identity/default allowlist và callback đúng/giả mạo. Callback chỉ complete một lần, xóa query/state. Hai lượt trước **15 PASS / 1 FAIL** do effect reset form đè ID; đã sửa và chạy lại. Không đổi test để bỏ kiểm owner.
+- TypeScript, ESLint, Ruff F401/F821/F841 các module/test S08 và frontend build: PASS; build còn cảnh báo chunk size. Log `.artifacts/n2-personal-{contracts,runtime,browser,jobs-build}.log`, `.artifacts/n2-0023-migration.log` + XML. Runtime mở rộng đang chạy lại sau 2 ca heartbeat/repair và 2 browser mới, sẽ ghi số cuối trước commit.
+- Tham chiếu protocol: https://docs.discord.com/developers/topics/oauth2 và https://docs.discord.com/developers/resources/message (identify/code/state/PKCE; enforce_nonce có cửa sổ ngắn). Chỉ đọc tài liệu; test dùng fake HTTP/fixture, không Discord/Domain/model thật.
+- Gate còn mở: chưa thử Discord account/bot thật hoặc deploy/migrate DB ứng dụng; OAuth app cần operator provision. Queue reader C09 list hiện giới hạn 100 job đầu, N2 cần N1 giao pagination/filter mới cho lịch sử dài và repair sau hơn 100 run; consumer không query SQL authority riêng.
+- Runtime mở rộng cuối S08: **470 PASS / 19 SKIP / 0 FAIL / 0 ERROR**. 18 browser SKIP đã chạy riêng **18 PASS**, 1 SKIP là gate concurrency PostgreSQL personal_chat baseline (không được coi PASS bởi 3 consumer PG khác). Không cộng trùng coverage giữa suite. Không push/deploy, chưa upgrade DB ứng dụng.
+
+### S08 — Bổ sung execution scope theo handoff C09
+
+- Đối chiếu `N1_C05_C07_C09_CONSUMER_HANDOFF.md`: bọc toàn bộ handler schedule/channel/delivery/publish trong `execution_scope(jobs.context_for(job))`, không chỉ ChatService. Danh tính initiator/billing không lấy từ payload hoặc Discord sender. ContextVar được reset trong finally, heartbeat/fencing giữ nguyên.
+- Test fake Chat kiểm context thực tế đúng owner/billing. Chạy lại migration/storage + consumer trên PostgreSQL disposable đến 0023: **8 PASS / 0 SKIP / 0 FAIL / 0 ERROR** (`.artifacts/n2-final-postgres.log`). Ruff F401/F811/F821/F841 hai file worker/test: PASS. Không model IO hoặc upgrade DB ứng dụng.
+
+## S09 — N2-04 batch publish — ĐANG TRIỂN KHAI
+
+- Owner bổ sung `_service/_publish_batch.py`, test `test_vin_publish_batch.py` và frontend polling/repair UI theo lane Builder/publish Người 2. Dùng C09 jobs + checkpoint và storage.activate_agents_batch từ N1; không sửa persistence.
+- Manifest định danh agent/workspace ổn định theo proposal, stage riêng, chỉ activate toàn batch sau kiểm HEAD/revision/resource; crash không sinh agent/phiên bản thứ hai. Repair là thao tác có trạng thái, không dùng boolean claim cũ cho Vin customer.
+
+### S09 — Kết quả slice batch publish
+
+- VIN_USER chuyển publish sang job C09, UI poll trạng thái theo đúng proposal và khôi phục sau reload. Chỉ hiển thị published khi worker activate + receipt hoàn tất; BQL giữ luồng cũ.
+- Manifest giữ ID agent/session/resource workspace ổn định, cursor/record/spec/resource hash; stage riêng, activate_agents_batch CAS toàn batch. Conversation guard bằng authority automation lease chặn ghi đề xuất trong lúc publish; worker stage bị giới hạn 240s dưới lease 300s. Trước activate kiểm lại HEAD/revision và resource pins; package skill chưa cache thì fail rõ, không download không kiểm soát trong worker.
+- Repair job dùng checkpoint cũ, đọc lại agent pointers. Crash sau activate trước receipt nhận diện đúng data/versions, không gọi activate lần hai. UI recovery không gọi prepare/evaluate hoặc model.
+- Strict contracts **56 PASS / 0 SKIP / 0 FAIL / 0 ERROR**: thêm 10 ca fault injection SQL/Redis (thành công/idempotency, chết giữa stage, chết sau activate, guard/HEAD, revoke), dùng 5 ca eval trên fake model/judge cho mỗi spec; không real SDK/key.
+- Runtime + automation trước khi nhân đôi fixture SQL: **475 PASS / 19 SKIP / 0 FAIL / 0 ERROR**; 18 browser đã PASS ở S08, 1 PostgreSQL concurrency baseline còn SKIP. Browser mới phục hồi batch **1 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. TypeScript/ESLint/Ruff module/test mới/build PASS; chunk-size warning như trước.
+- Log `.artifacts/n2-batch-{contracts,runtime,browser,build}.log`. External network attempts trong harness 0; paid model calls 0. Không push/deploy, không thay UI shell và không sửa storage/Domain/authority N1.
+- Không đóng S03 chỉ từ batch gate: resource pins trong manifest publish đã có; tài nguyên KB/skill runtime business thực, model chất lượng thật và UAT vẫn chưa nghiệm thu. C09 pagination >100 job đang chờ producer như S08.
+
+## S10 — N2-05 linked-customer sandbox C08 — ĐANG TRIỂN KHAI
+
+- Owner bổ sung `_service/_customer_eval_sandbox.py`, `test_vin_customer_eval.py`, phần environment/cleanup report và component presentation theo lane eval Người 2. Mở rộng EvalSandbox PR #99, không tạo engine eval thứ hai.
+- Chọn sandbox profile do server cấu hình, resolve catalog sandbox đúng entitlement, tìm link thuộc cư dân, C08 seed/cleanup theo run; grant chỉ ở backend. Không fallback về production fixture hoặc quyền quản lý.
+
+### S10 — Kết quả slice C08
+
+- CustomerEvalSandbox mở rộng EvalSandbox PR #99; C08 prepare/cleanup qua DomainAdapter với context sandbox của đúng cư dân. Profile server cần source_mcp_id, sandbox_mcp_id, domain_provider_id, mcp_url và grant_path; mcp_url cùng trust origin provider sandbox. Catalog sandbox phải cấp execute; schema/classification tool hai bên khớp. Recheck link/provider/catalog trước từng ca/tool; không fallback production hoặc link người khác.
+- C08 tạo fixture theo run; backend giữ ticket grant, không đưa bearer/bootstrap vào model/UI. Cleanup sau run (kể cả seed mất phản hồi/cancel), report lưu receipt synthetic_test/retired/audit_retained. Cleanup pending chặn publish, vẫn giữ đúng kết quả từng ca đã PASS; UI nói rõ dữ liệu mô phỏng, giả định consent và cleanup.
+- Strict contracts **59 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. Có ca dương tính C08: 5/5 kịch bản fake model/judge PASS, 5 grants riêng/10 tool calls sandbox trên in-process fake Domain/MCP transport, receipt cleanup 5 ticket. Đây là consumer integration offline dùng schema/adapter thật; chưa phải Domain sandbox business UAT thật. Ca cleanup lỗi giữ 5 PASS nhưng run không publishable; wrong resident/revoked sandbox không seed/gọi production.
+- Runtime+automation **483 PASS / 20 SKIP / 0 FAIL / 0 ERROR**. 19 browser SKIP đã có 18 PASS S08 + 1 PASS S09 trên build; 1 concurrency PostgreSQL personal_chat baseline còn SKIP, không đánh dấu S03 xong.
+- Frontend eval presentation **4 PASS / 0 SKIP / 0 FAIL**; TypeScript/ESLint/Ruff module mới và build PASS (chunk-size warning). Log `.artifacts/n2-customer-eval-{contracts,runtime,build}.log`.
+- External network attempts 0, paid model calls 0 trong harness. Không model key thật, không request tới production, không sửa Domain/authority N1, không push/deploy.
+- Gate còn: operator provision sandbox profile/entitlements và linked synthetic resident; chạy nghiệm thu Domain sandbox thật bằng fake provider sau khi môi trường được bàn giao. Chưa đo chất lượng/latency/cost model thật và chưa đóng S03/business UAT.
+
+## S11 — N2-08 quota/catalog/KB Vin UI — ĐANG TRIỂN KHAI
+
+- Owner bổ sung frontend API `vinAdmin.ts`, component admin `VinAdministration.tsx`, test UI/DTO tương ứng; mở rộng trang admin hiện có theo capability quota.manage/catalog.manage. Consumer chỉ gọi API N1 đã giao, không thêm SQL hoặc sửa authority.
+- Nối effective_limits/remaining/policy_revision vào trang Tài khoản. Khi backend chưa có read policy/grant/membership, UI không tự coi giá trị mặc định là cấu hình đã lưu; ghi rõ giới hạn API và yêu cầu producer cho quản trị đầy đủ.
+
+### S11 — Kết quả slice UI theo API đã giao
+
+- Mở mục Quota & thư viện Vin trong trang admin hiện có theo capability server. Form quota yêu cầu đủ trường thay thế, hỗ trợ role/user/group/pool, models và enabled; kiểm tra usage/hạn mức hiệu lực của user qua endpoint console mới, dùng authority.admin + cùng tenant và quota.usage, không SQL riêng. Eligibility bật/tắt theo API N1.
+- Catalog ghi phiên bản tăng dần, tắt/bật tài nguyên, grant view/bind/execute theo user/group/role, thu hồi grant, thêm/thu hồi membership. Thư viện KB nối Knowledge hiện có, xem số tài liệu ready/error, chuẩn bị entry catalog rồi cấp quyền; không đoán owner từ DTO Knowledge không có owner_id. Khách không có quyền sửa catalog.
+- Admin khi bật Vin đi qua CurrentUser/Query/PlatformAccess provider và router hiện có để capability có hiệu lực. Khi tắt Vin giữ entry admin cũ. Thẻ case riêng trên Leader chỉ render cho VIN_USER, không dựa vào workspace.kind chung của public capability projection.
+- Trang Tài khoản hiện policy_revision, effective limit/used/reserved/remaining và pending reconciliation; parser từ chối số âm/counter sai nhưng chấp nhận quota giảm thấp hơn usage, remaining = 0. Giữ nguyên shell và các trang Platform đang dùng.
+- Strict contract cuối trên bản ghép N1 f52420d9 + N2: **63 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. Runtime + automation: **487 PASS / 25 SKIP / 0 FAIL / 0 ERROR**. Trong 25 SKIP: 24 browser không có URL trong harness đã chạy riêng trên build Vin: **24 PASS / 0 SKIP / 0 FAIL / 0 ERROR**; 1 concurrency PostgreSQL personal_chat baseline chưa chạy ở lane N2 và vẫn là gate mở. PostgreSQL migration/consumer chạy riêng **8 PASS / 0 SKIP**, không thay thế ca concurrency đó. Không cộng các suite thành tổng coverage duy nhất.
+- Frontend Node: **20 PASS / 0 SKIP / 0 FAIL** (vin-shell 9, eval presentation 4, channel form 2, client auth 5). TypeScript, ESLint và build Vin-enabled PASS; build còn cảnh báo chunk size >500 kB. Ruff F401/F811/F821/F841 module/test mới PASS; console F811/F821/F841 PASS, F401 MCPClient cũ vẫn để nguyên như S07.
+- Browser S11 riêng **5 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, kiểm quota không gửi ô trống thành zero, payload đầy đủ, KB→catalog→grant, thiếu capability không có UI quản trị và account 375/1280px không tràn ngang. Lượt đầu **3 PASS / 2 FAIL** do entry admin thiếu provider capability; đã sửa App và chạy lại, không bỏ assertion.
+- Logs: `.artifacts/n2-final-{contracts,runtime,postgres}.log`, `n2-all-vin-browser.log`, `n2-vin-admin-build.log`. Harness **external network attempts 0, paid model calls 0**; browser abort request ngoài localhost. Test dùng fixture chung, fake HTTP/model/judge; không đọc .env/key thật, không gọi Domain/Discord/model thật, không push/deploy hoặc migrate DB ứng dụng.
+- **Chưa nghiệm thu toàn N2-08**: N1 cần GET quota policies (subject/revision), admin catalog toàn bộ gồm inactive, grants và memberships có filter/pagination/revision. API hiện có chỉ ghi và đọc catalog đang active được cấp cho chính caller; UI ghi đúng phạm vi đó, không giả lập danh sách quản trị đầy đủ. Yêu cầu producer đã gửi, không sửa authority/router N1. N2-03 còn chờ own revision của approval/phương án C07; C09 còn chờ get/filter/pagination để đọc/repair sau hơn 100 jobs. S03 và business UAT vẫn mở.
+
+## Mốc bàn giao tiếp theo sau S07–S11
+
+- N2 base: local `dev_Chien@e7b80da6` (bản merge b27f0c9c + 69e869f1); N1 `f52420d9` đã merge tại `0b68fc95`. Các slice: S07 `4af918fb`, S08 `7e81db51` + scope fix `de08e8f1`, S09 `3a796341`, S10 `69c50ae5`; S11 nằm ở commit chứa phần handoff này.
+- Đã triển khai consumer/UI và kiểm chứng offline như trên; chưa tuyên bố hoàn tất mọi task N2, U01–U30, RC/pilot hoặc nghiệm thu nghiệp vụ. Worker chỉ được bật trên DB ứng dụng sau khi operator nâng **0023_personal_job_constraint**. N2 không chạy migration trên DB ứng dụng trong phiên này.
+- Chờ N1 giao ba nhóm read/revision contract nêu trên và môi trường sandbox/OAuth được provision. Sau khi có SHA, ghép nhánh rồi chạy lại gate tương ứng bằng fixture/provider giả; không yêu cầu hoặc dùng key model thật.
+- Lệnh gate đã chạy từ `platform_VP/agentscope`: `.venv/Scripts/python.exe scripts/workforce/check_builder.py --contracts-only`; cùng harness `--runtime --automation`; `.venv/Scripts/python.exe .artifacts/n2_migration_check.py` (guard chỉ cho DB fixture loopback 55441). Browser chạy pytest 5 module `test_vin_{customer,shell,discord_identity,batch,admin}_browser.py` với `VIN_UI_TEST_URL=http://127.0.0.1:4174`, PYTHONPATH src/tests/console. Frontend chạy `pnpm exec tsc -b`, `pnpm lint`, `pnpm build` với Vin enabled và API `/api`, Node test 4 file đã nêu. Script migration tạm nằm trong artifact ignored; test fixture PG có source tại `tests/vin_personal_consumer_postgres_test.py`, test migration dùng `tests/vin_migration_storage_test.py` của N1.
+- Đã xem ảnh quota/KB admin 1280px từ build bằng Playwright fixture, không chỉ kiểm source. Ảnh `.artifacts/vin-admin-browser/{quota,knowledge}-1280.png` không commit. Lượt chụp ad-hoc đầu lỗi selector vì PowerShell pipe mã hóa dấu thành `?`; chạy lại với UTF8 thành công. Kết quả suite browser 24 PASS ở trên không thay đổi bởi lỗi công cụ chụp này.
+- Sau commit S11 `137984b5`, đã fetch `origin/dev_Chien` và rebase với `--rebase-merges` để giữ nguyên các merge producer. Remote hiện vẫn ở `83e3e6d3`, chưa có bản merge local `e7b80da6`; nội dung cây và SHA S11 không đổi, `f52420d9` vẫn là ancestor. Bản rebase mặc định ban đầu làm phẳng merge dù tree không đổi; đã lưu backup rồi khôi phục bằng `reset --keep` trên worktree sạch và thực hiện lại với merge preservation. Không force-push hoặc đổi nhánh Người 1/main.
+
+## S12 — Theo yêu cầu tiếp tục trên N1 902bf056 — ĐANG TRIỂN KHAI
+
+- Rebase merge-preserving lên `902bf056` hoàn tất, HEAD ngay sau rebase `98e2e669`; backup `backup/vin-n2-before-902bf056-20261018`. Chỉ nhập file N1 qua commit producer; không sửa file N1. API admin GET mới chưa có trên SHA này; tiếp tục phần không phụ thuộc API trong lúc chờ.
+- Owner bổ sung lane N2: `scripts/workforce/check_personal_postgres.py` (runner concurrency), test/browser fixture mới cho hành trình Platform/UI/runtime và `scripts/workforce/` + `docs/vin-platform/N2_*` cho gói test model thật. Test Domain/helper hiện có chỉ import/read, không sửa. Mỗi slice sẽ ghi lệnh, PASS/SKIP/FAIL/ERROR và commit riêng.
+- Chủ dự án đã xác nhận E2E bao gồm cư dân link → Leader/case → staff/progress/photo → consent, cộng Builder/eval/publish và lịch/Discord. Model/provider/HTTP ngoài localhost dùng giả; gói model thật chỉ chuẩn bị lệnh/dữ liệu/ngân sách, không chạy.
+
+### S12a — Đóng gate concurrency PostgreSQL tại lane N2
+
+- Runner mới `P/scripts/workforce/check_personal_postgres.py` xóa model credentials kế thừa, không load .env, chỉ cho kết nối loopback PostgreSQL đúng port. Tạo database `vin_n2_concurrency_<uuid>` mới, cài extension vector và FORCE DROP đúng DB do runner tạo trong finally; không dùng bảng/DB ứng dụng. Test giữ nguyên source personal_chat và deterministic provider.
+- Lệnh: `.venv/Scripts/python.exe scripts/workforce/check_personal_postgres.py --admin-url postgresql://postgres:offline-n2-fixture-password@127.0.0.1:55441/postgres` từ P, container fixture `vin-n2-pg-fixture-20261018` (pgvector:pg16). **PASS 1 / SKIP 0 / FAIL 0 / ERROR 0**, Python 3.11.9 Windows, 7.21s; lượt đầu trước sửa cleanup-on-extension-error cũng 1/0/0/0. Ruff F401/F811/F821/F841 PASS.
+- Test chạy thật coordinator + hai peer, TeamSay handoff/question/answer/result/customer_reply, dispatcher và concurrent connections PostgreSQL. Provider chỉ scripted; network attempts ngoài PG 0, paid model calls 0. XML/summary/log nằm `.artifacts/personal-postgres/` và `.artifacts/n2-s12-personal-postgres.log`.
+- Gate SQL trước đây SKIP nay có bằng chứng riêng PASS trên N2 sau rebase 902bf056. Không sửa số SKIP lịch sử của runtime suite 487/25 và không coi ca concurrency là business UAT hoặc model chất lượng thật.
+
+### S12b — E2E WIP trước ghép API admin mới
+
+- N1 vừa giao `e562059b` (admin read/CAS + migration 0024). Checkpoint WIP browser fixture trước ghép commit; chưa coi E2E PASS. Owner file mới cụ thể: `P/tests/vin_journey_fixture.py`, `vin_journey_browser_test.py`, `P/scripts/workforce/check_vin_journey.py`.
+- Fixture chạy browser thật trên local Uvicorn cùng loop runtime, phục vụ bundle frontend và API cùng origin; Domain qua ASGI transport với PostgreSQL role hạn chế. Chỉ mock identity provider Domain và model IO, không tạo response nghiệp vụ giả cho browser. E2E đầu **0 PASS / 0 SKIP / 0 FAIL / 1 ERROR** (purpose secret fixture sai, đã sửa); lượt sau **0 PASS / 0 SKIP / 1 FAIL / 0 ERROR** vì SQLite không hỗ trợ khóa refresh auth. Đang chuyển Platform fixture sang PostgreSQL, không sửa auth production để né lỗi. Sẽ mô phỏng đúng proxy_cookie_path của nginx.
+
+### S12c — Gói model thật đã chuẩn bị, không thực thi
+
+- Dữ liệu `docs/vin-platform/N2_MODEL_OWNER_TEST_20261018.json` có M01 Leader/create, M02 progress/consent, M03 Builder/eval/publish, M04 schedule/Discord, tiêu chí và stop conditions. Runbook `N2_MODEL_OWNER_TEST_RUNBOOK_20261018.md` có lệnh chuẩn bị/đọc trạng thái và bước UI chủ dự án tự chạy; không SDK/provider trực tiếp.
+- Ngân sách dự kiến input 90k/output 15k = 105k; biên 150k, hard cap user test 200k token ngày/tháng qua quota C03; max output 512, concurrency 1, không retry tự động. Chưa chọn model nên không bịa chi phí tiền; giá thực tế do chủ dự án tính theo model/hóa đơn và gồm judge/summary. Quota là override user tổng hợp, không sửa role toàn khách.
+- `.venv/Scripts/python.exe scripts/workforce/prepare_owner_model_test.py --output .artifacts/owner-model-20261018`: **PASS (kiểm dữ liệu/lập phiếu, không phải model test)**; Ruff F401/F811/F821/F841 PASS. Lượt đầu stdout cp1252 lỗi khi in prompt tiếng Việt, đã đặt UTF8 và chạy lại thành công. Phiếu toàn bộ **NOT_RUN**, `executed=false`. Không đọc key/credential/env thật, không mạng, không tạo model/client. Model thật: **0 lượt chạy**, không được ghi PASS/SKIP chất lượng model.
+
+### S12d — Checkpoint tích hợp admin và browser/runtime trước fix producer mới
+
+- API `e562059b` đã merge tại `7797d2fd`, gồm migration 0024. UI đã nối admin page/filter/pagination, policy read + CAS/remove override, inactive catalog, revoke grant/membership theo revision, eligibility và review tài liệu KB bằng token revision. Browser E2E qua JWT/auth thật + PG authority + real SQL storage: admin **1 PASS / 0 SKIP** trước bổ sung conflict/pagination; Builder eval/publish/reload **1 PASS / 0 SKIP**; schedule/Discord runtime+saved REST fake transport+ledger **1 PASS / 0 SKIP**, paid model calls 0.
+- Regression browser admin fixture riêng **5 PASS / 0 SKIP**. Strict contracts sau sửa opaque link **64 PASS / 0 SKIP / 0 FAIL / 0 ERROR**. Migration+consumer PG trên head **0024: 8 PASS / 0 SKIP**. Build/typecheck/ESLint admin PASS; build còn chunk-size warning.
+- E2E tìm lỗi consumer thật: Params UUID đổi Platform link hex thành ID có gạch, tool trả DOMAIN_LINK_REQUIRED. Đã giữ link_id opaque str và fixture chung dùng đúng hex, thêm regression tool create. Owner `_tool/_customer_service.py` thuộc lane N2.
+- Lỗi fixture được ghi đúng: browser admin label select chứa option text, đã gắn htmlFor/id rõ; test pagination selector trùng label/button, đang chỉnh selector. Customer test đầu đọc case pending quá sớm, đã chờ canonical tickets; staff scope dùng management thật và cần repair approval trước in_progress, đang nối cú bấm Platform. Chưa đánh dấu customer E2E PASS.
+- Một lượt Discord fixture quên mock chat_kind/chat_name của SDK, outbound guard bắt **1 external network attempt**, test FAIL, **paid calls 0** và không key thật. Đã mock đúng metadata IO, giữ code gửi saved-message REST thực với fake HTTP; lượt cuối automation nêu trên 0 external attempts. Không giả lập business response cho browser.
+- N1 vừa commit `fb70de9e` (CSP redirect/Origin, link normalization, C07 explicit version = ticket version của Domain approval, canonical close). Sẽ ghép producer đã commit rồi chạy lại customer browser; giữ consumer signature/owner riêng. R04 clarification thay yêu cầu "own approval revision" cũ: Domain không có integer revision approval, consumer dùng field version explicit đã nằm trong canonical hash và Domain kiểm ticket version.
+
+### S12e — N2-08 hoàn tất code/UI và nghiệm thu offline
+
+- Đã nhận API admin `e562059b` và ghép producer fix `fb70de9e` qua merge, chỉ sửa file thuộc N2. Migration runtime hiện yêu cầu **0024_vin_admin_revisions** (bao gồm 0023). Không migrate DB ứng dụng.
+- Các API đọc thật đã thay thông báo thiếu API của S11: policy subject/filter/pagination + toàn bộ body/revision, tạo mới revision 0, update/remove override CAS; catalog cả inactive và tài nguyên chưa cấp cho admin; grants/memberships có danh sách/phân trang/filter/revoke revision; eligibility từ trạng thái server; thư viện KB/document review approved/retired với opaque revision. Không dùng catalog caller-granted thay admin list.
+- Browser real app → HTTP/Uvicorn → auth JWT/refresh → authority/SQL PostgreSQL thật: **1 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, 26.28s sau ghép fb70de9e. Bao gồm pagination 14 policies, đọc user override, admin khác sửa giữa read/click làm 409, reload rồi update, remove override về nhóm/role, inactive library không cấp caller vẫn nhìn được, duyệt document, revoke grant/membership và xác minh persisted revisions. Không model IO, external attempts 0. Source test `P/tests/vin_journey_browser_test.py::test_admin_policy_override_inactive_catalog_grants_memberships_and_library`; lệnh runner `--scenario admin`.
+- Fixture browser admin regression **5 PASS / 0 SKIP / 0 FAIL / 0 ERROR**; TypeScript/ESLint/build Vin enabled PASS. Không cộng hai suite thành một tổng coverage; browser fixture kiểm payload/capability/375px, browser thật kiểm auth+persistence/CAS. Lượt pagination đầu lỗi selector trùng span/button, đã đổi sang nút có tên chính xác và chạy lại.
+- N2-08 được đóng ở mức implementation và offline integration trên API đã giao. RC/production rollout, KB indexing business thực, mô hình thật và UAT vẫn là các gate riêng, không được suy từ số PASS này. C09 >100 pagination và C07 plan-decision UI riêng vẫn chờ contract producer; không thuộc admin read API đã hoàn tất ở đây.
+
+### S12f — Customer browser sau producer fix: tới canonical close, cần follow-up
+
+- Trình duyệt thật đã vượt consent CSP và callback, Leader chạy CustomerService thật, request/ticket materialize, staff nhận/chuyển trạng thái/repair proposal và cư dân duyệt quote ngay trên Platform. Sau staff ảnh trước/sau, completed và QC, cư dân xem ảnh từ authenticated proxy và bấm quyết định hoàn tất. Không SQL inject workflow; ID/chủ/billing do server.
+- Bổ sung UI hiển thị `result_photos` đã ACK khi chưa có resolution, để cư dân thấy ảnh trước khi duyệt completion; khi có resolution thì dùng ảnh trong resolution để không trùng. C07 approval payload dùng version explicit của producer, không lấy canonical case version thay ticket version.
+- Hai ca browser-link và HTTP-link downstream trên fb70de9e: **0 PASS / 0 SKIP / 2 FAIL / 0 ERROR** tại quyết định cuối, lỗi Domain `resolution_id uuid but expression text` trong INSERT SELECT ảnh. Không giảm assertion canonical case completed hoặc bỏ ảnh. Người 1 đã commit sửa cast và alias legacy tại **3df1f1aa**, sẽ ghép và chạy lại; không sửa file Domain/authority trong N2.
+
+### S12g — Kết quả sau ghép 3df1f1aa, trước privacy library follow-up
+
+- Toàn bộ 5 journey browser/runtime **5 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, 108.04s. Customer browser-link + HTTP-link đi hết repair approval, evidence photo/QC, completion approval, replay cùng receipt, SQL canonical case completed và zero BQL commands, revoke. Builder và automation vẫn chạy thật consumer/C09, chỉ IO model/Discord là scripted/fake. Có lệnh cả luồng và từng scenario trong `docs/vin-platform/N2_BROWSER_RUNTIME_RUNBOOK_20261018.md`.
+- Strict contracts thêm admin producer tests: **68 PASS / 0 SKIP / 0 FAIL / 0 ERROR**; runtime/automation **488 PASS / 25 SKIP / 0 FAIL / 0 ERROR**. PG personal concurrency chạy lại sau merge **1 PASS / 0 SKIP**, 13.32s, Python 3.11.9. Migration+consumer PG head 0024 trước follow-up **8 PASS / 0 SKIP**. Frontend Node **20 PASS / 0 SKIP**; typecheck/ESLint/build PASS (chunk-size warning).
+- Lịch sử gate giữ nguyên: strict đầu **67 PASS / 0 SKIP / 1 FAIL** do tick 10ms mất fence trước fake run bắt đầu khi máy tải cao. Test fault injection nay đợi barrier `started`, giữ toàn bộ assertion hủy run/no outbox và SQL fence thật; lượt cuối 68 PASS. Một lượt all-journey trước đó **3 PASS / 0 SKIP / 2 FAIL** ở SQL verification gọi asyncio.run bên trong loop Playwright; chuyển read-only verification sang TestClient portal, không thay business assertions, rồi đạt 5 PASS.
+- Đã xem ảnh customer/admin thật. Ảnh ban đầu chụp trước refetch cuối nên còn nút cũ; thêm chờ nhãn **Hoàn tất** trước screenshot. Sửa placeholder Leader riêng VIN_USER để không gọi cư dân là Ban quản lý; shell và route không đổi. Runner chuẩn bị pin bản sao bundle + hash/provenance, không đọc bundle đang bị build lại. Bổ sung local KB manager cho fixture để admin KB không có toast thiếu cấu hình.
+- N1 mới giao `1bdef66e`: giữ KB private của VIN_USER ngoài admin library dù catalog sai. Sẽ nhận producer privacy fix và chạy lại admin/customer/contract gate trên cây cuối; chỉ nhập qua merge, không sửa authority N1. Số PASS trên đây gắn source 3df1f1aa + N2, chưa tự áp cho producer mới.
+
+### S12h — Chốt bốn việc giao tiếp theo trên bản ghép cuối
+
+- Nhánh `feat/vin-user2-experience-20261018`, worktree `E:\AI-Workforce-Platform-user2`: `902bf056` là ancestor; đã nhận API admin và các producer fix nói trên. Merge `1bdef66e` tại **7c1b1c22**. Lượt cuối chạy trên cây này với đúng một thay đổi source chưa commit: sắp lại import `useCurrentUser` của ChatViewport cho đúng ESLint; không đổi hành vi. Bundle được sao chép riêng trước test, source/dirty paths và SHA-256 assets lưu trong `.artifacts/vin-journey/provenance.json`. Không sửa file N1 trực tiếp.
+- N2-08: hoàn tất implementation + offline integration trên API đã giao, gồm privacy library mới (KB cá nhân VIN_USER không được đưa vào thư viện admin dù catalog cấu hình sai). Customer/Builder/automation: giữ trang hiện có, placeholder Leader cá nhân, consent chỉ từ cú bấm UI, ảnh kết quả qua proxy có auth, canonical closure và replay receipt; không cấp ticket grant cho browser/model và không route BQL.
+
+| Gate chạy lại trên cây cuối | PASS | SKIP | FAIL | ERROR | Bằng chứng trong `P/.artifacts` |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Browser/runtime cả luồng, PostgreSQL + API/auth thật, scripted provider | 5 | 0 | 0 | 0 | `n2-s12-release-journeys.log`, `vin-journey/pytest.xml`, 120.73s |
+| Strict contracts N1/N2, có admin privacy/C08 positive | 68 | 0 | 0 | 0 | `n2-s12-release-contracts.log`, 36.72s |
+| Runtime/chat/team/eval/lịch/kênh tổng hợp | 488 | 25 | 0 | 0 | `n2-s12-release-runtime.log`, 83.02s |
+| Browser hồi quy shell/customer/Discord identity/batch/admin | 24 | 0 | 0 | 0 | `n2-s12-release-browser.log` + XML, 54.81s |
+| personal_chat concurrency nguyên ca `[sql]`, PostgreSQL fresh | 1 | 0 | 0 | 0 | `n2-s12-release-concurrency.log`, `personal-postgres/pytest.xml`, 14.44s |
+| Migration đến 0024 + personal consumer PostgreSQL | 8 | 0 | 0 | 0 | `n2-s12-release-postgres.log`, 25.14s |
+| Frontend Node shell/eval/channel/client | 20 | 0 | 0 | 0 | `n2-s12-release-node.log` |
+
+- Không cộng các suite thành tổng coverage. **25 SKIP thật** của suite tổng hợp là 24 browser thiếu `VIN_UI_TEST_URL` và một PostgreSQL thiếu `GROUP_TEST_POSTGRES_URL`; từng gate tương ứng đã chạy riêng 24 PASS và 1 PASS như bảng. Các log lịch sử FAIL/ERROR/SKIP ở slice trước giữ nguyên.
+- TypeScript + build Vin enabled/API `/api`, ESLint các component cuối và Ruff F401/F811/F821/F841 runner/fixture/test mới: **PASS**. Lint đầu phát hiện import order ở ChatViewport; đã sắp đúng và chạy lại trước build. Build còn cảnh báo chunk >500 kB, không lỗi compile. Source không đổi thêm sau các lượt này ngoài tài liệu bàn giao.
+- Customer browser-link và HTTP-link đều xác minh nhãn UI **Hoàn tất**, SQL canonical case `completed`, hai quyết định repair/completion bằng UI và **0 BQL platform_commands** cho ticket. Mở/hủy dialog không gửi intent; replay không tạo quyết định thứ hai. Admin kiểm policy pagination/CAS conflict/reload/remove override, library review, revoke grant/membership trên persistence thật. Builder kiểm eval/publish/reload một agent/version; automation kiểm concurrent once/dedup Discord/outbox saved delivery và billing owner server. Đã xem ảnh customer/admin; không suy chất lượng model từ các ca scripted.
+- Gate concurrency PostgreSQL cuối cùng trước đây SKIP nay đã có **1 PASS / 0 SKIP** trên chính consumer ghép. Không SQLite fallback, không thay source test personal_chat, không chạy key thật. Lệnh/script cả luồng và từng scenario: `docs/vin-platform/N2_BROWSER_RUNTIME_RUNBOOK_20261018.md`.
+- Gói test model thật đã chuẩn bị: dữ liệu M01–M04, lệnh lập phiếu/đọc usage, bước UI và stop conditions trong `N2_MODEL_OWNER_TEST_RUNBOOK_20261018.md`. Script chuẩn bị chạy lại thành công, không SDK/credential/network. Dự kiến **90k input + 15k output = 105k token**, biên **150k**, hard cap user test **200k/ngày và tháng**. **Model thật NOT_RUN, executed=false; 0 paid/model thật calls.** Chủ dự án tự chọn model và thực thi, không tự chạy thay.
+- Python outbound ngoài fixture ở các harness: **0 attempts** trong lượt cuối; browser không gọi origin ngoài allowlist fixture. Không đọc `.env`/key thật, không gọi Domain/Discord thật, không migrate DB ứng dụng, không push/deploy. Dừng riêng Vite preview và container PostgreSQL fixture do N2 tạo sau kiểm thử; không chạm stack của N1.
+- Bốn việc giao trong đợt này đã đủ bằng chứng implementation/offline integration. RC build/deploy, KB indexing tài liệu nghiệp vụ, model thật và ký UAT vẫn là gate riêng. Yêu cầu producer cũ còn theo dõi: C07 projection/contract cho quyết định plan riêng và C09 pagination >100 job; không tự đóng hai yêu cầu này từ các test repair/completion hoặc admin đã PASS.
+
+## S13 — Nghiệm thu tiếp theo theo yêu cầu chủ dự án
+
+- Nhận producer R04 `2edf060a` qua merge; không sửa Domain/authority/storage của N1. Hai contract C07 plan và C09 phân trang chưa có trên SHA này; đã yêu cầu SHA và thông tin production/UAT qua câu hỏi cho chủ dự án, tiếp tục công việc độc lập.
+- Phạm vi owner N2 bổ sung trước sửa: receipt consumer trong `_tool/_customer_service.py`, `middleware/_leader_evidence_middleware.py`, `_shared_context.py`; test mới `tests/workforce/console/test_vin_customer_evidence.py`, runner và browser journey N2. Receipt chỉ lấy từ kết quả tool server trong reply hiện tại và đúng user/agent/session; không tắt evidence gate hoặc thay team/Shared Context loop.
+- RC thuộc lane N2: Dockerfile/compose Platform/frontend, script đóng gói/kiểm RC mới và tài liệu nghiệm thu. Chỉ tạo stack cách ly với provider scripted, không sửa stack đang phục vụ hoặc dùng key model thật. Kết quả sẽ ghi sau khi chạy, không suy PASS từ các lượt S12.
+
+### S13a — Receipt Leader đã sửa, chờ browser RC
+
+- Tool CustomerService phát metadata receipt server-owned chỉ có case ID/code/sync/status/version/as_of/next_action, scope đúng user/agent/session; không lấy input/model prose, description hoặc secret làm bằng chứng. Middleware chỉ nhận ToolResult SUCCESS khớp call trong reply hiện tại, không lấy lịch sử cũ, thay snapshot bằng progress mới nhất. Team validation kết hợp thêm source này, giữ mọi nhánh wait/review/repair/partial và Shared Context sẵn có.
+- Strict contracts **81 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, 23.86s. Runtime/evidence/chat/team/automation **501 PASS / 25 SKIP / 0 FAIL / 0 ERROR**, 46.29s; 25 skip vẫn là browser/PG gate riêng. Có 13 ca mới về valid receipt, wrong owner/agent/session, old reply, tool error, forged prose, wrong operation, latest progress, team và giữ nguyên lời trả lời đã chứng minh; claim sai case/ticket closed/resident accepted vẫn bị chặn. Actual C05 tool test xác minh metadata không secret. Ruff F401/F811/F821/F841 PASS. External attempts 0, paid model calls 0.
+- Browser journey được tăng assertion câu trả lời Leader và đúng hai scripted calls, chưa nhận PASS cho assertion mới trước khi chạy. Log `.artifacts/n2-s13-{contracts,runtime}.log`.
+- Yêu cầu producer/test cụ thể: `docs/vin-platform/N2_C07_C09_ACCEPTANCE_REQUEST_20261018.md`. Chưa có contract mới thì không tự sửa N1 hoặc ghi C07/C09 hoàn tất.
+
+## S14 — Đóng gói RC Platform cách ly
+
+- Phát hiện thiếu wiring deploy: frontend Dockerfile chỉ nhận API base, chưa nhận `VITE_VIN_EXPERIENCE_ENABLED`; compose chưa truyền Vin flag/key backend. Bổ sung cờ với mặc định false và key từ môi trường server, frontend build arg rõ ràng; không đổi môi trường đang chạy. Dùng pnpm 10.33.2 là bản đã build/test local với lockfile hiện tại.
+- Sẽ build bằng Dockerfile production, tag/label theo SHA đã commit, ghi image ID và hash bundle thực lấy từ image. Chưa gán PASS RC hoặc production khi chưa build/chạy; fixture bootstrap và API dispatcher không thay bằng chứng agent tự giao việc hoặc UAT nghiệp vụ.
+- Owner runner mới: `P/scripts/workforce/check_vin_rc.py` thuộc N2. Tái sử dụng fixture Domain/IdP/browser N1 nguyên trạng, thay riêng Platform bằng image RC và CMD production, web dùng bundle trong image; không bind source application. Chỉ dùng guard mạng test và cấu hình loopback fixture, ghi rõ thay đổi proxy port/upstream cho stack cách ly.
+
+## S15 — Nhận C07/C09 và nối consumer
+
+- Chủ dự án giao `43897e9b` (CustomerPlan/PlanDecisionPayload + fixture) và `d4a25cd0` (PersonalJobPage/list_page, compatibility list đầy đủ). Đã merge producer; không cần migration mới ngoài head 0024.
+- N2 nối `plans` vào safe DTO/decision_actions/thẻ hiện có, giữ hai version riêng và explicit final click. Nối ledger/router/UI phân trang bằng list_page; repair/publish dùng compatibility reader đã hết giới hạn 100. Test mới `tests/workforce/console/test_vin_job_history.py` thuộc N2; mở rộng browser customer và journey N2, dùng fixture chung, không tự dựng authority hay sửa N1.
+- RC source 9a5bc750 đã build production Dockerfiles, pip check đạt và so hash 716 file Python từ image khớp source; browser vòng đời case/ảnh/receipt/zero-BQL PASS với đúng 3 scripted calls. Lượt RC1 toàn runner vẫn **FAIL**: verification admin dùng access JWT cũ sau khi browser xoay refresh session (401); cleanup gặp tên container đã thay nên dừng. Đã sửa fixture N2 đăng nhập lại để xác minh và lọc tên đã xóa trước cleanup, giữ ownership guard N1; dọn xong stack RC1. Chưa ghi whole RC PASS, sẽ chạy lại trên source C07/C09 sau consumer.
+
+### S15a — Consumer đã nối, pin source trước image cuối
+
+- Nhận tiếp `bccbc8e7`: ledger lọc source trong SQL trước LIMIT, trả 25 item + cursor/has_more, UI có trang trước/sau và tải lại cursor lỗi. Delivery được đọc theo run_id, không quét toàn bộ outbox. Repair delivery và publication lookup dùng `jobs.get` tái kiểm current/saved authority; không trả payload/fence/lease cho UI. C07 plan review hiển thị title/steps/dự toán, ký chỉ từ nút cuối; case version và expectedVersion của plan tách biệt.
+- Receipt Leader chỉ hỗ trợ source `sync_status=applied`; receipt pending/error/sai owner/agent/session/reply/operation hoặc prose giả không trở thành evidence. Giữ team/invite/debate/Shared Context/follow-up và sửa claim không có căn cứ.
+- Đã chạy: strict trước bổ sung pending-receipt **89 PASS / 0 SKIP**; runtime cuối **505 PASS / 27 SKIP / 0 FAIL / 0 ERROR**, browser fixture **26 PASS / 0 SKIP**, TypeScript/ESLint/build/Ruff PASS. 27 skip generic là 26 browser + 1 PG concurrency, không sửa con số thành PASS. Journey sau C07/page UI **7 PASS / 0 SKIP**: approve/reject plan + replay, trang lịch sử thứ 6 có bản ghi 125, admin/Builder/automation và hai luồng customer. Journey cần chạy lại sau get/source-filter/applied guard cuối.
+- Lượt strict đầu **88 PASS / 1 FAIL** vì test nhầm revoke eligibility phải chặn owner đọc lịch sử; contract cho phép history và chặn execution. Đã kiểm stale authorization và repair sau revoke đúng contract, strict sau đó 89 PASS. Browser đầu **24 PASS / 2 FAIL** vì locator chọn cả title và summary; dùng assertion trên dialog giữ đủ nội dung, lượt cuối 26 PASS.
+- Lượt migration/consumer thêm producer lookup: **15 PASS / 1 FAIL / 0 SKIP**, lỗi expected enqueue thay keyset tại test N1 SQLite trên Windows, các ca PostgreSQL đạt. N1 đã sửa tại `c1a8acd8` (giữ tie/125 ID/lookup/revoke assertions) và giao docs `8de010a3`; đã nhập, sẽ chạy lại trước chốt gate. Không sửa file test N1 trong lane N2.
+- Chủ dự án xác nhận qua trao đổi/ảnh **staging trước, rồi VPS**. Nhận Domain RC `vinhomes-domain-api:vin-n1-6ef348ce-rc-20261018`, SHA image/source có ở N1 R05. Runner N2 sẽ dùng cả hai image API/CMD production, 0 mount source app, M2 off; model/IdP/data/dispatcher fixture được ghi đúng phạm vi. Agent tự phân công staff và model/business UAT không được suy từ dispatcher API fixture.
+
+## S16 — Kiểm lại bản ghép, đóng gói và mở staging local
+
+- Worktree `E:\AI-Workforce-Platform-user2`, branch `feat/vin-user2-experience-20261018`. Nhận N1 `c1a8acd84dc0b04ba8b996528d3fa9ba98e69077` qua `8de010a3`/merge `a3f5510a`. Consumer cuối `f1373647`; image source **`9876d94eaa8c68040bcb2e6cea91ded6f58a606c`**. Các commit sau chỉ sửa runner/tài liệu, không đổi app/main/web/Dockerfile (đã kiểm git diff). Không sửa file N1 trực tiếp, không thay test keyset/assertion của N1. Origin/dev_Chien lúc kiểm vẫn `83e3e6d3`; không ghi đè nhánh tích hợp.
+- N2-08 đã nối API quota/catalog/KB/grants/memberships/eligibility, CAS và privacy KB. C07 plan approve/reject giữ hai revision và chỉ final click mới ký. C09 dùng SQL source filter + get lookup, UI 25 item/trang, cursor gắn scope, repair/publish không giới hạn 100. Receipt Leader dùng nguồn server `applied`, đúng owner/agent/session/current reply; không tin prose/model và không lộ grant. Team/Shared Context/invite/debate/follow-up giữ nguyên.
+
+| Gate cuối | PASS | SKIP | FAIL | ERROR | Evidence trong `P/.artifacts` |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Strict contracts N1/N2 | 90 | 0 | 0 | 0 | `n2-s16-contracts.log`, 33.48s |
+| Migration 0024 + consumer + lookup SQLite/PG | 16 | 0 | 0 | 0 | `n2-s16-postgres.log`, 47.15s |
+| personal_chat concurrency PostgreSQL nguyên ca sql | 1 | 0 | 0 | 0 | `n2-s16-concurrency.log`, 9.76s |
+| Browser hồi quy shell/customer/Discord/batch/admin | 26 | 0 | 0 | 0 | `n2-s16-browser.log`, 64.91s |
+| Bảy journey, frontend build local | 7 | 0 | 0 | 0 | `n2-s16-journeys.log`, 125.30s |
+| Bảy journey, bundle trích đúng web image | 7 | 0 | 0 | 0 | `n2-s16-image-bundle-journeys.log`, 127.78s |
+| Frontend Node | 20 | 0 | 0 | 0 | `n2-s16-node.log` |
+| Production API-prefix test trên bundle image | 1 | 0 | 0 | 0 | `n2-s16-bundle.log` |
+| Hai scenario normal production CMD trên cặp API/web image | 2 | 0 | 0 | 0 | `n2-s16-rc-r4.log`, `n2-s16-staging-r4/rc-summary.json` |
+
+- Runtime tổng hợp trên cùng consumer app source ở S15: **505 PASS / 27 SKIP / 0 FAIL / 0 ERROR**, `n2-s15-runtime-final.log`. 27 SKIP thật là 26 browser và 1 PG concurrency; các gate riêng phía trên đã chạy không SKIP. Không cộng suite chồng nhau; bảy journey local và bảy journey image-bundle là hai lượt của cùng suite, không thành 14 coverage. TypeScript/ESLint/build đã đạt ở S15; hai Docker production build, pip check hai API, py_compile/Ruff runner cuối đều PASS. Build còn cảnh báo chunk >500 kB.
+- Hai scenario CMD: signup → password/consent/PKCE → Leader SDK context/create → Domain dispatcher API + staff UI → tiến độ/ảnh/QC → cư dân bấm repair/completion → replay receipt → canonical completed, card closed, **0 BQL command**; và UI admin thay quota 200000→190000, API list đọc lại revision 2 bằng session mới. Kiểm thêm đăng nhập lại cư dân, mở conversation đã lưu thấy đúng **“Yêu cầu đã được ghi nhận. Theo dõi trạng thái xác minh trong thẻ yêu cầu.”**; screenshot `leader-final-reply.png`, log `n2-s16-leader-receipt-ui.log`. Chỉ **3 scripted SDK calls**, không fallback/repair model sau receipt hợp lệ, paid calls **0**.
+- Phân lớp bằng chứng: bảy integration journey dùng API/auth/storage/runtime thật trên PostgreSQL và **bundle lấy từ image**, nhưng app được dựng bằng ASGI harness với các IO seam model/Discord/IdP fixture. Hai smoke CMD dùng main.py/nginx và Domain wheel production, không mount source app. **Không tuyên bố cả ma trận Builder/eval/plan/125-job/lịch/Discord đã chạy trong cùng process CMD production**; các ca đó đã đạt ở integration layer. Full matrix CMD, business/model UAT và agent tự phân công staff vẫn chưa được chứng nhận.
+- Restore chạy lại với RC runtime: **4/4 kho PASS / 0 SKIP**; PostgreSQL fingerprints/semantics, Redis values/TTL, MinIO object bytes, workspace/Qdrant. App phục hồi không khởi động; source/restore containers và volumes đã dọn. Đây là dữ liệu synthetic, không restore production/off-host. Evidence `n2-s16-staging-r4/restore/deep-restore.json`.
+- Image app/web tag `9876d94e`, Domain tag `vin-n1-6ef348ce-rc-20261018`; full IDs trong manifest. Đối chiếu **717 file Python Platform/main.py**, **128 Python/SQL Domain**, pip check, Domain UID10001, 0 `.env`/deployment.env/secret/artifact file trong app tree. Domain có LF/CRLF trộn từ checkout N1: runner so đúng Git blob với hai biến thể EOL, mọi hash phải khớp một biến thể; không bỏ kiểm source hoặc sửa checker N1. Bundle từng file có SHA-256 trong rc-summary, production client dùng `/api`.
+- Lịch sử gate giữ nguyên: r1 preflight FAIL vì hash checkout `intake_cohorts.py` khác EOL; r2 Git-LF-only vẫn FAIL vì image có 124 CRLF/4 LF. Đã đối chiếu từng file với committed LF/CRLF, không có thay đổi nội dung. r3 case/ảnh/Leader PASS nhưng whole runner **FAIL** vì verification gọi GET policy theo subject trên route chỉ có PUT/DELETE (405); UI save thật vẫn thành công. Đã chuyển verification sang GET list `subject=role:VIN_USER`; **r4 2 PASS**. RC1 cũ/JWT/cleanup và mọi FAIL trước đó vẫn ở S15/log, không đổi thành PASS.
+- Gói local **`P/.artifacts/n2-release-9876d94e/images.tar`**, 416169984 byte, ba image, SHA-256 **`9684e03ca0843db26933d2de846c944ab5b8fcf356280854941538e57dcea7d1`**; kèm SHA256SUMS, manifest và README. Không chứa config/secret/DB dump. Có thể `docker load --input images.tar`; chưa phải lệnh deploy/cutover.
+- Staging cách ly còn chạy để xem: Platform `http://127.0.0.1:18104`, staff `http://127.0.0.1:18105`, Domain `http://127.0.0.1:18101/ready`; health cả ba **200**, image IDs/mounts/flags đã đọc lại. Fixture prefix `vin-n1-r04-e2e-8a0ba5ce`, state `.artifacts/n2-s16-staging-r4/state.json`. Hai API chỉ bind read-only guard mạng; web bind config loopback + staff dist, không bind source/bundle Platform. Vin bật, M2 **false**. Không dùng tài khoản thật ở đây. Dọn đúng fixture bằng `check_vin_rc.py --output .artifacts/n2-s16-staging-r4 --cleanup-only` theo [runbook RC](vin-platform/N2_STAGING_RC_RUNBOOK_20261018.md).
+- Không sửa/dừng stack hiện có, không migrate DB ứng dụng hay deploy VPS. Chỉ dừng Vite preview và PG disposable riêng N2 sau test. Source integration có role NOSUPERUSER/NOBYPASSRLS; RC Platform dùng owner DB synthetic để CMD chạy migration, nên không coi đây là preflight role production. VPS còn cần target/backup/migration/allowlist/secrets/quota/rollback và UAT ký nhận theo gate N1. Ảnh đầu vào/vision, tài liệu Vin thật/indexing và agent tự dispatch staff là scope chưa chứng minh, không suy từ ảnh kết quả hoặc fixture dispatcher.
+- Gói model thật M01–M04 vẫn **NOT_RUN**, không chạy thay chủ dự án: 105k token dự kiến (90k input/15k output), biên 150k, hard cap user thử 200k ngày/tháng, embedding 0. Không đọc `.env`, không dùng key thật; outbound bị guard trong các test, **0 paid calls**. N1 C07/C09 contract không còn chờ; phần còn lại là ma trận CMD mở rộng và các gate nghiệm thu/cutover nêu rõ phía trên.
+
+## S17 — Sửa staff mở trang trắng và gọi API liên tục
+
+- Chủ dự án báo link staff nhảy/gọi API liên tục. Tái hiện đúng trên `http://127.0.0.1:18105/operations/my-tasks` bằng context chưa có cookie: chuyển `/operations/login` → `/login` → staff guard → lặp; **108 response 401 trong 5 giây**, không thấy form Email. API login cùng tài khoản vẫn 200. E2E trước đã tạo phiên staff qua API nên bỏ sót cửa đăng nhập công khai; health 200 không chứng minh form chạy.
+- Nguyên nhân: nginx fixture N2 phục vụ staff index cho mọi URL, trong khi contract UI Domain giữ `/login` ở resident bundle dùng chung. Đối chiếu `gateway.conf.template`, `staff-web/operations.login.tsx` và `login-url.ts` xác nhận. Chỉ sửa owner N2 `check_vin_rc.py`: route `/operations` + `/staff-assets` sang staff, root/login + `/assets` sang resident, giữ API proxy Domain và rules Platform hiện có. Không thay auth/guard/form/source/build của N1 và không bật UI preview.
+- Runner thêm `--resident-dist`, kiểm có index trước bootstrap, mount public dist read-only. Regression khởi tạo browser không cookie, mở deep link, bắt form thật, điền fixture email/password, vào **Việc của tôi**, reload vẫn đăng nhập; theo dõi 401, JS error và outbound. Desktop **1280** và mobile **390**: **2 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, mỗi case chỉ một 401 ban đầu, không tăng sau login/reload, 0 page error và 0 external request. Log `.artifacts/n2-staff-login-{red,green}.log`, `n2-s16-staging-r4/staff-login-ui.json`, ảnh `staff-login-1280.png`/`staff-login-390.png`.
+- Đã sửa trực tiếp đúng gateway staging N2 có label `vin.fixture=vin-n1-r04-e2e-8a0ba5ce`, giữ image ID, kiểm `nginx -t` trước thay. Chỉ recreate web fixture, không restart Platform/Domain/DB và không đổi dữ liệu. Config mới `nginx-staff-login.conf`; config cũ giữ để đối chiếu. Public `/login`, Platform health, Domain ready đều 200. Đăng nhập lại và kiểm câu trả lời Leader đã lưu vẫn PASS, scripted model calls vẫn **3**, paid calls **0**.
+- Link staff nên mở: **`http://127.0.0.1:18105/operations/my-tasks`** hoặc `/login`. Tài khoản test lấy từ đúng state và fixture, đã kiểm bằng form; chỉ dùng trên stack synthetic này. Test không cần model thật. Không có thay đổi production image/source nên ba image và checksum archive S16 giữ nguyên; manifest bổ sung regression, hash config, Domain UI build hashes và mount `/resident`. N2 runner hiện sẽ kiểm thêm hai case staff khi chạy full RC lần tới; không viết lại số 2 scenario lịch sử S16 thành 4.
+
+## S18 — Cấu hình model và tài nguyên để chủ dự án tự sử dụng
+
+- Chủ dự án xác nhận không dùng key thật **để agent test**, không cấm model thật trong sản phẩm; chọn provider hiện có của `awp-develop2-app-1`. Đã chuyển nội bộ key server sang đúng container local N2, giữ source stack nguyên trạng; không in key/hash/key prefix. Runtime env + catalog/policy + phiên Leader đã lưu cùng **gpt-6-luna**, không còn endpoint scripted. Chat/Leader/team/Builder/eval/worker dùng model policy N1 hiện có; không sửa model resolver N1. Endpoint OpenAI `/v1`, mode Responses. Không gọi upstream `/models`, chat, Responses hoặc embeddings để thử key/model.
+- Owner N2 đã chốt trước sửa: `_service/_customer_mcp.py`, test `test_vin_customer_mcp.py`, consumer `_toolkit`, `_customer_cases`, `_tool/_customer_service` và scripts provisioning/deploy. Dùng resolver, automation binding và `DomainAdapter.ticket_grant` C02/C05 đã có; không viết SQL authority khác, không sửa Domain hoặc migration.
+- Cấp sẵn **Vinhomes · Dịch vụ của bạn**, 8 tool: ticket_get, knowledge_search, service_context, amenity_availability, staff_available, work_order_dispatch, operation_get, ticket_add_note (prefix `vh_`). Chỉ cấp catalog khách VIN_USER, không tạo quyền BQL/consent. Mỗi runtime call re-resolve catalog + account/context, kiểm origin với provider đăng ký, tìm ticket trong case đã bind của chính user, Domain kiểm link revision/case/ticket rồi cấp bearer 5 phút cho đúng tool. Bootstrap chỉ dùng discovery read-only và **đã xóa khỏi record** trước cấp quyền; không lưu ticket grant vào workspace/model/UI, không log transport exception có thể lộ header. Raw MCP client của Domain được thay bằng tool wrapper tại assembly worker, giữ các MCP khác nguyên trạng. Receipt CustomerService có `ticket_ids` an toàn để Leader giao đúng ID; không trả raw ticket/grant/proof.
+- **98 PASS / 0 SKIP / 0 FAIL / 0 ERROR**, 52.98s, strict cuối `n2-s18-contracts-receipt.log`. Có 8 ca consumer mới: fresh per-call grant, không đổi shared auth, invalid/missing ticket, management/consent tool, wrong owner, revoke catalog/link, wrong origin/unbound ticket, toolkit replacement và sanitize transport errors. Lượt đầu **96 PASS/2 FAIL** do wrapper thiếu abstract `check_permissions`; đã dùng risk-based MCP permission hiện có, không auto-allow write; strict sau sửa 98 PASS. Một harness thử ban đầu **8 ERROR** do chặn cả Windows asyncio socketpair, chuyển sang offline runner chuẩn với socketpair nội bộ; không thay assertion nghiệp vụ.
+- Runtime/automation trên source trước field ticket_ids cuối: **513 PASS / 27 SKIP / 0 FAIL / 0 ERROR**, 71.58s; 27 generic skip giữ nguyên (26 browser + 1 PG), không cộng vào strict hoặc viết thành PASS. Ruff/py_compile cho module/test/scripts PASS; production Docker build PASS. App image source **bfe38022**, ID `sha256:9fea309f14e71cd768ee89ff7e311e67f235099488efaa0fb856d5d7d605c528`. Web S16 và Domain N1 giữ nguyên IDs. Không có migration mới; schema vẫn 0024.
+- Tại container mới đã kiểm bằng **MCP thật + DB Domain tổng hợp**, không LLM: C05 tạo đúng một case/ticket tổng hợp qua adapter, receipt trả ticket ID; wrapper lấy fresh grant, `vh_ticket_get` trả đúng ticket, không có bearer/header/key trong output. **1 PASS / 0 SKIP** (`n2-s18-domain-mcp-final.log`). Ca đầu nhận JSON hợp lệ nhưng harness đòi ToolChunk.state=success trong khi adapter trả running chờ toolkit finalize; ghi FAIL của harness, sau kiểm trạng thái không error và nội dung/ticket chính xác thì PASS. Giữ một ticket mở mang nhãn `[N2 MCP integration fixture]` cho chủ dự án xem; không tự ký đóng ticket. Không coi read này là chứng minh agent tự dispatch staff.
+- Provision bằng admin APIs: provider role model + quota; **3 skill approved** `vin-service-intake`, `vin-service-progress`, `platform-source-citations`; **1 KB lexical** Hướng dẫn sử dụng Platform với reference đã review. Không sao chép hồ sơ cư dân/tài liệu nội bộ từ stack nguồn. Khách nhìn tài nguyên chung read-only. Knowledge search lexical trả **1 kết quả, HTTP 200**. Embedding `text-embedding-3-small` đã được cấp cùng provider, cap 10000/ngày; không gọi embedding thật để test. Chưa nạp SOP/nội quy/biểu phí Vin thật.
+- Cấu hình local role: daily/monthly **200000**, output 4096, concurrency 2, storage 100 MB/file 10 MB. Provider public chỉ là ref/name; key vẫn server-owned. Reader xác nhận key khớp nguồn bằng boolean nội bộ, env model/Leader model/session model đều gpt-6-luna. API MCP/skill/KB/provider/channel/schedule đều 200; counts **1/3/1/1/0/0**. Sáu trang UI mở được, **0 JS error**, model requests từ agent **0**. Guard browser chặn 5 ảnh icon công khai (GitHub/ClawHub/favicons), không phải provider request. Hai harness metadata trước đó lỗi key mapping `/knowledge/` và assertion chặn icon; giữ log FAIL, lượt cuối `owner-readiness-final2.log` PASS. GET session theo ID đã thử 405 vì route chỉ PATCH/DELETE, verification cuối dùng GET list đúng contract. Không sửa API để làm test xanh.
+- Source provider chỉ được đọc, không sửa/dừng. N2 app được thay bằng image mới, **workspace giữ nguyên**, đã kiểm không có job chờ trước enable key. File env thực nằm trong `.artifacts` ignored, không Git/archive; container trước-owner giữ stopped để rollback. Container model scripted riêng đã dừng. Đây là môi trường **owner-use**, không còn là cấu hình RC offline cũ; manifest S16 được đánh dấu superseded, archive S16 không tự chứa cấu hình/model thật hiện tại.
+- **Chưa sẵn sàng hoàn toàn:** Discord chưa có OAuth app và bot cá nhân, source awp-develop2 cũng không có đủ ba env OAuth; đã hỏi chủ dự án vị trí cấu hình (không xin secret qua chat). Lịch có implementation/C09/fake-provider evidence, danh sách hiện 0 và không tạo lịch model thật tự chạy. Eval MCP cần provider/link/MCP sandbox C08 riêng, chưa provision trên local owner-use; text-only eval có model policy mới. Không bật fixture trên Domain để né sandbox. Model thật/capacity của provider, agent tự phân công staff, business UAT, vision và dữ liệu Vin thật chưa được agent test/chứng nhận. Đây là trạng thái cấu hình cụ thể, không ghi toàn bộ tính năng LIVE PASS.
+- Runbook/lệnh/bằng chứng: `N2_OWNER_USE_RUNBOOK_20261018.md`, manifest `evidence/n2-s18-owner-use-20261018.json`; các artifact S18 chỉ metadata/synthetic, không xuất key. Mọi bước kiểm của agent **0 real-provider requests / 0 paid calls**; chủ dự án tự gửi prompt trên Platform. Commit nhỏ consumer `4d4b34f7`, provisioning/ticket receipt `bfe38022`; follow-up script/docs commit riêng. Giữ git scope N2; không đẩy dev_Chien hoặc deploy VPS.

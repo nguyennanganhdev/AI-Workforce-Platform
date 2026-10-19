@@ -1,4 +1,8 @@
-"""Risk-based default permission policy for partner MCP tools."""
+"""Risk-based permission policy for partner MCP tools.
+
+Reads and searches run; booking, cancellation, payment, declared writes and
+personal-data operations need the user's confirmation.
+"""
 
 import re
 import unicodedata
@@ -95,10 +99,12 @@ def mcp_tool_permission(
     *,
     force_confirmation: bool = False,
 ) -> PermissionDecision:
-    """Auto-run ordinary MCP tools and require HITL for risky operations.
+    """Run reads and searches; ask the user before a sensitive action.
 
-    ``force_confirmation`` is set when the agent's owner marked the tool as
-    "requires customer consent" (Agent Spec), whatever its name says.
+    PM decision (19/10/2026): a booking, cancellation, payment, write or
+    personal-data operation shows a confirmation card; everything else runs.
+    ``force_confirmation`` is set when the owner marked the tool as requiring
+    customer consent (Agent Spec or MCP confirm list), whatever its name says.
     """
     if force_confirmation or mcp_tool_requires_confirmation(
         tool_name,
@@ -114,9 +120,6 @@ def mcp_tool_permission(
             decision_reason="Sensitive MCP operation",
             bypass_immune=True,
         )
-
-    # shortcut: infer risk from standard annotations and identifiers; require
-    # an explicit risk extension if the partner contract later defines one.
     return PermissionDecision(
         behavior=PermissionBehavior.ALLOW,
         message="This MCP tool is covered by the automatic low-risk policy.",

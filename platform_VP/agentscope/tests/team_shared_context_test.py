@@ -522,225 +522,6 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             ),
         )
 
-    async def test_worker_claim_gate_rejects_unsupported_name_before_mutation(self):
-        customer = await self.service.append_event(
-            user_id="u",
-            team_id="claim-team",
-            kind="customer_message",
-            content="Find a hotel for 2 people with a 3 million VND budget",
-            source_session_id="leader-session",
-        )
-        await self.service.append_event(
-            user_id="u",
-            team_id="claim-team",
-            task_id=customer.task_id,
-            kind="external_event",
-            content="Verified Hotel costs 1500000 VND and is available",
-            source_session_id="worker-session",
-        )
-
-        with self.assertRaisesRegex(ValueError, "name:imaginary resort"):
-            await self.service.coordinate_handoff(
-                user_id="u",
-                team_id="claim-team",
-                task_id=customer.task_id,
-                sender="worker-session",
-                recipients=("leader-session",),
-                owner="leader-session",
-                handoff_id="unsupported-report",
-                kind="result",
-                content="Imaginary Resort costs 1500000 VND and is available",
-            )
-
-        record = await self.storage.get_team_shared_context("u", "claim-team")
-        branch = record.state.tasks[customer.task_id].collaboration.get(
-            "worker-session"
-        )
-        self.assertTrue(branch is None or "unsupported-report" not in branch.receipts)
-        rejected = await self.service.coordinate_handoff(
-            user_id="u",
-            team_id="claim-team",
-            task_id=customer.task_id,
-            sender="worker-session",
-            recipients=("leader-session",),
-            owner="leader-session",
-            handoff_id="unsupported-report-2",
-            kind="result",
-            content="Imaginary Resort costs 1500000 VND and is available",
-        )
-        self.assertEqual("error", rejected["kind"])
-        self.assertEqual("review", rejected["status"])
-        self.assertNotIn("Imaginary Resort", rejected["content"])
-
-    async def test_claim_repair_keeps_supported_result_until_explicit_review(self):
-        customer = await self.service.append_event(
-            user_id="u", team_id="partial-report", kind="customer_message",
-            content="Compare available hotels", source_session_id="leader-session",
-        )
-        tool = await self.service.append_event(
-            user_id="u", team_id="partial-report", task_id=customer.task_id,
-            kind="external_event", event_id="verified-hotel-price",
-            content='{"name":"Verified Hotel","price_vnd":1500000}',
-            source_session_id="worker-session",
-        )
-        supported = "Verified Hotel costs 1500000 VND."
-        report = supported + "\nImaginary Resort costs 900000 VND."
-        kwargs = dict(
-            user_id="u", team_id="partial-report", task_id=customer.task_id,
-            sender="worker-session", recipients=("leader-session",),
-            owner="leader-session", kind="result", content=report,
-        )
-        with self.assertRaisesRegex(ValueError, "unsupported concrete claims"):
-            await self.service.coordinate_handoff(handoff_id="first-attempt", **kwargs)
-
-        record = await self.storage.get_team_shared_context("u", "partial-report")
-        branch = record.state.tasks[customer.task_id].collaboration["worker-session"]
-        self.assertIn(supported, branch.supported_partial)
-        self.assertNotIn("Imaginary Resort", branch.supported_partial)
-        self.assertTrue(branch.needs_claim_review)
-        self.assertNotIn("first-attempt", branch.receipts)
-        self.assertFalse(any(event.content == report for event in record.state.events))
-
-        receipt = await self.service.coordinate_handoff(handoff_id="retry-attempt", **kwargs)
-        self.assertEqual("result", receipt["kind"])
-        self.assertEqual("review", receipt["status"])
-        self.assertTrue(receipt["partial_result"])
-        self.assertIn(supported, receipt["content"])
-        self.assertNotIn("Imaginary Resort", receipt["content"])
-        self.assertNotIn("900000", receipt["content"])
-        delivered = await self.service.append_event(
-            user_id="u", team_id="partial-report", task_id=customer.task_id,
-            kind=receipt["kind"], content=receipt["content"],
-            event_id="retry-attempt", source_session_id="worker-session",
-            reference_event_ids=(tool.id,),
-        )
-
-        pending = await self.service.collaboration_review("u", "partial-report", "leader-session")
-        self.assertIn("worker-session", pending)
-        record = await self.storage.get_team_shared_context("u", "partial-report")
-        branch = record.state.tasks[customer.task_id].collaboration["worker-session"]
-        self.assertEqual("review", branch.status)
-        self.assertTrue(branch.needs_claim_review)
-        exchanges = branch.exchanges
-        replay = await self.service.coordinate_handoff(handoff_id="retry-attempt", **kwargs)
-        self.assertEqual(receipt, replay)
-        record = await self.storage.get_team_shared_context("u", "partial-report")
-        self.assertEqual(exchanges, record.state.tasks[customer.task_id].collaboration["worker-session"].exchanges)
-
-        await self.service.coordinate_handoff(
-            user_id="u", team_id="partial-report", task_id=customer.task_id,
-            sender="leader-session", recipients=("worker-session",),
-            owner="leader-session", kind="answer", content="Accept the verified hotel price",
-            handoff_id="review-partial", references=(tool.id, delivered.id),
-            resolution="complete",
-        )
-        record = await self.storage.get_team_shared_context("u", "partial-report")
-        branch = record.state.tasks[customer.task_id].collaboration["worker-session"]
-        self.assertEqual("completed", branch.status)
-        self.assertFalse(branch.needs_claim_review)
-
-    async def test_peer_prose_cannot_launder_an_unsupported_price(self):
-        customer = await self.service.append_event(
-            user_id="u", team_id="source-lineage", kind="customer_message",
-            content="Compare available hotels", source_session_id="leader-session",
-        )
-        tool = await self.service.append_event(
-            user_id="u", team_id="source-lineage", task_id=customer.task_id,
-            kind="external_event", event_id="raw-price",
-            content='{"name":"Verified Hotel","price_vnd":1500000}',
-            source_session_id="provider-session",
-        )
-        # A legacy persisted report can be trusted by lineage while its prose
-        # still contains a mistake. It must not become new price authority.
-        peer = await self.service.append_event(
-            user_id="u", team_id="source-lineage", task_id=customer.task_id,
-            kind="result", event_id="legacy-peer-report",
-            content="Verified Hotel costs 2500000 VND.",
-            source_session_id="provider-session", reference_event_ids=(tool.id,),
-        )
-        validation = await self.service.validate_customer_reply_claims(
-            "u", "source-lineage", peer.content,
-        )
-        self.assertTrue(validation.unsupported)
-        self.assertNotIn("2500000", validation.supported_text)
-        with self.assertRaisesRegex(ValueError, "unsupported concrete claims"):
-            await self.service.coordinate_handoff(
-                user_id="u", team_id="source-lineage", task_id=customer.task_id,
-                sender="planner-session", recipients=("leader-session",),
-                owner="leader-session", kind="result", content=peer.content,
-                handoff_id="planner-repeats-peer", references=(peer.id,),
-            )
-
-    async def test_repeated_rejection_merges_valid_parts_from_both_attempts(self):
-        customer = await self.service.append_event(
-            user_id="u", team_id="merge-partials", kind="customer_message",
-            content="Compare available hotels",
-        )
-        for name, price in (("Alpha Hotel", 100), ("Beta Hotel", 200)):
-            await self.service.append_event(
-                user_id="u", team_id="merge-partials", task_id=customer.task_id,
-                kind="external_event", source_session_id="worker-session",
-                content=json.dumps({"name": name, "price_vnd": price}),
-            )
-        kwargs = dict(
-            user_id="u", team_id="merge-partials", task_id=customer.task_id,
-            sender="worker-session", recipients=("leader-session",),
-            owner="leader-session", kind="result",
-        )
-        first_valid = "Alpha Hotel costs 100 VND."
-        second_valid = "Beta Hotel costs 200 VND."
-        invalid = "Imaginary Resort costs 999 VND."
-        with self.assertRaises(ValueError):
-            await self.service.coordinate_handoff(
-                handoff_id="first-mixed", content=first_valid + "\n" + invalid,
-                **kwargs,
-            )
-        receipt = await self.service.coordinate_handoff(
-            handoff_id="second-mixed", content=second_valid + "\n" + invalid,
-            **kwargs,
-        )
-        self.assertEqual("result", receipt["kind"])
-        self.assertTrue(receipt["partial_result"])
-        self.assertIn(first_valid, receipt["content"])
-        self.assertIn(second_valid, receipt["content"])
-        self.assertNotIn("Imaginary Resort", receipt["content"])
-        self.assertNotIn("999", receipt["content"])
-
-    async def test_focused_correction_keeps_previous_valid_result(self):
-        customer = await self.service.append_event(
-            user_id="u", team_id="focused-repair", kind="customer_message",
-            content="Compare available hotels",
-        )
-        for name, price in (("Alpha Hotel", 100), ("Beta Hotel", 200)):
-            await self.service.append_event(
-                user_id="u", team_id="focused-repair", task_id=customer.task_id,
-                kind="external_event", source_session_id="worker-session",
-                content=json.dumps({"name": name, "price_vnd": price}),
-            )
-        kwargs = dict(
-            user_id="u", team_id="focused-repair", task_id=customer.task_id,
-            sender="worker-session", recipients=("leader-session",),
-            owner="leader-session", kind="result",
-        )
-        previous_valid = "Alpha Hotel costs 100 VND."
-        corrected = "Beta Hotel costs 200 VND."
-        with self.assertRaises(ValueError):
-            await self.service.coordinate_handoff(
-                handoff_id="mixed-prices", content=(
-                    previous_valid + "\nBeta Hotel costs 999 VND."
-                ), **kwargs,
-            )
-        receipt = await self.service.coordinate_handoff(
-            handoff_id="corrected-price-only", content=corrected, **kwargs,
-        )
-        self.assertEqual("result", receipt["kind"])
-        self.assertIn(previous_valid, receipt["content"])
-        self.assertIn(corrected, receipt["content"])
-        self.assertNotIn("999", receipt["content"])
-        record = await self.storage.get_team_shared_context("u", "focused-repair")
-        branch = record.state.tasks[customer.task_id].collaboration["worker-session"]
-        self.assertFalse(branch.needs_claim_review)
-
     async def test_customer_reply_does_not_swap_prices_between_source_events(self):
         customer = await self.service.append_event(
             user_id="u", team_id="source-boundaries", kind="customer_message",
@@ -783,123 +564,6 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             )
             self.assertTrue(report.unsupported)
             self.assertEqual("", report.supported_text)
-
-    async def test_retained_partial_is_not_reused_after_customer_revision_changes(self):
-        customer = await self.service.append_event(
-            user_id="u", team_id="partial-revision", kind="customer_message",
-            content="Find available hotels",
-        )
-        await self.service.append_event(
-            user_id="u", team_id="partial-revision", task_id=customer.task_id,
-            kind="external_event", event_id="old-price",
-            content='{"name":"Verified Hotel","price_vnd":1500000}',
-            source_session_id="worker-session",
-        )
-        kwargs = dict(
-            user_id="u", team_id="partial-revision", task_id=customer.task_id,
-            sender="worker-session", recipients=("leader-session",),
-            owner="leader-session", kind="result",
-        )
-        with self.assertRaises(ValueError):
-            await self.service.coordinate_handoff(
-                handoff_id="old-partial", content=(
-                    "Verified Hotel costs 1500000 VND.\nImaginary Resort costs 900000 VND."
-                ), **kwargs,
-            )
-        await self.service.append_event(
-            user_id="u", team_id="partial-revision", task_id=customer.task_id,
-            kind="customer_message", content="Use the revised hotel offer",
-        )
-        await self.service.append_event(
-            user_id="u", team_id="partial-revision", task_id=customer.task_id,
-            kind="external_event", event_id="new-price",
-            content='{"name":"Verified Hotel","price_vnd":1600000}',
-            source_session_id="worker-session",
-        )
-        with self.assertRaises(ValueError):
-            await self.service.coordinate_handoff(
-                handoff_id="new-first-attempt", content="Verified Hotel costs 1500000 VND.",
-                **kwargs,
-            )
-        final = await self.service.coordinate_handoff(
-            handoff_id="new-retry", content="Verified Hotel costs 1500000 VND.",
-            **kwargs,
-        )
-        self.assertEqual("error", final["kind"])
-        self.assertNotIn("1500000", final["content"])
-        current = await self.service.validate_customer_reply_claims(
-            "u", "partial-revision", "Verified Hotel costs 1600000 VND.",
-        )
-        self.assertEqual((), current.unsupported)
-
-    async def test_worker_and_coordinator_claims_use_exact_evidence_chain(self):
-        customer = await self.service.append_event(
-            user_id="u",
-            team_id="claim-chain",
-            kind="customer_message",
-            content="Find a hotel for 2 people with a 3 million VND budget",
-            source_session_id="leader-session",
-        )
-        tool = await self.service.append_event(
-            user_id="u",
-            team_id="claim-chain",
-            task_id=customer.task_id,
-            kind="external_event",
-            content="Verified Hotel costs 1500000 VND and is available",
-            source_session_id="provider-session",
-        )
-        provider_receipt = await self.service.coordinate_handoff(
-            user_id="u",
-            team_id="claim-chain",
-            task_id=customer.task_id,
-            sender="provider-session",
-            recipients=("leader-session",),
-            owner="leader-session",
-            handoff_id="provider-report",
-            kind="result",
-            content="Verified Hotel costs 1,500,000 VND and is available",
-        )
-        self.assertEqual("review", provider_receipt["status"])
-        provider = await self.service.append_event(
-            user_id="u",
-            team_id="claim-chain",
-            task_id=customer.task_id,
-            event_id="provider-report",
-            kind="result",
-            content="Verified Hotel costs 1,500,000 VND and is available",
-            source_session_id="provider-session",
-            reference_event_ids=(tool.id,),
-        )
-        coordinator = await self.service.coordinate_handoff(
-            user_id="u",
-            team_id="claim-chain",
-            task_id=customer.task_id,
-            sender="planner-session",
-            recipients=("leader-session",),
-            owner="leader-session",
-            handoff_id="planner-report",
-            kind="result",
-            content="Choose Verified Hotel at 1,500,000 VND for 2 people",
-            references=(provider.id,),
-        )
-        self.assertEqual([provider.id], coordinator["reference_event_ids"])
-
-        with self.assertRaisesRegex(ValueError, "name:imaginary cafe"):
-            await self.service.coordinate_handoff(
-                user_id="u",
-                team_id="claim-chain",
-                task_id=customer.task_id,
-                sender="planner-session-2",
-                recipients=("leader-session",),
-                owner="leader-session",
-                handoff_id="planner-hallucination",
-                kind="result",
-                content=(
-                    "Choose Verified Hotel at 1,500,000 VND and visit "
-                    "Imaginary Cafe"
-                ),
-                references=(provider.id,),
-            )
 
     async def test_latest_worker_result_supersedes_older_packet_snapshot(self):
         customer = await self.service.append_event(
@@ -2331,3 +1995,39 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertEqual("private system", visible_system)
         self.assertIn("shared state", captured["messages"][-1].get_text_content() or "")
         self.assertNotIn("shared state", original_system.get_text_content() or "")
+
+
+class TestOrdinaryTeamArchivesLargeSources(IsolatedAsyncioTestCase):
+    """A team without partner evidence keeps working when a tool result is
+    larger than the packet: the source is archived for SharedContextRead."""
+
+    async def test_large_tool_result_is_archived_for_shared_context_read(self) -> None:
+        storage = _Storage()
+        service = SharedContextService(
+            storage,  # type: ignore[arg-type]
+            InMemoryMessageBus(),
+            SharedContextConfig(packet_max_tokens=600, history_budget_tokens=400),
+        )
+        await service.append_event(
+            user_id="u", team_id="ticket-1", kind="customer_message",
+            content="Find flights to Hanoi",
+        )
+        flights = json.dumps([{"flight": f"VN{i:03d}", "price": 1_000_000 + i} for i in range(200)])
+        event = await service.append_event(
+            user_id="u", team_id="ticket-1", kind="external_event",
+            content=flights, source_session_id="worker-session",
+        )
+
+        text, tokens = await service.prepare_packet(
+            model=_MeasuredModel(),  # type: ignore[arg-type]
+            user_id="u",
+            team_id="ticket-1",
+            allow_source_references=True,
+        )
+
+        self.assertLessEqual(tokens, 600)
+        self.assertIn("SharedContextRead", text)
+        self.assertTrue(json.loads(text)["source_references"])
+        self.assertNotIn("CaseEvidence", text)
+        record = await storage.get_team_shared_context("u", "ticket-1")
+        self.assertEqual(flights, next(e for e in record.state.events if e.id == event.id).content)

@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { BatchPublication } from './BatchPublication';
 import { workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
@@ -49,6 +50,7 @@ import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
 import { EvaluationProgress } from '@/components/workforce/EvaluationProgress';
 import { EvaluationReport } from '@/components/workforce/EvaluationReport';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useEvaluationProgress } from '@/hooks/useEvaluationProgress';
 import { cn } from '@/lib/utils';
 
@@ -194,6 +196,7 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 }
 
 export function AgentBuilderPage() {
+	const privateAccount = useCurrentUser()?.role === 'VIN_USER';
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [message, setMessage] = useState('');
 	const [conversationId, setConversationId] = useState<string | null>(() =>
@@ -315,7 +318,7 @@ export function AgentBuilderPage() {
 	};
 	const undecided = (proposal?.planned_agents ?? []).filter((agent) => agent.similar && !decisions[agent.name]);
 
-	const publish = async () => {
+	const publish = async (onlyPassed = false) => {
 		if (!proposal?.proposal_id) return;
 		setWorking(true);
 		const startedAt = Date.now();
@@ -325,8 +328,9 @@ export function AgentBuilderPage() {
 				proposal.conversation_id,
 				proposal.proposal_id,
 				proposal.revision,
+				onlyPassed,
 			);
-			setProposal({ ...proposal, status: 'published' });
+			if (!onlyPassed) setProposal({ ...proposal, status: 'published' });
 			await refreshConversation(proposal.conversation_id);
 			await loadAgents();
 			const updated = result.agents.filter((agent) => agent.updated).length;
@@ -369,6 +373,8 @@ export function AgentBuilderPage() {
 			setWorking(false);
 		}
 	};
+	// Agents that passed can go live now; the rest stay in the proposal to be fixed.
+	const passedCount = (proposal?.agents ?? []).filter((agent) => !agent.reuse_agent_id && agent.evaluation.passed).length;
 	const repairRounds = Math.max(0, ...(proposal?.agents ?? []).map((agent) => agent.evaluation.repair?.round ?? 0));
 	const canRepair =
 		proposal?.status === 'blocked' &&
@@ -519,9 +525,20 @@ export function AgentBuilderPage() {
 											Model <span className="font-mono">{proposal.chat_model_config.model}</span>
 										</p>
 									</div>
-									{proposal.status === 'ready' && (
-										<Button onClick={publish} disabled={working}>
+									{proposal.status === 'ready' && privateAccount && <BatchPublication key={proposal.proposal_id} proposal={proposal} disabled={working} onPublished={async () => {
+										await refreshConversation(proposal.conversation_id); await loadAgents();
+									}} />}
+									{proposal.status === 'ready' && !privateAccount && (
+										<Button onClick={() => void publish()} disabled={working}>
 											<Rocket /> Phát hành
+										</Button>
+									)}
+									{proposal.status === 'blocked' && passedCount > 0 && privateAccount && <BatchPublication key={`${proposal.proposal_id}:passed`} proposal={proposal} disabled={working} onlyPassed={passedCount} onPublished={async () => {
+										await refreshConversation(proposal.conversation_id); await loadAgents();
+									}} />}
+									{proposal.status === 'blocked' && passedCount > 0 && !privateAccount && (
+										<Button variant="outline" onClick={() => void publish(true)} disabled={working}>
+											<Rocket /> Phát hành {passedCount} agent đã đạt
 										</Button>
 									)}
 									{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (
@@ -738,9 +755,9 @@ const WELCOME_TEAM: { which: PortraitKey; label: string }[] = [
 ];
 
 const WELCOME_PROMPTS = [
-	'Tạo đội agent xử lý ticket sự cố kỹ thuật của cư dân: đánh giá, giao thợ, báo cư dân.',
-	'Tạo agent tư vấn cư dân về nội quy và bàn giao căn hộ, trả lời từ kho tri thức của BQL.',
-	'Tạo agent báo cáo tình trạng ticket hằng ngày cho Ban quản lý.',
+	'Tạo đội agent lên kế hoạch du lịch: vé, khách sạn, ăn uống, tham quan trong một ngân sách tổng.',
+	'Tạo agent trả lời câu hỏi của khách hàng từ kho tài liệu của bạn, luôn trích nguồn.',
+	'Tạo agent báo cáo hằng ngày các yêu cầu đang mở và quá hạn.',
 ];
 
 /** An empty conversation: the team to build, and a few ways to start. */

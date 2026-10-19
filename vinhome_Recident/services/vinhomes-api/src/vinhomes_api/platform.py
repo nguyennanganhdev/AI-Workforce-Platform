@@ -209,6 +209,10 @@ class Platform:
 # ---- what the API writes for the worker to send -----------------------------------------------------------------------
 
 async def command(db, ticket_id, kind: str, body: dict) -> None:
+    origin = (await db.execute(text(f"SELECT origin FROM platform_links WHERE ticket_id=:id AND tenant_id={TENANT}"),
+        {"id": ticket_id})).scalar_one_or_none()
+    if origin == "platform":
+        return  # Customer runtime consumes canonical case progress, not BQL partner commands.
     await db.execute(text(f"""
         insert into platform_commands(tenant_id,ticket_id,kind,body) values ({TENANT},:ticket,:kind,cast(:body as jsonb))
     """), {"ticket": ticket_id, "kind": kind, "body": json.dumps(body, ensure_ascii=False)})
@@ -216,6 +220,9 @@ async def command(db, ticket_id, kind: str, body: dict) -> None:
 
 async def link_ticket(db, ticket_id) -> None:
     """Hand a new ticket to the platform, in the transaction that created it. Called again for the same ticket: nothing."""
+    from .platform_customers import bind_customer_ticket
+    if await bind_customer_ticket(db, ticket_id):
+        return
     from .platform_settings import connection_enabled, lock
     await lock(db)
     if not await connection_enabled(db):
@@ -287,7 +294,7 @@ async def notice(db,ticket_id,key,message_text):
     """Use the existing text reply contract, not a new unregistered provider event type."""
     await db.execute(text(f"""insert into platform_commands(tenant_id,ticket_id,kind,body)
         select {TENANT},ticket_id,'workflow_reply',cast(:body as jsonb) from platform_links
-        where tenant_id={TENANT} and ticket_id=:ticket and status='open' and coalesce(state,'')<>'closed'
+        where tenant_id={TENANT} and ticket_id=:ticket and origin='domain' and status='open' and coalesce(state,'')<>'closed'
         on conflict do nothing"""),{'ticket':ticket_id,'body':json.dumps({'text':message_text,'own':True,'domain_notice_key':key},ensure_ascii=False)})
 
 

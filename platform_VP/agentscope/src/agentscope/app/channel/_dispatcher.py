@@ -131,12 +131,7 @@ class ChannelLifecycleDispatcher:
             record (`ChannelRecord`): The enabled channel to start.
         """
         try:
-            channel = self._types.create_channel(
-                channel_type=record.channel_type,
-                channel_id=record.id,
-                credentials=record.credentials,
-                config=record.platform_config,
-            )
+            channel = await self._types.create_for_record(self._storage, record)
             channel.bind_message_bus(self._bus)
             from ._text import TextChannel
 

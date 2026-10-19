@@ -117,7 +117,7 @@ function roomLines(session: SessionPresentation, messages: Msg[]): Line[] {
 				} else if (block.name === 'CaseSay' || block.name === 'CaseFinalize') {
 					lines.push({
 						speaker: host,
-						text: `Gửi cư dân: ${String(args.text ?? args.answer ?? '')}`,
+						text: `Gửi khách hàng: ${String(args.text ?? args.answer ?? '')}`,
 					});
 				}
 			}
@@ -190,7 +190,7 @@ export function officeFromSession(session: SessionPresentation): SessionOfficeSn
 		activity: lines
 			.map((line, index) => ({
 				id: String(index),
-				text: `${line.speaker === 'customer' ? (session.audienceLabel ?? 'Cư dân') : (names.get(line.speaker) ?? '')}: ${line.text}`.slice(
+				text: `${line.speaker === 'customer' ? (session.audienceLabel ?? 'Khách hàng') : (names.get(line.speaker) ?? '')}: ${line.text}`.slice(
 					0,
 					140,
 				),

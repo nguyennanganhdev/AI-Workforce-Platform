@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/item.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
+import { useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useMCPs } from '@/hooks/useMCPs.ts';
 import { useTranslation } from '@/i18n/useI18n';
 
@@ -62,6 +63,7 @@ interface Props {
  */
 export function AddMCPDialog({ children, present, onAdd, onAddFromLibrary }: Props) {
 	const { t } = useTranslation();
+	const canManage = useCatalogManagement();
 	const [open, setOpen] = useState(false);
 	const [tab, setTab] = useState('installed');
 	const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -113,7 +115,7 @@ export function AddMCPDialog({ children, present, onAdd, onAddFromLibrary }: Pro
 						<TabsTrigger value="installed" className="flex-1">
 							{t('panel.mcp.fromInstalled')}
 						</TabsTrigger>
-						<TabsTrigger value="configure" className="flex-1">
+						<TabsTrigger disabled={!canManage} value="configure" className="flex-1">
 							{t('panel.mcp.fromConfig')}
 						</TabsTrigger>
 					</TabsList>
@@ -194,7 +196,7 @@ export function AddMCPDialog({ children, present, onAdd, onAddFromLibrary }: Pro
 						<TabsContent value="configure">
 							<MCPConfigForm
 								formId={CONFIG_FORM_ID}
-								onAdd={onAdd}
+								onAdd={async (config) => { if (!canManage) throw new Error("CATALOG_READ_ONLY"); await onAdd(config); }}
 								onDone={close}
 								onBusyChange={setBusy}
 							/>

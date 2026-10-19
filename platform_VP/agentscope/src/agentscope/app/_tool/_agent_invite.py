@@ -26,7 +26,13 @@ from ...message import HintBlock, TextBlock, ToolResultState
 from ...state import AgentState
 from ...tool import ParamsBase, ToolChunk
 from .._bus_ops import deliver_to_inbox, enqueue_run_trigger
-from ..storage import SessionConfig, TaskAssignment, TeamMember, TeamOrigin
+from ..storage import (
+    SessionConfig,
+    SessionKnowledgeConfig,
+    TaskAssignment,
+    TeamMember,
+    TeamOrigin,
+)
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ._constants import HANDLE_LEN
 from ._team_tool_base import _TeamToolBase
@@ -80,6 +86,14 @@ class _AdditionalAssignment(BaseModel):
         default_factory=list,
         max_length=10,
         description=_DEPENDS_ON_DESCRIPTION,
+    )
+    standby: bool = Field(
+        default=False,
+        description=(
+            "Join without starting: prompt is a role briefing, the member "
+            "waits until a teammate asks it for work with TeamSay. Use for "
+            "the specialists a coordinator will call."
+        ),
     )
 
 
@@ -345,7 +359,10 @@ class AgentInvite(_TeamToolBase):
             else:
                 invited_targets.append(brief.target)
                 invited[brief.target] = result.metadata
-        queued = await self._record_ledger(briefs, invited)
+        queued = await self._record_ledger(
+            [brief for brief in briefs if not brief.standby], invited,
+        )
+        standby = [brief.target for brief in briefs if brief.standby and brief.target in invited]
         for brief in briefs:
             meta = invited.get(brief.target)
             if meta is None or brief.target in queued:
@@ -358,11 +375,24 @@ class AgentInvite(_TeamToolBase):
                 payload=meta["payload"],
                 wake=False,
             )
+            if brief.standby:
+                # Briefed, not started: a teammate's TeamSay wakes it.
+                continue
             await enqueue_run_trigger(
                 self._message_bus,
                 user_id=self._user_id,
                 session_id=meta["session_id"],
                 agent_id=meta["agent_id"],
+            )
+        if standby:
+            content.append(
+                TextBlock(
+                    text=(
+                        "On standby until a teammate asks them with TeamSay: "
+                        + ", ".join(standby)
+                        + "."
+                    ),
+                ),
             )
         if queued:
             content.append(
@@ -674,6 +704,15 @@ class AgentInvite(_TeamToolBase):
                     name=f"team:{team.id}/invited:{invited_handle}",
                     chat_model_config=borrowed_chat_model,
                     fallback_chat_model_config=borrowed_fallback_model,
+                    knowledge_config=(
+                        SessionKnowledgeConfig(
+                            knowledge_base_ids=invited.data.knowledge_base_ids,
+                            parameters={"mode": "agentic"},
+                        )
+                        if not invited.data.spec
+                        and invited.data.knowledge_base_ids
+                        else None
+                    ),
                 ),
                 state=worker_state,
                 origin=TeamOrigin(),
@@ -695,7 +734,11 @@ class AgentInvite(_TeamToolBase):
                 # A borrowed Builder agent has an explicit tool allowlist.
                 # Materialise the new team session without deployment-wide
                 # default MCPs before adding those selected declarations.
-                if invited.data.tool_bindings:
+                if (
+                    invited.data.tool_bindings
+                    or invited.data.spec
+                    or invited.data.execution_mode is not None
+                ):
                     for default_mcp in workspace.default_mcps:
                         await workspace.remove_mcp(
                             default_mcp.name,
@@ -726,15 +769,15 @@ class AgentInvite(_TeamToolBase):
                             record.client.model_dump(mode="json"),
                         )
                         spec.enable_tools = list(dict.fromkeys(enabled_tools))
-                        from .._service._agent_eval import catalog_allows_read
-
-                        metadata = {item.get("name"): item for item in record.discovered_tools}
+                        # Owner-marked consent only; the runtime asks for
+                        # sensitive operations (book, cancel, pay, writes).
                         required = set(spec.confirm_tools or []) | set(confirm.get(mcp_id) or [])
-                        required.update(name for name in enabled_tools
-                                        if not catalog_allows_read(metadata.get(name, {})))
                         spec.confirm_tools = sorted(required.intersection(enabled_tools)) or None
                         mcp_specs.append(spec)
-                else:
+                elif (
+                    not invited.data.spec
+                    and invited.data.execution_mode is None
+                ):
                     # Compatibility for manually-authored invitable agents
                     # created before Builder persisted exact tool bindings.
                     mcp_specs = await workspace.list_mcps(
@@ -823,6 +866,13 @@ class AgentInvite(_TeamToolBase):
 def _brief_text(brief: _AdditionalAssignment) -> str:
     """Render the first task with its acceptance criteria and dependencies."""
 
+    if brief.standby:
+        return (
+            "STANDBY. Do not start work and do not reply now. Your role in this "
+            "team: " + brief.prompt.strip() + "\nWhen a teammate asks you with "
+            "TeamSay, do that bounded piece with your own tools and answer that "
+            "teammate (kind=answer); ask a teammate yourself if you need their input."
+        )
     text = brief.prompt.strip()
     if brief.done_when.strip():
         text += "\n\nDone when: " + brief.done_when.strip()

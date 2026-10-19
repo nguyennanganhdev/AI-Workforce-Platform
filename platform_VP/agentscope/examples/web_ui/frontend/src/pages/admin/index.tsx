@@ -2,6 +2,7 @@ import { Check, LogOut, MapPinned, Network, Plus, Search, ShieldCheck, UserCheck
 import { type ComponentType, type CSSProperties, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { VinAdministration } from './VinAdministration';
 import { adminApi } from '@/api/admin';
 import type { AdminAccount, DirectoryArea, DirectoryDomain } from '@/api/admin';
 import type { AuthUser } from '@/api/auth';
@@ -46,6 +47,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { usePlatformAccess } from '@/context/platform-access';
 import { useCueTheme } from '@/hooks/useCueTheme';
 
 function errorText(error: unknown): string {
@@ -200,7 +202,7 @@ function AreaTable({ areas, accounts }: { areas: DirectoryArea[]; accounts: Map<
 	);
 }
 
-type Section = 'areas' | 'pending' | 'admins';
+type Section = 'areas' | 'pending' | 'admins' | 'vin';
 
 /** One admin page: a title, what it is for, its actions, then its content. */
 function Page({ title, hint, action, children }: { title: string; hint: string; action?: React.ReactNode; children: React.ReactNode }) {
@@ -318,7 +320,9 @@ function AdminSidebar({
 
 export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
 	useCueTheme();
+	const access = usePlatformAccess();
 	const platform = user.role === 'PLATFORM_ADMIN';
+	const manageVin = access?.view?.capabilities['quota.manage'] === true || access?.view?.capabilities['catalog.manage'] === true;
 	const [accounts, setAccounts] = useState<AdminAccount[]>([]);
 	const [directory, setDirectory] = useState<DirectoryDomain[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -415,6 +419,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 		{ key: 'areas', label: platform ? 'Domain, khu và BQL' : 'Khu và BQL', icon: platform ? Network : MapPinned },
 		{ key: 'pending', label: 'BQL chờ duyệt', icon: UserCheck, count: pending.length },
 		...(platform ? [{ key: 'admins' as const, label: 'Quản trị domain', icon: ShieldCheck }] : []),
+		...(manageVin ? [{ key: 'vin' as const, label: 'Quota & thư viện Vin', icon: ShieldCheck }] : []),
 	];
 
 	const content = loading ? (
@@ -423,6 +428,10 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 			<Skeleton className="h-16 w-full" />
 			<Skeleton className="h-64 w-full" />
 		</main>
+	) : section === 'vin' && manageVin ? (
+		<Page title="Người dùng, hạn mức & thư viện" hint="Hạn mức, quyền dùng AI, catalog và gói cho tài khoản cá nhân; chỉ quản trị được cấp quyền mới thay đổi cấu hình.">
+			<VinAdministration />
+		</Page>
 	) : section === 'pending' ? (
 		<Page title="BQL chờ duyệt" hint="Mỗi khu có đúng một BQL. Duyệt xong, BQL đăng nhập và dùng platform cho khu của mình.">
 			{pending.length === 0 ? (
@@ -625,7 +634,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 
 	return (
 		<SidebarProvider
-			className="h-screen min-h-0 bg-canvas"
+			className={access ? 'h-full min-h-0 bg-canvas' : 'h-screen min-h-0 bg-canvas'}
 			open={false}
 			style={{ '--sidebar-width': '16rem', '--sidebar-width-icon': '3.5rem' } as CSSProperties}
 		>

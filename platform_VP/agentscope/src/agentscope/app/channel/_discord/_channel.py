@@ -16,7 +16,7 @@ import base64
 import io
 from typing import AsyncIterator, Awaitable, Callable, TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ...._logging import logger
 from ....event import ReplyEndEvent, RequireUserConfirmEvent
@@ -61,6 +61,18 @@ class DiscordChannel(ChannelBase):
     class Config(BaseModel):
         """Discord platform options."""
 
+        owner_user_id: str | None = Field(
+            default=None,
+            title="Owner Discord user ID",
+            description="Discord ID of the account owner. Required when creating a customer bot.",
+        )
+        allowed_user_ids: list[str] | None = Field(
+            default=None,
+            title="Allowed Discord user IDs",
+            description="Only these users may message this private bot via DM. An empty list denies everyone.",
+            json_schema_extra={"type": "array", "items": {"type": "string"}},
+        )
+
         only_at_reply: bool = Field(
             default=True,
             title="Reply only when mentioned",
@@ -85,6 +97,23 @@ class DiscordChannel(ChannelBase):
             "decide their own.",
         )
 
+        @field_validator("allowed_user_ids", "approver_user_ids")
+        @classmethod
+        def validate_user_ids(cls, values):
+            if values is None:
+                return None
+            if len(values) > 100 or any(not value.isascii() or not value.isdigit()
+                or not 1 <= len(value) <= 20 or int(value) == 0 for value in values):
+                raise ValueError("Discord user IDs must be positive numeric strings (maximum 100).")
+            return list(dict.fromkeys(values))
+
+        @field_validator("owner_user_id")
+        @classmethod
+        def validate_owner_id(cls, value):
+            if value is not None:
+                cls.validate_user_ids([value])
+            return value
+
     capabilities = ChannelCapability(
         text=True,
         markdown=True,
@@ -99,6 +128,8 @@ class DiscordChannel(ChannelBase):
         channel_id: str,
         credentials: "DiscordChannel.Credentials",
         config: "DiscordChannel.Config",
+        *,
+        private_account: bool = False,
     ) -> None:
         """Read the bot token and options from the validated models.
 
@@ -113,6 +144,7 @@ class DiscordChannel(ChannelBase):
         self._channel_id = channel_id
         self._bot_token = credentials.bot_token
         self._config = config
+        self._private_account = private_account
         self.status = ChannelStatus()
         self._client: "discord.Client | None" = None
         self._client_lock = asyncio.Lock()
@@ -255,6 +287,10 @@ class DiscordChannel(ChannelBase):
         """
         if message.author.id == self._client.user.id:
             return  # ignore our own messages
+        if not self.may_chat(str(message.author.id)):
+            return
+        if self.private_access_required and message.guild is not None:
+            return
         try:
             is_dm = message.guild is None
             me = self._client.user
@@ -322,6 +358,10 @@ class DiscordChannel(ChannelBase):
             event (`ChannelEvent`): The send target (chat id).
             events (`AsyncIterator[dict]`): The run's session events.
         """
+        if self.private_access_required and (
+            not self.may_chat(event.channel_user_id) or event.metadata.get("chat_type") != "dm"
+        ):
+            return
         import discord
 
         channel = await self._channel(event.chat_id)
@@ -360,6 +400,38 @@ class DiscordChannel(ChannelBase):
                 )
         if confirm is not None:
             await self._present_confirm(event, confirm)
+
+    async def send_saved_private(self, body):
+        """Deliver an immutable C09 outbox text, with Discord nonce dedup."""
+        import httpx
+        from ...vin_platform import PlatformError
+
+        if not self.may_chat(body["recipient_id"]) or not body["chat_id"].isascii() or not body["chat_id"].isdigit():
+            raise PlatformError("PRIVATE_CHANNEL_DENIED", 403)
+
+        async def send(client):
+            headers = {"Authorization": "Bot " + self._bot_token}
+            url = "https://discord.com/api/v10/channels/" + body["chat_id"]
+            target = await client.get(url, headers=headers)
+            if target.status_code != 200:
+                raise PlatformError("DELIVERY_CHANNEL_UNAVAILABLE", 503)
+            detail = target.json()
+            if detail.get("type") != 1 or [item["id"] for item in detail.get("recipients", [])] != [body["recipient_id"]]:
+                raise PlatformError("PRIVATE_CHANNEL_DENIED", 403)
+            result = await client.post(url + "/messages", headers=headers, json={"content": body["body"],
+                "nonce": body["nonce"], "enforce_nonce": True, "allowed_mentions": {"parse": []}})
+            if result.status_code not in {200, 201}:
+                raise PlatformError("DELIVERY_TRANSPORT_UNAVAILABLE", 503)
+            return {"state": "delivered", "message_id": result.json()["id"]}
+
+        try:
+            injected = getattr(self, "_saved_http_client", None)
+            if injected is not None:
+                return await send(injected)
+            async with httpx.AsyncClient(timeout=20, trust_env=False, follow_redirects=False) as client:
+                return await send(client)
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            raise PlatformError("DELIVERY_OUTCOME_UNKNOWN", 503) from exc
 
     async def _present_confirm(
         self,
@@ -544,10 +616,19 @@ class DiscordChannel(ChannelBase):
 
     def may_decide(self, clicker_id: str, requester_id: str) -> bool:
         """Whether ``clicker_id`` may answer a card raised for ``requester_id``."""
-        return bool(clicker_id) and (
+        return bool(clicker_id) and self.may_chat(clicker_id) and (
             clicker_id == requester_id
             or clicker_id in self._config.approver_user_ids
         )
+
+    @property
+    def private_access_required(self) -> bool:
+        """The server-resolved owner or an explicit allowlist makes this bot private."""
+        return self._private_account or self._config.allowed_user_ids is not None
+
+    def may_chat(self, user_id: str) -> bool:
+        """Checked before attachment IO or emitting a model-triggering event."""
+        return bool(user_id) and (not self.private_access_required or user_id in (self._config.allowed_user_ids or []))
 
     async def _decide(
         self,

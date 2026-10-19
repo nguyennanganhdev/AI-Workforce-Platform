@@ -63,11 +63,11 @@ function getDefaultForm() {
 	};
 }
 
-/** Common unattended jobs of an area manager; each only reads and reports. */
+/** Common unattended jobs; each only reads and reports. */
 const TEMPLATES: { label: string; name: string; description: string; freq: FreqType; time: string; weekday?: number }[] = [
 	{
 		label: 'Báo cáo ticket 8:00 hằng ngày', name: 'Báo cáo ticket hằng ngày', freq: 'daily', time: '08:00',
-		description: 'Tổng hợp ticket của khu: số yêu cầu mới, đang xử lý, đã xong và quá hạn từ hôm qua đến giờ. Nêu tối đa 3 việc BQL cần chú ý. Chỉ đọc và báo cáo, không thực hiện thao tác ghi.',
+		description: 'Tổng hợp yêu cầu: số yêu cầu mới, đang xử lý, đã xong và quá hạn từ hôm qua đến giờ. Nêu tối đa 3 việc cần chú ý. Chỉ đọc và báo cáo, không thực hiện thao tác ghi.',
 	},
 	{
 		label: 'Rà soát quá hạn 14:00', name: 'Rà soát ticket quá hạn', freq: 'daily', time: '14:00',

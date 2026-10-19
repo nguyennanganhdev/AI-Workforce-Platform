@@ -13,6 +13,7 @@ from agentscope.app._team_turn import (
     register_user_input_request,
     start_team_turn,
     team_is_awaiting_user,
+    team_is_paused,
 )
 from agentscope.app.message_bus import InMemoryMessageBus
 from agentscope.message import AssistantMsg, UserMsg
@@ -123,7 +124,10 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
                 session_id="leader-session",
             ),
         )
-        self.assertTrue(await team_is_awaiting_user(self.bus, "team"))
+        # A plain final answer completes the turn: the team sleeps until the
+        # next customer message, without waiting for a question's answer.
+        self.assertFalse(await team_is_awaiting_user(self.bus, "team"))
+        self.assertTrue(await team_is_paused(self.bus, "team"))
 
     async def test_pending_question_binds_followup_to_its_task(self) -> None:
         await start_team_turn(

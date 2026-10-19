@@ -37,8 +37,10 @@ from ._team_create import TeamCreate
 from ._team_delete import TeamDelete
 from ._sop_submit import SubmitHandover, SubmitVerdict
 from ._team_say import TeamSay
+from ._shared_context_read import SharedContextRead
 
 __all__ = [
+    "SharedContextRead",
     "AgentCreate",
     "AgentInvite",
     "DEFAULT_SUB_AGENT_TEMPLATE",

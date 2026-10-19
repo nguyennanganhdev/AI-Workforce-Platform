@@ -7,7 +7,8 @@ from typing import AsyncGenerator, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
-from ..._utils._common import _generate_id
+from ..._utils._common import _describe_exception, _generate_id
+from ...mcp import MCPClient
 from ..access import ResourceKind
 from ..deps import (
     get_chat_service,
@@ -306,6 +307,7 @@ async def create_session(
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
     access: ResourceAccessService = Depends(get_resource_access_service),
+    session_service: SessionService = Depends(get_session_service),
 ) -> CreateSessionResponse:
     """Create (or resume) a session for a given agent and workspace.
 
@@ -331,7 +333,7 @@ async def create_session(
             is not visible to the caller.
     """
     # Agent must be visible to the caller (own or shared).
-    await access.resolve_agent(user_id, body.agent_id)
+    agent_record = await access.resolve_agent(user_id, body.agent_id)
 
     await _ensure_credential_exists(access, user_id, body.chat_model_config)
     await _ensure_credential_exists(
@@ -345,6 +347,31 @@ async def create_session(
         user_id,
         body.knowledge_config,
     )
+
+    # Builder bindings belong to the agent; MCP clients belong to each session.
+    mcps: list[MCPClient] | None = None
+    if (
+        (
+            getattr(agent_record.data, "execution_mode", None) is not None
+            or bool(getattr(agent_record.data, "spec", None))
+        )
+        and agent_record.data.system_role == "business"
+        and agent_record.source == "user"
+    ):
+        selected: dict[str, list[str]] = {}
+        for binding in agent_record.data.tool_bindings:
+            selected.setdefault(binding["mcp_id"], []).append(binding["tool_name"])
+        mcps = []
+        for mcp_id, tool_names in selected.items():
+            record = await storage.get_mcp(user_id, mcp_id)
+            if record is None or not record.enabled:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"MCP {mcp_id} không còn khả dụng.",
+                )
+            client = MCPClient.model_validate(record.client.model_dump(mode="json"))
+            client.enable_tools = list(dict.fromkeys(tool_names))
+            mcps.append(client)
 
     # Resolve the workspace binding for this session. Explicit
     # ``body.workspace_id`` always wins (used by team invite / borrow
@@ -375,6 +402,32 @@ async def create_session(
             **({"name": body.name} if body.name is not None else {}),
         ),
     )
+    if mcps is not None:
+        try:
+            workspace = await workspace_manager.get_workspace(
+                user_id,
+                body.agent_id,
+                session_record.id,
+                resolved_workspace_id,
+            )
+            for default_mcp in workspace.default_mcps:
+                await workspace.remove_mcp(
+                    default_mcp.name,
+                    agent_id=body.agent_id,
+                    session_id=session_record.id,
+                )
+            for client in mcps:
+                await workspace.add_mcp(
+                    client,
+                    agent_id=body.agent_id,
+                    session_id=session_record.id,
+                )
+        except Exception as exc:
+            await session_service.delete_session(user_id, body.agent_id, session_record.id)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=_describe_exception(exc),
+            ) from exc
     return CreateSessionResponse(session_id=session_record.id)
 
 

@@ -274,7 +274,7 @@ async def chat(
         str,
         str,
         str,
-        Literal["leader", "direct_mention"],
+        Literal["leader", "direct_mention", "specialist_question"],
         str | None,
     ] | None = None
     session = console_session
@@ -425,13 +425,17 @@ async def chat(
                 target = current_worker
                 customer_session_id = session.id
 
-            # A plain answer to a direct agent's pending question continues
-            # with that agent; the user need not repeat the @mention.
+            # A plain answer to a member's pending question continues with
+            # that member; the user need not repeat an @mention.
+            target_mode: Literal[
+                "direct_mention",
+                "specialist_question",
+            ] = "direct_mention"
             if (
                 target is None
                 and previous_turn is not None
                 and previous_turn.status == "awaiting_user_input"
-                and previous_turn.mode == "direct_mention"
+                and previous_turn.mode in {"direct_mention", "specialist_question"}
                 and previous_turn.customer_session_id == request.session_id
             ):
                 target = next(
@@ -443,6 +447,18 @@ async def chat(
                     ),
                     None,
                 )
+                target_mode = previous_turn.mode
+            if (
+                target is not None
+                and previous_turn is not None
+                and previous_turn.mode == "specialist_question"
+                and previous_turn.status == "awaiting_user_input"
+                and target[1] == previous_turn.reply_owner_session_id
+                and not request.new_task
+            ):
+                # Replying to the shared question is the same answer as
+                # unaddressed prose; keep the specialist's assignment.
+                target_mode = "specialist_question"
 
             if target is not None:
                 run_agent_id, run_session_id, display_name = target
@@ -457,7 +473,7 @@ async def chat(
                     )
                     run_input.metadata = {
                         **run_input.metadata,
-                        "team_turn_mode": "direct_mention",
+                        "team_turn_mode": target_mode,
                         "reply_owner_agent_id": run_agent_id,
                     }
                 team_turn_start = (
@@ -465,7 +481,7 @@ async def chat(
                     run_session_id,
                     run_agent_id,
                     customer_session_id,
-                    "direct_mention",
+                    target_mode,
                     selected_task_id,
                 )
             else:

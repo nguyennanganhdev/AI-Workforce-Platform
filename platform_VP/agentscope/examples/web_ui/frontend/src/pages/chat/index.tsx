@@ -517,6 +517,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				</section>}
 				<div className="min-h-0 flex-1"><ChatViewport
 					agentId={effectiveAgentId}
+					agentData={agents.find((agent) => agent.id === effectiveAgentId)?.data}
 					sessionId={effectiveSessionId}
 					onSessionsChanged={refetchSessions}
 					agentName={focusedMember?.agent?.data.name ?? agentName}

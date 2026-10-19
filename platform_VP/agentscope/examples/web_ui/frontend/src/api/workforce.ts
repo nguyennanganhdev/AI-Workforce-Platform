@@ -2,6 +2,17 @@ import { client } from './client';
 import type { EvalProgress, TestReport } from './studio';
 import type { ChatModelConfig } from './types';
 
+export interface BatchPublication {
+	job_id: string | null;
+	status: 'queued' | 'published' | 'failed';
+	phase: string;
+	cursor: number;
+	total: number;
+	error?: string;
+	can_repair: boolean;
+	agents: Array<{ agent_id: string; session_id: string | null; name: string; reused: boolean; updated?: boolean }>;
+}
+
 export interface BuilderTool {
 	id: string;
 	mcp_id: string;
@@ -164,15 +175,19 @@ export const workforceApi = {
 			confirm_outline: confirmOutline,
 			decisions,
 		}),
-	publish: (conversationId: string, proposalId: string, expectedRevision: number) =>
-		client.post<{ agents: Array<{ agent_id: string; session_id: string | null; name: string; reused: boolean; updated?: boolean }> }>(
+	publish: (conversationId: string, proposalId: string, expectedRevision: number, onlyPassed = false) =>
+		client.post<BatchPublication>(
 			'/workforce/console/builder/publish',
 			{
 				conversation_id: conversationId,
 				proposal_id: proposalId,
 				expected_revision: expectedRevision,
+				only_passed: onlyPassed,
 			},
 		),
+	publication: (conversationId: string, proposalId: string) => client.get<{ publication: BatchPublication | null }>(
+		`/workforce/console/builder/conversations/${encodeURIComponent(conversationId)}/publication`, { proposal_id: proposalId }, { silent: true }),
+	repairPublication: (jobId: string) => client.post<BatchPublication>(`/workforce/console/builder/publications/${encodeURIComponent(jobId)}/repair`),
 	listBuilderConversations: () =>
 		client.get<BuilderConversationSummary[]>('/workforce/console/builder/conversations'),
 	deleteBuilderConversation: (conversationId: string) =>

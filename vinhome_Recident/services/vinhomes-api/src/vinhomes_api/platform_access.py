@@ -31,11 +31,23 @@ router=APIRouter(tags=['Platform control-plane'])
 
 
 async def find_grant(db, token: str) -> dict | None:
-    row=(await db.execute(text(f"""select g.id,g.ticket_id,g.management_ref,g.tools from platform_mcp_grants g
+    row=(await db.execute(text(f"""select g.id,g.ticket_id,g.management_ref,g.tools,l.origin from platform_mcp_grants g
         join platform_links l on l.ticket_id=g.ticket_id and l.tenant_id=g.tenant_id
         join tickets t on t.id=g.ticket_id and t.tenant_id=g.tenant_id
         join management_units m on m.id=t.management_unit_id and m.tenant_id=t.tenant_id
         where g.tenant_id={TENANT} and g.token_hash=:hash and g.revoked_at is null and g.expires_at>now()
+          and (l.origin='domain' OR EXISTS (
+            SELECT 1 FROM platform_customer_links cl JOIN platform_customer_clients cc
+              ON cc.tenant_id=cl.tenant_id AND cc.client_id=cl.client_id
+            JOIN platform_customer_cases pc ON pc.link_id=cl.id AND pc.tenant_id=cl.tenant_id
+            JOIN vh_resident_case_tickets ct ON ct.case_id=pc.case_id AND ct.tenant_id=pc.tenant_id
+            JOIN users cu ON cu.id=cl.user_id
+            WHERE cl.id=g.customer_link_id AND cl.tenant_id=g.tenant_id AND ct.ticket_id=g.ticket_id
+              AND cl.active AND cl.expires_at>now() AND cl.revision=g.customer_link_revision AND cc.active AND cu.status='active'
+              AND pc.platform_workflow_id=g.workflow_id
+              AND EXISTS(SELECT 1 FROM tenant_memberships tm WHERE tm.tenant_id=cl.tenant_id AND tm.user_id=cl.user_id AND tm.status='active')
+              AND EXISTS(SELECT 1 FROM unit_residents ur WHERE ur.tenant_id=t.tenant_id AND ur.unit_id=t.unit_id
+                AND ur.user_id=cl.user_id AND ur.verification_status='verified' AND ur.valid_from<=now() AND (ur.valid_to IS NULL OR ur.valid_to>now()))))
           and g.management_ref=l.management_ref and g.management_ref=m.code and m.status='active'
           and (g.workflow_id is null or l.workflow_id is null or g.workflow_id=l.workflow_id)"""),
         {'hash':hashlib.sha256(token.encode()).hexdigest()})).mappings().first()

@@ -7,6 +7,7 @@ MCP client the platform uses. FakePlatform (test_platform_bridge) stands for the
 
 import asyncio
 import json
+import os
 import re
 import socket
 import threading
@@ -873,7 +874,7 @@ def test_dispatch_is_refused_for_plan_tickets_and_for_guard_emergencies(database
 def serve(database):
     """The API on a real port, as the platform reaches it."""
     probe = socket.socket()
-    probe.bind(("127.0.0.1", 0))
+    probe.bind(("127.0.0.1", int(os.getenv("VINHOMES_MCP_TEST_PORT", "0"))))
     port = probe.getsockname()[1]
     probe.close()
     app = create_app(V3Settings("127.0.0.1", port, database["runtime"], TENANT, None))
@@ -919,13 +920,18 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
 
         tools = {tool.name: tool for tool in asyncio.run(session(lambda client: client.list_tools())).tools}
         from vinhomes_api.platform_access import TOOLS
+        from vinhomes_api.platform_management import TOOLS as MANAGEMENT_TOOLS
         acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note", "vh_travel_prepare", "vh_travel_commit"}
         looks = set(TOOLS) - acts
         # Nothing records an answer to a quote: that is the resident's own tap on the card.
-        assert set(tools) == looks | acts
+        assert set(tools) == looks | acts | set(MANAGEMENT_TOOLS)
         for name, tool in tools.items():
             # A look-up says it only reads; an action declares the reference the platform fills in.
-            assert bool(tool.annotations and tool.annotations.readOnlyHint) == (name in looks)
+            assert bool(tool.annotations and tool.annotations.readOnlyHint) == (name in looks or name in MANAGEMENT_TOOLS)
+            if name in MANAGEMENT_TOOLS:
+                assert "ticket_id" not in tool.inputSchema["properties"]
+                assert "client_reference" not in tool.inputSchema["properties"]
+                continue
             assert ("client_reference" in tool.inputSchema["properties"]) == (name in acts or name == "vh_operation_get") and "ticket_id" in tool.inputSchema["required"]
             assert "$ref" not in json.dumps(tool.inputSchema) and len(tool.description) <= 1000
 

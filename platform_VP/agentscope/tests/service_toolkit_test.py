@@ -36,6 +36,7 @@ from agentscope.app.storage import (
     SessionRecord,
 )
 from agentscope.tool import ToolBase
+from agentscope.mcp import HttpMCPConfig, MCPClient
 
 
 class _FakeWorkspace:
@@ -195,6 +196,54 @@ class _StubTool(ToolBase):
 
 
 class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
+
+    async def test_toolless_builder_agent_keeps_restricted_runtime(self):
+        agent = _make_agent()
+        agent.data.execution_mode = "context_only"
+        agent.data.evaluation = {
+            "passed": True,
+            "execution_mode": "context_only",
+        }
+        storage = _NoOpStorage()
+        default_mcp = MCPClient(
+            name="default-search",
+            is_stateful=False,
+            mcp_config=HttpMCPConfig(url="https://example.test/mcp"),
+        )
+        toolkit = await get_toolkit(
+            storage=storage,
+            workspace=_FakeWorkspace(
+                tools=[_StubTool()],
+                mcps=[default_mcp],
+            ),
+            workspace_manager=FakeWorkspaceManager(),
+            scheduler_manager=SchedulerManager(
+                storage=storage,
+                message_bus=_NullBus(),
+                workspace_manager=FakeWorkspaceManager(),
+            ),
+            background_task_manager=BackgroundTaskManager(message_bus=_NullBus()),
+            message_bus=_NullBus(),
+            user_id="u",
+            agent_record=agent,
+            session_record=_make_session(
+                user_id="u",
+                agent_id=agent.id,
+                with_model=True,
+            ),
+            middlewares=[],
+            resource_access_service=_make_access(storage),
+            team_role="worker",
+        )
+
+        names = set(_tool_names(toolkit))
+        self.assertTrue(
+            names.isdisjoint(
+                {"stub", "TaskCreate", "TaskUpdate", "ScheduleCreate", "ToolStop"},
+            ),
+        )
+        self.assertIn("TeamSay", names)
+        self.assertEqual(toolkit.tool_groups[0].mcps, [])
     """User-owned agent (``source="user"``) gets the full set."""
 
     async def test_workforce_runtime_omits_unrelated_coding_and_task_tools(self):

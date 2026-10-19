@@ -216,6 +216,7 @@
 		"groupWorkforce": "Workforce",
 		"leader": "Leader",
 		"builder": "Builder",
+		"packs": "扩展包",
 		"agentStudio": "智能体管理",
 		"groupOperations": "运行",
 		"groupCapabilities": "智能体可用的能力",
@@ -805,6 +806,14 @@
 			"total": "总计：{{count}}",
 			"emptyTitle": "暂无任务",
 			"emptyDescription": "智能体规划的任务会显示在这里。"
+		},
+		"agentTools": {
+			"title": "工具",
+			"description": "已分配给此智能体的工具。",
+			"searchPlaceholder": "搜索已分配的工具",
+			"emptyTitle": "尚未分配工具",
+			"emptyDescription": "在 Agent Builder 中配置此智能体的工具。",
+			"unavailable": "此工具在当前会话中不可用"
 		},
 		"mcp": {
 			"description": "工作区中配置的 MCP 服务器。",

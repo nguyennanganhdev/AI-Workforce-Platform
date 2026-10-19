@@ -15,7 +15,9 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useCurrentUser } from '@/context/CurrentUserContext';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
+import { useDiscordIdentity } from '@/hooks/useDiscordIdentity';
 import { useTranslation } from '@/i18n/useI18n';
 import { BindingsEditor } from '@/pages/channel/bindings-editor';
 import { CredentialBindingPanel } from '@/pages/channel/credential-binding-panel';
@@ -46,6 +48,8 @@ interface Props {
 
 export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Props) {
 	const { t } = useTranslation();
+	const privateDiscord = useCurrentUser()?.role === 'VIN_USER' && value.channelType === 'discord';
+	const identity = useDiscordIdentity(privateDiscord);
 	const { groups } = useAvailableModels();
 
 	const set = <K extends keyof ChannelFormValue>(key: K, v: ChannelFormValue[K]) =>
@@ -57,6 +61,13 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 	React.useEffect(() => {
 		valueRef.current = value;
 	});
+	React.useEffect(() => {
+		const owner = identity.data?.verified ? identity.data.discord_user_id : undefined;
+		if (!privateDiscord || !owner || valueRef.current.platformConfig.owner_user_id === owner) return;
+		const current = valueRef.current;
+		onChange({ ...current, platformConfig: { ...current.platformConfig, owner_user_id: owner,
+			...(mode === 'create' && current.platformConfig.allowed_user_ids === undefined ? { allowed_user_ids: [owner] } : {}) } });
+	}, [identity.data, mode, onChange, privateDiscord, value]);
 
 	const typeSchema = React.useMemo(
 		() => channelTypes.find((ct) => ct.channel_type === value.channelType),
@@ -276,15 +287,18 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 				<Field key={field.key}>
 					<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
 						<div className="flex flex-col gap-y-0.5">
-							<FieldLabel>{field.title}</FieldLabel>
+							<FieldLabel htmlFor={`channel-config-${field.key}`}>{field.key === 'owner_user_id' && privateDiscord ? 'Discord ID của chủ tài khoản (bắt buộc)' : field.title}</FieldLabel>
 							{field.description && (
 								<span className="text-xs text-muted-foreground">
 									{field.description}
 								</span>
 							)}
+							{field.key === 'allowed_user_ids' && <span id="discord-allowlist-help" className="text-xs text-muted-foreground">Danh sách rỗng = chặn tất cả người dùng. Khi tạo bot cá nhân, danh sách phải có Discord ID của chủ tài khoản. Bot cá nhân chỉ trả lời qua tin nhắn riêng (DM).</span>}
+							{field.key === 'owner_user_id' && privateDiscord && <span className="text-xs text-muted-foreground">ID được điền từ tài khoản Discord đã xác minh trên trang Kênh; không thể sửa bằng cách nhập tay.</span>}
 						</div>
 						{field.type === 'boolean' ? (
 							<Switch
+								id={`channel-config-${field.key}`}
 								checked={
 									(value.platformConfig[field.key] as boolean) ??
 									(field.default as boolean) ??
@@ -299,6 +313,8 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 							/>
 						) : field.type === 'array' ? (
 							<Input
+								id={`channel-config-${field.key}`}
+								aria-describedby={field.key === 'allowed_user_ids' ? 'discord-allowlist-help' : undefined}
 								className="h-9 w-full text-sm sm:w-48"
 								placeholder="ID, cách nhau bằng dấu phẩy"
 								value={((value.platformConfig[field.key] ?? field.default ?? []) as string[]).join(', ')}
@@ -311,6 +327,9 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 							/>
 						) : (
 							<Input
+								id={`channel-config-${field.key}`}
+								required={privateDiscord && field.key === 'owner_user_id' && mode === 'create'}
+								readOnly={privateDiscord && field.key === 'owner_user_id'}
 								className="h-9 w-full text-sm sm:w-48"
 								value={String(
 									value.platformConfig[field.key] ?? field.default ?? '',
@@ -319,6 +338,10 @@ export function ChannelForm({ value, onChange, agents, channelTypes, mode }: Pro
 									set('platformConfig', {
 										...value.platformConfig,
 										[field.key]: e.target.value,
+										...(privateDiscord && field.key === 'owner_user_id' && mode === 'create'
+											&& (!Array.isArray(value.platformConfig.allowed_user_ids)
+												|| (value.platformConfig.allowed_user_ids.length === 1 && value.platformConfig.allowed_user_ids[0] === value.platformConfig.owner_user_id))
+											? { allowed_user_ids: e.target.value ? [e.target.value] : [] } : {}),
 									})
 								}
 							/>

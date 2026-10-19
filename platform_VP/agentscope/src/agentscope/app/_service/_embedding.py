@@ -25,6 +25,9 @@ from ...embedding import EmbeddingModelBase
 def build_embedding_model(
     credential_record: CredentialRecord,
     config: EmbeddingModelConfig,
+    *,
+    authority=None,
+    billing_user_id=None,
 ) -> EmbeddingModelBase:
     """Construct an embedding model from an already-resolved credential.
 
@@ -49,6 +52,9 @@ def build_embedding_model(
         `HTTPException`:
             400 if the provider does not support embedding.
     """
+    if credential_record.data.get("secret_ref") == "vin:platform-openai":
+        from ..vin_platform._resources import hydrate_platform_credential
+        credential_record = hydrate_platform_credential(credential_record)
     credential = CredentialFactory.from_dict(credential_record.data)
 
     credential_cls = CredentialFactory.get_credential_class(config.type)
@@ -89,7 +95,12 @@ def build_embedding_model(
     if context_size is not None:
         kwargs["context_size"] = context_size
 
-    return embedding_cls(**kwargs)
+    model = embedding_cls(**kwargs)
+    if authority is not None:
+        model._vin_authority = authority
+        model._vin_user_id = billing_user_id or credential_record.user_id
+        model._vin_credential_id = config.credential_id
+    return model
 
 
 async def get_embedding_model(
@@ -123,4 +134,6 @@ async def get_embedding_model(
         user_id,
         config.credential_id,
     )
-    return build_embedding_model(credential_record, config)
+    return build_embedding_model(credential_record, config,
+        authority=getattr(getattr(access, "_storage", None), "vin_platform_service", None),
+        billing_user_id=user_id)

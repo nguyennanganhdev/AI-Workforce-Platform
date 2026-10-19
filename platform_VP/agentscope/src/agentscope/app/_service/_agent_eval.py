@@ -36,7 +36,7 @@ from ...message import (
 from ...model import ChatModelBase, ChatResponse
 from .._agent_spec import AgentSpec, SpecTest, render_prompt, spec_hash
 from .._workforce_policy import governed_system_prompt
-from ._publish_gate import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, seal_report
+from ._publish_gate import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, judge_passed, safety_held, seal_report
 from ...model._call_observer import usage_purpose
 
 ToolRunner = Callable[[str, dict], Awaitable[str]]
@@ -73,6 +73,11 @@ def _tool_error_message(code: str) -> str:
     if code == "TICKET_GRANT_REQUIRED":
         return "Môi trường eval thiếu ticket và quyền truy cập riêng (TICKET_GRANT_REQUIRED). Cần cấu hình sandbox có ticket/grant hợp lệ; không dùng token khám phá MCP để đọc dữ liệu."
     return f"Môi trường kiểm thử chưa gọi được công cụ ({code}). Kiểm tra kết nối và quyền MCP rồi chạy lại."
+
+
+def _now_text() -> str:
+    """Current time in the runtime injection's default format and zone."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S") + " (UTC)"
 
 
 def catalog_allows_read(meta: dict) -> bool:
@@ -179,7 +184,8 @@ async def run_scenario(
     resident had agreed when asked, and is marked so for the judge.
     """
 
-    system = governed_system_prompt("business", render_prompt(spec))
+    # The runtime tells the agent the current time; so does the test, or "10/8" has no year.
+    system = governed_system_prompt("business", render_prompt(spec)) + f"\n\nThời điểm hiện tại: {_now_text()}"
     messages: list[Msg] = [SystemMsg(name="system", content=system)]
     if handover:
         messages.append(UserMsg(name="leader", content="Bàn giao yêu cầu từ đối tác:\n" + handover))
@@ -396,7 +402,8 @@ async def judge(
         "Không yêu cầu làm rõ lại thông tin đã có trong kịch bản hoặc ngữ cảnh.\n\n"
         f"PROMPT VÀ LUẬT THỰC TẾ (chính sách server được ưu tiên):\n{governed_system_prompt('business', render_prompt(spec))}\n\n"
         + (f"BÀN GIAO TICKET (agent nhận trước lời khách):\n{transcript['handover'][:4000]}\n\n" if transcript.get("handover") else "")
-        + f"KHÁCH NÓI: {test.scenario}\n"
+        + f"THỜI ĐIỂM CA THỬ (agent cũng được biết): {_now_text()}\n"
+        f"KHÁCH NÓI: {test.scenario}\n"
         f"HÀNH VI MONG ĐỢI: {test.expected}\n"
         + "".join(f"Câu trả lời phải thể hiện ý: {phrase}\n" for phrase in test.must_include if not literal(phrase))
         + "".join(f"Câu trả lời không được có ý: {phrase}\n" for phrase in test.must_not_include if not literal(phrase))
@@ -571,10 +578,7 @@ async def run_spec_tests(
                     except Exception as exc:  # noqa: BLE001
                         error = _model_error(exc)
                         verdict = {"passed": False, "reason": f"Không chấm được: {error}"}
-            # Tool use is advice unless the case names a tool: an agent that answers
-            # correctly without the tool the judge would have picked still passes.
-            required = [c for c in (verdict or {}).get("criteria", []) if c["name"] != "tool_use" or test.expect_tool]
-            judged = verdict is None or (all(c["passed"] for c in required) if required else verdict["passed"])
+            judged = verdict is None or judge_passed(test, verdict)
             passed = all(c["passed"] for c in checks) and judged
             result = {
                 **({"error": error} if error else {}),
@@ -594,12 +598,26 @@ async def run_spec_tests(
                 await on_progress({"stage": "case_completed", "test_id": test.id, "result": result})
             return result
 
-    results = await asyncio.gather(*(one(index, test) for index, test in enumerate(spec.tests)))
+    cleanup = None
+    try:
+        results = await asyncio.gather(*(one(index, test) for index, test in enumerate(spec.tests)))
+    finally:
+        if sandbox is not None and callable(getattr(sandbox, "cleanup", None)):
+            cleanup_task = asyncio.create_task(sandbox.cleanup())
+            try:
+                cleanup = await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError:
+                await cleanup_task
+                raise
+            except Exception:
+                cleanup = {"status": "pending", "code": "SANDBOX_CLEANUP_PENDING"}
     passed = sum(item["passed"] for item in results)
     total = len(results)
     rate = round(passed / total, 3) if total else 0.0
     # A scenario the model could not play says nothing about the agent.
     errors = [item["error"] for item in results if item.get("error")]
+    if cleanup and cleanup["status"] == "pending":
+        errors.append("Cleanup fixture chưa được xác minh (SANDBOX_CLEANUP_PENDING).")
     report = {
         "evaluator": "agent_spec_model_v1",
         "spec_hash": spec_hash(spec),
@@ -612,8 +630,10 @@ async def run_spec_tests(
         "model_error": errors[0] if errors else None,
         "results": results,
         "simulated_runtime_tools": sorted(simulated_names),
-        "environment": {"mode": "sandbox_fixture_tickets", "isolated_business_sandbox": True,
+        "environment": {"mode": "sandbox_fixture_tickets", "isolated_business_sandbox": not sandbox_error and bool(getattr(sandbox, "tickets", [])),
             "sandbox_run_id": sandbox.run_id, "sandbox_tools": sandbox.tools,
+            **({"data_mode": sandbox.data_mode} if hasattr(sandbox, "data_mode") else {}),
+            **({"cleanup": cleanup} if cleanup else {}),
             "note": "Mỗi ca có ticket mẫu mới trên sandbox đối tác và grant riêng; tool của MCP sandbox chạy thật trên dữ liệu mô phỏng. TeamSay vẫn mô phỏng."}
             if sandbox is not None else
             {"mode": "fixture_ticket_reads", "isolated_business_sandbox": False, "fixture_tools": sorted(fixture_tools),
@@ -683,7 +703,7 @@ def evaluation_metrics(spec: AgentSpec, results: list[dict]) -> dict:
         "configuration_errors": sum(item.get("error_kind") == "configuration" for item in results),
         "checks_passed": sum(check["passed"] is True for check in checks), "checks_total": len(checks),
         "judge_passed": sum(item["judge"]["passed"] is True for item in judged), "judge_total": len(judged),
-        "safety_passed": sum(item.get("passed") is True for item in safety), "safety_total": len(safety),
+        "safety_passed": sum(safety_held(item) for item in safety), "safety_total": len(safety),
         "tool_calls": len(calls), "tool_errors": sum(call.get("mode") == "error" for call in calls),
         "real_reads": sum(call.get("mode") == "read_only" for call in calls),
         "sandbox_calls": sum(call.get("mode") == "sandbox" for call in calls),

@@ -201,6 +201,11 @@ class ChannelGateway:
         if not record.enabled:
             return  # stale event from a since-disabled channel
 
+        from .._service._personal_jobs import enqueue_channel, personal_context
+        if await personal_context(self._storage, record.user_id) is not None:
+            await enqueue_channel(self._storage, record, event)
+            return
+
         agent_id, session_id, scope = resolve(event, record)
         if event.chat_id:
             await self._bus.registry_set(

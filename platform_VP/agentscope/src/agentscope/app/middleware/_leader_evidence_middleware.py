@@ -23,7 +23,7 @@ from ...message import (
 from ...middleware import MiddlewareBase
 from ...types import ReplyFinishedReason
 from .._chat_consent import pending_chat_actions
-from .._evidence_claims import ClaimValidation, validate_claims
+from .._evidence_claims import ClaimValidation, EvidenceSource, validate_claims
 from .._shared_context import SharedContextService
 from ..storage import StorageBase
 
@@ -241,16 +241,58 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id
         )
 
-    async def _claim_validation(self, content: str) -> ClaimValidation:
+    def _customer_sources(self, agent: Agent | None) -> list[EvidenceSource]:
+        """Only server tool receipts in this reply and exact session scope count.
+
+        ChatResponse cannot contain ToolResultBlocks. The runtime creates their
+        metadata from the built-in tool; neither model prose nor tool arguments
+        become evidence. Never read receipts from a previous turn's history.
+        """
+        current = {}
+        if agent is None:
+            return []
+        for message in agent.state.context:
+            if message.id != agent.state.reply_id or message.role != "assistant":
+                continue
+            blocks = message.get_content_blocks()
+            calls = {block.id: block for block in blocks if isinstance(block, ToolCallBlock) and block.name == "CustomerService"}
+            for block in blocks:
+                if not isinstance(block, ToolResultBlock) or block.id not in calls or block.name != "CustomerService":
+                    continue
+                if block.state != ToolResultState.SUCCESS:
+                    current.clear()
+                    continue
+                receipt = block.metadata.get("customer_service_receipt")
+                if not isinstance(receipt, dict) or any(receipt.get(key) != value for key, value in (
+                    ("user_id", self._user_id), ("agent_id", self._agent_id), ("session_id", self._session_id),
+                )):
+                    continue
+                try:
+                    operation = json.loads(calls[block.id].input).get("operation")
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                if operation not in {"create", "progress"} or receipt.get("operation") != operation:
+                    continue
+                records = receipt.get("cases")
+                if not isinstance(records, list):
+                    continue
+                for case in records:
+                    if isinstance(case, dict) and case.get("id") and case.get("sync_status") == "applied":
+                        current[case["id"]] = EvidenceSource(json.dumps(case, ensure_ascii=False), "customer-service:" + block.id)
+        return list(current.values())
+
+    async def _claim_validation(self, content: str, agent: Agent | None = None) -> ClaimValidation:
+        direct = self._customer_sources(agent)
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
         )
         if session is None or session.team_id is None:
-            return validate_claims(content, ())
+            return validate_claims(content, direct)
         return await self._shared_context.validate_customer_reply_claims(
             self._user_id,
             session.team_id,
             content,
+            **({"additional_sources": direct} if direct else {}),
         )
 
     async def _has_unseen_evidence(self) -> bool:
@@ -314,11 +356,11 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         for candidate in candidates:
             if not candidate:
                 continue
-            report = await self._claim_validation(candidate)
+            report = await self._claim_validation(candidate, agent)
             if report.supported_text and report.has_concrete_claims:
                 # The supported subset can lose its entity/unit context when
                 # pruning a mixed answer. Check the subset independently too.
-                subset = await self._claim_validation(report.supported_text)
+                subset = await self._claim_validation(report.supported_text, agent)
                 if subset.unsupported or not subset.has_concrete_claims:
                     continue
                 latest = next(
@@ -480,6 +522,31 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             ],
         )
 
+    @staticmethod
+    def _is_customer_intake(text: str) -> bool:
+        """Return whether the fixed Leader is asking for customer input."""
+
+        normalized = " ".join(text.casefold().split())
+        return any(
+            marker in normalized
+            for marker in (
+                "bạn cung cấp",
+                "bạn cho biết",
+                "bạn xuất phát từ đâu",
+                "vui lòng cung cấp",
+                "vui lòng cho biết",
+                "hãy cung cấp",
+                "hãy cho biết",
+                "where will you depart",
+                "where are you departing",
+                "how many people",
+                "please provide",
+                "please tell me",
+                "could you provide",
+                "could you tell me",
+            )
+        )
+
     async def on_reply(
         self,
         agent: Agent,
@@ -490,7 +557,6 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
 
         review_nudges = 0
         refresh_nudges = 0
-        repair_nudges = 0
         supported_partial = ""
         rounds = 0
         dispatched_seen = 0
@@ -539,7 +605,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             new_dispatch = expected > dispatched_seen
             current_text = self._buffered_text(buffered_text)
             _team_exists, completed, errors, _verified, waiting = await self._status()
-            has_current_evidence = completed > 0 or errors > 0 or waiting
+            has_current_evidence = completed > 0 or errors > 0 or waiting or bool(self._customer_sources(agent))
 
             if (new_dispatch or pending_assignments) and rounds < self._max_rounds:
                 # Even if the worker finished quickly, this text was authored
@@ -576,6 +642,23 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 )
                 continue
 
+            if _team_exists and self._is_customer_intake(current_text):
+                discard_text()
+                if review_nudges >= self._max_nudges:
+                    for replacement in self._replacement(
+                        agent, event, self._incomplete_text(agent)
+                    ):
+                        yield replacement
+                    continue
+                review_nudges += 1
+                self._nudge(
+                    agent,
+                    "The fixed Workforce Leader must not ask the customer for "
+                    "task-specific information. Delegate intake to the single "
+                    "best-matched specialist. Only that specialist may call "
+                    "TeamSay(kind=requires_user_input) and ask the customer.",
+                )
+                continue
             review = await self._review()
             if review and review_nudges < self._max_nudges:
                 discard_text()
@@ -610,78 +693,21 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     "Do not emit an intermediate progress update.",
                 )
                 continue
-            safe_without_evidence = self._safe_without_evidence(current_text)
-            # A long factual answer does not become a safe clarification just
-            # because it ends with "Which option do you want?".  Validate
-            # concrete anchors for every non-empty reply.  The support set also
-            # contains customer-confirmed messages, so repeating dates/budgets
-            # while asking a real clarification remains valid.
-            validation = await self._claim_validation(current_text)
-            if validation.unsupported:
-                partial = validation.supported_text
-                if supported_partial:
-                    prior = (await self._claim_validation(supported_partial)).supported_text
-                    if prior and prior not in partial:
-                        partial = prior + "\n\n" + partial
-                supported_partial = (
-                    (await self._claim_validation(partial)).supported_text if partial else ""
+            # The Leader reviews content; the runtime does not rewrite or
+            # bounce its answer for missing evidence.
+            for text_event in buffered_text:
+                yield text_event
+            buffered_text.clear()
+            if has_current_evidence and self._on_verified_answer is not None:
+                session = await self._storage.get_session(
+                    self._user_id, self._agent_id, self._session_id
                 )
-                discard_text()
-                if repair_nudges >= self._max_repairs:
-                    for replacement in self._replacement(
-                        agent, event, await self._partial_text(agent, supported_partial)
-                    ):
-                        yield replacement
-                    continue
-                repair_nudges += 1
-                self._nudge(
-                    agent,
-                    "Repair only the unsupported concrete claims: "
-                    + ", ".join(validation.unsupported[:12])
-                    + ". Match entity, field, value and unit to one current source. "
-                    "Keep the supported result below; do not restart team review "
-                    "unless the evidence itself conflicts. Do not invent missing details. "
-                    "Supported result: " + supported_partial,
-                )
-                continue
-            if has_current_evidence or safe_without_evidence:
-                for text_event in buffered_text:
-                    yield text_event
-                buffered_text.clear()
-                if has_current_evidence and self._on_verified_answer is not None:
-                    session = await self._storage.get_session(
-                        self._user_id, self._agent_id, self._session_id
-                    )
-                    if session is not None and session.team_id is not None:
-                        try:
-                            self._on_verified_answer(session.team_id)
-                        except Exception:  # noqa: BLE001 - learning is optional
-                            pass
-                yield event
-                continue
-
-            discard_text()
-            if review_nudges >= self._max_nudges:
-                for replacement in self._replacement(
-                    agent, event, await self._partial_text(agent, supported_partial)
-                ):
-                    yield replacement
-                continue
-
-            review_nudges += 1
-            self._nudge(
-                agent,
-                (
-                    "This customer-facing answer has no current worker or MCP "
-                    "evidence. Delegate the domain task to a published agent, "
-                    "ask one concise REQUIRED clarification question, or explicitly say "
-                    "that the capability/data cannot be verified. Never supply "
-                    "names, prices, addresses, availability or recommendations "
-                    "from model memory. If the user already supplied the core "
-                    "inputs needed for read-only lookup, delegate now; do not "
-                    "delay work to ask optional preferences."
-                ),
-            )
+                if session is not None and session.team_id is not None:
+                    try:
+                        self._on_verified_answer(session.team_id)
+                    except Exception:  # noqa: BLE001 - learning is optional
+                        pass
+            yield event
 
 
 __all__ = ["LeaderEvidenceMiddleware"]

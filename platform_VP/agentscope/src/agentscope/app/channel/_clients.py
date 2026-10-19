@@ -136,12 +136,7 @@ class ChannelClients:
             return cached[1]
 
         try:
-            channel = self._types.create_channel(
-                channel_type=record.channel_type,
-                channel_id=record.id,
-                credentials=record.credentials,
-                config=record.platform_config,
-            )
+            channel = await self._types.create_for_record(self._storage, record)
         except Exception:  # pylint: disable=broad-except
             logger.exception(
                 "channel client '%s' could not be built",

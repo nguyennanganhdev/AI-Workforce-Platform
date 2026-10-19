@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from copy import deepcopy
 from typing import Any, Literal
 
 from pydantic import Field
@@ -19,6 +20,7 @@ from .._team_turn import (
     get_team_turn,
     register_user_input_request,
     reject_user_input_request,
+    return_team_reply_to_leader,
 )
 from ..message_bus import MessageBusKeys
 from ..storage import (
@@ -43,6 +45,13 @@ _PROGRESS_ONLY_MARKERS = (
     "đang trong quá trình",
     "sẽ tiếp tục",
     "sẽ cập nhật",
+    "sẽ lên lịch",
+    "sẽ phối hợp",
+    "sẽ tổng hợp",
+    "sẽ gửi",
+    "will prepare",
+    "will coordinate",
+    "will collect",
     "vui lòng chờ",
     "i am searching",
     "i'm searching",
@@ -65,9 +74,10 @@ class _TeamSayParams(ParamsBase):
     to: str | None = Field(
         default=None,
         description=(
-            "Recipient member name. Pass ``null`` (the default) to "
-            "broadcast to every other member of the team. To address "
-            "a specific peer use that member's name."
+            "Recipient member handle. Leaders may pass ``null`` to broadcast. "
+            "Workers must use a specific roster handle except when "
+            "``kind=requires_user_input``: then ``null`` transfers temporary "
+            "customer-clarification ownership and does not broadcast."
         ),
     )
     kind: Literal[
@@ -136,16 +146,21 @@ class _TeamSayParams(ParamsBase):
         max_length=255,
         description=(
             "Stable semantic key for requires_user_input, for example "
-            "missing:travel_dates. Required for that kind."
+            "missing:account_id. Optional; the runtime derives one from "
+            "the question text when omitted."
         ),
     )
     resolution: Literal["complete", "stop", "verify"] | None = Field(
         default=None,
-        description="Reply owner only: resolve the assignment addressed by to. complete requires current result and MCP evidence ids; stop reports incomplete; verify permits at most two checks. Never closes the ticket.",
+        description=(
+            "Reply owner only: resolve the assignment addressed by to. "
+            "complete marks the assignment finished; stop reports incomplete; "
+            "verify permits at most two checks. Never closes the ticket."
+        ),
     )
 
 
-_LEADER_DESCRIPTION = """Coordinate your team. Three kinds:
+_LEADER_DESCRIPTION = """Coordinate your team. Two kinds:
 
 - kind="handoff": give a member (to=<roster handle>) a new or changed task.
   Write a self-contained brief in content and put the acceptance criteria in
@@ -155,24 +170,29 @@ _LEADER_DESCRIPTION = """Coordinate your team. Three kinds:
   decision="accept" (the runtime attaches the evidence), "challenge" (content
   says exactly what is missing or wrong; the member redoes only that part) or
   "stop" (content says what stays incomplete). Never closes the ticket.
-- kind="ask_customer": register the ONE consolidated question you will ask
-  the customer in your final reply. Ask only for information a human must
-  decide; first check shared context and teammates.
 
 Do not poll members or send chit-chat; reports arrive in your inbox.
+AgentInvite starts only the primary member; the others stay dormant until a
+teammate's question or your handoff wakes them. You never ask the customer
+task-specific questions: the responsible specialist asks the customer itself
+and returns completed work for your final synthesis.
 """
 
 _WORKER_DESCRIPTION = """Talk to your team. You MUST end your assignment
-with kind="result" (verified findings) or kind="error" (what blocked you).
+with kind="result" (your finished work) or kind="error" (what blocked you).
 
-- kind="result" / "error": goes to the reply owner automatically (omit to).
-  Separate verified tool facts from anything unverified; never send "I am
-  working on it" as a result.
-- kind="question": ask ONE teammate (to=<roster handle>) for data they own.
+- kind="result" / "error": goes back to whoever gave you the work (omit to).
+  Never send "I am working on it" as a result.
+- kind="question": ask ONE teammate (to=<roster handle>) for data or a
+  decision they own, or challenge their result (start with "Phản biện:").
   Your assignment pauses until they answer; do not poll.
-- kind="answer": reply to the teammate who asked you (omit to).
-- kind="need_customer_info": propose one question for the customer when a
-  human decision is genuinely missing; the reply owner decides whether to ask.
+- kind="answer": reply to the teammate who asked you (omit to). A received
+  answer is input: continue your own assignment, then report its result to
+  its requester; never send acknowledgement-only replies.
+- kind="requires_user_input": when information only the customer has is
+  genuinely missing, call this once (omit to). You become the temporary
+  customer-facing owner: ask the same concise question in your final reply,
+  finish your task after the customer answers, then report the result.
 """
 
 _LEADER_INPUT_SCHEMA = {
@@ -180,7 +200,7 @@ _LEADER_INPUT_SCHEMA = {
     "properties": {
         "kind": {
             "type": "string",
-            "enum": ["handoff", "review", "ask_customer"],
+            "enum": ["handoff", "review"],
         },
         "to": {
             "type": "string",
@@ -190,7 +210,7 @@ _LEADER_INPUT_SCHEMA = {
             "type": "string",
             "description": (
                 "handoff: the task brief. review: what is missing/wrong, or why "
-                "you accept/stop. ask_customer: the consolidated question."
+                "you accept/stop."
             ),
         },
         "done_when": {
@@ -211,7 +231,7 @@ _WORKER_INPUT_SCHEMA = {
     "properties": {
         "kind": {
             "type": "string",
-            "enum": ["result", "error", "question", "answer", "need_customer_info"],
+            "enum": ["result", "error", "question", "answer", "requires_user_input"],
         },
         "to": {
             "type": "string",
@@ -271,6 +291,7 @@ class TeamSay(_TeamToolBase):
         *args: Any,
         role: str = "leader",
         management_group: bool = False,
+        is_reply_owner: bool | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialise with role-specific description.
@@ -279,6 +300,9 @@ class TeamSay(_TeamToolBase):
             role (`str`, defaults to ``"leader"``):
                 Either ``"leader"`` or ``"worker"``. Determines which
                 description the agent sees for this tool.
+            is_reply_owner (`bool | None`):
+                Whether this turn may resolve assignments. If omitted, use
+                the role default; runtime authorization is always rechecked.
             *args:
                 Forwarded to :class:`_TeamToolBase.__init__`.
             **kwargs:
@@ -303,6 +327,15 @@ class TeamSay(_TeamToolBase):
                 "description": "result/answer: analysis for clearly labelled proposals; verified for operational facts backed by tools.",
             }
             self.description = self.description.replace("customer", "BQL user").replace("ticket", "group")
+        if is_reply_owner is None:
+            is_reply_owner = role == "leader"
+        if not is_reply_owner:
+            self.input_schema = json.loads(json.dumps(self.input_schema))
+            self.input_schema["properties"].pop("resolution", None)
+            self.input_schema["properties"].pop("decision", None)
+            kinds = self.input_schema["properties"]["kind"].get("enum")
+            if kinds and "review" in kinds:
+                self.input_schema["properties"]["kind"]["enum"] = [k for k in kinds if k != "review"]
 
     async def __call__(
         self,
@@ -382,6 +415,14 @@ class TeamSay(_TeamToolBase):
                 content = content.rstrip() + "\n\nDone when: " + done_when.strip()
             if kind == "requires_user_input" and not question_key:
                 question_key = _derived_question_key(content)
+            if (
+                kind == "requires_user_input"
+                and isinstance(to, str)
+                and to.strip().casefold() in {"null", "none"}
+            ):
+                # Some models serialize a nullable target as the string
+                # "null". For a customer question its intent is unambiguous.
+                to = None
             if context_delta is not None:
                 context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
@@ -420,19 +461,6 @@ class TeamSay(_TeamToolBase):
             effective_scope: ContextResultScope = result_scope or (
                 "caller" if context_mode == "isolated" else "shared"
             )
-            if kind == "requires_user_input" and not question_key:
-                return ToolChunk(
-                    content=[
-                        TextBlock(
-                            text=(
-                                "TeamSay: requires_user_input requires a "
-                                "stable semantic question_key."
-                            ),
-                        ),
-                    ],
-                    state=ToolResultState.ERROR,
-                )
-
             # Build a (name -> (session_id, agent_id)) directory. The
             # leader is always in the directory under its plain agent
             # name; workers come from the team's members roster via
@@ -456,6 +484,23 @@ class TeamSay(_TeamToolBase):
                         TextBlock(
                             text=(
                                 f"TeamSay: leader records missing for team {team.id}."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                )
+            if (
+                self._role == "leader"
+                and leader.agent.data.system_role == "leader"
+                and kind == "requires_user_input"
+            ):
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "TeamSay: the Workforce Leader does not ask "
+                                "task-specific customer questions. Delegate "
+                                "intake to the responsible specialist."
                             ),
                         ),
                     ],
@@ -503,29 +548,6 @@ class TeamSay(_TeamToolBase):
                 storage=shared_context.storage,
                 user_id=self._user_id,
             )
-            if (
-                self._session_id == leader.session_id
-                and leader.agent.data.system_role == "leader"
-                and kind in {"result", "answer"}
-            ):
-                completed, _, _, _ = await shared_context.team_evidence_status(
-                    self._user_id,
-                    team.id,
-                    leader_session_id=leader.session_id,
-                )
-                if not completed:
-                    return ToolChunk(
-                        content=[
-                            TextBlock(
-                                text=(
-                                    "TeamSay: no current worker report supports a Leader result. "
-                                    "Do not invent status, prices or ETAs. Delegate with kind=handoff, "
-                                    "or ask for missing information with kind=requires_user_input."
-                                )
-                            )
-                        ],
-                        state=ToolResultState.ERROR,
-                    )
             effective_task_id = task_id or (turn.task_id if turn else None)
             active_task = await shared_context.active_task_id(self._user_id, team.id)
             if effective_task_id is not None:
@@ -652,20 +674,41 @@ class TeamSay(_TeamToolBase):
                 in {
                     "result",
                     "error",
-                    "requires_user_input",
-                    "user_input_proposal",
                     "conflict",
                     "answer",
                 }
                 and not is_reply_owner
             ):
                 to = reply_owner_name
+            elif (
+                self._role == "worker"
+                and to is None
+                and kind in {"result", "error"}
+                and turn is not None
+                and turn.mode == "specialist_question"
+                and turn.reply_owner_session_id == self._session_id
+            ):
+                # The customer's answer only unblocked this specialist; its
+                # finished work still goes back to the Leader for synthesis.
+                to = leader.name
 
             # Workers propose; only the current customer-facing owner can
             # approve a question and freeze the group awaiting user input.
+            # A worker may take temporary reply ownership solely to obtain
+            # customer-owned information. Addressing the current owner keeps
+            # the legacy proposal/review path for non-Workforce callers.
+            direct_specialist_question = (
+                self._role == "worker"
+                and kind in {"requires_user_input", "user_input_proposal"}
+                and not is_reply_owner
+                and to is None
+            )
+            if direct_specialist_question:
+                kind = "requires_user_input"
             proposal = (
                 kind in {"requires_user_input", "user_input_proposal"}
                 and not is_reply_owner
+                and not direct_specialist_question
             )
             if proposal:
                 if to != reply_owner_name:
@@ -680,7 +723,7 @@ class TeamSay(_TeamToolBase):
                 kind = "user_input_proposal"
             if kind == "conflict" and not is_reply_owner and to != reply_owner_name:
                 raise ValueError(
-                    "Conflicting evidence must be sent to the reply owner for review"
+                    "Conflicting results must be sent to the reply owner for review"
                 )
             if context_delta is not None and context_delta.status is not None:
                 # A stale model/schema may still submit this server-owned
@@ -696,12 +739,12 @@ class TeamSay(_TeamToolBase):
                     for marker in _PROGRESS_ONLY_MARKERS
                 )
             ):
-                # A future-tense promise is not completion evidence. Preserve
+                # A future-tense promise is not a completed result. Preserve
                 # it as optional progress and force the worker middleware to
                 # continue until it sends a concrete result/question/error.
                 kind = "progress"
 
-            if kind == "requires_user_input" and is_reply_owner:
+            if kind == "requires_user_input" and (is_reply_owner or direct_specialist_question):
                 from .._customer_questions import known_inputs, question_fields
                 snapshot = await shared_context.storage.get_team_shared_context(self._user_id, team.id)
                 known = known_inputs(e for e in snapshot.state.events
@@ -713,6 +756,10 @@ class TeamSay(_TeamToolBase):
                         + json.dumps({field: known[field] for field in fields}, ensure_ascii=False)
                         + ". Use them. Ask only for a different required detail that is still missing."
                     ))])
+            if kind == "requires_user_input" and (
+                is_reply_owner or direct_specialist_question
+            ):
+                question_id = _handoff_id()
                 turn, duplicate, _first = await register_user_input_request(
                     self._message_bus,
                     team.id,
@@ -725,30 +772,56 @@ class TeamSay(_TeamToolBase):
                         else leader.session_id
                     ),
                     task_id=effective_task_id,
-                    question_id=_handoff_id(),
+                    question_id=question_id,
                     question_key=question_key,
                     storage=shared_context.storage,
                     user_id=self._user_id,
+                    specialist_owner_session_id=(
+                        self._session_id if direct_specialist_question else None
+                    ),
+                    specialist_owner_agent_id=(
+                        self._agent_id if direct_specialist_question else None
+                    ),
                 )
                 if not duplicate and effective_scope == "shared":
-                    question_event = await shared_context.append_event(
-                        user_id=self._user_id,
-                        team_id=team.id,
-                        kind="requires_user_input",
-                        content=content,
-                        event_id=_handoff_id(),
-                        task_id=effective_task_id,
-                        source_agent_id=self._agent_id,
-                        source_session_id=self._session_id,
-                        thread_id=thread_id,
-                        in_reply_to=in_reply_to,
-                        artifact_refs=artifact_refs,
-                        hop_count=hop_count,
-                        reply_owner_agent_id=self._agent_id,
-                        based_on_revision=based_on_revision,
-                        reference_event_ids=reference_event_ids,
-                        delta=context_delta,
-                    )
+                    try:
+                        question_event = await shared_context.append_event(
+                            user_id=self._user_id,
+                            team_id=team.id,
+                            kind="requires_user_input",
+                            content=content,
+                            event_id=question_id,
+                            task_id=effective_task_id,
+                            source_agent_id=self._agent_id,
+                            source_session_id=self._session_id,
+                            thread_id=thread_id,
+                            in_reply_to=in_reply_to,
+                            artifact_refs=artifact_refs,
+                            hop_count=hop_count,
+                            reply_owner_agent_id=self._agent_id,
+                            based_on_revision=based_on_revision,
+                            reference_event_ids=reference_event_ids,
+                            delta=context_delta,
+                        )
+                    except Exception:
+                        await reject_user_input_request(
+                            self._message_bus,
+                            team.id,
+                            question_id,
+                            storage=shared_context.storage,
+                            user_id=self._user_id,
+                        )
+                        if direct_specialist_question:
+                            await return_team_reply_to_leader(
+                                self._message_bus,
+                                team.id,
+                                specialist_session_id=self._session_id,
+                                leader_session_id=leader.session_id,
+                                leader_agent_id=leader.agent.id,
+                                storage=shared_context.storage,
+                                user_id=self._user_id,
+                            )
+                        raise
                     if question_event.stale:
                         await reject_user_input_request(
                             self._message_bus,
@@ -781,6 +854,7 @@ class TeamSay(_TeamToolBase):
                             ),
                         ),
                     ],
+                    metadata={"kind": "requires_user_input"},
                 )
 
             if self._role == "worker" and to is None:
@@ -835,6 +909,31 @@ class TeamSay(_TeamToolBase):
 
             if (
                 self._role == "worker"
+                and turn is not None
+                and turn.mode == "direct_mention"
+                and is_reply_owner
+                and kind in {"result", "error"}
+                and len(recipients) == 1
+                and recipients[0][0] == leader.session_id
+            ):
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "Bạn đang sở hữu lượt trả lời; hãy trả lời "
+                                "khách hàng trực tiếp."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                    metadata={
+                        "kind": kind,
+                        "reason": "direct_mention_reply_owner",
+                    },
+                )
+
+            if (
+                self._role == "worker"
                 and kind == "requires_user_input"
                 and to != reply_owner_name
             ):
@@ -849,15 +948,16 @@ class TeamSay(_TeamToolBase):
                     ],
                     state=ToolResultState.ERROR,
                 )
-            if turn is not None and turn.status == "awaiting_user_input":
+            if turn is not None and turn.status != "running":
                 reporting_to_owner = self._role == "worker" and to == reply_owner_name
                 if not reporting_to_owner:
                     return ToolChunk(
                         content=[
                             TextBlock(
                                 text=(
-                                    "TeamSay: the team is waiting for customer "
-                                    "input. Do not start more collaboration."
+                                    "TeamSay: this team turn is paused. Do not "
+                                    "start more collaboration until the next "
+                                    "customer turn."
                                 ),
                             ),
                         ],
@@ -877,7 +977,7 @@ class TeamSay(_TeamToolBase):
 
             wake = not (
                 kind == "progress"
-                or (turn is not None and turn.status == "awaiting_user_input")
+                or (turn is not None and turn.status != "running")
             )
             if kind == "requires_user_input":
                 turn, duplicate, first_question = await register_user_input_request(
@@ -974,13 +1074,27 @@ class TeamSay(_TeamToolBase):
                     },
                 )
                 await shared_context.persist_handoff(intent)
+            # A specialist owns only the temporary customer clarification.
+            # Its terminal reply must still settle the peer that requested it.
+            coordination_owner_session_id = (
+                leader.session_id
+                if (
+                    turn is not None
+                    and turn.mode == "specialist_question"
+                    and turn.reply_owner_session_id == self._session_id
+                    and kind in {"result", "answer", "error"}
+                )
+                else turn.reply_owner_session_id
+                if turn is not None
+                else leader.session_id
+            )
             coordination = await shared_context.coordinate_handoff(
                 user_id=self._user_id,
                 team_id=team.id,
                 task_id=effective_task_id,
                 sender=self._session_id,
                 recipients=tuple(sid for sid, _ in recipients),
-                owner=turn.reply_owner_session_id if turn else leader.session_id,
+                owner=coordination_owner_session_id,
                 handoff_id=handoff_id,
                 kind=kind,
                 content=content,
@@ -992,7 +1106,7 @@ class TeamSay(_TeamToolBase):
                 analysis_report=analysis_report,
                 # A direct peer answer already wakes its requester and remains
                 # durable in Shared Context. Sending the same answer to the
-                # Leader inbox duplicates model work before the coordinator's
+                # Leader inbox duplicates model work before the requesting worker's
                 # final result arrives.
                 notify_owner=not (
                     kind == "answer"
@@ -1055,6 +1169,20 @@ class TeamSay(_TeamToolBase):
                             storage=shared_context.storage,
                             user_id=self._user_id,
                         )
+                    if (
+                        turn is not None
+                        and turn.mode == "specialist_question"
+                        and turn.reply_owner_session_id == self._session_id
+                    ):
+                        await return_team_reply_to_leader(
+                            self._message_bus,
+                            team.id,
+                            specialist_session_id=self._session_id,
+                            leader_session_id=leader.session_id,
+                            leader_agent_id=leader.agent.id,
+                            storage=shared_context.storage,
+                            user_id=self._user_id,
+                        )
                     return ToolChunk(
                         content=[
                             TextBlock(
@@ -1068,6 +1196,22 @@ class TeamSay(_TeamToolBase):
                         ],
                         state=ToolResultState.ERROR,
                     )
+
+            if (
+                turn is not None
+                and turn.mode == "specialist_question"
+                and turn.reply_owner_session_id == self._session_id
+                and kind in {"result", "answer", "error"}
+            ):
+                await return_team_reply_to_leader(
+                    self._message_bus,
+                    team.id,
+                    specialist_session_id=self._session_id,
+                    leader_session_id=leader.session_id,
+                    leader_agent_id=leader.agent.id,
+                    storage=shared_context.storage,
+                    user_id=self._user_id,
+                )
 
             directive_refs = reference_event_ids
             if context_mode == "references" and shared_event is not None:
@@ -1083,10 +1227,25 @@ class TeamSay(_TeamToolBase):
                 f"{team.id}\0{context_revision}".encode(),
             ).hexdigest()
 
+            if kind in {"question", "handoff"} and resolution not in {"complete", "stop"}:
+                response_kind = "answer" if kind == "question" else "result"
+                reply_instruction = (
+                    f"Respond to {sender_name!r} with kind={response_kind} "
+                    "when this work is finished; the runtime links the reply."
+                )
+            elif kind in {"answer", "result", "error"}:
+                reply_instruction = (
+                    "This is a response, not a new request. Resume your original assignment "
+                    "using this output/blocker, then report its result to that assignment's "
+                    "requester. Do not send acknowledgement-only replies."
+                )
+            else:
+                reply_instruction = "This is an update; do not send acknowledgement-only replies."
             hint = HintBlock(
                 hint=(
                     f'<team-message from="{sender_name}" kind="{kind}">\n'
-                    f"handoff_id={handoff_id}; task_id={effective_task_id}\n"
+                    f"handoff_id={handoff_id}; task_id={effective_task_id}; in_reply_to={in_reply_to}\n"
+                    f"{reply_instruction}\n"
                     f"reference_event_ids={json.dumps(directive_refs)}\n"
                     f"{content}\n"
                     f"</team-message>"

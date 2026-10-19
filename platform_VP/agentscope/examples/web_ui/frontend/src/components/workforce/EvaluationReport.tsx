@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import type { TestReport, TestResult } from '@/api';
 import { Badge } from '@/components/ui/badge';
+import { canPresentPublishable, executionLabel, isInconclusive } from '@/features/workforce/evaluation/presentation';
 import { cn } from '@/lib/utils';
 
 const CRITERIA: { key: string; label: string; short: string }[] = [
@@ -30,7 +31,7 @@ const ENVIRONMENT: Record<string, string> = {
 const seconds = (ms?: number | null) => (ms == null ? '–' : `${(ms / 1000).toFixed(1)} giây`);
 
 type Verdict = 'passed' | 'failed' | 'error';
-const verdictOf = (result: TestResult): Verdict => (result.error ? 'error' : result.passed ? 'passed' : 'failed');
+const verdictOf = (result: TestResult): Verdict => (isInconclusive(result) ? 'error' : result.passed ? 'passed' : 'failed');
 
 function Mark({ passed, title }: { passed: boolean | undefined; title?: string }) {
 	if (passed === undefined) return <CircleMinus aria-label="Không áp dụng" className="size-4 text-muted-foreground/50" />;
@@ -81,7 +82,8 @@ function CaseTimeline({ result }: { result: TestResult }) {
 						<details>
 							<summary className="flex cursor-pointer flex-wrap items-center gap-1.5">
 								<span className="font-mono font-medium text-foreground">{call.name}</span>
-								<span className={cn('rounded-full px-2 py-0.5 text-[11px]', mode.tone)}>{mode.label}</span>
+								<span className={cn('rounded-full px-2 py-0.5 text-[11px]', mode.tone)}>{call.mode === 'fixture' ? mode.label : executionLabel(call)}</span>
+								{call.consent_assumed && <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">Giả định đã đồng ý trong ca thử</span>}
 								{call.error_code && <span className="text-red-600">{call.error_code}</span>}
 								<span className="text-muted-foreground">{seconds(call.latency_ms)}</span>
 							</summary>
@@ -139,7 +141,7 @@ export function EvaluationReport({ report, configurationBlocker }: { report: Tes
 	for (const result of results) counts[verdictOf(result)] += 1;
 	const total = results.length || report.total;
 	const threshold = report.thresholds ?? { minimum_tests: 3, pass_rate: 0.8, safety_pass_rate: 1 };
-	const publishable = report.publishable && !configurationBlocker;
+	const publishable = canPresentPublishable(report) && !configurationBlocker;
 	const shown = results.map((result, index) => ({ result, index })).filter(({ result }) => filter === 'all' || verdictOf(result) === filter);
 	const criterion = (result: TestResult, key: string) => result.judge?.criteria?.find((item) => item.name === key)?.passed;
 	const m = report.metrics;
@@ -147,12 +149,12 @@ export function EvaluationReport({ report, configurationBlocker }: { report: Tes
 	return (
 		<section aria-label="Kết quả đánh giá" className="space-y-4">
 			<div className="flex flex-wrap items-center gap-4">
-				<ScoreRing passed={report.passed} total={total} />
+				<ScoreRing passed={counts.passed} total={total} />
 				<div className="min-w-0 flex-1 space-y-1.5">
 					<div className="flex flex-wrap items-center gap-2">
 						<h3 className="text-sm font-semibold">Kết quả đánh giá</h3>
 						<Badge variant={publishable ? 'secondary' : 'outline'} className={cn(publishable ? 'text-emerald-700' : 'text-amber-700')}>
-							{configurationBlocker ? 'Cấu hình cần bổ sung' : publishable ? 'Đủ điều kiện phát hành' : counts.error ? 'Cần xử lý lỗi chạy/chấm' : 'Chưa đủ điều kiện phát hành'}
+							{configurationBlocker ? 'Cấu hình cần bổ sung' : publishable ? 'Đủ điều kiện phát hành' : counts.error ? 'Chưa kết luận · cần xử lý lỗi chạy/chấm' : 'Chưa đủ điều kiện phát hành'}
 						</Badge>
 						{report.environment && (
 							<Badge variant="outline" title={report.environment.note}>{ENVIRONMENT[report.environment.mode] ?? report.environment.mode}</Badge>
@@ -178,6 +180,15 @@ export function EvaluationReport({ report, configurationBlocker }: { report: Tes
 					<CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
 					{configurationBlocker || report.publish_blocker || report.model_error}
 				</p>
+			)}
+
+			{(report.environment?.data_mode === 'synthetic_test' || report.environment?.cleanup) && (
+				<div className="space-y-1 rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
+					{report.environment?.data_mode === 'synthetic_test' && <p>Dữ liệu mô phỏng riêng theo người dùng và lần chạy.</p>}
+					{report.environment?.cleanup && <p role="status">Dọn dữ liệu thử: {report.environment.cleanup.status === 'completed'
+						? `Đã thu hồi ${report.environment.cleanup.retired ?? 0} ticket mẫu; giữ nhật ký kiểm toán.`
+						: report.environment.cleanup.status === 'pending' ? 'Chưa xác minh xong — chưa đủ điều kiện phát hành.' : 'Không tạo dữ liệu cần dọn.'}</p>}
+				</div>
 			)}
 
 			{results.length > 0 && (

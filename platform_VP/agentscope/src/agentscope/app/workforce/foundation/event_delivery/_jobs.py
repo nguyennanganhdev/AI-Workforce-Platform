@@ -29,6 +29,7 @@ class JobStatus(StrEnum):
 class JobOwnerKind(StrEnum):
     SCOPE = "scope"
     PROVIDER = "provider"
+    PERSONAL = "personal"
 
 
 class DurableJob(WorkforceModel):
@@ -37,6 +38,7 @@ class DurableJob(WorkforceModel):
     scope: Scope | None = None
     tenant_id: OpaqueId
     provider_integration_id: OpaqueId | None = None
+    personal_user_id: OpaqueId | None = None
     job_type: str = Field(min_length=1, max_length=200)
     payload: JsonObject
     idempotency_key: str = Field(min_length=1, max_length=500)
@@ -54,6 +56,12 @@ class DurableJob(WorkforceModel):
 
     @model_validator(mode="after")
     def validate_owner(self) -> "DurableJob":
+        if self.owner_kind == JobOwnerKind.PERSONAL:
+            if self.personal_user_id is None or self.scope is not None or self.provider_integration_id is not None:
+                raise ValueError("personal job requires a verified user and no manager/provider scope")
+            return self
+        if self.personal_user_id is not None:
+            raise ValueError("personal user is only valid for personal jobs")
         if self.owner_kind == JobOwnerKind.SCOPE:
             if self.scope is None or self.provider_integration_id is not None:
                 raise ValueError("scoped job requires scope only")

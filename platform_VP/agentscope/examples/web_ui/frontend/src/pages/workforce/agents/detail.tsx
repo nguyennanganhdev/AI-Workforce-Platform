@@ -56,7 +56,7 @@ const STATUS_LABEL = {
 } as const;
 
 const AUTHOR_LABEL: Record<string, string> = {
-	manager: 'BQL',
+	manager: 'Người quản lý',
 	builder: 'Builder copilot',
 	agent: 'Agent tự cải tiến',
 	legacy: 'Có sẵn',
@@ -310,7 +310,7 @@ export function AgentDetailPage() {
 							<Section title="Danh tính" hint="Leader đọc mô tả này để quyết định có mời agent vào ticket hay không.">
 								<div className="grid gap-3 md:grid-cols-2">
 									<TextField label="Tên agent" value={spec.name} onChange={(value) => update('name', value)} />
-									<TextField label="Đối tượng phục vụ" value={spec.audience} onChange={(value) => update('audience', value)} placeholder="cư dân, khách du lịch..." />
+									<TextField label="Đối tượng phục vụ" value={spec.audience} onChange={(value) => update('audience', value)} placeholder="khách hàng, khách du lịch..." />
 									<TextField label="Giọng điệu" value={spec.tone} onChange={(value) => update('tone', value)} placeholder="thân thiện, ngắn gọn..." />
 									<div className="space-y-1.5">
 										<p className="text-xs text-muted-foreground">Ngôn ngữ trả lời</p>

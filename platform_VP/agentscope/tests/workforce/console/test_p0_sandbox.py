@@ -304,7 +304,9 @@ async def test_publishing_bindings_cannot_strip_server_confirmation(monkeypatch)
         storage=storage, workspace_manager=SimpleNamespace(get_workspace=get_workspace),
         user_id="user", record=SimpleNamespace(id="agent"), spec=spec,
     )
-    assert configured_client.confirm_tools == ["dispatch", "unknown", "write"]
+    # The server's confirmation list survives publishing; other writes are asked
+    # by the runtime risk policy instead of being forced here.
+    assert configured_client.confirm_tools == ["dispatch"]
 
 
 @pytest.mark.asyncio

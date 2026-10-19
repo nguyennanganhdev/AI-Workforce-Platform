@@ -16,6 +16,8 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 from typing import Literal
 
+from .._service._catalog_resources import list_catalog_resources
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
@@ -71,6 +73,24 @@ async def _save_agent(storage: StorageBase, user_id: str, record: AgentRecord) -
         await storage.upsert_agent(user_id, record)
     except AgentRevisionConflict as exc:
         raise HTTPException(status_code=409, detail="Agent changed concurrently; reload before publishing.") from exc
+
+
+@workforce_console_router.get("/admin/vin/users/{target_id}/usage")
+async def admin_vin_usage(target_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._catalog_resources import catalog_authority
+    from ..vin_platform import PlatformError
+    authority = catalog_authority(storage)
+    if authority is None:
+        raise HTTPException(503, "VIN_PLATFORM_DISABLED")
+    try:
+        context = await authority.context(user_id)
+        authority.admin(context)
+        target = await authority.context(target_id)
+        if target.tenant_id != context.tenant_id:
+            raise PlatformError("CAPABILITY_DENIED", 403)
+        return await authority.quota.usage(target)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
 
 # These are platform policy, not Builder output and not UI-editable fields.
 _FIXED_CONTEXT = ContextConfig(
@@ -271,6 +291,7 @@ class PublishRequest(BaseModel):
     conversation_id: str
     proposal_id: str
     expected_revision: int = Field(ge=1)
+    only_passed: bool = False
 
 
 class PublishedAgent(BaseModel):
@@ -283,6 +304,13 @@ class PublishedAgent(BaseModel):
 
 class PublishResponse(BaseModel):
     agents: list[PublishedAgent]
+    status: Literal["queued", "published", "failed"] = "published"
+    job_id: str | None = None
+    phase: str = "published"
+    cursor: int = 0
+    total: int = 0
+    error: str | None = None
+    can_repair: bool = False
 
 
 class LifecycleRequest(BaseModel):
@@ -486,10 +514,7 @@ PLATFORM_CREDENTIAL_NAME = "Model của platform"
 
 
 async def _platform_credential(storage: StorageBase, user_id: str) -> list:
-    """A management account without a credential of its own uses the
-    platform's model key (``WORKFORCE_PLATFORM_OPENAI_API_KEY``), stored once
-    as its credential; the account may still add its own instead."""
-
+    """Compatibility path for BQL while the Vin feature is disabled."""
     key = os.getenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "").strip()
     if not key:
         return []
@@ -501,7 +526,20 @@ async def _platform_credential(storage: StorageBase, user_id: str) -> list:
     return await storage.list_credentials(user_id)
 
 
-async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
+async def _model_config(storage: StorageBase, user_id: str, *, authority=None) -> ChatModelConfig:
+    from ..vin_platform import enabled
+
+    if enabled():
+        authority = authority or getattr(storage, "vin_platform_service", None)
+        if authority is None:
+            raise HTTPException(status_code=503, detail="MODEL_AUTHORITY_UNAVAILABLE")
+        from ..vin_platform._contracts import PlatformError
+        from ..vin_platform._resources import platform_model_config
+
+        try:
+            return await platform_model_config(authority, user_id)
+        except PlatformError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.code) from exc
     credentials = [c for c in await storage.list_credentials(user_id) if c.data.get("type") in {s["properties"]["type"]["const"] for s in CredentialFactory.list_schemas()}]
     credentials = credentials or await _platform_credential(storage, user_id)
     if not credentials:
@@ -542,7 +580,7 @@ async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
 
 async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
     catalog: list[BuilderTool] = []
-    for record in await storage.list_mcps(user_id):
+    for record in await list_catalog_resources(storage, user_id, "mcp"):
         if not record.enabled:
             continue
         for tool in record.discovered_tools:
@@ -1296,6 +1334,26 @@ async def _persist_builder_turn(
     user_text: str | None,
     proposal: ProposalView,
 ) -> None:
+    from .._service._publish_batch import builder_guard
+    from .._service._personal_jobs import personal_context
+    if await personal_context(storage, user_id) is None:
+        await _persist_builder_turn_unlocked(storage, user_id, conversation_id, user_text, proposal)
+        return
+    async with builder_guard(storage, user_id, conversation_id):
+        if proposal.revision > 1:
+            current = _stored_proposal(await _list_all_builder_messages(storage, user_id, conversation_id))
+            if current is None or current.proposal_id != proposal.proposal_id or current.revision != proposal.revision - 1:
+                raise HTTPException(409, "Builder proposal changed during evaluation; reload before editing.")
+        await _persist_builder_turn_unlocked(storage, user_id, conversation_id, user_text, proposal)
+
+
+async def _persist_builder_turn_unlocked(
+    storage: StorageBase,
+    user_id: str,
+    conversation_id: str,
+    user_text: str | None,
+    proposal: ProposalView,
+) -> None:
     if user_text is not None:
         await storage.upsert_message(
             user_id,
@@ -1438,16 +1496,16 @@ def _agent_checks(
     }
 
 
-async def _library(storage: StorageBase, user_id: str) -> tuple[dict[str, dict], dict[str, dict]]:
+async def _library(storage: StorageBase, user_id: str, access=None) -> tuple[dict[str, dict], dict[str, dict]]:
     """The manager's knowledge bases and enabled library skills, by id."""
 
     from .._service._agent_studio import knowledge_catalog, skill_catalog
 
-    knowledge, skills = await knowledge_catalog(storage, user_id), await skill_catalog(storage, user_id)
+    knowledge, skills = await knowledge_catalog(storage, user_id, access=access), await skill_catalog(storage, user_id)
     for record in await storage.list_knowledge_bases(user_id):
         if record.id in knowledge:
             knowledge[record.id]["revision"] = record.updated_at.isoformat()
-    for record in await storage.list_skills(user_id):
+    for record in await list_catalog_resources(storage, user_id, "skill"):
         if record.id in skills:
             skills[record.id].update(markdown=record.markdown or "", revision=record.updated_at.isoformat())
     return knowledge, skills
@@ -1561,7 +1619,7 @@ async def _prepare_builder(
         previous_transcript or body.message,
     )
     tools = await _catalog(storage, user_id)
-    knowledge, skills = await _library(storage, user_id)
+    knowledge, skills = await _library(storage, user_id, access=access)
     library = _library_note(knowledge, skills)
     model = await get_model(user_id, body.chat_model_config, access)
     apply_reasoning_effort(model, "builder")
@@ -2017,7 +2075,16 @@ async def publish_builder(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> PublishResponse:
+    from .._service._personal_jobs import personal_context
+    from ..vin_platform import PlatformError
+    if await personal_context(storage, user_id) is not None:
+        from .._service._publish_batch import enqueue
+        try:
+            return PublishResponse(**(await enqueue(storage, user_id, body.model_dump())))
+        except PlatformError as exc:
+            raise HTTPException(exc.status, exc.code) from exc
     async with _proposal_locks[user_id]:
         session = await storage.get_session(
             user_id,
@@ -2044,13 +2111,23 @@ async def publish_builder(
                 status_code=409,
                 detail="Builder proposal revision changed",
             )
-        if proposal.status != "ready":
+        # only_passed publishes the agents that passed now; the rest stay here to be fixed.
+        pending = [item for item in proposal.agents if not item.reuse_agent_id]
+        chosen = {id(item) for item in pending if not body.only_passed or item.evaluation.get("passed")}
+        partial = len(chosen) < len(pending)
+        if partial and not chosen:
+            raise HTTPException(status_code=409, detail="Chưa có agent nào đạt eval để phát hành.")
+        if not partial and proposal.status != "ready":
             raise HTTPException(
                 status_code=409,
                 detail="Proposal chưa đạt điều kiện phát hành",
             )
         for item in proposal.agents:
+            if not item.reuse_agent_id and id(item) not in chosen:
+                continue
             if item.reuse_agent_id:
+                if partial:
+                    continue
                 # Reused as it is in production: nothing about it changes.
                 reused = await storage.get_agent(user_id, item.reuse_agent_id)
                 if (reused is None or reused.data.lifecycle_state != "published"
@@ -2087,7 +2164,11 @@ async def publish_builder(
     result: list[PublishedAgent] = []
     prepared = []
     for item in proposal.agents:
+        if not item.reuse_agent_id and id(item) not in chosen:
+            continue
         if item.reuse_agent_id:
+            if partial:
+                continue
             result.append(
                 PublishedAgent(
                     agent_id=item.reuse_agent_id,
@@ -2163,6 +2244,7 @@ async def publish_builder(
         await apply_bindings(
             storage, workspace_manager, user_id, record, spec,
             install_skill=_skill_installer(request, storage, user_id, record.id), stage=True,
+            access=access,
         )
         if item.skill_markdown.strip():
             await workspace.add_skill_archive(
@@ -2188,14 +2270,30 @@ async def publish_builder(
 
     for record in prepared:
         await _save_agent(storage, user_id, record)
-    proposal.status = "published"
+    text = ("Mình đã phát hành agent lên platform.", "Your agent is now published on the platform.")
+    if partial:
+        # Published agents stay in the proposal as reused ones: later evals and repairs
+        # leave them alone, and the remainder is published under a new proposal id.
+        done = [item for item in proposal.agents if id(item) in chosen]
+        for item, record in zip(done, prepared, strict=True):
+            item.reuse_agent_id, item.reuse_agent_name = record.id, record.data.name
+            item.evaluation = {**item.evaluation, "reused": True}
+        left = [item.name for item in proposal.agents if not item.reuse_agent_id]
+        proposal.proposal_id = _generate_id()
+        proposal.revision += 1
+        proposal.status = "blocked"
+        text = (f"Đã phát hành {len(done)} agent đạt eval: {', '.join(item.name for item in done)}. "
+                f"Còn {len(left)} agent chưa đạt: {', '.join(left)}; sửa hoặc chạy lại eval rồi phát hành tiếp.",
+                f"Published {len(done)} agents that passed evaluation. {len(left)} still need fixes: {', '.join(left)}.")
+    else:
+        proposal.status = "published"
     await storage.upsert_message(
         user_id,
         body.conversation_id,
         AssistantMsg(
             name="agent_builder",
             content=(
-                "Mình đã phát hành agent lên platform."
+                text[0]
                 if _response_language(
                     next(
                         (
@@ -2207,7 +2305,7 @@ async def publish_builder(
                     ),
                 )
                 == "vi"
-                else "Your agent is now published on the platform."
+                else text[1]
             ),
             structured_output={
                 "workforce_builder_proposal": proposal.model_dump(mode="json"),
@@ -2215,6 +2313,41 @@ async def publish_builder(
         ),
     )
     return PublishResponse(agents=result)
+
+
+@workforce_console_router.get("/builder/publications/{job_id}", response_model=PublishResponse)
+async def builder_publication(job_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._publish_batch import find_job, view
+    from ..vin_platform import PlatformError
+    try:
+        return PublishResponse(**view(await find_job(storage, user_id, job_id)))
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
+@workforce_console_router.get("/builder/conversations/{conversation_id}/publication")
+async def conversation_publication(conversation_id: str, proposal_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._personal_jobs import personal_context
+    from .._service._publish_batch import view
+    scope = await personal_context(storage, user_id)
+    if scope is None:
+        raise HTTPException(403, "PERSONAL_WORKSPACE_REQUIRED")
+    authority, context = scope
+    jobs = [job for job in await authority.jobs.list(context, "publish-batch", source_id=conversation_id)
+        if job.payload["body"]["proposal_id"] == proposal_id]
+    return {"publication": view(max(jobs, key=lambda job: job.created_at)) if jobs else None}
+
+
+@workforce_console_router.post("/builder/publications/{job_id}/repair", response_model=PublishResponse)
+async def repair_builder_publication(job_id: str, user_id: str = Depends(get_current_user_id), storage: StorageBase = Depends(get_storage)):
+    from .._service._publish_batch import enqueue, find_job
+    from ..vin_platform import PlatformError
+    try:
+        previous = await find_job(storage, user_id, job_id)
+        command = {key: previous.payload["body"][key] for key in ("conversation_id", "proposal_id", "expected_revision")}
+        return PublishResponse(**await enqueue(storage, user_id, command, previous=previous))
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
 
 
 @workforce_console_router.get("/agents", response_model=list[WorkforceAgentView])
@@ -2289,6 +2422,7 @@ async def _leader(
     storage: StorageBase,
     workspace_manager: WorkspaceManagerBase,
 ) -> tuple[AgentRecord, SessionRecord]:
+    model_config = await _model_config(storage, user_id)
     record = next(
         (
             item
@@ -2330,7 +2464,7 @@ async def _leader(
         workspace_manager,
         user_id,
         record.id,
-        await _model_config(storage, user_id),
+        model_config,
         "Ticket mới",
         leader_only=True,
     )
@@ -2367,6 +2501,21 @@ async def bootstrap_leader(
     )
 
 
+@workforce_console_router.get("/leader/{agent_id}/sessions/{session_id}/service-cases")
+async def customer_service_cases(
+    agent_id: str,
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+):
+    from .._service._customer_cases import session_cases
+    from ..vin_platform._contracts import PlatformError
+    try:
+        return await session_cases(storage, user_id, agent_id, session_id)
+    except PlatformError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+
+
 @workforce_console_router.post(
     "/leader/tickets",
     response_model=LeaderSessionView,
@@ -2380,7 +2529,10 @@ async def create_leader_ticket(
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
 ) -> LeaderSessionView:
+    from .._service._personal_jobs import personal_context
     leader, seed = await _leader(user_id, storage, workspace_manager)
+    # A personal account's Leader sessions are its conversations, not BQL test runs.
+    personal = await personal_context(storage, user_id) is not None
     # A ticket must never collapse into an earlier leader session. Storage
     # intentionally upserts the same (user, agent, workspace) triple, so each
     # locally-created ticket gets an explicit fresh workspace binding even
@@ -2391,7 +2543,7 @@ async def create_leader_ticket(
         agent_id=leader.id,
         config=SessionConfig(
             workspace_id=workspace_id,
-            name="Phiên thử Leader",
+            name="Cuộc trò chuyện mới" if personal else "Phiên thử Leader",
             chat_model_config=seed.config.chat_model_config,
         ),
     )
@@ -2411,7 +2563,7 @@ async def create_leader_ticket(
         agent_id=leader.id,
         session_id=session.id,
         name=session.config.name,
-        is_test=True,
+        is_test=not personal,
     )
 
 
