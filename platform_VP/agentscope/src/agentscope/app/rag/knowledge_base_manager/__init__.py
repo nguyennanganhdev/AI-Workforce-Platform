@@ -20,6 +20,7 @@ from ._errors import (
     DimensionPolicyError,
     KnowledgeBaseError,
     KnowledgeBaseNotFoundError,
+    KnowledgeCredentialMissingError,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "KnowledgeBaseError",
     "KnowledgeBaseManagerBase",
     "KnowledgeBaseNotFoundError",
+    "KnowledgeCredentialMissingError",
 ]

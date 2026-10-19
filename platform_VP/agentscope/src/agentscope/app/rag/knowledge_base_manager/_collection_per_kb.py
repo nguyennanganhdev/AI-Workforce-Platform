@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from ._base import KnowledgeBaseManagerBase
 from ._dimension_policy import DimensionPolicy, DimensionPolicyKind
-from ._errors import KnowledgeBaseNotFoundError
+from ._errors import KnowledgeBaseNotFoundError, KnowledgeCredentialMissingError
 from ...._logging import logger
 from ....rag import KnowledgeBase
 from ..._service._embedding import build_embedding_model
@@ -147,6 +147,30 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
             knowledge_base_id,
         )
 
+    async def delete_document_vectors(
+        self,
+        user_id: str,
+        knowledge_base_id: str,
+        document_id: str,
+    ) -> None:
+        """Drop one document's vectors without building the embedding model.
+
+        Deleting must work even when the embedding credential is gone or
+        the document never got indexed: missing collections and vector
+        store errors are logged, not raised.
+        """
+        record = await self._storage.get_knowledge_base(user_id, knowledge_base_id)
+        if record is None:
+            return
+        name = record.data.collection_name
+        try:
+            if await self._vector_store.has_collection(name):
+                await self._vector_store.delete(name, document_id)
+        except Exception:  # noqa: BLE001 - the record and blob are removed anyway
+            logger.exception(
+                "Could not delete vectors of document %s from %s", document_id, name,
+            )
+
     async def get_knowledge(
         self,
         user_id: str,
@@ -194,11 +218,12 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
             record.data.embedding_model_config.credential_id,
         )
         if credential_record is None:
-            raise KnowledgeBaseNotFoundError(
-                f"Credential "
-                f"{record.data.embedding_model_config.credential_id!r} for "
-                f"knowledge base {knowledge_base_id!r} not found.",
+            logger.warning(
+                "Credential %s of knowledge base %s no longer exists",
+                record.data.embedding_model_config.credential_id,
+                knowledge_base_id,
             )
+            raise KnowledgeCredentialMissingError()
         embedding_model = build_embedding_model(
             credential_record=credential_record,
             config=record.data.embedding_model_config,

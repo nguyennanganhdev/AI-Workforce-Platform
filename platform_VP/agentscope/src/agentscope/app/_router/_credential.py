@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Credential router — CRUD endpoints for API key credentials."""
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..access import ResourceKind
 from ..deps import (
@@ -192,4 +192,20 @@ async def delete_credential(
         ResourceKind.CREDENTIAL,
         credential_id,
     )
+    # A knowledge base embeds with its credential; deleting it would leave the
+    # KB unable to index or search, and its documents stuck.
+    in_use = [
+        record.data.name
+        for record in await storage.list_knowledge_bases(owner_id)
+        if record.data.embedding_model_config.credential_id == credential_id
+    ]
+    if in_use:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Khóa API đang được kho tri thức "
+                + ", ".join(f"“{name}”" for name in in_use)
+                + " dùng. Hãy xoá các kho tri thức đó trước."
+            ),
+        )
     await storage.delete_credential(owner_id, credential_id)

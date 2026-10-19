@@ -159,7 +159,7 @@ function ConfigCard({ knowledgeBase }: { knowledgeBase: KnowledgeBaseView }) {
 				/>
 				<ConfigItem
 					label={t('knowledge.config.credential')}
-					value={knowledgeBase.credential_name ?? embedding.credential_id}
+					value={knowledgeBase.credential_name ?? t('knowledge.credentialMissing')}
 				/>
 				<ConfigItem label={t('knowledge.config.chunker')} value={chunkerValue} />
 				<ConfigItem

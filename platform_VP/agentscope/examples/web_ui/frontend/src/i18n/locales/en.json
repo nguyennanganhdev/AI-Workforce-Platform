@@ -507,7 +507,8 @@
 			"previewTooLargeTitle": "File too large to preview",
 			"previewTooLargeDescription": "This file exceeds the inline preview limit. Download it to view the original.",
 			"downloadButton": "Download original file"
-		}
+		},
+		"credentialMissing": "API key was deleted"
 	},
 	"llm-select": {
 		"placeholder": "Select a model",
