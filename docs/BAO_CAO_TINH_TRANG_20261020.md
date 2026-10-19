@@ -157,3 +157,31 @@ chuyển (2). Hai lỗi có sẵn: `service_chat_locking_test` (waiter) và
 | Bên nhận sao lưu không tự xoá bản cũ | Trung bình | VPS Domain đang giữ 8,5 GB, tăng ~700 MB mỗi ngày, còn ~14 GB trống: khoảng 3 tuần là đầy. Cần chọn giữ bao nhiêu ngày |
 | Phiên thử của Leader chạy peer, phiếu thật chạy collaborative | Thấp | Phiên thử không phản ánh đúng phiếu thật |
 | Mục còn mở ghi nhận 19/10, chưa kiểm lại hôm nay | | DNS rebinding chưa chặn; tài khoản bị đình chỉ có khoá riêng không bị quota chặn; `/workspace/mcp` lỗi 500 với playwright; peer mode chưa có learning hook |
+
+## 6. Bổ sung 20/10: Leader hối thành viên và "nghiệm thu" việc chưa làm
+
+Phiên thử Leader của tài khoản cá nhân (chế độ peer), yêu cầu lịch trình xe
+Hà Nội đến Đà Nẵng ngày 20/10 cho 2 khách:
+
+| Giờ UTC | Sự việc |
+| --- | --- |
+| 18:50:13 | Leader mời "Trợ lý chuyến bay"; phiên thành viên bắt đầu khởi tạo |
+| 18:50:15 | Một TeamSay lỗi vì Leader ghi mã phiên thay cho tên thành viên |
+| 18:50:18 đến 18:50:33 | Leader gửi 7 tin "Giao việc" để hối, lần cuối là chấp nhận việc |
+| 18:50:35 | Leader trả lời khách "sẽ tiếp tục theo dõi" |
+| 18:50:38 | Thành viên mới bắt đầu, thấy việc đã bị đóng nên ngủ, 0 lần gọi model |
+
+Nguyên nhân: ở chế độ peer, Leader không có cơ chế chờ nên cứ gọi model tiếp;
+runtime cho phép giao lại việc chưa báo và chấp nhận việc chưa có kết quả.
+25 giây khởi tạo thành viên là do MCP du lịch khởi động nguội (lần kết nối đầu
+22,9 giây, các lần sau 0,5 giây), không phải do Platform.
+
+Đã sửa và deploy (app `1ee4fe3f-noleaderpoll-20261020`):
+
+- Leader giao lại việc cho thành viên chưa báo kết quả từ tin nhắn mới nhất của
+  khách: bị từ chối, kèm hướng dẫn kết thúc lượt.
+- Leader chấp nhận (`review accept`) khi thành viên chưa báo kết quả: bị từ chối.
+- Leader chế độ peer: sau khi giao việc thành công trong lượt, chỉ được trả lời
+  khách một lần, không gọi thêm công cụ; thành viên tự đăng kết quả vào chat.
+
+Phòng cũ của phiên trên đã bị đóng việc; thử lại trong một phiên thử mới.
