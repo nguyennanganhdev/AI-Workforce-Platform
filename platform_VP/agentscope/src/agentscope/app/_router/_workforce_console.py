@@ -2490,6 +2490,55 @@ async def _leader(
     return record, session
 
 
+class LeaderSettings(BaseModel):
+    """What the platform user may tune on the fixed Leader."""
+
+    name: str = ""
+    instructions: str = Field(default="", max_length=4000)
+    max_iters: int = Field(default=50, ge=5, le=100)
+
+
+class LeaderSettingsUpdate(BaseModel):
+    instructions: str = Field(max_length=4000)
+    max_iters: int = Field(ge=5, le=100)
+
+
+def _leader_settings(record: AgentRecord) -> LeaderSettings:
+    return LeaderSettings(
+        name=record.data.name,
+        instructions=record.data.leader_instructions,
+        max_iters=min(100, max(5, record.data.react_config.max_iters)),
+    )
+
+
+@workforce_console_router.get("/leader/settings", response_model=LeaderSettings)
+async def get_leader_settings(
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+) -> LeaderSettings:
+    leader, _session = await _leader(user_id, storage, workspace_manager)
+    return _leader_settings(leader)
+
+
+@workforce_console_router.put("/leader/settings", response_model=LeaderSettings)
+async def update_leader_settings(
+    body: LeaderSettingsUpdate,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+) -> LeaderSettings:
+    """Name, operating policy and model stay server-owned; these two do not."""
+
+    leader, _session = await _leader(user_id, storage, workspace_manager)
+    leader.data.leader_instructions = body.instructions.strip()
+    leader.data.react_config = leader.data.react_config.model_copy(
+        update={"max_iters": body.max_iters},
+    )
+    await _save_agent(storage, user_id, leader)
+    return _leader_settings(leader)
+
+
 @workforce_console_router.get("/leader/bootstrap", response_model=LeaderSessionView)
 async def bootstrap_leader(
     user_id: str = Depends(get_current_user_id),

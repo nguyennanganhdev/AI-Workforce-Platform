@@ -10,6 +10,7 @@ import { sessionTime } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { cleanName } from '@/components/chat/teamDialogText';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { LeaderSettingsDialog } from '@/components/dialog/LeaderSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Spinner } from '@/components/ui/spinner';
@@ -54,6 +55,7 @@ function LeaderPageInner() {
 	const [creating, setCreating] = useState(false);
 	const [bootstrapError, setBootstrapError] = useState(false);
 	const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
+	const [settingsOpen, setSettingsOpen] = useState(false);
 	// A personal account's conversations are not partner tickets, so no ticket/test scope.
 	const { sessions, refetch, error, loading: sessionsLoading } = useSessions(leader?.agent_id ?? null, personal ? undefined : scope);
 	const selectedSessionId = selection[scope] ?? sessions[0]?.session.id ?? null;
@@ -215,9 +217,12 @@ function LeaderPageInner() {
 					agentName="Leader"
 					ticketView={personal || !isTest}
 					sessionScope={personal ? undefined : scope}
+					onOpenAgentSettings={() => setSettingsOpen(true)}
 				/>
 				</div>
 			</main>
+
+			<LeaderSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
 			<DeleteDialog
 				open={deleting !== null}

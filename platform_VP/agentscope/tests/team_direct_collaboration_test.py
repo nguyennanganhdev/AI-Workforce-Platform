@@ -189,3 +189,33 @@ class TestDefaultMode(IsolatedAsyncioTestCase):
 
         stored = TeamData(name="Room", direct_member_routing=True).model_dump(mode="json")
         self.assertEqual("reviewed", OldTeamData.model_validate(stored).collaboration_mode)
+
+
+class TestHandedPartIsNotOwnWork(_Base):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from agentscope.app.storage._model._team_context import TaskAssignment
+        await self.service.record_assignments("u", "ticket-1", {
+            "peer-session": TaskAssignment(goal="Own Leader task"),
+            "worker-session": TaskAssignment(goal="Worker Leader task"),
+        })
+
+    async def test_returning_a_handed_part_keeps_own_assignment_open(self):
+        await self.say("worker", kind="handoff", to="Peer", content="Look up options")
+        await self.say("peer", kind="result", to="Worker", content="No matching options were returned.")
+        ledger = self.storage.context.state.tasks[self.task].assignments
+        self.assertEqual("assigned", ledger["peer-session"].status)
+        self.assertNotIn(self.branch("peer").status, {"review", "completed"})
+        pending = await self.service.collaboration_review("u", "ticket-1", "leader-session", working_only=True)
+        self.assertIn("peer-session", pending)
+        completed, _errors, _facts, _waiting = await self.service.team_evidence_status(
+            "u", "ticket-1", leader_session_id="leader-session",
+        )
+        self.assertEqual(0, completed)
+
+    async def test_own_result_still_counts_afterwards(self):
+        await self.say("worker", kind="handoff", to="Peer", content="Look up options")
+        await self.say("peer", kind="result", to="Worker", content="No matching options were returned.")
+        await self.say("peer", kind="result", content="My own task found no matching options.")
+        ledger = self.storage.context.state.tasks[self.task].assignments
+        self.assertEqual("reported", ledger["peer-session"].status)

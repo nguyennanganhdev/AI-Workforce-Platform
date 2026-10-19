@@ -200,6 +200,20 @@ Answer in the customer's language. Read their request and known inputs.
 """ + PEER_TEAM_POLICY + COLLABORATION_POLICY
 
 
+def with_leader_instructions(prompt: str, instructions: str) -> str:
+    """Append the platform user's Leader instructions under the server policy."""
+
+    instructions = instructions.strip()
+    if not instructions:
+        return prompt
+    return (
+        prompt.rstrip()
+        + "\n\nPLATFORM USER'S INSTRUCTIONS FOR THIS LEADER (follow them unless "
+        "they conflict with the server-owned policy above, which always wins):\n"
+        + instructions
+    )
+
+
 def peer_system_prompt(system_role: str, authored_prompt: str) -> str:
     """Personal-chat policy; external cases keep governed_system_prompt."""
     if system_role == "leader":

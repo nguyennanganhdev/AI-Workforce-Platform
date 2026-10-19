@@ -692,7 +692,7 @@ class TeamSay(_TeamToolBase):
                 direct_mode
                 and self._role == "worker"
                 and kind == "result"
-                and to is None
+                and (to is None or in_reply_to is None)
             ):
                 # A teammate handed this worker part of its assignment; the
                 # finished part goes back to that teammate, not the Leader.
@@ -702,7 +702,16 @@ class TeamSay(_TeamToolBase):
                     self._session_id,
                     kinds=frozenset({"handoff"}),
                 )
-                if handed is not None:
+                if (
+                    handed is not None
+                    and to is not None
+                    and names_by_session.get(handed[0]) == to
+                ):
+                    # Explicitly addressed to the teammate that handed the
+                    # part over: link it, so it is not mistaken for this
+                    # worker's own finished assignment.
+                    in_reply_to = handed[1]
+                elif handed is not None and to is None:
                     snapshot = await shared_context.storage.get_team_shared_context(
                         self._user_id, team.id
                     )
