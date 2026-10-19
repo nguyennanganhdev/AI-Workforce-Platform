@@ -343,6 +343,7 @@ const ChatPageInner = () => {
 				<ChatViewport
 					key={`${effectiveAgentId}:${effectiveSessionId}`}
 					agentId={effectiveAgentId}
+					agentData={agents.find((agent) => agent.id === effectiveAgentId)?.data}
 					sessionId={effectiveSessionId}
 					readOnly={focusedMember !== null}
 					onSessionsChanged={refetchSessions}

@@ -123,6 +123,14 @@
 			"emptyTitle": "Chưa có công việc",
 			"emptyDescription": "Công việc do tác nhân lập kế hoạch sẽ xuất hiện ở đây."
 		},
+		"agentTools": {
+			"title": "Công cụ",
+			"description": "Các công cụ đã được gán cho agent.",
+			"searchPlaceholder": "Tìm công cụ đã được gán",
+			"emptyTitle": "Chưa có công cụ được gán",
+			"emptyDescription": "Cấu hình công cụ cho agent trong Agent Builder.",
+			"unavailable": "Công cụ chưa khả dụng trong phiên này"
+		},
 		"mcp": {
 			"description": "Các máy chủ MCP trong không gian làm việc.",
 			"searchPlaceholder": "Tìm MCP trong không gian làm việc",

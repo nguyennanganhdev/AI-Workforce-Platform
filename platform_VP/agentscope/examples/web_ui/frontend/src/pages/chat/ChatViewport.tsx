@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import type {
+	AgentData,
 	ChatModelConfig,
 	PermissionMode,
 	SessionKnowledgeConfig,
@@ -25,6 +26,7 @@ import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
+import { AgentToolsPanel } from '@/components/panel/AgentToolsPanel';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
 import { McpPanel } from '@/components/panel/McpPanel';
 import { PanelDock, type PanelDescriptor, type PanelKey } from '@/components/panel/PanelDock.tsx';
@@ -64,6 +66,7 @@ import { useTranslation } from '@/i18n/useI18n';
 
 interface ChatViewportProps {
 	agentName?: string;
+	agentData?: AgentData;
 	/**
 	 * The agent that owns the session being viewed. May be the
 	 * user-facing leader agent or — when drilled into a team member
@@ -178,6 +181,7 @@ function closePanelInLayout(layout: PanelKey[][], key: PanelKey): PanelKey[][] {
  */
 export function ChatViewport({
 	agentName,
+	agentData,
 	agentId,
 	sessionId,
 	readOnly = false,
@@ -271,6 +275,10 @@ export function ChatViewport({
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
 	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 	const inspectingMember = readOnly || (!!view?.team && !isTeamChat);
+	const showAssignedTools = agentData?.execution_mode != null
+		&& agentData.system_role === 'business'
+		&& view?.session.origin.type === 'user'
+		&& !view.session.team_id;
 
 	const {
 		msgs,
@@ -437,9 +445,15 @@ export function ChatViewport({
 				content: <TaskPanel tasksContext={tasksContext} />,
 			},
 			mcp: {
-				title: 'MCP',
+				title: showAssignedTools ? t('panel.agentTools.title') : 'MCP',
 				icon: <MCPSvg className="size-4" />,
-				content: (
+				content: showAssignedTools ? (
+					<AgentToolsPanel
+						bindings={agentData.tool_bindings ?? []}
+						mcps={mcps}
+						loading={mcpsLoading}
+					/>
+				) : (
 					<McpPanel
 						mcps={mcps}
 						loading={mcpsLoading}
@@ -522,6 +536,8 @@ export function ChatViewport({
 		[
 			t,
 			tasksContext,
+			agentData,
+			showAssignedTools,
 			mcps,
 			mcpsLoading,
 			addMcps,
@@ -833,7 +849,7 @@ export function ChatViewport({
 												onSelect={(e) => e.preventDefault()}
 											>
 												<MCPSvg className="size-4" />
-												MCP
+												{showAssignedTools ? t('panel.agentTools.title') : 'MCP'}
 											</DropdownMenuCheckboxItem>
 											<DropdownMenuCheckboxItem
 												checked={isPanelOpen('skill')}
