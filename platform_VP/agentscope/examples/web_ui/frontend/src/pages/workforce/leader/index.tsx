@@ -2,7 +2,7 @@ import { Bot, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { sessionApi, workforceApi } from '@/api';
-import type { LeaderSession, SessionView } from '@/api';
+import type { LeaderSession } from '@/api';
 import { sessionTime, sessionTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -17,15 +17,6 @@ import { ChatViewport } from '@/pages/chat/ChatViewport';
 function rowTitle(name: string | undefined): string {
 	const title = (name ?? '').replace(/^[A-Z0-9][A-Z0-9-]{3,}\s*·\s*/, '').trim();
 	return sessionTitle(title) ?? 'Mới';
-}
-
-/** A row's second line: what the session is doing, or who is in its room. */
-function rowPreview(view: SessionView): string {
-	if (view.status === 'running') return 'Đang xử lý…';
-	if (view.status === 'awaiting_permission') return 'Chờ duyệt';
-	if (view.status === 'awaiting_external_result') return 'Chờ đối tác';
-	const members = view.team?.members.map(({ agent }) => agent.data.name) ?? [];
-	return members.length > 0 ? members.join(', ') : 'Leader';
 }
 
 /**
@@ -135,7 +126,7 @@ function LeaderPageInner() {
 									avatarLabel="Leader"
 									title={title}
 									time={sessionTime(view.session.updated_at ?? view.session.created_at)}
-									preview={rowPreview(view)}
+									compact
 									status={view.status}
 									active={selectedSessionId === view.session.id}
 									onSelect={() => setSelectedSessionId(view.session.id)}

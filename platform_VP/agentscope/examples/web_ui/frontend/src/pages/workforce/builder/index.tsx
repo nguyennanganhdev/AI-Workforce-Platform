@@ -384,7 +384,7 @@ export function AgentBuilderPage() {
 									avatarLabel="Agent Builder"
 									title={item.title}
 									time={sessionTime(item.updated_at)}
-									preview="Agent Builder"
+									compact
 									status={working && item.conversation_id === conversationId ? 'running' : 'idle'}
 									active={item.conversation_id === conversationId}
 									disabled={working}
