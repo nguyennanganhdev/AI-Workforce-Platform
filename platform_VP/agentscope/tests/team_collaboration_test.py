@@ -947,6 +947,11 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             content="Which account should I inspect?",
             question_key="missing:account",
         )
+        pending_question_id = self.storage.turn.pending_question_ids[0]
+        self.assertEqual(
+            question.metadata["handoff_id"],
+            pending_question_id,
+        )
         answer = await self.service.append_event(
             user_id="u",
             team_id="ticket-1",
@@ -954,9 +959,9 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             kind="customer_message",
             content="Inspect account A.",
             event_id="customer-account-answer",
-            in_reply_to=question.metadata["handoff_id"],
+            in_reply_to=pending_question_id,
         )
-        self.assertEqual(question.metadata["handoff_id"], answer.in_reply_to)
+        self.assertEqual(pending_question_id, answer.in_reply_to)
         self.assertFalse(
             await self.service.seal_final_answer(
                 "u",
@@ -971,7 +976,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             to="Peer",
             kind="answer",
             content="The customer selected account A.",
-            in_reply_to=question.metadata["handoff_id"],
+            in_reply_to=pending_question_id,
         )
         recipients = {
             handoff.recipient_session_id

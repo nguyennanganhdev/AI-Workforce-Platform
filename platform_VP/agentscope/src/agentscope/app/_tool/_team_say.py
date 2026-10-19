@@ -895,6 +895,7 @@ class TeamSay(_TeamToolBase):
                 # continue until it sends a concrete result/question/error.
                 kind = "progress"
 
+            registered_question_id: str | None = None
             if kind == "requires_user_input":
                 if not is_reply_owner and to != reply_owner_name:
                     return ToolChunk(
@@ -908,7 +909,8 @@ class TeamSay(_TeamToolBase):
                         ],
                         state=ToolResultState.ERROR,
                     )
-                question_id = _handoff_id()
+                registered_question_id = _handoff_id()
+                question_id = registered_question_id
                 turn, duplicate, _first = await register_user_input_request(
                     self._message_bus,
                     team.id,
@@ -1164,7 +1166,11 @@ class TeamSay(_TeamToolBase):
                 kind == "progress"
                 or (turn is not None and turn.status != "running")
             )
-            handoff_id = _handoff_id()
+            # A customer question is first registered on the team turn, then
+            # delivered to the reply owner. Both records must use the same ID:
+            # the chat router later returns ``pending_question_ids[0]`` as
+            # ``in_reply_to`` when the customer answers.
+            handoff_id = registered_question_id or _handoff_id()
             # Journal before changing dependencies. The existing dispatcher
             # replays this intent after a crash between reservation and delivery.
             intent_id = hashlib.sha256(f"{handoff_id}\0intent".encode()).hexdigest()
