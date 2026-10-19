@@ -37,6 +37,20 @@ async def test_admin_lists_accounts_with_email_last_sign_in_and_search(authority
 
 
 @pytest.mark.asyncio
+async def test_month_tokens_come_from_this_month_usage_bucket(authority):
+    from agentscope.app.vin_platform import _tables as t
+    from agentscope.app.vin_platform._quota import VIN_TIMEZONE
+    from sqlalchemy import insert
+    window = "month:" + datetime.now(UTC).astimezone(VIN_TIMEZONE).strftime("%Y-%m")
+    async with authority.engine.begin() as db:
+        await db.execute(insert(t.buckets).values(tenant_id="vin", subject="user:alice", window=window, used=1234, reserved=0))
+        await db.execute(insert(t.buckets).values(tenant_id="vin", subject="user:alice", window="month:2000-01", used=9, reserved=0))
+    admin = await authority.context("admin")
+    item = (await authority.administration.accounts(admin, user_id="alice"))["items"][0]
+    assert item["month_tokens"] == 1234
+
+
+@pytest.mark.asyncio
 async def test_locking_ends_sessions_and_blocks_the_account_until_unlocked(authority):
     await _session(authority, "alice")
     admin = await authority.context("admin")
@@ -56,6 +70,12 @@ async def test_delete_anonymises_hides_and_can_be_repeated(authority):
     await authority.administration.delete_account(admin, "bob")
     user, revoked = await _row(authority, "bob")
     assert user == {"email": "deleted+bob@invalid", "username": "deleted-bob", "status": "deleted"}
+    async with authority.engine.connect() as db:
+        stored = (await db.execute(text("SELECT password_hash FROM auth_users WHERE id='bob'"))).scalar_one()
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerificationError
+    with pytest.raises(VerificationError):  # a real hash: a guess fails cleanly, never a 500
+        PasswordHasher().verify(stored, "offline-guess")
     assert revoked is not None
     assert "bob" not in {i["user_id"] for i in (await authority.administration.accounts(admin))["items"]}
     await authority.administration.delete_account(admin, "bob")  # retry re-runs the purge only

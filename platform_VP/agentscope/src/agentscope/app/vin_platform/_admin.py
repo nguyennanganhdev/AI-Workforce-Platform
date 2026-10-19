@@ -1,6 +1,6 @@
 """Administrative projections; never reuse the caller's granted-resource list."""
 
-from sqlalchemy import update, func, select, table, column, text
+from sqlalchemy import DateTime, String, column, func, select, table, text, update
 
 from . import _tables as t
 from ._contracts import PlatformError
@@ -56,9 +56,11 @@ class VinAdministration:
         from datetime import datetime, UTC
         from ._quota import VIN_TIMEZONE
         self.service.admin(context)
-        users = table("auth_users", column("id"), column("tenant_id"), column("email"), column("username"),
-                      column("role"), column("status"), column("created_at"))
-        sessions = table("auth_sessions", column("user_id"), column("created_at"))
+        # Typed columns: "user:" + id must compile to string concatenation.
+        users = table("auth_users", column("id", String), column("tenant_id", String), column("email", String),
+                      column("username", String), column("role", String), column("status", String),
+                      column("created_at", DateTime))
+        sessions = table("auth_sessions", column("user_id", String), column("created_at", DateTime))
         last_login = select(func.max(sessions.c.created_at)).where(sessions.c.user_id == users.c.id).scalar_subquery()
         window = "month:" + datetime.now(UTC).astimezone(VIN_TIMEZONE).strftime("%Y-%m")
         month_tokens = select(func.coalesce(func.sum(t.buckets.c.used), 0)).where(
@@ -117,16 +119,22 @@ class VinAdministration:
         The row stays (audit, usage history) but is anonymised, so the email
         can register again and nothing identifies the person.
         """
+        import secrets
         from datetime import datetime, UTC
+        from argon2 import PasswordHasher
         self.service.admin(context)
         now = datetime.now(UTC)
+        # A valid hash of a password nobody knows: sign-in fails as "invalid
+        # credentials" instead of crashing on a malformed hash.
+        unusable = PasswordHasher().hash(secrets.token_urlsafe(32))
         async with self.service.engine.begin() as db:
             await self.service.assert_active(db, context, require_eligible=False)
             if (await self._target(db, context, user_id, allow_deleted=True))["status"] == "deleted":
                 return  # a retry only re-runs the caller's purge
             await db.execute(text("""UPDATE auth_users SET status='deleted', email=:email, username=:name,
-                password_hash='!', updated_at=:now WHERE id=:id"""),
-                {"email": f"deleted+{user_id}@invalid", "name": f"deleted-{user_id[:8]}", "now": now, "id": user_id})
+                password_hash=:hash, updated_at=:now WHERE id=:id"""),
+                {"email": f"deleted+{user_id}@invalid", "name": f"deleted-{user_id[:8]}", "hash": unusable,
+                 "now": now, "id": user_id})
             await db.execute(text("UPDATE auth_sessions SET revoked_at=:now WHERE user_id=:id AND revoked_at IS NULL"),
                 {"now": now, "id": user_id})
             await db.execute(update(t.accounts).where(t.accounts.c.user_id == user_id,

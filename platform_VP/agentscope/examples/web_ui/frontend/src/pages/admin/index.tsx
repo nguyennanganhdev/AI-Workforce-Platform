@@ -143,7 +143,9 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 	];
 	const current = items.some((item) => item.key === section) ? section : items[0]?.key;
 
-	const content = !access?.view ? (
+	const content = access === null ? (
+		<main className="flex-1 p-4 text-sm text-muted-foreground">Trang quản trị cần bật VIN_PLATFORM_ENABLED và VITE_VIN_EXPERIENCE_ENABLED.</main>
+	) : !access.view ? (
 		<main className="flex-1 space-y-4 p-4">
 			<Skeleton className="h-10 w-72" />
 			<Skeleton className="h-64 w-full" />
