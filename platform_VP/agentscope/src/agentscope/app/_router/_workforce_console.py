@@ -1954,6 +1954,27 @@ async def _primary_session(
     )
 
 
+_SELECTION_REQUEST_LIMIT = 6
+_SELECTION_REQUEST_MAX_CHARS = 6000
+
+
+def _recent_user_requests(messages: list[Msg], latest: str) -> list[str]:
+    """Latest user turns for resource selection, bounded in count and size.
+
+    Every classifier batch carries these, so the full history would make each
+    Builder turn costlier than the last.
+    """
+    requests = [
+        message.get_text_content() or ""
+        for message in messages if message.role == "user"
+    ] + [latest]
+    requests = [text[-_SELECTION_REQUEST_MAX_CHARS:] for text in requests if text.strip()]
+    requests = requests[-_SELECTION_REQUEST_LIMIT:]
+    while len(requests) > 1 and sum(map(len, requests)) > _SELECTION_REQUEST_MAX_CHARS:
+        requests.pop(0)
+    return requests
+
+
 def _builder_transcript(messages: list[Msg], current: str | None = None) -> str:
     lines = [
         f"{'Area manager' if message.role == 'user' else 'Agent Builder'}: "
@@ -2595,10 +2616,7 @@ async def prepare_builder(
                     model,
                     access,
                     user_id,
-                    user_requests=[
-                        message.get_text_content() or ""
-                        for message in messages if message.role == "user"
-                    ] + [body.message],
+                    user_requests=_recent_user_requests(messages, body.message),
                     preserved_agents=preserved_plans,
                 )
                 replacements = {agent.name: agent for agent in selected.agents}
