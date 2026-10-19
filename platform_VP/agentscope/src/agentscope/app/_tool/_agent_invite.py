@@ -802,13 +802,15 @@ class AgentInvite(_TeamToolBase):
                         session_id=primary.id,
                     )
                 for source_mcp in mcp_specs:
-                    await workspace.add_mcp(
-                        MCPClient.model_validate(
-                            source_mcp.model_dump(mode="json"),
-                        ),
-                        agent_id=invited.id,
-                        session_id=borrowed.id,
-                    )
+                    client = MCPClient.model_validate(source_mcp.model_dump(mode="json"))
+                    try:
+                        await workspace.add_mcp(client, agent_id=invited.id, session_id=borrowed.id)
+                    except ValueError:
+                        # The fresh session inherited this MCP from the agent's
+                        # staged declarations (pack copies, published Builder
+                        # agents); the binding's allowlisted spec replaces it.
+                        await workspace.remove_mcp(client.name, agent_id=invited.id, session_id=borrowed.id)
+                        await workspace.add_mcp(client, agent_id=invited.id, session_id=borrowed.id)
             await self._storage.set_session_team_id(
                 self._user_id,
                 borrowed.id,
