@@ -52,46 +52,6 @@ async def is_personal_credential(service, user_id, credential_id):
     return _is_personal(await _owned_record(service, user_id, credential_id), user_id)
 
 
-async def personal_model_config(storage, user_id, model=None):
-    """The customer's newest own chat provider, or None when they have none.
-
-    A key the customer adds outranks the shared platform provider, so the
-    Leader, Builder and team members run on it instead of the platform quota.
-    """
-    from ...credential import CredentialFactory
-    load = getattr(storage, "list_credentials", None)
-    records = [r for r in (await load(user_id) if load else []) if _is_personal(r, user_id)]
-    for record in sorted(records, key=lambda r: str(r.created_at or ""), reverse=True):
-        try:
-            cards = CredentialFactory.from_dict(record.data).list_models()
-        except Exception:  # not a chat provider (or an unknown type)
-            continue
-        names = [c.name for c in cards if c.status == "active"] or [c.name for c in cards]
-        chosen = model or os.getenv("WORKFORCE_MODEL_NAME", "").strip() or (names[0] if names else "")
-        if chosen:
-            return ChatModelConfig(type=str(record.data["type"]), credential_id=record.id,
-                                   model=chosen, parameters={})
-    return None
-
-
-async def prefer_personal_model(storage, user_id, config):
-    """Swap a session's shared platform provider for the user's own key.
-
-    Sessions copy their model config when they are created, so tickets,
-    members and pack agents made before the user added a key still point at
-    the platform provider. Runtime re-checks it here.
-    """
-    from . import enabled
-    if not enabled() or config is None or config.credential_id != PLATFORM_PROVIDER_ID:
-        return config
-    personal = await personal_model_config(storage, user_id)
-    if personal is None:
-        return config
-    if personal.type == config.type:
-        personal = personal.model_copy(update={"model": config.model})
-    return personal.model_copy(update={"parameters": dict(config.parameters)})
-
-
 async def resource_context(service, user_id):
     from ._context import execution_context
     context = execution_context.get()
@@ -144,8 +104,7 @@ async def platform_model_config(service, user_id):
 async def private_model_config(storage, user_id):
     """Newest owner-supplied chat provider; listing cards performs no API call."""
     from ...credential import CredentialFactory
-    candidates = [record for record in await storage.list_credentials(user_id)
-        if record.user_id == user_id and record.id != PLATFORM_PROVIDER_ID and not record.data.get("secret_ref")]
+    candidates = [record for record in await storage.list_credentials(user_id) if _is_personal(record, user_id)]
     for record in sorted(candidates, key=lambda item: item.updated_at.replace(tzinfo=item.updated_at.tzinfo or UTC).timestamp(), reverse=True):
         try:
             credential = CredentialFactory.from_dict(record.data)

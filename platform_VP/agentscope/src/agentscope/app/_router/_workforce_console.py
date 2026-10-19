@@ -534,11 +534,8 @@ async def _model_config(storage: StorageBase, user_id: str, *, authority=None) -
         if authority is None:
             raise HTTPException(status_code=503, detail="MODEL_AUTHORITY_UNAVAILABLE")
         from ..vin_platform._contracts import PlatformError
-        from ..vin_platform._resources import personal_model_config, platform_model_config
+        from ..vin_platform._resources import platform_model_config, private_model_config, resource_context
 
-        personal = await personal_model_config(storage, user_id)
-        if personal is not None:
-            return personal
         try:
             context = await resource_context(authority, user_id)
             if context.role == "VIN_USER" and context.workspace_id.startswith("personal:"):

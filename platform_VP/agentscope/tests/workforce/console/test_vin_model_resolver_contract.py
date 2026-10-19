@@ -40,6 +40,7 @@ async def real_authority(authority, monkeypatch):
         grant = (await db.execute(select(t.grants.c.id).where(t.grants.c.subject_id == "alice"))).scalar_one()
     yield storage, authority, admin, grant
     storage.upsert_credential.assert_not_awaited()
+    assert all(call.args[0] in {"alice", "bob"} for call in storage.list_credentials.await_args_list)
 
 
 @pytest.mark.asyncio

@@ -109,9 +109,9 @@ async def get_model(
     authority = getattr(storage, "__dict__", {}).get("vin_platform_service")
     private = False
     if authority is not None:
-        from ..vin_platform._resources import customer_model_config, is_private_credential
+        from ..vin_platform._resources import customer_model_config, is_personal_credential
         config = await customer_model_config(storage, user_id, config)
-        private = await is_private_credential(authority, user_id, config.credential_id)
+        private = await is_personal_credential(authority, user_id, config.credential_id)
     config = runtime_model_config(config, private=private)
     credential_record = await access.resolve_credential(
         user_id,

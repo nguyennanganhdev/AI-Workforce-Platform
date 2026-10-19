@@ -150,31 +150,20 @@ async def test_legacy_copy_of_platform_key_keeps_the_platform_token_quota(author
 
 
 @pytest.mark.asyncio
-async def test_customer_key_outranks_the_platform_provider_for_new_and_existing_sessions(monkeypatch):
-    from agentscope.app.storage import ChatModelConfig
-    from agentscope.app.vin_platform._resources import personal_model_config, prefer_personal_model
+async def test_customer_key_is_chosen_but_never_a_legacy_copy_of_the_platform_key(monkeypatch):
+    from agentscope.app.vin_platform._resources import private_model_config
 
-    monkeypatch.setenv("VIN_PLATFORM_ENABLED", "true")
     monkeypatch.setenv("WORKFORCE_PLATFORM_OPENAI_API_KEY", "platform-key")
-    monkeypatch.setenv("WORKFORCE_MODEL_NAME", "gpt-6-luna")
     storage = _FakeStorage()
-    platform = ChatModelConfig(type="openai_credential", credential_id="vin-platform-openai",
-                               model="gpt-6-luna", parameters={"max_tokens": 256})
     storage.credentials[("alice", "copy")] = CredentialRecord(
         id="copy", user_id="alice", data={"type": "openai_credential", "name": "Model của platform", "api_key": "platform-key"})
-    assert await personal_model_config(storage, "alice") is None
-    assert await prefer_personal_model(storage, "alice", platform) is platform
-
+    storage.credentials[("alice", "renamed")] = CredentialRecord(
+        id="renamed", user_id="alice", data={"type": "openai_credential", "name": "Renamed", "api_key": "platform-key"})
+    assert await private_model_config(storage, "alice") is None
     storage.credentials[("alice", "mine")] = CredentialRecord(
         id="mine", user_id="alice", data={"type": "openai_credential", "name": "Open", "api_key": "customer-key"})
-    fresh = await personal_model_config(storage, "alice")
-    assert (fresh.credential_id, fresh.model) == ("mine", "gpt-6-luna")
-    swapped = await prefer_personal_model(storage, "alice", platform)
-    assert (swapped.credential_id, swapped.model, swapped.parameters) == ("mine", "gpt-6-luna", {"max_tokens": 256})
-    # Another user's key is never borrowed, and a non-platform config is left alone.
-    assert await prefer_personal_model(storage, "bob", platform) is platform
-    own = platform.model_copy(update={"credential_id": "other"})
-    assert await prefer_personal_model(storage, "alice", own) is own
+    assert (await private_model_config(storage, "alice")).credential_id == "mine"
+    assert await private_model_config(storage, "bob") is None
 
 
 @pytest.mark.asyncio
