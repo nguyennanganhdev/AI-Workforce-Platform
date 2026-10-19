@@ -909,7 +909,7 @@
 			"retry": "Thử lại"
 		},
 		"title": "Kênh kết nối",
-		"subtitle": "Kết nối nền tảng như Feishu và Discord để tác nhân làm việc trong nhóm chat",
+		"subtitle": "Kết nối agent với ứng dụng nhắn tin để trả lời khách ngay tại đó.",
 		"status": "Trạng thái",
 		"connected": "Đã kết nối",
 		"enable": "Bật",
@@ -922,7 +922,7 @@
 		"rules": "{{count}} quy tắc",
 		"empty": {
 			"title": "Chưa có kênh kết nối",
-			"description": "Tạo kênh để kết nối tác nhân với nền tảng bên ngoài như Feishu, DingTalk."
+			"description": "Kết nối Telegram hoặc Discord để khách nhắn tin và được agent trả lời ngay."
 		},
 		"create": {
 			"title": "Tạo kênh",
@@ -1015,6 +1015,22 @@
 			"fallbackDesc": "Tin nhắn không khớp quy tắc nào ở trên sẽ được chuyển tới đây",
 			"catchAll": "Mọi tin nhắn còn lại",
 			"addRule": "Thêm quy tắc"
+		},
+		"connect": "Kết nối",
+		"answeredBy": "Agent trả lời",
+		"unknownAgent": "Agent đã xoá",
+		"stepLabel": "Bước {{index}}",
+		"steps": {
+			"pick": "Chọn nền tảng nhắn tin",
+			"token": "Dán token của bot",
+			"agent": "Chọn agent trả lời"
+		},
+		"types": {
+			"telegram": "Trả lời tin nhắn Telegram qua bot của bạn. Tạo bot với @BotFather để lấy token.",
+			"discord": "Bot trả lời trong server, kênh và tin nhắn riêng trên Discord.",
+			"dingtalk": "Trả lời tin nhắn DingTalk.",
+			"feishu": "Trả lời tin nhắn Feishu.",
+			"custom": "Kết nối hệ thống riêng của bạn qua webhook."
 		}
 	},
 	"mcp": {

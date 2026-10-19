@@ -1,9 +1,11 @@
-import { Cable, Plus } from 'lucide-react';
+import { ArrowRight, Bot, Cable, KeyRound, LayoutGrid, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import type { ChannelRecord, ChannelStatus, ChannelTypeSchema } from '@/api';
 import { channelApi } from '@/api';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	Empty,
 	EmptyDescription,
@@ -36,6 +38,7 @@ function ChannelCard({
 	channel,
 	type,
 	agentName,
+	agentId,
 	status,
 	onEnable,
 	onDisable,
@@ -44,6 +47,7 @@ function ChannelCard({
 	channel: ChannelRecord;
 	type?: ChannelTypeSchema;
 	agentName: string;
+	agentId: string;
 	status?: ChannelStatus | null;
 	onEnable: () => void;
 	onDisable: () => void;
@@ -63,13 +67,11 @@ function ChannelCard({
 			<ItemHeader className="min-w-0">
 				<div className="flex min-w-0 flex-1 items-center gap-3">
 					<ItemMedia>
-						<TypeAvatar type={type} className="size-9 rounded-lg" />
+						<TypeAvatar type={type} className="size-10" />
 					</ItemMedia>
 					<div className="min-w-0 flex-1">
 						<ItemTitle className="max-w-full truncate">{name}</ItemTitle>
-						<span className="block truncate font-mono text-[11px] text-muted-foreground">
-							{typeName}
-						</span>
+						<span className="block truncate text-xs text-muted-foreground">{typeName}</span>
 					</div>
 				</div>
 				<ItemActions className="shrink-0">
@@ -82,19 +84,20 @@ function ChannelCard({
 			</ItemHeader>
 			<ItemContent className="basis-full gap-1.5 text-xs">
 				<div className="flex items-center justify-between gap-2">
-					<span className="text-muted-foreground">{t('common.agent')}</span>
-					<span className="truncate">{agentName}</span>
+					<span className="text-muted-foreground">{t('channel.answeredBy')}</span>
+					<span className="flex min-w-0 items-center gap-1.5">
+						{agentId && <ClayAvatar id={agentId} label={agentName} size={20} />}
+						<span className="truncate">{agentName}</span>
+					</span>
 				</div>
 				<div className="flex items-center justify-between gap-2">
 					<span className="text-muted-foreground">{t('channel.routing')}</span>
-					<span className="font-mono">
-						{t('channel.rules', { count: channel.routing.bindings.length })}
-					</span>
+					<span>{t('channel.rules', { count: channel.routing.bindings.length })}</span>
 				</div>
 				{model && (
 					<div className="flex items-center justify-between gap-2">
 						<span className="text-muted-foreground">{t('common.model')}</span>
-						<span className="truncate font-mono">{model}</span>
+						<span className="truncate">{model}</span>
 					</div>
 				)}
 				<div className="flex items-center justify-between gap-2">
@@ -107,26 +110,50 @@ function ChannelCard({
 }
 
 function ChannelTypeCard({ type, onPick }: { type: ChannelTypeSchema; onPick: () => void }) {
+	const { t } = useTranslation();
 	return (
 		<button
 			onClick={onPick}
-			className="group flex items-start gap-3 rounded-xl border bg-card p-4 text-left shadow-panel transition hover:border-ring/40"
+			className="group flex h-full flex-col gap-4 rounded-2xl border bg-card p-5 text-left shadow-panel transition hover:-translate-y-px hover:border-ring/40"
 		>
-			<TypeAvatar type={type} className="size-10 rounded-lg" />
-			<div className="min-w-0 flex-1">
-				<div className="truncate text-sm font-semibold">{type.display_name}</div>
-				{type.description ? (
-					<div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-						{type.description}
-					</div>
-				) : (
-					<div className="font-mono text-[11px] text-muted-foreground">
-						{type.channel_type}
-					</div>
-				)}
+			<div className="flex items-center gap-3">
+				<TypeAvatar type={type} className="size-11" />
+				<div className="truncate text-[15px] font-semibold">{type.display_name}</div>
 			</div>
-			<Plus className="size-4 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
+			<p className="line-clamp-3 flex-1 text-sm/6 text-muted-foreground">
+				{t(`channel.types.${type.channel_type}`, { defaultValue: type.description || '' })}
+			</p>
+			<span className="inline-flex items-center gap-1.5 text-sm font-medium">
+				{t('channel.connect')}
+				<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+			</span>
 		</button>
+	);
+}
+
+const STEPS = [
+	{ key: 'pick', Icon: LayoutGrid },
+	{ key: 'token', Icon: KeyRound },
+	{ key: 'agent', Icon: Bot },
+] as const;
+
+/** How a connection is made, so the empty page explains itself. */
+function ConnectSteps() {
+	const { t } = useTranslation();
+	return (
+		<ol className="grid gap-3 sm:grid-cols-3">
+			{STEPS.map(({ key, Icon }, index) => (
+				<li key={key} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-card p-4">
+					<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cue-bg-subtle,var(--muted))]">
+						<Icon className="size-4" />
+					</span>
+					<span className="min-w-0">
+						<span className="block text-xs text-muted-foreground">{t('channel.stepLabel', { index: index + 1 })}</span>
+						<span className="block text-sm font-medium">{t(`channel.steps.${key}`)}</span>
+					</span>
+				</li>
+			))}
+		</ol>
 	);
 }
 
@@ -187,10 +214,9 @@ export function ChannelPage() {
 
 	const typeOf = (channelType: string) => types.find((ct) => ct.channel_type === channelType);
 	const agentName = (agentId: string) =>
-		agents.find((a) => a.id === agentId)?.data.name ?? agentId.slice(0, 8);
+		agents.find((a) => a.id === agentId)?.data.name ?? t('channel.unknownAgent');
 	const deleteName = (ch: ChannelRecord) =>
-		ch.name?.trim() ||
-		`${typeOf(ch.channel_type)?.display_name ?? ch.channel_type} · ${ch.id.slice(0, 8)}`;
+		ch.name?.trim() || typeOf(ch.channel_type)?.display_name || ch.channel_type;
 	// Derived from the live list so an edited/deleted selection stays in sync.
 	const selected = channels.find((c) => c.id === selectedId) ?? null;
 
@@ -199,11 +225,19 @@ export function ChannelPage() {
 			<ResizablePanelGroup orientation="horizontal">
 				<ResizablePanel minSize="24rem">
 					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-						<div className="px-4 pt-3 pb-3">
-							<div className="text-[17px]/6 font-semibold">{t('channel.title')}</div>
-							<div className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
-								{t('channel.subtitle')}
+						<div className="flex items-center justify-between gap-3 px-4 pt-3 pb-3 md:px-6">
+							<div className="min-w-0">
+								<div className="text-[17px]/6 font-semibold">{t('channel.title')}</div>
+								<div className="mt-0.5 text-[13px]/[18px] text-muted-foreground">
+									{t('channel.subtitle')}
+								</div>
 							</div>
+							{types.length > 0 && (
+								<Button onClick={() => setCreateType(types[0].channel_type)}>
+									<Plus />
+									{t('channel.sectionAdd')}
+								</Button>
+							)}
 						</div>
 						<Separator />
 
@@ -217,17 +251,20 @@ export function ChannelPage() {
 							) : (
 								<>
 									{channels.length === 0 ? (
-										<Empty className="border-none py-10">
-											<EmptyHeader>
-												<EmptyMedia variant="icon">
-													<Cable />
-												</EmptyMedia>
-												<EmptyTitle>{t('channel.empty.title')}</EmptyTitle>
-												<EmptyDescription>
-													{t('channel.empty.description')}
-												</EmptyDescription>
-											</EmptyHeader>
-										</Empty>
+										<div className="mx-auto max-w-4xl space-y-6">
+											<Empty className="border-none py-6">
+												<EmptyHeader>
+													<EmptyMedia variant="icon">
+														<Cable />
+													</EmptyMedia>
+													<EmptyTitle>{t('channel.empty.title')}</EmptyTitle>
+													<EmptyDescription>
+														{t('channel.empty.description')}
+													</EmptyDescription>
+												</EmptyHeader>
+											</Empty>
+											<ConnectSteps />
+										</div>
 									) : (
 										<section className="mb-2">
 											<div className="mb-4 flex items-center gap-2">
@@ -249,6 +286,11 @@ export function ChannelPage() {
 																ch.routing.bindings.length - 1
 															]?.agent_id ?? '',
 														)}
+														agentId={
+															ch.routing.bindings[
+																ch.routing.bindings.length - 1
+															]?.agent_id ?? ''
+														}
 														status={statuses[ch.id]}
 														onEnable={() => enable(ch.id)}
 														onDisable={() => disable(ch.id)}
@@ -267,7 +309,7 @@ export function ChannelPage() {
 										<div className="flex-1 border-t border-dashed" />
 									</div>
 
-									<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
+									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
 										{types.map((ct) => (
 											<ChannelTypeCard
 												key={ct.channel_type}

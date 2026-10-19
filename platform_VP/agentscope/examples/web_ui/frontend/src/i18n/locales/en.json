@@ -830,7 +830,7 @@
 			"retry": "Try again"
 		},
 		"title": "Channels",
-		"subtitle": "Connect external platforms like Feishu and Discord so agents work in group chats",
+		"subtitle": "Connect agents to messaging apps so they answer customers right there.",
 		"status": "Status",
 		"connected": "Connected",
 		"enable": "Enable",
@@ -842,8 +842,8 @@
 		"sectionAdd": "Add Channel",
 		"rules": "{{count}} rules",
 		"empty": {
-			"title": "No channels",
-			"description": "Create a channel to connect your agent to external platforms like Feishu, DingTalk, etc."
+			"title": "No channels yet",
+			"description": "Connect Telegram or Discord so customers can message and get answers from an agent."
 		},
 		"create": {
 			"title": "Create Channel",
@@ -936,6 +936,22 @@
 			"fallbackDesc": "Messages not matched by any rule above are routed here",
 			"catchAll": "All other messages",
 			"addRule": "Add rule"
+		},
+		"connect": "Connect",
+		"answeredBy": "Answered by",
+		"unknownAgent": "Deleted agent",
+		"stepLabel": "Step {{index}}",
+		"steps": {
+			"pick": "Pick a messaging app",
+			"token": "Paste the bot token",
+			"agent": "Choose the answering agent"
+		},
+		"types": {
+			"telegram": "Answer Telegram messages through your bot. Create one with @BotFather to get a token.",
+			"discord": "A bot that answers in Discord servers, channels and DMs.",
+			"dingtalk": "Answer DingTalk messages.",
+			"feishu": "Answer Feishu messages.",
+			"custom": "Connect your own system through a webhook."
 		}
 	},
 	"mcp": {
