@@ -81,3 +81,16 @@ Việc gỡ bản sao chỉ hoàn tác được bằng cách khôi phục Redis 
 - Request `/workspace/mcp` lỗi 500 ("cancel scope") khi kết nối tới MCP playwright.
 - Kết quả của team chưa tự được học vào memory dài hạn: chế độ nhóm không có cổng xác minh, nên hook học không được gọi. Đây là quyết định thiết kế.
 - Component `RoomActivity` không được dùng ở đâu.
+
+## Bổ sung 19/10 ~17:55: web `e657fb4b-agentmap-20261019`
+
+| Thành phần | Image | Commit |
+| --- | --- | --- |
+| web | `agentscope-platform-web:e657fb4b-agentmap-20261019` | `e657fb4b` (= nhánh này + sơ đồ agent 3D vẽ bằng bộ sprite nhân vật; `VITE_VIN_EXPERIENCE_ENABLED=true`, API `/api`) |
+| app | không đổi: `agentscope-platform:41813cd1-leaderfix-20261019` | `41813cd1` |
+
+Chỉ thay web. Script: `platform_VP/agentscope/deploy/vps/release-agentmap-20261019/deploy.sh` (bản chạy nằm ở `/opt/awp-platform/releases/agentmap-e657fb4b-20261019/`, kèm `images.before`, `private/env.before`, `deployment.json` = PASS). Kiểm tra đã chạy: web healthy, 200 cho `/`, `/login`, `/register`, `/workforce/agents`, `/api/health` (local và qua HTTPS), bundle không chứa `Program Files`, bộ sprite có trong `assets/`. Không gọi model.
+
+Rollback: `cp private/env.before /opt/awp-platform/app/.env` rồi `docker compose -p awp-platform --env-file .env -f compose.yaml -f compose.vps.yaml up -d --no-build --no-deps --pull never web` (image cũ còn tag `awp-rollback/web:before-agentmap-20261019`).
+
+Lưu ý: develop2 có commit `a1802c69` cùng nội dung; khi merge PR #108 vào develop2 hai bên trùng patch, không xung đột.
