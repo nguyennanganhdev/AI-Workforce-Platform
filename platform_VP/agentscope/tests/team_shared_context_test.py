@@ -1995,3 +1995,38 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertEqual("private system", visible_system)
         self.assertIn("shared state", captured["messages"][-1].get_text_content() or "")
         self.assertNotIn("shared state", original_system.get_text_content() or "")
+
+
+class TestOrdinaryTeamArchivesLargeSources(IsolatedAsyncioTestCase):
+    """A team without partner evidence keeps working when a tool result is
+    larger than the packet: the source is archived for SharedContextRead."""
+
+    async def test_large_tool_result_is_archived_for_shared_context_read(self) -> None:
+        storage = _Storage()
+        service = SharedContextService(
+            storage,  # type: ignore[arg-type]
+            InMemoryMessageBus(),
+            SharedContextConfig(packet_max_tokens=600, history_budget_tokens=400),
+        )
+        await service.append_event(
+            user_id="u", team_id="ticket-1", kind="customer_message",
+            content="Find flights to Hanoi",
+        )
+        flights = json.dumps([{"flight": f"VN{i:03d}", "price": 1_000_000 + i} for i in range(200)])
+        event = await service.append_event(
+            user_id="u", team_id="ticket-1", kind="external_event",
+            content=flights, source_session_id="worker-session",
+        )
+
+        text, tokens = await service.prepare_packet(
+            model=_MeasuredModel(),  # type: ignore[arg-type]
+            user_id="u",
+            team_id="ticket-1",
+        )
+
+        self.assertLessEqual(tokens, 600)
+        self.assertIn("SharedContextRead", text)
+        self.assertIn(event.id, text)
+        self.assertNotIn("CaseEvidence", text)
+        record = await storage.get_team_shared_context("u", "ticket-1")
+        self.assertEqual(flights, next(e for e in record.state.events if e.id == event.id).content)

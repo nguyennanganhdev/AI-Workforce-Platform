@@ -808,3 +808,25 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         self.assertEqual("error", result.state)
         self.assertIsNone(self.storage.turn)
+
+    async def test_shared_context_read_pages_only_this_teams_sources(self):
+        from agentscope.app._tool import SharedContextRead
+
+        source = "x" * 5000 + "END"
+        event = await self.service.append_event(
+            user_id="u", team_id="ticket-1", kind="external_event",
+            content=source, source_session_id="worker-session",
+        )
+        tool = SharedContextRead(
+            storage=self.storage, message_bus=self.bus, workspace_manager=object(),
+            user_id="u", session_id="worker-session", agent_id="worker",
+            shared_context_service=self.service,
+        )
+        read, offset = "", 0
+        while offset is not None:
+            page = json.loads((await tool(event_id=event.id, offset=offset, limit=2000)).content[0].text)
+            read += page["content"]
+            offset = page["next_offset"]
+        self.assertEqual(source, read)
+        missing = await tool(event_id="another-teams-event")
+        self.assertEqual("error", missing.state)

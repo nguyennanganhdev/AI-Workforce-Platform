@@ -27,6 +27,7 @@ from .._tool import (
     SubmitVerdict,
     TeamCreate,
     TeamDelete,
+    SharedContextRead,
     TeamSay,
 )
 from .._types import AgentToolFactory, SubAgentTemplate
@@ -241,6 +242,13 @@ time or interval"
                     resource_access_service=resource_access_service,
                 ),
             )
+
+    # A member reads back sources its team packet archived for size.
+    if session_record.team_id and not (
+        session_record.config.personal_chat is not None
+        and session_record.config.personal_chat.kind == "direct"
+    ):
+        tools.append(SharedContextRead(**team_tool_kwargs))
 
     # A step's turn gets one submit tool: handover until something has
     # been handed over, verdict after.

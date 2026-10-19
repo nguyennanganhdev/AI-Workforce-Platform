@@ -2915,18 +2915,20 @@ class SharedContextService:
         )
         text = self._json(packet)
         tokens = await self._tokens(model, text)
-        # Large partner evidence is already durable and can be read by label
-        # through CaseEvidence. Explicit references keep the current task and
+        # Large sources are already durable. Partner rooms read them back by
+        # label through CaseEvidence; every other team through
+        # SharedContextRead. Explicit references keep the current task and
         # approvals available without resending every historical tool result.
         partner_packet = any(self._partner_evidence_event(e) for e in record.state.events)
-        if mode == "task" and partner_packet and tokens > self.config.packet_max_tokens:
+        read_tool = "CaseEvidence" if partner_packet else "SharedContextRead"
+        if mode == "task" and tokens > self.config.packet_max_tokens:
             for event in sorted(packet["recent_events"], key=lambda value: len(value.get("content", "")), reverse=True):
                 if tokens <= self.config.packet_max_tokens:
                     break
                 if event["kind"] == "customer_message" or len(event.get("content", "")) < 300:
                     continue
                 event["content"] = self._json({"archived_event_ids": [event["id"]],
-                    "read_tool": "CaseEvidence", "instruction": "Read before using details; raw source retained."})
+                    "read_tool": read_tool, "instruction": "Read before using details; raw source retained."})
                 text = self._json(packet)
                 tokens = await self._tokens(model, text)
             candidates = sorted(
@@ -2965,7 +2967,7 @@ class SharedContextService:
                     if len(item["text"]) < 300:
                         continue
                     item["text"] = self._json({"archived_event_ids": source_ids,
-                        "read_tool": "CaseEvidence", "instruction": "Read before using details; original sources retained."})
+                        "read_tool": read_tool, "instruction": "Read before using details; original sources retained."})
                     text = self._json(packet)
                     tokens = await self._tokens(model, text)
             if tokens > self.config.packet_max_tokens:
