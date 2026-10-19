@@ -255,11 +255,12 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             "shared_context_in_reply_to": question.id,
         })
         with (
-            patch("agentscope.app._service._chat.get_toolkit", new=AsyncMock(return_value=object())),
+            patch("agentscope.app._service._chat.get_toolkit", new=AsyncMock(return_value=object())) as assemble,
             patch("agentscope.app._service._chat.get_model", new=AsyncMock(return_value=_Model())),
         ):
             await service._run_impl("u", "worker-session", "worker", answer)
 
+        self.assertFalse(assemble.call_args.kwargs["is_reply_owner"])
         wakes = await bus.queue_drain(MessageBusKeys.wakeup_queue())
         self.assertIn("peer-session", [entry[1]["session_id"] for entry in wakes])
         inbox = await bus.queue_drain(MessageBusKeys.inbox("peer-session"))

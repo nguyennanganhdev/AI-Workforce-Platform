@@ -948,6 +948,81 @@ class SharedContextService:
                 )
             return event
 
+    async def reply_handoff_candidates(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        *,
+        sender: str,
+        recipient: str,
+        kind: str,
+        content: str,
+        resolving: bool = False,
+    ) -> list[str]:
+        """Find current, delivered parents for one reply without guessing IDs."""
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = record.state.tasks.get(task_id) if record else None
+        if task is None:
+            return []
+        requester = task.collaboration.get(recipient)
+        pending: set[str] = set()
+        carried: set[str] = set()
+        if requester and requester.customer_revision == task.latest_customer_revision:
+            pending = {
+                qid for qid, provider in requester.waiting_for.items()
+                if provider == sender
+            }
+            carried = {
+                qid for qid, receipt in requester.receipts.items()
+                if receipt["kind"] in {"question", "handoff"}
+                and sender in receipt["recipients"]
+            }
+        replies = [
+            event for event in record.state.events
+            if event.task_id == task_id and not event.stale
+            and event.source_session_id == sender
+            and event.kind in {"answer", "result", "error"}
+        ]
+        answered = {event.in_reply_to for event in replies}
+        replay_parents = {
+            event.in_reply_to for event in replies
+            if event.kind == kind and event.content == content
+            and event.revision > task.latest_customer_revision
+        }
+        candidates = []
+        for event in record.state.events:
+            if (
+                event.task_id != task_id
+                or event.stale
+                or event.source_session_id != recipient
+                or event.kind not in (
+                    {"answer", "result", "error"} if resolving
+                    else {"question", "handoff"}
+                )
+                or (event.revision <= task.latest_customer_revision
+                    and event.id not in pending | carried)
+            ):
+                continue
+            if not resolving and event.id not in replay_parents and (
+                event.id in answered or (pending and event.id not in pending)
+            ):
+                continue
+            handoff = await self._storage.get_team_handoff(
+                user_id, hashlib.sha256(f"{event.id}\0{sender}".encode()).hexdigest(),
+            )
+            if (
+                handoff is not None
+                and handoff.user_id == user_id
+                and handoff.team_id == team_id
+                and handoff.task_id == task_id
+                and handoff.source_session_id == recipient
+                and handoff.recipient_session_id == sender
+                and handoff.delivery_status in {"delivered", "consumed"}
+            ):
+                candidates.append(event.id)
+        return candidates
+
     async def validate_handoff_link(
         self,
         user_id: str,

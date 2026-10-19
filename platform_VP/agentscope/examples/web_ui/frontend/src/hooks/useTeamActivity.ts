@@ -2,6 +2,7 @@ import type { Msg, ToolCallBlock, ToolResultBlock } from '@agentscope-ai/agentsc
 import { useEffect, useMemo, useState } from 'react';
 
 import { sessionApi } from '@/api';
+import { getResultText } from '@/components/chat/tool-renderers/_shared';
 
 export type TeamRuntimeStatus =
 	| 'loading'
@@ -136,6 +137,7 @@ const buildHistoryActivities = (
 			if (block.type !== 'tool_call') continue;
 			const teamCall = isTeamSay(block.name);
 			const teamSay = teamCall ? parseTeamSay(block.input, participants, results.get(block.id)?.metadata?.kind) : null;
+			const result = results.get(block.id);
 			activities.push({
 				// Tool-call ids survive transcript projection, so they are the
 				// stable identity across Leader and worker history copies.
@@ -146,7 +148,9 @@ const buildHistoryActivities = (
 				type: teamCall ? 'communication' : 'tool',
 				kind: teamSay?.kind ?? null,
 				toolName: block.name,
-				detail: teamSay?.content ?? null,
+				detail: teamCall && result?.state === 'error'
+					? getResultText(result) || teamSay?.content || null
+					: teamSay?.content ?? null,
 				state: activityState(block, results.get(block.id)),
 				createdAt: block.created_at || message.created_at,
 			});

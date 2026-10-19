@@ -118,6 +118,123 @@ class TestCollaboration(IsolatedAsyncioTestCase):
                        in_reply_to=question.metadata["handoff_id"])
         self.assertFalse(self.branch("leader").waiting_for)
 
+    async def test_reply_without_ids_uses_the_only_delivered_request(self):
+        request = await self.say(
+            "worker", to="Peer", kind="question", content="Find available options",
+        )
+        reply = await self.say(
+            "peer", to="Worker", kind="answer", content="Two options are available",
+        )
+        event = next(e for e in self.storage.context.state.events
+                     if e.id == reply.metadata["handoff_id"])
+        self.assertEqual(request.metadata["handoff_id"], event.in_reply_to)
+        self.assertEqual(request.metadata["handoff_id"], event.thread_id)
+        self.assertEqual(2, event.hop_count)
+        self.assertFalse(self.branch("worker").waiting_for)
+
+        repeated = await self.say(
+            "peer", to="Worker", kind="answer", content="Two options are available",
+        )
+        self.assertEqual(reply.metadata["handoff_id"], repeated.metadata["handoff_id"])
+
+    async def test_resolution_without_ids_uses_the_delivered_result(self):
+        report = await self.say(
+            "worker", to="Leader", kind="result", content="Verified partial result",
+        )
+        stopped = await self.say(
+            "leader", to="Worker", kind="handoff", content="Stop incomplete work",
+            resolution="stop",
+        )
+        event = next(e for e in self.storage.context.state.events
+                     if e.id == stopped.metadata["handoff_id"])
+        self.assertEqual(report.metadata["handoff_id"], event.in_reply_to)
+        self.assertEqual("stopped", self.branch("worker").status)
+
+    async def test_invalid_reply_id_returns_the_exact_candidate_without_delivery(self):
+        correct = "dee8c07f121ae052671adba05ca0a0b7ad0b5aedaaf6d329422af930e3a49c54"
+        wrong = "dee8d07f121ae052671adba05ca0a0b7ad0b5aedaaf6d329422af930e3a49c54"
+        await self.say("worker", to="Leader", kind="result", content="Partial result",
+                       idempotency_key=correct)
+        before = len(self.storage.handoffs)
+        result = await self.tool("leader")(
+            to="Worker", kind="handoff", content="Stop incomplete work",
+            resolution="stop", in_reply_to=wrong,
+        )
+        self.assertEqual("error", result.state)
+        self.assertEqual("invalid_handoff_link", result.metadata["reason"])
+        self.assertEqual([correct], result.metadata["candidate_handoff_ids"])
+        self.assertIn(correct, result.content[0].text)
+        self.assertEqual(before, len(self.storage.handoffs))
+        self.assertEqual("review", self.branch("worker").status)
+
+    async def test_ambiguous_reply_requires_an_explicit_id(self):
+        requests = []
+        for content in ("Find options", "Check availability"):
+            requests.append(await self.say(
+                "worker", to="Peer", kind="question", content=content,
+            ))
+        before = len(self.storage.handoffs)
+        result = await self.tool("peer")(
+            to="Worker", kind="answer", content="Option A is available",
+        )
+        self.assertEqual("error", result.state)
+        self.assertEqual("ambiguous_handoff_link", result.metadata["reason"])
+        self.assertEqual(
+            {r.metadata["handoff_id"] for r in requests},
+            set(result.metadata["candidate_handoff_ids"]),
+        )
+        self.assertEqual(before, len(self.storage.handoffs))
+        await self.say(
+            "peer", to="Worker", kind="answer", content="Option A is available",
+            in_reply_to=requests[0].metadata["handoff_id"],
+        )
+
+    async def test_automatic_reply_does_not_reset_the_hop_limit(self):
+        request = await self.say(
+            "worker", to="Peer", kind="question", content="Find options",
+        )
+        event = next(e for e in self.storage.context.state.events
+                     if e.id == request.metadata["handoff_id"])
+        event.hop_count = 12
+        result = await self.tool("peer")(
+            to="Worker", kind="answer", content="Option found",
+        )
+        self.assertEqual("error", result.state)
+        self.assertIn("hop limit", result.content[0].text)
+
+    async def test_reply_inference_requires_current_delivered_handoffs(self):
+        request = await self.say(
+            "worker", to="Peer", kind="question", content="Find options",
+        )
+        handoff = next(
+            h for h in self.storage.handoffs.values()
+            if h.handoff_id == request.metadata["handoff_id"]
+        )
+        arguments = dict(sender="peer-session", recipient="worker-session",
+                         kind="answer", content="Options found")
+        for field, value in (
+            ("delivery_status", "failed"), ("user_id", "other-user"),
+            ("team_id", "other-team"), ("task_id", "other-task"),
+            ("source_session_id", "leader-session"),
+        ):
+            original = getattr(handoff, field)
+            setattr(handoff, field, value)
+            self.assertEqual([], await self.service.reply_handoff_candidates(
+                "u", "ticket-1", self.task, **arguments,
+            ))
+            setattr(handoff, field, original)
+        handoff.delivery_status = "consumed"
+        self.assertEqual([request.metadata["handoff_id"]],
+                         await self.service.reply_handoff_candidates(
+                             "u", "ticket-1", self.task, **arguments,
+                         ))
+        event = next(e for e in self.storage.context.state.events
+                     if e.id == request.metadata["handoff_id"])
+        event.stale = True
+        self.assertEqual([], await self.service.reply_handoff_candidates(
+            "u", "ticket-1", self.task, **arguments,
+        ))
+
     async def test_terminal_peer_failure_releases_waiting_requester(self):
         await self.service.append_event(
             user_id="u",
@@ -319,6 +436,15 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             storage=self.storage,
             user_id="u",
         )
+        before = len(self.storage.handoffs)
+        for kind, to in (("result", "Leader"), ("handoff", "Peer")):
+            rejected = await self.tool("worker")(
+                to=to, kind=kind, content="Work finished", resolution="complete",
+            )
+            self.assertEqual("error", rejected.state)
+            self.assertEqual("unauthorized_resolution", rejected.metadata["reason"])
+            self.assertIn("resolution=null", rejected.content[0].text)
+            self.assertEqual(before, len(self.storage.handoffs))
         await self.say(
             "worker",
             to="Leader",
@@ -427,10 +553,12 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             user_id="u", team_id="ticket-1", kind="customer_message",
             content="Tomorrow", event_id="customer-answer",
         )
-        await self.say(
+        result = await self.say(
             "worker", to="Leader", kind="result", content="Option A is free tomorrow",
-            in_reply_to=handoff.metadata["handoff_id"],
         )
+        event = next(e for e in self.storage.context.state.events
+                     if e.id == result.metadata["handoff_id"])
+        self.assertEqual(handoff.metadata["handoff_id"], event.in_reply_to)
 
     async def test_fixed_workforce_leader_cannot_ask_customer_question(self):
         self.storage.agents["leader"].data.system_role = "leader"

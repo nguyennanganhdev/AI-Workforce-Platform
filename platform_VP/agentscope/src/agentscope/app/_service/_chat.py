@@ -1398,7 +1398,8 @@ class ChatService:
                     sub_agent_templates=self._sub_agent_templates,
                     team_role=team_ctx.role if team_ctx else None,
                     is_reply_owner=(
-                        is_reply_owner if turn_state is not None
+                        is_reply_owner and turn_state.mode != "specialist_question"
+                        if turn_state is not None
                         else agent_record.data.system_role == "leader"
                     ),
                     channel_tools=channel_tools,

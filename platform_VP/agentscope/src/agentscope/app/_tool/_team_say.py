@@ -136,8 +136,18 @@ class _TeamSayParams(ParamsBase):
             "team turn and payload."
         ),
     )
-    thread_id: str | None = Field(default=None, min_length=1, max_length=255)
-    in_reply_to: str | None = Field(default=None, min_length=1, max_length=255)
+    thread_id: str | None = Field(
+        default=None, min_length=1, max_length=255,
+        description="Omit normally; the runtime derives the thread from the parent handoff.",
+    )
+    in_reply_to: str | None = Field(
+        default=None, min_length=1, max_length=255,
+        description=(
+            "Omit for an unambiguous shared reply or assignment resolution; "
+            "the runtime links the delivered handoff. If multiple requests "
+            "are pending, use an exact incoming handoff_id, never a shortened ID."
+        ),
+    )
     artifact_refs: tuple[str, ...] = Field(default=(), max_length=50)
     hop_count: int = Field(default=1, ge=1, le=12)
     question_key: str | None = Field(
@@ -511,6 +521,30 @@ class TeamSay(_TeamToolBase):
                 team_id=team.id,
                 task_id=effective_task_id,
             )
+            candidate_ids = []
+            target = directory.get(to) if to is not None else None
+            if target and (resolution or kind in {"answer", "result", "error"}):
+                candidate_ids = await shared_context.reply_handoff_candidates(
+                    self._user_id, team.id, effective_task_id,
+                    sender=self._session_id, recipient=target[0],
+                    kind=kind, content=content,
+                    resolving=resolution is not None,
+                )
+                if in_reply_to is None and thread_id is None:
+                    if len(candidate_ids) > 1:
+                        return ToolChunk(
+                            content=[TextBlock(text=(
+                                "TeamSay: multiple delivered handoffs match this reply. "
+                                "Set in_reply_to to one exact handoff_id and omit thread_id: "
+                                + json.dumps(candidate_ids)
+                            ))],
+                            state=ToolResultState.ERROR,
+                            metadata={"reason": "ambiguous_handoff_link",
+                                      "retryable": False,
+                                      "candidate_handoff_ids": candidate_ids},
+                        )
+                    if candidate_ids:
+                        in_reply_to = candidate_ids[0]
             try:
                 (
                     hop_count,
@@ -524,9 +558,18 @@ class TeamSay(_TeamToolBase):
                     recipient_session_id=self._session_id,
                 )
             except ValueError as exc:
+                guidance = (
+                    " Set in_reply_to to one exact handoff_id and omit thread_id: "
+                    + json.dumps(candidate_ids)
+                    if candidate_ids else
+                    " Check in_reply_to and thread_id against the incoming handoff; "
+                    "do not reuse an invalid or shortened ID."
+                )
                 return ToolChunk(
-                    content=[TextBlock(text=f"TeamSay: {exc}.")],
+                    content=[TextBlock(text=f"TeamSay: {exc}.{guidance}")],
                     state=ToolResultState.ERROR,
+                    metadata={"reason": "invalid_handoff_link", "retryable": False,
+                              "candidate_handoff_ids": candidate_ids},
                 )
             if thread_id is None:
                 thread_id = parent_thread_id
@@ -878,6 +921,24 @@ class TeamSay(_TeamToolBase):
                     )
                 wake = first_question and turn.status == "running"
 
+            # Temporary customer clarification never grants assignment control.
+            coordination_owner_session_id = (
+                leader.session_id
+                if turn is not None and turn.mode == "specialist_question"
+                else turn.reply_owner_session_id
+                if turn is not None
+                else leader.session_id
+            )
+            if resolution and self._session_id != coordination_owner_session_id:
+                return ToolChunk(
+                    content=[TextBlock(text=(
+                        "TeamSay: resolution is reserved for the assignment reply owner. "
+                        "Report answer/result/error to the requester with resolution=null; "
+                        "temporary customer clarification does not grant assignment control."
+                    ))],
+                    state=ToolResultState.ERROR,
+                    metadata={"reason": "unauthorized_resolution", "retryable": False},
+                )
             handoff_id = _handoff_id()
             # Journal before changing dependencies. The existing dispatcher
             # replays this intent after a crash between reservation and delivery.
@@ -929,20 +990,6 @@ class TeamSay(_TeamToolBase):
                     },
                 )
                 await shared_context.persist_handoff(intent)
-            # A specialist owns only the temporary customer clarification.
-            # Its terminal reply must still settle the peer that requested it.
-            coordination_owner_session_id = (
-                leader.session_id
-                if (
-                    turn is not None
-                    and turn.mode == "specialist_question"
-                    and turn.reply_owner_session_id == self._session_id
-                    and kind in {"result", "answer", "error"}
-                )
-                else turn.reply_owner_session_id
-                if turn is not None
-                else leader.session_id
-            )
             coordination = await shared_context.coordinate_handoff(
                 user_id=self._user_id,
                 team_id=team.id,
@@ -1076,13 +1123,16 @@ class TeamSay(_TeamToolBase):
                 response_kind = "answer" if kind == "question" else "result"
                 reply_instruction = (
                     f"Respond to {sender_name!r} using kind={response_kind} "
-                    f"and in_reply_to={handoff_id} when this assigned work is finished."
+                    "when this assigned work is finished. For an unambiguous shared "
+                    "reply, omit in_reply_to and thread_id; runtime binds the request. "
+                    f"For multiple requests or caller-only messages, use in_reply_to={handoff_id}."
                 )
             elif kind in {"answer", "result", "error"}:
                 reply_instruction = (
                     "This is a response, not a new request. Resume your original assignment "
                     "using this output/blocker, then report to that assignment's requester "
-                    "with its original request id. Do not send acknowledgement-only replies."
+                    "with runtime binding, or its exact original request id when ambiguous. "
+                    "Do not send acknowledgement-only replies."
                 )
             else:
                 reply_instruction = "This is an update; do not send acknowledgement-only replies."

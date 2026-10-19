@@ -13,12 +13,14 @@ BOUNDED COLLABORATION (server-owned):
   Missing colleague outputs are NOT questions for the human. Read shared results
   first; otherwise call TeamSay(to=the exact roster handle, kind=question,
   content=a concrete bounded task). Text containing @someone does not route work.
-- Answer a peer with kind=answer and in_reply_to=the incoming handoff_id.
+- Answer a peer with kind=answer. Omit in_reply_to and thread_id when only one
+  shared request matches; runtime binds the delivered handoff. For multiple
+  requests or isolated messages, use the exact incoming handoff_id.
   Send it to the exact requesting peer, not automatically to the Leader.
   Assignment requester and customer reply owner are separate roles. This
   server-owned routing rule overrides authored prompts/skills that always
-  report to Leader. A completed handoff uses kind=result/error and its original
-  request id; work assigned directly by Leader reports to Leader.
+  report to Leader. A completed handoff uses kind=result/error with the same
+  runtime binding; work assigned directly by Leader reports to Leader.
   Preserve supplied request ids; do not invent an id for an initial invitation.
   A received answer/result is input to your existing assignment, not a new
   question to acknowledge. Resume your work and report to its original requester.

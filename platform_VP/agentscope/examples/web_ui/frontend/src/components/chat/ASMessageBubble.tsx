@@ -26,7 +26,7 @@ import mime from 'mime';
 import { memo, useEffect, useRef, useState } from 'react';
 
 import { renderToolCall } from './tool-renderers';
-import { countDiffStats, DiffStats, getResultDiff } from './tool-renderers/_shared';
+import { countDiffStats, DiffStats, getResultDiff, getResultText } from './tool-renderers/_shared';
 import type { TFunction, ToolCallWithResult } from './tool-renderers/types';
 import { Markdown } from '@/components/markdown';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -460,7 +460,12 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 			const payload = JSON.parse(block.input) as { to?: string | null; kind?: string; content?: string };
 			if (!payload.content || plainText.includes(payload.content.trim())) return [];
 			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
-			return [{ id: block.id, ...payload, failed: result?.state === 'error' }];
+			return [{
+				id: block.id,
+				...payload,
+				failed: result?.state === 'error',
+				error: result?.state === 'error' ? getResultText(result) : '',
+			}];
 		} catch {
 			return [];
 		}
@@ -491,6 +496,7 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 							{communication.failed ? ' · Gửi thất bại' : ''}
 						</div>
 						<Markdown>{communication.content}</Markdown>
+						{communication.error && <p className="mt-2 whitespace-pre-wrap break-words text-xs text-destructive">{communication.error}</p>}
 					</div>
 				))}
 				{blocks
