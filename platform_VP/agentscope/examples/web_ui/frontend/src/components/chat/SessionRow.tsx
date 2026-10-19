@@ -13,6 +13,9 @@ import { cn } from '@/lib/utils';
  * Hover is a lighter grey than selection, and selection changes nothing but
  * the fill. `actions` sits over the time at the top right and only shows on
  * hover or keyboard focus, so the time stays readable at rest.
+ *
+ * `compact` is the short form for long lists (Leader, Agent Builder): one
+ * 44px line with a 28px avatar, the title and the time, no preview.
  */
 export function ChatRow({
 	avatarId,
@@ -26,6 +29,7 @@ export function ChatRow({
 	icon,
 	actions,
 	onSelect,
+	compact = false,
 	className,
 	...rest
 }: {
@@ -35,7 +39,7 @@ export function ChatRow({
 	avatar?: ReactNode;
 	title: string;
 	time?: string;
-	preview: ReactNode;
+	preview?: ReactNode;
 	/** A dot on the avatar: green while running, blue while waiting on you. */
 	status?: SessionStatus;
 	active?: boolean;
@@ -43,6 +47,7 @@ export function ChatRow({
 	icon?: ReactNode;
 	actions?: ReactNode;
 	onSelect: () => void;
+	compact?: boolean;
 	className?: string;
 } & Omit<ComponentProps<'button'>, 'onClick' | 'className' | 'title'>) {
 	return (
@@ -52,7 +57,8 @@ export function ChatRow({
 				onClick={onSelect}
 				data-active={active || undefined}
 				className={cn(
-					'flex h-[60px] w-full items-center gap-3 rounded-xl px-3 text-left outline-none transition-colors',
+					'flex w-full items-center rounded-xl text-left outline-none transition-colors',
+					compact ? 'h-11 gap-2.5 px-2.5' : 'h-[60px] gap-3 px-3',
 					'hover:bg-[var(--cue-bg-hover,var(--accent))] focus-visible:bg-[var(--cue-bg-hover,var(--accent))]',
 					'data-active:bg-[var(--cue-bg-subtle,var(--accent))] data-active:hover:bg-[var(--cue-bg-subtle,var(--accent))]',
 					className,
@@ -60,7 +66,9 @@ export function ChatRow({
 				{...rest}
 			>
 				<span className="relative">
-					{avatar ?? <ClayAvatar id={avatarId} label={avatarLabel} size={36} />}
+					{avatar ?? (
+						<ClayAvatar id={avatarId} label={avatarLabel} size={compact ? 28 : 36} />
+					)}
 					{status !== 'idle' && (
 						<span
 							className={cn(
@@ -74,7 +82,12 @@ export function ChatRow({
 				</span>
 				<span className="flex min-w-0 flex-1 flex-col">
 					<span className="flex min-w-0 items-baseline gap-2">
-						<span className="truncate text-[15px]/[20px] font-medium text-foreground">
+						<span
+							className={cn(
+								'truncate font-medium text-foreground',
+								compact ? 'text-sm/5' : 'text-[15px]/[20px]',
+							)}
+						>
 							{title}
 						</span>
 						{time && (
@@ -89,14 +102,21 @@ export function ChatRow({
 							</span>
 						)}
 					</span>
-					<span className="flex min-w-0 items-center gap-1 text-[13px]/[18px] text-[var(--cue-text-secondary,var(--muted-foreground))]">
-						{icon}
-						<span className="truncate">{preview}</span>
-					</span>
+					{!compact && (
+						<span className="flex min-w-0 items-center gap-1 text-[13px]/[18px] text-[var(--cue-text-secondary,var(--muted-foreground))]">
+							{icon}
+							<span className="truncate">{preview}</span>
+						</span>
+					)}
 				</span>
 			</button>
 			{actions && (
-				<div className="absolute top-2 right-2 opacity-0 group-hover/row:opacity-100 group-has-focus-visible/row:opacity-100 has-data-[state=open]:opacity-100">
+				<div
+					className={cn(
+						'absolute right-2 opacity-0 group-hover/row:opacity-100 group-has-focus-visible/row:opacity-100 has-data-[state=open]:opacity-100',
+						compact ? 'top-1/2 -translate-y-1/2' : 'top-2',
+					)}
+				>
 					{actions}
 				</div>
 			)}
