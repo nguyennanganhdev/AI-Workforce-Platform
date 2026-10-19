@@ -938,6 +938,10 @@
 			"bot_token": {
 				"title": "Token bot"
 			},
+			"bot_id": {
+				"title": "ID bot",
+				"description": "Phần số đứng trước dấu ':' trong Token bot do @BotFather cấp."
+			},
 			"application_id": {
 				"title": "ID ứng dụng"
 			},

@@ -46,7 +46,7 @@ export interface ChannelFormValue {
 
 export function defaultChannelForm(agentId = ''): ChannelFormValue {
 	return {
-		channelType: 'feishu',
+		channelType: 'telegram',
 		name: '',
 		credentialMode: 'form',
 		credentialBindingId: '',
@@ -399,6 +399,11 @@ export function isChannelFormValid(v: ChannelFormValue, mode: 'create' | 'edit')
 	if (v.bindings.length === 0) return false;
 	if (v.bindings.some((b) => !b.agent_id)) return false;
 	if (mode === 'create' && !v.channelType) return false;
+	if (mode === 'create' && v.channelType === 'telegram') {
+		const token = v.credentials.bot_token ?? '';
+		if (!/^\d+:[A-Za-z0-9_-]+$/.test(token)) return false;
+		if (v.credentials.bot_id !== token.split(':')[0]) return false;
+	}
 	// An unfinished binding has no credentials to create the channel with.
 	if (mode === 'create' && v.credentialMode === 'binding' && !v.credentialBindingId) return false;
 	return true;

@@ -15,6 +15,7 @@ from agentscope.app.channel import (
     DingTalkChannel,
     DiscordChannel,
     FeishuChannel,
+    TelegramChannel,
 )
 from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
 from agentscope.app.message_bus import RedisMessageBus
@@ -213,6 +214,7 @@ app = create_app(
         ),
     ],
     channels=[
+        TelegramChannel,
         DingTalkChannel,
         DiscordChannel,
         FeishuChannel,

@@ -859,6 +859,10 @@
 			"bot_token": {
 				"title": "Bot Token"
 			},
+			"bot_id": {
+				"title": "Bot ID",
+				"description": "The numeric part before ':' in the Bot Token issued by @BotFather."
+			},
 			"application_id": {
 				"title": "Application ID"
 			},

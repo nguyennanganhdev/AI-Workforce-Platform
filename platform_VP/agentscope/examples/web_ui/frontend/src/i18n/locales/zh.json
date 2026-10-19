@@ -857,6 +857,10 @@
 			"bot_token": {
 				"title": "机器人令牌"
 			},
+			"bot_id": {
+				"title": "机器人 ID",
+				"description": "@BotFather 提供的机器人令牌中冒号前的数字部分。"
+			},
 			"application_id": {
 				"title": "应用 ID"
 			},

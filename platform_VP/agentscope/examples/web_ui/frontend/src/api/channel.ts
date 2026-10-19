@@ -10,10 +10,17 @@ import type {
 	UpdateChannelRequest,
 } from './types';
 
-export const channelApi = {
-	listTypes: () => client.get<ChannelTypeSchema[]>('/channels/types'),
+const isVisibleChannel = ({ channel_type }: { channel_type: string }) =>
+	!['dingtalk', 'feishu'].includes(channel_type);
 
-	list: () => client.get<ChannelRecord[]>('/channels/'),
+export const channelApi = {
+	listTypes: () =>
+		client
+			.get<ChannelTypeSchema[]>('/channels/types')
+			.then((types) => types.filter(isVisibleChannel)),
+
+	list: () =>
+		client.get<ChannelRecord[]>('/channels/').then((channels) => channels.filter(isVisibleChannel)),
 
 	get: (channelId: string) => client.get<ChannelRecord>(`/channels/${channelId}`),
 

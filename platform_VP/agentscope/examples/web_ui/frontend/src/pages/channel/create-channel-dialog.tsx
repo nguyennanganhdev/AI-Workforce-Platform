@@ -42,7 +42,7 @@ export function CreateChannelDialog({ open, onOpenChange, onCreated, initialType
 		if (open) {
 			setForm({
 				...defaultChannelForm(agents[0]?.id ?? ''),
-				channelType: initialType ?? 'feishu',
+				channelType: initialType ?? defaultChannelForm().channelType,
 			});
 			setError('');
 			channelApi
