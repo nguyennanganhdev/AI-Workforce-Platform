@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { sessionApi } from '@/api';
 import { getResultText } from '@/components/chat/tool-renderers/_shared';
+import { isInternalId, withoutInternalIds } from '@/lib/readable';
 
 export type TeamRuntimeStatus =
 	| 'loading'
@@ -60,7 +61,10 @@ const initialRuntime = (participant: TeamActivityParticipant): TeamMemberRuntime
 
 const isTeamSay = (toolName: string) => toolName.toLowerCase().endsWith('teamsay');
 
-const displayHandle = (value: string): string => value.split('@')[0]?.trim() || value;
+const displayHandle = (value: string): string => {
+	const handle = value.split('@')[0]?.trim() || value;
+	return isInternalId(handle) ? 'Thành viên nhóm' : handle;
+};
 
 const resolveTargetName = (
 	rawTarget: unknown,
@@ -149,7 +153,7 @@ const buildHistoryActivities = (
 				kind: teamSay?.kind ?? null,
 				toolName: block.name,
 				detail: teamCall && result?.state === 'error'
-					? getResultText(result) || teamSay?.content || null
+					? withoutInternalIds(getResultText(result)) || teamSay?.content || null
 					: teamSay?.content ?? null,
 				state: activityState(block, results.get(block.id)),
 				createdAt: block.created_at || message.created_at,

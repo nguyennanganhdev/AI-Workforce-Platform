@@ -361,10 +361,10 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 											<span>
 												{item.state === 'error'
 													? item.type === 'communication'
-														? 'TeamSay thất bại'
+														? 'Gửi tin thất bại'
 														: `Tool ${item.toolName} thất bại`
 													: item.type === 'communication'
-													? ACTIVITY_KIND_LABEL[item.kind ?? ''] ?? 'Gửi TeamSay'
+													? ACTIVITY_KIND_LABEL[item.kind ?? ''] ?? 'Gửi tin'
 													: `Gọi tool ${item.toolName}`}
 											</span>
 										</div>
