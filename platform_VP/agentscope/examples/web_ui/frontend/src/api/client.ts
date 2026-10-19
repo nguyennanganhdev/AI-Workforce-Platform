@@ -11,9 +11,10 @@ export const getBaseUrl = () => localStorage.getItem('server_url') ?? DEFAULT_AP
  * relative base like "/api" is not a valid URL base on its own.
  */
 export function apiUrl(path: string, baseUrl: string = getBaseUrl()): URL {
-	const url = new URL(baseUrl, globalThis.location?.origin ?? 'http://localhost');
-	url.pathname = `${url.pathname.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
-	return url;
+	const base = new URL(baseUrl, globalThis.location?.origin ?? 'http://localhost');
+	if (!base.pathname.endsWith('/')) base.pathname += '/';
+	// "./" keeps a first segment containing ":" from being read as a scheme.
+	return new URL(`./${path.replace(/^\/+/, '')}`, base);
 }
 
 let accessToken: string | null = null;

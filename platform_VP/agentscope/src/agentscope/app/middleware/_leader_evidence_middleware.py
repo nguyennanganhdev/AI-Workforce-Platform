@@ -107,11 +107,38 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id, self._session_id
         )
 
-    async def _has_team(self) -> bool:
+    @staticmethod
+    def _used_team_tools(agent: Agent) -> bool:
+        """Whether the current reply called team tools."""
+        return any(
+            isinstance(block, ToolCallBlock)
+            and block.name in {"TeamCreate", "AgentInvite", "TeamSay"}
+            for message in agent.state.context
+            if message.id == agent.state.reply_id and message.role == "assistant"
+            for block in message.get_content_blocks()
+        )
+
+    async def _team_worked(self, agent: Agent) -> bool:
+        """Whether teammates took part in the current customer request."""
+        if self._used_team_tools(agent):
+            return True
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
         )
-        return session is not None and session.team_id is not None
+        if session is None or session.team_id is None:
+            return False
+        record = await self._shared_context.storage.get_team_shared_context(
+            self._user_id, session.team_id
+        )
+        task = record.state.tasks.get(record.state.active_task_id) if record else None
+        return bool(
+            task
+            and any(
+                sid != self._session_id
+                and branch.customer_revision == task.latest_customer_revision
+                for sid, branch in task.collaboration.items()
+            )
+        )
 
     async def _pending_consent(self) -> bool:
         return bool(
@@ -263,11 +290,22 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             f"chỉnh. {limitation}"
         )
 
-    @staticmethod
-    def _usable_partial_text(text: str) -> str:
-        """Keep useful synthesis, never a promise/status placeholder."""
+    # Leaked runtime instructions are never a customer answer.
+    _INTERNAL_MARKERS = (
+        "after successful team message",
+        "end this run",
+        "must end run",
+    )
 
-        forbidden = (
+    @staticmethod
+    def _usable_partial_text(text: str, *, after_team_work: bool = True) -> str:
+        """Keep useful synthesis, never a promise/status placeholder.
+
+        Progress promises ("tôi sẽ...", "please wait") are placeholders only
+        after team work; in a plain chat they can be the answer itself.
+        """
+
+        forbidden = LeaderEvidenceMiddleware._INTERNAL_MARKERS if not after_team_work else (
             "hãy chờ",
             "xin chờ",
             "vui lòng chờ",
@@ -282,9 +320,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             "please wait",
             "will continue",
             "will update",
-            "after successful team message",
-            "end this run",
-            "must end run",
+            *LeaderEvidenceMiddleware._INTERNAL_MARKERS,
         )
         chunks = re.split(r"(?<=[.!?])\s+|[\r\n]+", text.strip())
         useful = [
@@ -419,9 +455,12 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 return
 
             current_text = self._buffered_text(buffered_text)
-            # Progress placeholders only replace a synthesis after team work;
-            # a plain Leader chat keeps its answer (e.g. "Tôi sẽ hỗ trợ...").
-            if await self._has_team() and not self._usable_partial_text(current_text):
+            # An empty reply or a leaked instruction is never an answer. Progress
+            # promises only count as placeholders after team work: a plain
+            # Leader chat keeps an answer like "Tôi sẽ hỗ trợ bạn...".
+            if not self._usable_partial_text(
+                current_text, after_team_work=await self._team_worked(agent),
+            ):
                 discard_text()
                 if nudges >= self._max_nudges:
                     yield event.model_copy(

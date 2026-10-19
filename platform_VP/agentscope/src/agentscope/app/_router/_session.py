@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
+from ..._logging import logger
 from ..._utils._common import _describe_exception, _generate_id
 from ...mcp import MCPClient
 from ..access import ResourceKind
@@ -203,10 +204,14 @@ async def add_team_member(
         except BaseException:
             if created_team:
                 # Do not leave an empty team that the leader could still manage.
-                created = await storage.get_session(user_id, agent_id, session_id)
-                if created is not None and created.team_id is not None:
-                    await storage.delete_team(user_id, created.team_id)
-                    await storage.set_session_team_id(user_id, session_id, None)
+                # delete_team also detaches the leader session. A cleanup error
+                # must not hide the original failure.
+                try:
+                    created = await storage.get_session(user_id, agent_id, session_id)
+                    if created is not None and created.team_id is not None:
+                        await storage.delete_team(user_id, created.team_id)
+                except Exception:  # pylint: disable=broad-except
+                    logger.exception("Could not remove the team created for session %s", session_id)
             raise
         session = await storage.get_session(user_id, agent_id, session_id)
         team = await storage.get_team(user_id, session.team_id)

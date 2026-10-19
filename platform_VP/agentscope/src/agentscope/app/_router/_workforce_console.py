@@ -2029,6 +2029,7 @@ async def _list_visible_builder_messages(
 
     pages: list[list[Msg]] = []
     loaded = 0
+    found_proposal = False
     before: str | None = None
     while True:
         page, has_more = await storage.list_messages(
@@ -2041,7 +2042,8 @@ async def _list_visible_builder_messages(
             break
         pages.append(page)
         loaded += len(page)
-        if not has_more or (loaded >= visible and _stored_proposal(page) is not None):
+        found_proposal = found_proposal or _stored_proposal(page) is not None
+        if not has_more or (loaded >= visible and found_proposal):
             break
         before = page[0].id
     return [message for page in reversed(pages) for message in page]

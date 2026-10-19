@@ -278,3 +278,29 @@ class TelegramChannelTest(IsolatedAsyncioTestCase):
             task.cancel()
             with self.assertRaises(asyncio.CancelledError):
                 await task
+
+    async def test_stop_while_handling_keeps_the_message_unconfirmed(self) -> None:
+        offsets = []
+        handling = asyncio.Event()
+
+        async def request(method: str, **payload: object) -> object:
+            if payload.get("timeout") == 0:
+                offsets.append(("confirm", payload["offset"]))
+                return []
+            offsets.append(("poll", payload["offset"]))
+            return [{"update_id": 9, "message": _message()}]
+
+        async def slow_emit(event) -> None:
+            handling.set()
+            await asyncio.Future()
+
+        self.channel._request = request
+        self.channel._emit = slow_emit
+        self.channel.aclose = AsyncMock()
+        task = asyncio.create_task(self.channel.start_listening(slow_emit))
+        await asyncio.wait_for(handling.wait(), timeout=1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(offsets, [("poll", 0)])
+        self.channel.aclose.assert_awaited_once()
