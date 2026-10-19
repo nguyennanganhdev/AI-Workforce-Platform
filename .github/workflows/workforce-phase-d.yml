@@ -161,6 +161,8 @@ jobs:
           tests/customer_team_runtime_test.py
           tests/customer_invite_catalog_test.py
           tests/customer_personal_resources_test.py
+          tests/customer_workspace_access_test.py
+          tests/customer_workspace_http_test.py
           tests/customer_personal_channels_test.py
           tests/vin_provider_boundary_test.py
           -q -rs --junitxml=.artifacts/phase-d/collaboration.xml

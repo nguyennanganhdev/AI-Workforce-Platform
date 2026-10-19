@@ -43,7 +43,7 @@ import {
 } from '@/components/ui/sidebar.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { Textarea } from '@/components/ui/textarea';
-import { useCatalogManagement } from '@/hooks/useCatalogManagement';
+import { usePrivateSkillManagement as useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useResourceDrawer } from '@/hooks/useResourceDrawer.ts';
 import { useSkillHubCards } from '@/hooks/useSkillHubCards.ts';
 import { useSkillHubs } from '@/hooks/useSkillHubs.ts';
@@ -327,7 +327,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 	const [saving, setSaving] = useState(false);
 	// The list view omits SKILL.md; the detail endpoint carries it.
 	const drawer = useResourceDrawer(
-		useCallback((skill) => skillApi.get((skill as SkillView).id), []),
+		useCallback(async (skill) => ({ ...await skillApi.get((skill as SkillView).id), editable: (skill as SkillView).editable }), []),
 	);
 
 	// Filtered client-side: the library is the user's own and small, so a
@@ -448,7 +448,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 
 							<ItemActions>
 								<Badge variant="outline">{skill.review_status === 'candidate' ? 'Chờ duyệt' : skill.review_status === 'revoked' ? 'Đã thu hồi' : 'Đã duyệt'}{skill.archive_cached ? ' · Đã lưu nội bộ' : ''}</Badge>
-								<Button size="sm" variant="outline" disabled={!canManage || saving} onClick={async event => { event.stopPropagation(); setSaving(true); try { await skillApi.review(skill.id, skill.review_status === 'approved' || !skill.review_status ? 'revoked' : 'approved'); await onRefresh(); } catch (error) { toast.error(error instanceof Error ? error.message : 'Không cập nhật được skill'); } finally { setSaving(false); } }}>{skill.review_status === 'approved' || !skill.review_status ? 'Thu hồi' : 'Duyệt'}</Button>
+								<Button size="sm" variant="outline" disabled={!canManage || skill.editable === false || saving} onClick={async event => { event.stopPropagation(); setSaving(true); try { await skillApi.review(skill.id, skill.review_status === 'approved' || !skill.review_status ? 'revoked' : 'approved'); await onRefresh(); } catch (error) { toast.error(error instanceof Error ? error.message : 'Không cập nhật được skill'); } finally { setSaving(false); } }}>{skill.review_status === 'approved' || !skill.review_status ? 'Thu hồi' : 'Duyệt'}</Button>
 								{skill.version && (
 									<span className="text-xs text-muted-foreground whitespace-nowrap">
 										{skill.version}
@@ -463,7 +463,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 										e.stopPropagation();
 										onRemove(skill.id);
 									}}
-									disabled={!canManage}
+									disabled={!canManage || skill.editable === false}
 									title={t('common.delete')}
 								>
 									<Trash2 />
@@ -483,7 +483,7 @@ function MinePanel({ skills, loading, onRemove, onRefresh }: MinePanelProps) {
 				action={
 					<Button
 						variant="destructive"
-						disabled={!canManage}
+						disabled={!canManage || (drawer.opened as SkillView | null)?.editable === false}
 						onClick={() => {
 							if (drawer.opened) onRemove((drawer.opened as SkillView).id);
 							drawer.close();

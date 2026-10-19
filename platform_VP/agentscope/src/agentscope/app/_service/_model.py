@@ -54,10 +54,10 @@ def with_reasoning_effort(model: ChatModelBase, role: str) -> ChatModelBase:
     return clone
 
 
-def runtime_model_config(config: ChatModelConfig) -> ChatModelConfig:
+def runtime_model_config(config: ChatModelConfig, *, private: bool = False) -> ChatModelConfig:
     """Deployment policy applies to runtime, summaries, evaluation and learning."""
     name = os.getenv("WORKFORCE_MODEL_NAME", "").strip()
-    if not name:
+    if not name or private:
         return config
     parameters = {**config.parameters}
     parameters["max_tokens"] = min(
@@ -105,7 +105,14 @@ async def get_model(
             404 when the credential is neither owned by ``user_id`` nor
             shared to them.
     """
-    config = runtime_model_config(config)
+    storage = getattr(access, "_storage", None)
+    authority = getattr(storage, "__dict__", {}).get("vin_platform_service")
+    private = False
+    if authority is not None:
+        from ..vin_platform._resources import customer_model_config, is_private_credential
+        config = await customer_model_config(storage, user_id, config)
+        private = await is_private_credential(authority, user_id, config.credential_id)
+    config = runtime_model_config(config, private=private)
     credential_record = await access.resolve_credential(
         user_id,
         config.credential_id,

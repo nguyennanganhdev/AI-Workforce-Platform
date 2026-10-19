@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { useCatalogManagement } from './useCatalogManagement';
+import { usePrivateSkillManagement as useCatalogManagement } from './useCatalogManagement';
 import { skillApi } from '@/api';
 import type { SkillView } from '@/api';
 

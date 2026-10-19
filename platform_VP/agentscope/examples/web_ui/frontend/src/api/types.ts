@@ -749,6 +749,7 @@ export interface DirectInstallMCPRequest {
  * re-fetched from the hub when the skill reaches a workspace.
  */
 export interface SkillView {
+	editable?: boolean;
 	review_status?: 'candidate' | 'approved' | 'revoked';
 	archive_cached?: boolean;
 	id: string;

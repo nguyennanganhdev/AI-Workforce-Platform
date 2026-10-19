@@ -24,7 +24,7 @@ async def real_authority(authority, monkeypatch):
     monkeypatch.setenv("VIN_PLATFORM_ENABLED", "true")
     storage = authority.storage
     storage.upsert_credential = AsyncMock(side_effect=AssertionError("user-owned credential write"))
-    storage.list_credentials = AsyncMock(side_effect=AssertionError("legacy credential fallback"))
+    storage.list_credentials = AsyncMock(return_value=[])
     storage.vin_platform_service = authority
     await seed_policy_catalog(authority, model="offline-entitled-alias")
     admin = await authority.context("admin")
@@ -35,7 +35,7 @@ async def real_authority(authority, monkeypatch):
         grant = (await db.execute(select(t.grants.c.id).where(t.grants.c.subject_id == "alice"))).scalar_one()
     yield storage, authority, admin, grant
     storage.upsert_credential.assert_not_awaited()
-    storage.list_credentials.assert_not_awaited()
+    assert all(call.args[0] in {"alice", "bob"} for call in storage.list_credentials.await_args_list)
 
 
 @pytest.mark.asyncio

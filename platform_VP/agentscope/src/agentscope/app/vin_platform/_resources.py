@@ -1,6 +1,7 @@
 """Persisted resource policy and server-only provider references."""
 
 import os
+from datetime import UTC
 
 from ..access import ResourceAccessPolicyBase, ResourceKind, ResourcePermission, ResourceRef
 from ..storage import ChatModelConfig, CredentialRecord
@@ -65,6 +66,37 @@ async def platform_model_config(service, user_id):
         raise PlatformError("MODEL_NOT_ENTITLED", 403)
     return ChatModelConfig(type="openai_credential", credential_id=PLATFORM_PROVIDER_ID,
         model=models[0], parameters={"max_tokens": policy.max_output_tokens})
+
+
+async def private_model_config(storage, user_id):
+    """Newest owner-supplied chat provider; listing cards performs no API call."""
+    from ...credential import CredentialFactory
+    candidates = [record for record in await storage.list_credentials(user_id)
+        if record.user_id == user_id and record.id != PLATFORM_PROVIDER_ID and not record.data.get("secret_ref")]
+    for record in sorted(candidates, key=lambda item: item.updated_at.replace(tzinfo=item.updated_at.tzinfo or UTC).timestamp(), reverse=True):
+        try:
+            credential = CredentialFactory.from_dict(record.data)
+            cards = credential.list_models()
+        except (ValueError, TypeError, NotImplementedError):
+            continue
+        active = [card for card in cards if card.status == "active"]
+        cards = active or cards
+        if cards:
+            preferred = {"openai_credential": "gpt-4o-mini", "dashscope_credential": "qwen-plus"}.get(record.data.get("type"))
+            model = next((card.name for card in cards if card.name == preferred), cards[0].name)
+            return ChatModelConfig(type=record.data["type"], credential_id=record.id, model=model, parameters={})
+    return None
+
+
+async def customer_model_config(storage, user_id, config):
+    """Old managed personal sessions follow the customer's own provider."""
+    service = getattr(storage, "vin_platform_service", None)
+    if service is None or config.credential_id != PLATFORM_PROVIDER_ID:
+        return config
+    context = await resource_context(service, user_id)
+    if context.role == "VIN_USER" and context.workspace_id.startswith("personal:"):
+        return await private_model_config(storage, user_id) or config
+    return config
 
 
 async def resolve_platform_credential(service, user_id, credential_id):

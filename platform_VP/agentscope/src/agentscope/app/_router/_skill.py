@@ -41,8 +41,8 @@ async def create_local_skill(body: LocalSkillRequest, user_id=Depends(get_curren
 
 @skill_router.post("/{skill_id}/review")
 async def review_skill(skill_id: str, body: SkillReviewRequest, principal=Depends(get_current_principal), storage=Depends(get_storage)):
-    if principal.role not in {"AREA_MANAGER", "DOMAIN_ADMIN", "PLATFORM_ADMIN"}:
-        raise HTTPException(403, "Chỉ người quản lý được duyệt skill.")
+    from .._service._catalog_resources import require_catalog_management
+    await require_catalog_management(storage, principal.user_id, private_kind="skill")
     record = await storage.get_skill(principal.user_id, skill_id)
     if record is None:
         raise HTTPException(404, "Không có skill trong thư viện của bạn.")
@@ -62,8 +62,12 @@ async def list_skills(
     authority = getattr(storage, "vin_platform_service", None)
     if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
         from ..vin_platform._resources import catalog_records
-        return [SkillView.from_record(record).model_copy(update={"editable": False, "url": None})
+        granted = [SkillView.from_record(record).model_copy(update={"editable": False, "url": None})
             for _, record in await catalog_records(authority, user_id, "skill")]
+        ids = {view.id for view in granted}
+        own = [SkillView.from_record(record) for record in await storage.list_skills(user_id)
+               if record.id not in ids and record.user_id == user_id]
+        return granted + sorted(own, key=lambda view: view.name)
     records = await storage.list_skills(user_id)
     return sorted(
         (SkillView.from_record(r) for r in records),
@@ -79,6 +83,9 @@ async def get_skill(
 ) -> SkillRecord:
     """Return one installed skill, including its ``SKILL.md`` body."""
     authority = getattr(storage, "vin_platform_service", None)
+    own = await storage.get_skill(user_id, skill_id)
+    if own is not None and own.user_id == user_id:
+        return own
     if authority is not None and (await authority.context(user_id)).role == "VIN_USER":
         context = await authority.context(user_id)
         _, record = await authority.resolve_catalog(context, "skill", skill_id, permission="view")

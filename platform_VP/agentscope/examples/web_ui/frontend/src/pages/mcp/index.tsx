@@ -54,7 +54,7 @@ import {
 	SidebarMenuItem,
 } from '@/components/ui/sidebar.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
-import { useCatalogManagement } from '@/hooks/useCatalogManagement';
+import { usePrivateMCPManagement as useCatalogManagement } from '@/hooks/useCatalogManagement';
 import { useMCPHubCards } from '@/hooks/useMCPHubCards.ts';
 import { useMCPHubs } from '@/hooks/useMCPHubs.ts';
 import { useMCPs } from '@/hooks/useMCPs.ts';
@@ -532,7 +532,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onSync(mcp.id)}
-									disabled={!canManage && mcp.editable === false}
+									disabled={!canManage || mcp.editable === false}
 									title="Đồng bộ lại tool"
 								>
 									<RefreshCw />
@@ -542,7 +542,7 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 									variant="ghost"
 									className="text-muted-foreground"
 									onClick={() => onRemove(mcp.id)}
-									disabled={!canManage && mcp.editable === false}
+									disabled={!canManage || mcp.editable === false}
 									title={t('common.delete')}
 								>
 									<Trash2 />
@@ -574,7 +574,7 @@ export function MCPHubPage() {
 	const [directOpen, setDirectOpen] = useState(false);
 	const syncMcp = async (mcpId: string) => {
 		// Personal users sync their own MCPs; granted ones are read-only.
-		if (!canManage && mcps.find((mcp) => mcp.id === mcpId)?.editable === false) return;
+		if (!canManage || mcps.find((mcp) => mcp.id === mcpId)?.editable === false) return;
 		await mcpApi.sync(mcpId);
 		await refetchMcps();
 	};
