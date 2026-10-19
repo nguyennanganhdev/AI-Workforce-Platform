@@ -8,14 +8,12 @@ from pydantic import BaseModel, Field
 
 from ..auth import (
     AccountPendingError,
-    AreaTakenError,
     AuthPrincipal,
     AuthService,
     AuthTokens,
     InvalidCredentialsError,
     InvalidTokenError,
     RefreshTokenReuseError,
-    UserAlreadyExistsError,
 )
 from ..deps import get_auth_service, get_current_principal
 
@@ -86,28 +84,6 @@ def _token_response(tokens: AuthTokens) -> TokenResponse:
         token_type=tokens.token_type,
         expires_in=tokens.access_expires_in,
     )
-
-
-@auth_router.post(
-    "/register",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def register(
-    body: RegisterRequest,
-    service: AuthService = Depends(get_auth_service),
-) -> UserResponse:
-    """Register a local account."""
-    try:
-        user = await service.register(
-            tenant_id=service.default_tenant_id,
-            **body.model_dump(),
-        )
-    except (UserAlreadyExistsError, AreaTakenError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return UserResponse.model_validate(user, from_attributes=True)
 
 
 @auth_router.post("/login", response_model=TokenResponse)

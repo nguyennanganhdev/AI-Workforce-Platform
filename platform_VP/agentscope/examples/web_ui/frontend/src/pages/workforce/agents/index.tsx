@@ -15,7 +15,6 @@ import { toast } from 'sonner';
 
 import { ActivityDialog } from './activity';
 import { AgentMapView, AgentTable } from './map-view';
-import { PartnerRoutesDialog } from './partner-routes';
 import { studioApi } from '@/api';
 import type { AgentSummary, AgentTemplate } from '@/api';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -224,7 +223,6 @@ export function AgentManagementPage() {
 							</TabsList>
 						</Tabs>
 						<ActivityDialog />
-						<PartnerRoutesDialog />
 						<Button onClick={() => setCreating(true)}>
 							<Plus /> Tạo agent
 						</Button>

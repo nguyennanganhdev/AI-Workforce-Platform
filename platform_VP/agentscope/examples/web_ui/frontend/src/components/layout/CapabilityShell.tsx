@@ -38,7 +38,7 @@ export function CapabilityShell() {
 	const access = usePlatformAccess();
 	const user = useCurrentUser();
 	const location = useLocation();
-	if (!access) return user?.role === 'VIN_USER' || ['/admin', '/account', '/connections'].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))
+	if (!access) return user?.role === 'VIN_USER' || ['/admin', '/account'].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))
 		? <AccessBlocked unavailable /> : <Outlet />;
 	if (access.pending) return <div role="status" className="flex h-screen items-center justify-center bg-canvas p-6 text-sm">Đang xác minh không gian làm việc…</div>;
 	if (!access.workspace || !access.view) return <div className="flex h-screen bg-canvas"><AccessBlocked unavailable refresh={access.refresh} /></div>;

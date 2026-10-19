@@ -83,7 +83,6 @@ const router = createBrowserRouter([{ element: <CapabilityShell />, children: [
 					{ path: '/knowledge', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
 					{ path: '/knowledge/:kbId', lazy: page(() => import('@/pages/knowledge'), 'KnowledgePage') },
 					{ path: '/account', lazy: page(() => import('@/pages/account'), 'AccountPage') },
-					{ path: '/connections/*', lazy: page(() => import('@/pages/connections'), 'ConnectionsPage') },
 					{ path: '/packs', lazy: page(() => import('@/pages/packs'), 'PacksPage') },
 				],
 			},
@@ -138,9 +137,7 @@ function PlatformApp() {
 					onAuthenticated={(user) => {
 						queryClient.clear();
 						try { localStorage.setItem(`session-workspace:view:${user.id}`, 'chat'); } catch { /* Optional browser preference. */ }
-						const callback = window.location.pathname === '/connections/callback/vinhomes';
-						void router.navigate(VIN_EXPERIENCE_ENABLED && callback ? window.location.pathname + window.location.search
-							: VIN_EXPERIENCE_ENABLED ? (user.role === 'PLATFORM_ADMIN' || user.role === 'DOMAIN_ADMIN' ? '/admin' : '/') : '/chat');
+						void router.navigate(VIN_EXPERIENCE_ENABLED ? (user.role === 'PLATFORM_ADMIN' ? '/admin' : '/') : '/chat');
 						setCurrentUser(user);
 						setAuthStatus('authenticated');
 					}}

@@ -17,7 +17,10 @@ export interface VinPage<T> { contract_version: 'vin-platform-1'; items: T[]; to
 export interface VinPolicyView { subject: string; revision: number; active: boolean; policy: VinQuotaPolicy }
 export interface VinGrantView extends VinGrant { id: string; revision: number; active: boolean }
 export interface VinMembership { id: string; user_id: string; group_id: string; active: boolean; revision: number; expires_at: string | null }
-export interface VinAccount { user_id: string; username: string; role: string; status: string; eligible: boolean; revision: number }
+export interface VinAccount {
+	user_id: string; email: string | null; username: string; role: string; status: 'active' | 'suspended' | 'deleted' | string;
+	created_at: string | null; last_login_at: string | null; month_tokens: number; eligible: boolean; revision: number;
+}
 export interface VinDocument { document_id: string; catalog_id: string; filename: string; status: string;
 	review_status: 'candidate' | 'approved' | 'retired'; revision: string; version: string; source_ref: string }
 type Filters = Record<string, string | number | boolean | undefined>;
@@ -41,5 +44,8 @@ export const vinAdminApi = {
 	membership: (userId: string, groupId: string, expiresAt: string | null) => client.post<{ id: string }>('/admin/vin/memberships',
 		{ user_id: userId, group_id: groupId, expires_at: expiresAt }),
 	revokeMembership: (id: string, revision: number) => client.delete(`/admin/vin/memberships/${encodeURIComponent(id)}${revisionQuery(revision)}`),
+	suspend: (userId: string) => client.post(`/admin/vin/accounts/${encodeURIComponent(userId)}/suspend`),
+	reactivate: (userId: string) => client.post(`/admin/vin/accounts/${encodeURIComponent(userId)}/reactivate`),
+	deleteAccount: (userId: string) => client.delete(`/admin/vin/accounts/${encodeURIComponent(userId)}`),
 	eligibility: (userId: string, eligible: boolean, revision: number) => client.put(`/admin/vin/accounts/${encodeURIComponent(userId)}/eligibility${revisionQuery(revision)}`, { eligible }),
 };

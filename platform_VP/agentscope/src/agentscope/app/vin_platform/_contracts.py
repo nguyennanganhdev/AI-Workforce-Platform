@@ -230,9 +230,13 @@ class MembershipView(Contract):
 
 class AccountView(Contract):
     user_id: str
+    email: str | None = None
     username: str
     role: str
     status: str
+    created_at: datetime | None = None
+    last_login_at: datetime | None = None
+    month_tokens: int = 0
     eligible: bool
     revision: int
 

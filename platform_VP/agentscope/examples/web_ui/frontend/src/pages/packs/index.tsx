@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link2, Package, Plus, Trash2 } from 'lucide-react';
+import { Package, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { packsApi } from '@/api/packs';
@@ -13,7 +12,6 @@ import { Spinner } from '@/components/ui/spinner';
 /** The pack library: each pack brings its MCP, documents and a ready team of agents. */
 export function PacksPage() {
 	const queryClient = useQueryClient();
-	const navigate = useNavigate();
 	const packs = useQuery({ queryKey: ['packs'], queryFn: packsApi.list, retry: false });
 	const [busy, setBusy] = useState<string | null>(null);
 
@@ -24,7 +22,6 @@ export function PacksPage() {
 			await queryClient.invalidateQueries({ queryKey: ['packs'] });
 			await queryClient.invalidateQueries({ queryKey: ['studio'] });
 			if (!install) toast.success(`Đã gỡ gói ${pack.name}.`);
-			else if (result.link_provider_id) toast.success(`Đã thêm gói ${pack.name}. Liên kết tài khoản để dùng dữ liệu của bạn.`);
 			else toast.success(`Đã thêm gói ${pack.name} với ${result.agents.length} agent. Hỏi Leader để bắt đầu.`);
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : 'Chưa thay đổi được gói.');
@@ -57,7 +54,6 @@ export function PacksPage() {
 									<div className="flex flex-wrap items-center gap-2">
 										<h2 className="font-medium">{pack.name}</h2>
 										{pack.installed && <Badge variant="secondary">Đã thêm</Badge>}
-										{pack.link_provider_id && <Badge variant="outline">Cần liên kết tài khoản</Badge>}
 									</div>
 									<p className="text-sm text-muted-foreground">{pack.description || 'Không có mô tả.'}</p>
 									<p className="text-xs text-muted-foreground">{pack.template_agent_ids.length} agent mẫu · {pack.catalog_ids.length} tài nguyên</p>
@@ -72,9 +68,6 @@ export function PacksPage() {
 									<Button size="sm" disabled={busy !== null} onClick={() => void change(pack, true)}>
 										{busy === pack.id ? <Spinner className="size-4" /> : <Plus />} Thêm gói
 									</Button>
-								)}
-								{pack.installed && pack.link_provider_id && (
-									<Button variant="ghost" size="sm" onClick={() => navigate('/connections')}><Link2 /> Liên kết tài khoản</Button>
 								)}
 							</div>
 						</li>
