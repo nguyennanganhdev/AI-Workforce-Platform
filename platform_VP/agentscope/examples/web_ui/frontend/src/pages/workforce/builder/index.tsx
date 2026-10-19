@@ -217,7 +217,7 @@ export function AgentBuilderPage() {
 	// Display only: when the current Builder call started, for the elapsed-time line.
 	const [workStartedAt, setWorkStartedAt] = useState(0);
 	useEffect(() => {
-		if (working) setWorkStartedAt(Date.now());
+		setWorkStartedAt(working ? Date.now() : 0);
 	}, [working]);
 
 	const loadAgents = useCallback(async () => {
@@ -422,9 +422,28 @@ export function AgentBuilderPage() {
 							<Plus />
 						</Button>
 						<ClayAvatar id={BUILDER_ID} label="Agent Builder" size={28} working={working} />
-						<h2 className="min-w-0 flex-1 truncate text-[15px]/5 font-semibold">
+						<h2 className="min-w-0 flex-1 truncate text-[15px]/5 font-semibold max-md:hidden">
 							{current?.title ?? 'Hội thoại mới'}
 						</h2>
+						{/* The conversation list is hidden on small screens; pick one here instead. */}
+						<select
+							aria-label="Hội thoại Builder"
+							className="min-w-0 flex-1 truncate rounded-lg border bg-background p-1.5 text-sm md:hidden"
+							value={conversationId ?? ''}
+							disabled={working}
+							onChange={(event) =>
+								event.target.value
+									? void openConversation(event.target.value)
+									: newConversation()
+							}
+						>
+							<option value="">Hội thoại mới</option>
+							{conversations.map((item) => (
+								<option key={item.conversation_id} value={item.conversation_id}>
+									{item.title}
+								</option>
+							))}
+						</select>
 						<LlmSelect
 							value={selectedModel}
 							onChange={setSelectedModel}
