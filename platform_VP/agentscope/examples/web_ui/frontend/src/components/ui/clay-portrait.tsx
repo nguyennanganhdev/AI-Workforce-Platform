@@ -34,6 +34,14 @@ const PORTRAITS: Record<PortraitKey, string> = {
 	generic: coordinator,
 };
 
+/** Every sheet is 4 columns × 3 rows of equal square cells. */
+export const SHEET = { columns: 4, rows: 3 } as const;
+
+/** The sheet behind a sticker, for the 3D map which draws it itself. */
+export function portraitSheetFor(which: PortraitKey): string {
+	return PORTRAITS[which];
+}
+
 /**
  * The words that pick each sticker, Vietnamese first because the product is
  * Vietnamese. Ordered most specific first and matched in order. These are
@@ -77,7 +85,7 @@ const ROLE_WORDS: [Exclude<PortraitKey, 'generic'>, string[]][] = [
 	['hotel', ['khách sạn', 'khach san', 'lưu trú', 'luu tru', 'đặt phòng', 'hotel', 'lodging']],
 	[
 		'car',
-		['agent xe', 'thuê xe', 'đặt xe', 'xe đưa đón', 'di chuyển', 'vận chuyển', 'car', 'ride'],
+		['agent xe', 'thuê xe', 'đặt xe', 'xe khách', 'xe đưa đón', 'di chuyển', 'vận chuyển', 'car', 'ride'],
 	],
 	[
 		'planner',
@@ -85,7 +93,11 @@ const ROLE_WORDS: [Exclude<PortraitKey, 'generic'>, string[]][] = [
 			'kế hoạch',
 			'ke hoach',
 			'lịch trình',
+			'hành trình',
 			'chuyến đi',
+			'chuyến bay',
+			'tham quan',
+			'tour',
 			'du lịch',
 			'du lich',
 			'planner',
@@ -98,6 +110,8 @@ const ROLE_WORDS: [Exclude<PortraitKey, 'generic'>, string[]][] = [
 		[
 			'lễ tân',
 			'le tan',
+			'nhà hàng',
+			'ẩm thực',
 			'tiếp nhận',
 			'tiep nhan',
 			'cư dân',

@@ -16,3 +16,5 @@ Create a production animation sprite sheet of the EXACT robot character in refer
 ## Playback
 
 `clay-portrait.css` displays upper-body windows of the sheets. Idle playback uses the first row for blinking; hover plays the action once; `working` repeats the action. Reduced-motion preferences disable playback. Artwork is generated, so small changes in proportions between frames can remain.
+
+`AgentSprite3D.tsx` uses the same sheets as camera-facing sprites in the agent management map: 4 columns × 3 rows, idle blink on frames 1–4 and live activity on frames 5–12. Each map actor owns its texture offset so agents sharing artwork can animate independently. Reduced motion holds frame 1. The office view and its portrait styling are unchanged.
