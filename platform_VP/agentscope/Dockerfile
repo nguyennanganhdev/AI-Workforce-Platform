@@ -2,6 +2,9 @@ FROM node:20-bookworm-slim AS node-runtime
 
 FROM python:3.11-slim-bookworm
 
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$VCS_REF
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \

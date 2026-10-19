@@ -110,8 +110,8 @@ services:
 
   web:
     build:
-      context: ./examples/web_ui
-      dockerfile: frontend/Dockerfile
+      context: ..
+      dockerfile: agentscope/examples/web_ui/frontend/Dockerfile
       args:
         VITE_API_BASE_URL: ${WEB_API_BASE_URL:-/api}
         VITE_VIN_EXPERIENCE_ENABLED: ${VITE_VIN_EXPERIENCE_ENABLED:-false}

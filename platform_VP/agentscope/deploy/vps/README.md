@@ -1,5 +1,11 @@
 # Platform VPS: phát hành, backup và khôi phục
 
+Image `web` chứa cả landing page (`/`, `/landing-assets/`) và ứng dụng
+(`/login`, `/register`, `/chat`, `/api/`). Build context web là `platform_VP`,
+Dockerfile ở `agentscope/examples/web_ui/frontend/Dockerfile`. Không cần container
+landing riêng. Khi nâng cấp VPS cũ, bỏ khối `BEGIN VAGENTS LANDING` khỏi Nginx host
+sau khi kiểm tra image mới; tất cả traffic web đi qua cổng Platform `5173`.
+
 > Cập nhật P2 ngày 16/10/2026: xem [runbook usage, memory, offsite, alert và RPO/RTO](P2_RUNBOOK.md).
 > Backup service hiện yêu cầu cấu hình offsite; hoàn tất bước cấu hình và diễn tập trước khi bật timer.
 
