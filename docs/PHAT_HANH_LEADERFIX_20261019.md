@@ -33,7 +33,7 @@ Bản trước đó: `40d2383b-develop2-20261019` (app và web).
 
 ## Gỡ 9 bản sao "Model của platform"
 
-Thực hiện bằng script `remove_platform_key_copies.py` (chế độ `dry`/`apply`; chỉ in số đếm, không in key):
+Thực hiện bằng script `platform_VP/agentscope/deploy/vps/release-leaderfix-20261019/remove_platform_key_copies.py` (chế độ `dry`/`apply`; chỉ in số đếm, không in key):
 - Catalog `vin-platform-openai` liệt kê thêm `text-embedding-3-small`.
 - Cấp quyền `role:AREA_MANAGER` dùng provider nền tảng (view, bind, execute).
 - Đặt chính sách quota mặc định cho `role:VIN_USER` và `role:AREA_MANAGER`: 300k token/ngày, model `gpt-6-luna` và `text-embedding-3-small`.
