@@ -10,7 +10,7 @@ const flush = () => new Promise(setImmediate);
 const model = { type: 'openai', credential_id: 'credential', model: 'test-model', parameters: {} };
 const content = [{ type: 'text', id: 'text-1', text: 'Hello', created_at: new Date().toISOString() }];
 
-function environment(overrides = {}) {
+function environment(overrides = {}, storage) {
   const slots = [], effects = [];
   let cursor = 0;
   const changed = (previous, next) => !previous || !next || previous.some((value, i) => value !== next[i]);
@@ -99,7 +99,7 @@ function environment(overrides = {}) {
     const context = {
       exports: {}, require: (id) => mocks[id] ?? mocks[id.replace(/\.tsx?$/, '')] ?? fallback(id),
       crypto: globalThis.crypto, URLSearchParams,
-      localStorage: { getItem: () => null, setItem: noop },
+      localStorage: storage ?? { getItem: () => null, setItem: noop },
     };
     vm.runInNewContext(ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -140,7 +140,7 @@ test('opening a new chat creates no session and the draft URL is not redirected 
     useLocation: () => ({ key: 'new-route', state: env.calls.navigated[0][1].state }),
   });
   env.mocks['@/hooks/useSessions'].useSessions = () => ({
-    sessions: [{ session: { id: 'old', config: { name: 'Old chat' } }, status: 'idle', preview: 'Hello' }],
+    sessions: [{ session: { id: 'old', origin: { type: 'user' }, config: { name: 'Old chat' } }, status: 'idle', preview: 'Hello' }],
   });
   const draft = env.render(inner);
   env.effects();
@@ -321,3 +321,108 @@ for (const pathname of ['/chat/leader/new', '/workforce/leader', '/workforce/bui
     assert.equal(env.calls.navigated[0][0], '/workforce/leader');
   });
 }
+
+
+test('a saved team panel starts unchecked in a new viewport while other panels persist', () => {
+  const stored = new Map([['chat_panel_layout', JSON.stringify([['team', 'mcp'], ['knowledge']])]]);
+  const env = environment({}, {
+    getItem: (key) => stored.get(key) ?? null,
+    setItem: (key, value) => stored.set(key, value),
+  });
+  const { ChatViewport } = env.load('../src/pages/chat/ChatViewport.tsx');
+  const props = { agentId: 'business', sessionId: null, draft: true };
+  const checkbox = (tree, label) => nodes(tree, (node) =>
+    node.type === 'DropdownMenuCheckboxItem' && node.props.children.includes(label))[0];
+  let tree = env.render(ChatViewport, props);
+  assert.equal(checkbox(tree, 'common.team').props.checked, false);
+  assert.equal(checkbox(tree, 'MCP').props.checked, true);
+  assert.equal(checkbox(tree, 'panel.knowledge.title').props.checked, true);
+  checkbox(tree, 'common.team').props.onCheckedChange();
+  tree = env.render(ChatViewport, props);
+  assert.equal(checkbox(tree, 'common.team').props.checked, true);
+});
+
+
+for (const internalOnly of [false, true]) {
+  test(`personal chat hides team worker sessions${internalOnly ? ' and shows the empty state' : ' but keeps user and leader chats'}`, () => {
+    const env = environment();
+    const view = (id, origin, team = null) => ({
+      session: { id, origin: { type: origin }, config: { name: id }, updated_at: '2026-10-21T00:00:00Z' },
+      status: 'idle', preview: 'Message', team,
+    });
+    const internal = view('internal', 'team', { team: { session_id: 'leader-session' }, members: [] });
+    const sessions = internalOnly ? [internal] : [internal, view('personal', 'user'),
+      view('leader-session', 'user', { team: { session_id: 'leader-session' }, members: [] }),
+      view('team-leader-session', 'team', { team: { session_id: 'team-leader-session' }, members: [] })];
+    env.mocks['@/hooks/useSessions'].useSessions = () => ({ sessions });
+    const { ChatPage } = env.load('../src/pages/chat/index.tsx');
+    const inner = nodes(ChatPage(), (node) => node.type?.name === 'ChatPageInner')[0].type;
+    const tree = env.render(inner);
+    const rows = nodes(tree, (node) => node.type === 'ChatRow');
+    assert.deepEqual(rows.map((row) => row.key), internalOnly ? [] : ['personal', 'leader-session', 'team-leader-session']);
+    assert.equal(nodes(tree, (node) => node.type === 'p' &&
+      node.props.children === 'chat.session.emptyTitle').length, internalOnly ? 1 : 0);
+    env.effects();
+    assert.equal(env.calls.navigated[0]?.[0], internalOnly ? undefined : '/chat/agent/personal');
+  });
+}
+
+test('a team worker session remains accessible by its direct link', () => {
+  const env = environment();
+  env.mocks['react-router-dom'].useParams = () => ({ agentId: 'agent', sessionId: 'internal' });
+  env.mocks['@/hooks/useSessions'].useSessions = () => ({ sessions: [{
+    session: { id: 'internal', origin: { type: 'team' }, config: { name: 'Internal' } },
+    status: 'idle', preview: 'Message', team: null,
+  }] });
+  const { ChatPage } = env.load('../src/pages/chat/index.tsx');
+  const inner = nodes(ChatPage(), (node) => node.type?.name === 'ChatPageInner')[0].type;
+  const tree = env.render(inner);
+  assert.equal(component(tree, 'ChatViewport').props.sessionId, 'internal');
+  assert.equal(nodes(tree, (node) => node.type === 'ChatRow').length, 0);
+  env.effects();
+  assert.equal(env.calls.navigated.length, 0);
+});
+
+
+test('the Leader group panel opens after loading, can be closed, and closes when switching to a member or draft', () => {
+  const env = environment();
+  let sessions = [];
+  env.mocks['@/hooks/useSessions'].useSessions = () => ({ sessions, refetch: async () => sessions });
+  const { ChatViewport } = env.load('../src/pages/chat/ChatViewport.tsx');
+  const props = { agentId: 'leader-agent', sessionId: 'leader-session' };
+  const checkbox = (tree) => nodes(tree, (node) => node.type === 'DropdownMenuCheckboxItem'
+    && node.props.children.includes('common.team'))[0];
+  env.render(ChatViewport, props);
+  env.effects();
+  const team = { team: { session_id: 'leader-session', data: { name: 'Group' } }, members: [] };
+  const view = (id) => ({ session: { id, config: {}, origin: { type: 'team' }, state: {} }, team });
+  sessions = [view('leader-session')];
+  env.render(ChatViewport, props);
+  env.effects();
+  let tree = env.render(ChatViewport, props);
+  assert.equal(checkbox(tree).props.checked, true);
+  checkbox(tree).props.onCheckedChange();
+  env.render(ChatViewport, props);
+  env.effects();
+  tree = env.render(ChatViewport, props);
+  assert.equal(checkbox(tree).props.checked, false, 'refresh must not undo manual closure');
+
+  checkbox(tree).props.onCheckedChange();
+  sessions = [view('member-session')];
+  const member = { agentId: 'member-agent', sessionId: 'member-session', readOnly: true };
+  env.render(ChatViewport, member);
+  env.effects();
+  tree = env.render(ChatViewport, member);
+  assert.equal(checkbox(tree).props.checked, false);
+
+  sessions = [view('leader-session')];
+  env.render(ChatViewport, props);
+  env.effects();
+  tree = env.render(ChatViewport, props);
+  assert.equal(checkbox(tree).props.checked, true);
+  const draft = { agentId: 'leader-agent', sessionId: null, draft: true };
+  env.render(ChatViewport, draft);
+  env.effects();
+  tree = env.render(ChatViewport, draft);
+  assert.equal(checkbox(tree).props.checked, false);
+});

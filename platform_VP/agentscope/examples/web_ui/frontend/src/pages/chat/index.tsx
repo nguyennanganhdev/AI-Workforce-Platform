@@ -103,10 +103,12 @@ const ChatPageInner = () => {
 	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
 	const visibleSessions = useMemo(() => sessions.filter((view) =>
-		view.preview?.trim()
-		|| sessionTitle(view.session.config.name)
-		|| view.team
-		|| view.status !== 'idle',
+		(view.session.origin.type !== 'team' || view.team?.team.session_id === view.session.id) && (
+			view.preview?.trim()
+			|| sessionTitle(view.session.config.name)
+			|| view.team
+			|| view.status !== 'idle'
+		),
 	), [sessions]);
 
 	// "Inner focus" — when the URL carries a third `:memberId` segment
@@ -277,7 +279,7 @@ const ChatPageInner = () => {
 					</div>
 				</SidebarHeader>
 				<SidebarContent className="no-scrollbar px-2">
-					{sessions.length === 0 && (
+					{visibleSessions.length === 0 && (
 						<p className="px-3 py-6 text-center text-sm text-muted-foreground">
 							{t('chat.session.emptyTitle')}
 						</p>

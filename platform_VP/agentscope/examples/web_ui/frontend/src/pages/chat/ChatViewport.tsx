@@ -116,8 +116,7 @@ const KNOWN_PANELS: Record<PanelKey, true> = {
 };
 
 /**
- * Restore the persisted dock layout, dropping anything that is no
- * longer a known panel (keys get renamed/removed across releases).
+ * Restore saved panels, keeping the team panel closed for each conversation.
  *
  * @returns The stored layout, or an empty one when absent or corrupt.
  */
@@ -128,7 +127,7 @@ function loadPanelLayout(): PanelKey[][] {
 		return parsed
 			.map((column: unknown) =>
 				Array.isArray(column)
-					? column.filter((key): key is PanelKey => key in KNOWN_PANELS)
+					? column.filter((key): key is PanelKey => key in KNOWN_PANELS && key !== 'team')
 					: [],
 			)
 			.filter((column) => column.length > 0);
@@ -227,7 +226,7 @@ export function ChatViewport({
 	const [configPending, setConfigPending] = useState(false);
 	// Dock layout: columns laid out left→right, each holding up to 2
 	// panels stacked top→bottom. Open order determines placement.
-	// Persisted so leaving and returning to /chat keeps the same panels.
+	// Other panels persist; the team panel starts closed in each conversation.
 	const [panelLayout, setPanelLayout] = useState<PanelKey[][]>(loadPanelLayout);
 
 	useEffect(() => {
@@ -246,13 +245,13 @@ export function ChatViewport({
 	// hence checking the refetched list rather than opening blindly.
 	const handleTeamUpdated = useCallback(async () => {
 		const next = await refetchSessions();
-		if (next.some((v) => v.session.id === sessionId && v.team)) {
+		if (!readOnly && next.some((v) => v.session.id === sessionId && v.team?.team.session_id === sessionId)) {
 			// `openPanelInLayout`, not `togglePanel` — the latter would
 			// close a panel the user already has open.
 			setPanelLayout((layout) => openPanelInLayout(layout, 'team'));
 		}
 		onSessionsChanged?.();
-	}, [refetchSessions, sessionId, onSessionsChanged]);
+	}, [refetchSessions, sessionId, readOnly, onSessionsChanged]);
 
 	// Auto-naming replaced the session's placeholder name. The outer
 	// page shares this cached list whenever both are looking at the same
@@ -289,6 +288,14 @@ export function ChatViewport({
 	const title = view ? sessionDisplayTitle(view, t('chat.newSession')) : null;
 	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 	const inspectingMember = readOnly || (!!view?.team && !isTeamChat);
+
+	// Open the group's own conversation automatically; keep member chats and drafts closed.
+	useEffect(() => {
+		setPanelLayout((layout) => isTeamChat && !readOnly
+			? openPanelInLayout(layout, 'team')
+			: closePanelInLayout(layout, 'team'));
+	}, [agentId, sessionId, isTeamChat, readOnly]);
+
 	const showAssignedTools = agentData?.execution_mode != null
 		&& agentData.system_role === 'business'
 		&& view?.session.origin.type === 'user'
