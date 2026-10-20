@@ -55,6 +55,7 @@
 		"switchToVi": "Chuyển sang tiếng Việt"
 	},
 	"error": {
+		"credentialNotFound": "找不到已配置的 API 密钥凭证，或你无权使用。请在凭证中添加或重新选择密钥，并更新智能体配置。",
 		"description": "页面遇到意外错误。你可以重试或返回首页。",
 		"retry": "重试",
 		"home": "返回首页"
