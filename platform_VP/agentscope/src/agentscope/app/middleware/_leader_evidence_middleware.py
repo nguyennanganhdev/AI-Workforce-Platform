@@ -279,9 +279,12 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
     def _incomplete_text(agent: Agent, partial_text: str = "") -> str:
         del agent
         partial = LeaderEvidenceMiddleware._usable_partial_text(partial_text)
+        # Only live facts (price, availability, schedules, bookings) are left
+        # out; labelled general suggestions stay allowed by the policy.
         limitation = (
-            "Phần còn thiếu chưa có đủ bằng chứng để xác minh, nên tôi không "
-            "suy đoán. Không có tác vụ nền nào được cam kết sau câu trả lời này."
+            "Những thông tin cần tra cứu thực tế (giá, chỗ trống, lịch, đặt chỗ) "
+            "mà nhóm chưa có đủ bằng chứng thì tôi không tự điền. Không có tác vụ "
+            "nền nào được cam kết sau câu trả lời này."
         )
         if partial:
             return f"{partial}\n\n{limitation}"
@@ -479,7 +482,8 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     "TeamSay resolution=complete/stop closes internal work, "
                     "not this run. Review any remaining assignments, then "
                     "synthesize the verified results and limitations for the "
-                    "customer in the customer's language. Do not emit an instruction to "
+                    "customer in the customer's language, adding labelled "
+                    "general suggestions where they help. Do not emit an instruction to "
                     "end the run or a progress-only placeholder.",
                 )
                 continue
@@ -510,7 +514,8 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     agent,
                     "Review incoming peer results/proposals/conflicts. Resolve "
                     "assignments with TeamSay resolution=complete/stop/verify, "
-                    "then synthesize every useful verified partial result. Do "
+                    "then synthesize every useful verified partial result "
+                    "(plus labelled general suggestions where they help). Do "
                     "not ask the customer or Leader to choose a routine next "
                     "step and do not forward an internal dependency.",
                 )

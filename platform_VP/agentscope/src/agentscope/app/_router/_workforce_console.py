@@ -116,8 +116,9 @@ class GeneratedAgent(BaseModel):
     objective: str = Field(min_length=1, max_length=4000)
     execution_mode: Literal["context_only", "tool_backed"] = Field(
         description=(
-            "context_only uses customer input, retrieved knowledge and peer "
-            "results; tool_backed requires at least one selected MCP tool."
+            "context_only uses customer input, retrieved knowledge, peer "
+            "results and labelled general knowledge; tool_backed requires at "
+            "least one selected MCP tool for its live facts."
         ),
     )
     system_prompt: str = Field(min_length=20, max_length=30000)
@@ -1843,6 +1844,14 @@ coordinator role or delegate overall team management to a sub-agent.
 Missing knowledge bases are advisory and do not prevent agent creation. Generate
 the agent with its available tools and context. Its prompt and skill must ask
 for missing policy/reference facts when needed and never invent those facts.
+Live facts (prices, fees, availability, schedules of a concrete service,
+booking/payment status, ids) come only from tools, KBs or verified peer results.
+Do not forbid general knowledge: prompts and skills must let the agent add
+helpful general suggestions (ideas, typical itineraries, places, tips, how to
+choose) under a line starting with "Gợi ý chung (chưa xác minh):", kept apart
+from verified results, and must not tell it to answer only from tool data. When
+a tool finds nothing, the agent says so, gives labelled general suggestions and
+the concrete change (date, time, catalog value) that could find options.
 Answer naturally in the user's language; generated prompts and skills must tell
 runtime agents to follow the language of their user's latest message.
 """
