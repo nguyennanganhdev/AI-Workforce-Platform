@@ -63,7 +63,7 @@ export function AgentSelect({
 				<Check
 					className={`size-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}
 				/>
-				<ClayAvatar id={agent.id} label={agent.data.name} size={22} />
+				<ClayAvatar id={agent.id} label={agent.data.name} size={24} />
 				<span className="min-w-0 flex-1 truncate">{agent.data.name}</span>
 				{!agent.editable && (
 					<Badge
@@ -88,14 +88,11 @@ export function AgentSelect({
 					{...props}
 				>
 					<span className="flex min-w-0 items-center gap-2">
-						{/* Only the `lg` trigger has room for the 28px tile, which
-						    is the smallest size that draws the role portrait
-						    instead of initials. */}
 						{selected && (
 							<ClayAvatar
 								id={selected.id}
 								label={selected.data.name}
-								size={size === 'lg' ? 28 : 22}
+								size={size === 'lg' ? 28 : 24}
 							/>
 						)}
 						<span className="truncate">{displayLabel}</span>
