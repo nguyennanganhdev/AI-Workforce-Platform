@@ -769,7 +769,13 @@ class TeamSay(_TeamToolBase):
                             ),
                         ),
                     ],
-                    metadata={"kind": "requires_user_input"},
+                    metadata={
+                        "kind": "requires_user_input",
+                        "handoff_id": question_id,
+                        "thread_id": thread_id,
+                        "in_reply_to": in_reply_to,
+                        "to": None,
+                    },
                 )
 
             if self._role == "worker" and to is None:
@@ -918,6 +924,12 @@ class TeamSay(_TeamToolBase):
                                 ),
                             ),
                         ],
+                        metadata={
+                            "kind": "requires_user_input",
+                            "thread_id": thread_id,
+                            "in_reply_to": in_reply_to,
+                            "to": to,
+                        },
                     )
                 wake = first_question and turn.status == "running"
 
@@ -1274,6 +1286,13 @@ class TeamSay(_TeamToolBase):
                     count += 1
             await shared_context.mark_handoff(intent, "consumed")
             target = "broadcast" if to is None else f"member {to!r}"
+            # Display handles of the final recipients (coordination may
+            # reroute), so observers can draw "sender -> recipient" threads
+            # without re-resolving names against the directory.
+            names_by_session = {sid: name for name, (sid, _aid) in directory.items()}
+            recipient_names = [
+                names_by_session[sid] for sid, _aid in recipients if sid in names_by_session
+            ]
             return ToolChunk(
                 content=[
                     TextBlock(
@@ -1284,6 +1303,13 @@ class TeamSay(_TeamToolBase):
                     "handoff_id": handoff_id,
                     "kind": kind,
                     "collaboration_status": coordination["status"],
+                    "thread_id": thread_id,
+                    "in_reply_to": in_reply_to,
+                    "to": (
+                        recipient_names[0]
+                        if len(recipient_names) == 1
+                        else to
+                    ),
                 },
             )
         except Exception as e:  # noqa: BLE001 - tool returns structured error
