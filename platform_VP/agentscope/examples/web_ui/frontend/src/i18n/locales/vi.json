@@ -249,7 +249,13 @@
 			"fallback_other": "đã gọi {{count}} công cụ"
 		},
 		"input": "Đầu vào",
-		"output": "Đầu ra"
+		"output": "Đầu ra",
+		"displayName": {
+			"TeamSay": "Nhắn thành viên",
+			"AgentInvite": "Mời thành viên",
+			"TeamCreate": "Lập nhóm",
+			"TeamDelete": "Giải tán nhóm"
+		}
 	},
 	"textInput": {
 		"toComplete": "để hoàn thành",
@@ -291,7 +297,15 @@
 			"setup": "Không thể chuẩn bị phiên — hãy kiểm tra mô hình, công cụ và kho tri thức của tác nhân.",
 			"unknown": "Phản hồi thất bại do lỗi chưa xác định."
 		},
-		"copy": "Sao chép"
+		"copy": "Sao chép",
+		"trace": {
+			"running": "Đang xử lý",
+			"done": "Quá trình xử lý",
+			"steps": "{{count}} bước",
+			"customer": "Khách hàng",
+			"teammate": "Thành viên nhóm",
+			"sendFailed": "Gửi thất bại"
+		}
 	},
 	"chat": {
 		"inputPlaceholder": "Nhập tin nhắn...",

@@ -102,7 +102,13 @@
 			"fallback_other": "called {{count}} tools"
 		},
 		"input": "Input",
-		"output": "Output"
+		"output": "Output",
+		"displayName": {
+			"TeamSay": "Message a teammate",
+			"AgentInvite": "Invite a teammate",
+			"TeamCreate": "Create the team",
+			"TeamDelete": "Dissolve the team"
+		}
 	},
 	"textInput": {
 		"toComplete": "to complete",
@@ -147,7 +153,16 @@
 			"unknown": "The reply failed with an unknown error.",
 			"quota": "The model provider account has no credit left — top up the API key or switch the credential."
 		},
-		"copy": "Copy"
+		"copy": "Copy",
+		"trace": {
+			"running": "Working",
+			"done": "How it was handled",
+			"customer": "Customer",
+			"teammate": "Teammate",
+			"sendFailed": "Not delivered",
+			"steps_one": "{{count}} step",
+			"steps_other": "{{count}} steps"
+		}
 	},
 	"chat": {
 		"inputPlaceholder": "Type a message...",

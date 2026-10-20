@@ -3,6 +3,7 @@ import mime from 'mime';
 import type { ReactNode } from 'react';
 
 import { getResultText, toolArgClass, toolLabelClass } from './_shared';
+import { ReadableText } from './ReadableText';
 import type { TFunction, ToolCallWithResult } from './types';
 
 export function defaultGetDisplayName(call: ToolCallBlock): string {
@@ -12,7 +13,7 @@ export function defaultGetDisplayName(call: ToolCallBlock): string {
 export function defaultRenderConfirmBody(call: ToolCallBlock): ReactNode {
 	return (
 		<div className="w-full max-w-full overflow-hidden break-words">
-			<div className="text-secondary-foreground">{call.input}</div>
+			<ReadableText text={call.input} keepIds className="text-secondary-foreground" />
 		</div>
 	);
 }
@@ -26,7 +27,9 @@ export function defaultRenderHeader(pair: ToolCallWithResult, t: TFunction): Rea
 	return (
 		<>
 			<span className={toolLabelClass}>{t('tool.callGeneric')}</span>
-			<span className={toolArgClass}>{defaultGetDisplayName(pair.call)}</span>
+			<span className={toolArgClass}>
+				{t(`tool.displayName.${pair.call.name}`, { defaultValue: defaultGetDisplayName(pair.call) })}
+			</span>
 		</>
 	);
 }
@@ -73,8 +76,8 @@ export function defaultRenderBody(pair: ToolCallWithResult, t: TFunction): React
 	}
 
 	return (
-		<pre className="border rounded-sm bg-background p-2 text-xs overflow-auto max-h-[200px] whitespace-pre-wrap">
-			{text}
-		</pre>
+		<div className="max-h-[200px] overflow-auto rounded-sm border bg-background p-2 text-xs">
+			<ReadableText text={text} />
+		</div>
 	);
 }

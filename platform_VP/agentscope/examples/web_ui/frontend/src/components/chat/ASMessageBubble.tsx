@@ -23,7 +23,7 @@ import {
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { renderToolCall } from './tool-renderers';
 import { countDiffStats, DiffStats, getResultDiff, getResultText } from './tool-renderers/_shared';
@@ -50,6 +50,7 @@ import {
 import { Message, MessageFooter, MessageContent } from '@/components/ui/message';
 import { useAudioBlock, useReplayController } from '@/context/AudioContext';
 import { useTranslation } from '@/i18n/useI18n';
+import { isInternalId, withoutInternalIds } from '@/lib/readable';
 import { cn } from '@/lib/utils';
 import { copyToClipboard, formatNumber, formatTime } from '@/utils/common';
 import 'streamdown/styles.css';
@@ -460,16 +461,26 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 			const payload = JSON.parse(block.input) as { to?: string | null; kind?: string; content?: string };
 			if (!payload.content || plainText.includes(payload.content.trim())) return [];
 			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
+			const to = payload.to?.trim() ?? '';
 			return [{
 				id: block.id,
 				...payload,
+				toCustomer: !to || ['null', 'none'].includes(to.toLowerCase()),
 				failed: result?.state === 'error',
-				error: result?.state === 'error' ? getResultText(result) : '',
+				error: result?.state === 'error' ? withoutInternalIds(getResultText(result)) : '',
 			}];
 		} catch {
 			return [];
 		}
 	});
+
+	// The working (thinking, hints, tool runs, messages between agents) folds
+	// into one line; the answer and questions to the customer stay in view.
+	const visibleBlocks = blocks.filter((block) => block.type !== 'data');
+	const traceBlocks = isUser ? [] : visibleBlocks.filter(isTraceBlock);
+	const shownBlocks = isUser ? visibleBlocks : visibleBlocks.filter((block) => !isTraceBlock(block));
+	const teamCommunications = communications.filter((communication) => !communication.toCustomer);
+	const customerCommunications = communications.filter((communication) => communication.toCustomer);
 
 	const startMs = new Date(message.created_at).getTime();
 	const terminalTime =
@@ -489,18 +500,18 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 						{message.name}
 					</div>
 				)}
-				{communications.map((communication) => (
-					<div key={communication.id} className="mx-2 my-2 rounded-xl border border-border px-3 py-2">
-						<div className="mb-1 text-xs text-muted-foreground">
-							→ {communication.to && !['null', 'none'].includes(communication.to) ? communication.to.split('@')[0] : 'Khách hàng'}
-							{communication.failed ? ' · Gửi thất bại' : ''}
-						</div>
-						<Markdown>{communication.content}</Markdown>
-						{communication.error && <p className="mt-2 whitespace-pre-wrap break-words text-xs text-destructive">{communication.error}</p>}
-					</div>
+				{(traceBlocks.length > 0 || teamCommunications.length > 0) && (
+					<TraceDisclosure running={isRunning} steps={countSteps(traceBlocks) + teamCommunications.length}>
+						{teamCommunications.map((communication) => (
+							<CommunicationCard key={communication.id} communication={communication} />
+						))}
+						{traceBlocks.map((block, index) => <ASBlock key={index} block={block} />)}
+					</TraceDisclosure>
+				)}
+				{customerCommunications.map((communication) => (
+					<CommunicationCard key={communication.id} communication={communication} />
 				))}
-				{blocks
-					.filter((block) => block.type !== 'data')
+				{shownBlocks
 					.map((block, index) => (
 						<Bubble key={index} variant={isUser ? 'question' : block.type === 'text' && block.text ? 'agent' : 'ghost'}>
 							<BubbleContent>
@@ -585,6 +596,80 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
  * new object.
  */
 export const ASMessageBubble = memo(ASMessageBubbleComponent);
+
+function isTraceBlock(block: ExtendedContentBlock) {
+	return block.type === 'thinking' || block.type === 'hint' || block.type === 'tool_call_group';
+}
+
+function countSteps(blocks: ExtendedContentBlock[]) {
+	return blocks.reduce(
+		(count, block) => count + (block.type === 'tool_call_group' ? block.calls.length : 1),
+		0,
+	);
+}
+
+/** One collapsed line for a reply's working; opened on demand. */
+function TraceDisclosure({
+	running,
+	steps,
+	children,
+}: {
+	running: boolean;
+	steps: number;
+	children: ReactNode;
+}) {
+	const { t } = useTranslation();
+	return (
+		<Collapsible className="px-2 pb-1">
+			<CollapsibleTrigger asChild>
+				<button
+					type="button"
+					className={cn(
+						'group flex items-center gap-1.5 text-left text-sm text-muted-foreground hover:text-primary',
+						running && 'shimmer',
+					)}
+				>
+					<span>
+						{running ? t('messageBubble.trace.running') : t('messageBubble.trace.done')} ·{' '}
+						{t('messageBubble.trace.steps', { count: steps })}
+					</span>
+					<ChevronRight className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90" />
+				</button>
+			</CollapsibleTrigger>
+			<CollapsibleContent className="mt-2 flex flex-col gap-2 border-l pl-3">
+				{children}
+			</CollapsibleContent>
+		</Collapsible>
+	);
+}
+
+function CommunicationCard({
+	communication,
+}: {
+	communication: { to?: string | null; content?: string; toCustomer: boolean; failed: boolean; error: string };
+}) {
+	const { t } = useTranslation();
+	const target = communication.toCustomer
+		? t('messageBubble.trace.customer')
+		: (() => {
+				const handle = (communication.to ?? '').split('@')[0].trim();
+				return isInternalId(handle) ? t('messageBubble.trace.teammate') : handle;
+			})();
+	return (
+		<div className="mx-2 my-1 rounded-xl border border-border px-3 py-2">
+			<div className="mb-1 text-xs text-muted-foreground">
+				→ {target}
+				{communication.failed ? ` · ${t('messageBubble.trace.sendFailed')}` : ''}
+			</div>
+			<Markdown>{communication.content ?? ''}</Markdown>
+			{communication.error && (
+				<p className="mt-2 whitespace-pre-wrap break-words text-xs text-destructive">
+					{communication.error}
+				</p>
+			)}
+		</div>
+	);
+}
 
 /**
  * A thinking block with a live-ticking "thinking for Xs" header. Kept as its
