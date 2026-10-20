@@ -8,9 +8,8 @@ import { cn } from '@/lib/utils';
 import './auth-showcase.css';
 
 /**
- * The beats of one request, played on a loop: it arrives from a resident, the
- * Leader routes it to the right area and domain, hands it to the one agent
- * that fits, and that agent answers. What the product does, shown rather than
+ * The beats of one request, played on a loop: it arrives from a customer, the
+ * Leader hands it to the one agent that fits, and that agent answers. What the product does, shown rather than
  * said, in the chat's own pieces (clay avatars, grey bubbles, status dots).
  */
 const BEATS = ['idle', 'request', 'route', 'handoff', 'done'] as const;
@@ -26,11 +25,11 @@ const HOLD: Record<Beat, number> = {
 
 /** The agents the Leader can choose from; the middle one gets the job. */
 const AGENTS = [
-	{ id: 'reception', label: 'Lễ tân', key: 'reception' },
-	{ id: 'technical', label: 'Kỹ thuật', key: 'technical' },
+	{ id: 'planner', label: 'Lịch trình', key: 'planner' },
 	{ id: 'hotel', label: 'Khách sạn', key: 'hotel' },
+	{ id: 'flight', label: 'Vé máy bay', key: 'flight' },
 ] as const;
-const CHOSEN = 'technical';
+const CHOSEN = 'hotel';
 
 function useReducedMotion() {
 	const [reduced, setReduced] = useState(
@@ -87,13 +86,13 @@ export function AuthShowcase() {
 				</span>
 			</header>
 
-			{/* The route a request travels: resident → Leader → the agent that fits. */}
+			{/* The route a request travels: customer → Leader → the agent that fits. */}
 			<div className="as-flow" aria-hidden="true">
 				<div className={cn('as-node', step >= 1 && 'as-on')}>
 					<span className="as-person">
 						<UserRound className="size-5" />
 					</span>
-					<span className="as-name">{t('auth.showcase.resident')}</span>
+					<span className="as-name">{t('auth.showcase.customer')}</span>
 				</div>
 
 				<span className={cn('as-link', step >= 1 && 'as-link-on')}>
@@ -135,7 +134,7 @@ export function AuthShowcase() {
 				</ul>
 			</div>
 
-			{/* Where it was routed: area and domain, the platform's two keys. */}
+			{/* Which agent the Leader handed the request to. */}
 			<div className="as-route" aria-hidden="true">
 				{step >= 2 && <span className="as-chip cue-pop">{t('auth.showcase.routed')}</span>}
 			</div>
@@ -155,7 +154,7 @@ export function AuthShowcase() {
 				)}
 				{beat === 'done' && (
 					<div className="as-reply cue-pop">
-						<ClayAvatar id="technical" label="Kỹ thuật" size={28} />
+						<ClayAvatar id="hotel" label="Khách sạn" size={28} />
 						<Bubble variant="agent">
 							<BubbleContent>{t('auth.showcase.reply')}</BubbleContent>
 						</Bubble>

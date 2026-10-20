@@ -11,17 +11,6 @@ export interface AuthUser {
 	area_id: string;
 }
 
-export interface DomainOption {
-	id: string;
-	name: string;
-}
-
-export interface AreaOption {
-	id: string;
-	name: string;
-	domain_id: string;
-}
-
 interface TokenResponse {
 	access_token: string;
 	token_type: string;
@@ -32,8 +21,6 @@ export interface RegisterRequest {
 	email: string;
 	username: string;
 	password: string;
-	domain_id: string;
-	area_id: string;
 }
 
 export interface LoginRequest {
@@ -49,18 +36,6 @@ async function acceptTokens(tokens: TokenResponse): Promise<AuthUser> {
 }
 
 export const authApi = {
-	listDomains: () =>
-		client.get<DomainOption[]>('/directory/domains', undefined, { silent: true }),
-
-	listAreas: (domainId: string) =>
-		client.get<AreaOption[]>(
-			`/directory/domains/${encodeURIComponent(domainId)}/areas`,
-			undefined,
-			{
-				silent: true,
-			},
-		),
-
 	register: (body: RegisterRequest) =>
 		client.post<AuthUser>('/auth/register', body, undefined, { silent: true }),
 

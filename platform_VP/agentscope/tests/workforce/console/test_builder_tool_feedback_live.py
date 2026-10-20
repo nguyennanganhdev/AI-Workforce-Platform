@@ -88,12 +88,12 @@ class TestLiveLunaToolFeedback(IsolatedAsyncioTestCase):
             ("Agent Hotel trong kế hoạch làm gì?", "", previous, "chat"),
             ("Tạo một agent tóm tắt văn bản tôi cung cấp", "", [], "plan"),
             ("Tóm tắt văn bản tôi cung cấp",
-             "Area manager: tạo cho tôi 1 agent\n\nBuilder: Bạn muốn agent hỗ trợ công việc gì?",
+             "Customer: tạo cho tôi 1 agent\n\nBuilder: Bạn muốn agent hỗ trợ công việc gì?",
              [], "plan"),
         ]:
             with self.subTest(message=message):
                 update, _, _ = await console._outline(
-                    f"{history}\n\nArea manager: {message}", self.tools, self.luna, self.config,
+                    f"{history}\n\nCustomer: {message}", self.tools, self.luna, self.config,
                     current_plan=current, latest_message=message,
                 )
                 self.assertEqual(update.intent, intent)

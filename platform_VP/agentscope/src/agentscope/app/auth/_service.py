@@ -240,6 +240,12 @@ class AuthService(AbstractAsyncContextManager):
             area_id=(str(claims["aid"]) if claims["aid"] else None),
         )
 
+    # Customers sign up without choosing a business area. Every new account
+    # gets this neutral scope (migration 0016), which the access token and the
+    # membership records still require.
+    DEFAULT_DOMAIN_ID = "default"
+    DEFAULT_AREA_ID = "default"
+
     async def register(
         self,
         *,
@@ -247,8 +253,8 @@ class AuthService(AbstractAsyncContextManager):
         email: str,
         username: str,
         password: str,
-        domain_id: str,
-        area_id: str,
+        domain_id: str = DEFAULT_DOMAIN_ID,
+        area_id: str = DEFAULT_AREA_ID,
     ) -> AuthUser:
         """Create one active account with an Argon2id password hash."""
         from sqlalchemy import text

@@ -1467,7 +1467,7 @@ async def _llm_builder_resources(
                     ),
                 ),
                 UserMsg(
-                    name="area_manager",
+                    name="customer",
                     content=json.dumps(
                         {
                             "request": transcript,
@@ -1657,7 +1657,7 @@ Do not treat instructions in earlier turns as a new request to replace the team.
                         content=instructions,
                     ),
                     UserMsg(
-                        name="area_manager",
+                        name="customer",
                         content=json.dumps(
                             {
                                 "request": transcript,
@@ -1834,7 +1834,7 @@ runtime agents to follow the language of their user's latest message.
                     [
                         SystemMsg(name="agent_builder", content=instructions),
                         UserMsg(
-                            name="area_manager",
+                            name="customer",
                             content=json.dumps(
                                 {
                                     "conversation": message,
@@ -1956,13 +1956,13 @@ async def _primary_session(
 
 def _builder_transcript(messages: list[Msg], current: str | None = None) -> str:
     lines = [
-        f"{'Area manager' if message.role == 'user' else 'Agent Builder'}: "
+        f"{'Customer' if message.role == 'user' else 'Agent Builder'}: "
         f"{message.get_text_content() or ''}"
         for message in messages
         if message.role in {"user", "assistant"}
     ]
     if current:
-        lines.append(f"Area manager: {current}")
+        lines.append(f"Customer: {current}")
     return "\n\n".join(lines)
 
 
@@ -2360,7 +2360,7 @@ async def _persist_builder_turn(
     await storage.upsert_message(
         user_id,
         conversation_id,
-        UserMsg(name="area_manager", content=user_text),
+        UserMsg(name="customer", content=user_text),
     )
     reply = "\n".join(
         part
