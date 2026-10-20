@@ -16,6 +16,7 @@ import { ChatViewport } from './ChatViewport';
 import type { SessionRecord } from '@/api';
 import { sessionTime, sessionTitle, useSessionPreview } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
+import { CreateGroupDialog } from '@/components/dialog/CreateGroupDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
@@ -99,6 +100,7 @@ const ChatPageInner = () => {
 
 	const { isMobile, setOpen, setOpenMobile } = useSidebar();
 	const [editOpen, setEditOpen] = useState(false);
+	const [groupOpen, setGroupOpen] = useState(false);
 	const [deleteOpen, setDeleteOpen] = useState(false);
 	const [renameOpen, setRenameOpen] = useState(false);
 	const [renameSession, setRenameSession] = useState<SessionRecord | null>(null);
@@ -263,15 +265,21 @@ const ChatPageInner = () => {
 							</DropdownMenuContent>
 						</DropdownMenu>
 					</div>
-					<Button
-						id="tour-create-session"
-						variant="outline"
-						disabled={!urlAgentId}
-						onClick={handleCreateSession}
-					>
-						<Plus />
-						{t('chat.newSession')}
-					</Button>
+					<div className="grid grid-cols-2 gap-2">
+						<Button
+							id="tour-create-session"
+							variant="outline"
+							disabled={!urlAgentId}
+							onClick={handleCreateSession}
+						>
+							<Plus />
+							{t('chat.newSession')}
+						</Button>
+						<Button variant="outline" onClick={() => setGroupOpen(true)}>
+							<Users />
+							{t('groupChat.create')}
+						</Button>
+					</div>
 				</SidebarHeader>
 				<SidebarContent className="no-scrollbar px-2">
 					{sessions.length === 0 && (
@@ -349,6 +357,15 @@ const ChatPageInner = () => {
 					onSessionsChanged={refetchSessions}
 				/>
 			</div>
+			<CreateGroupDialog
+				open={groupOpen}
+				onOpenChange={setGroupOpen}
+				onCreated={async (leaderId, sessionId) => {
+					// The Leader agent may have just been created; show it in the picker.
+					await refetchAgents();
+					navigate(`/chat/${leaderId}/${sessionId}`);
+				}}
+			/>
 			{selectedAgent && (
 				<>
 					<EditAgentDialog
