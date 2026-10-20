@@ -808,49 +808,6 @@ export function ChatViewport({
 								{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
 								<div className="flex min-w-0 max-w-full flex-row flex-wrap items-center gap-x-1">
-									{!inspectingMember && (
-										<div className="flex items-center gap-1">
-											<span className="text-xs text-muted-foreground">{t('agentManagement.subagentModel')}</span>
-											<LlmSelect
-												id="tour-llm-select"
-												aria-label={t('agentManagement.subagentModel')}
-												variant="ghost"
-												className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
-												value={selectedSubAgentModel}
-												allowClear
-												placeholder={t('agentManagement.inheritModel')}
-												clearLabel={t('agentManagement.inheritModel')}
-												onChange={handleSubAgentLlmChange}
-												onAddCredential={() => setCredentialOpen(true)}
-												refetchTrigger={credentialRefetchTrigger}
-												disabled={configPending || (!view && !draft) || view?.status === 'running'}
-											/>
-										</div>
-									)}
-									<div className="flex items-center gap-1">
-										<span className="text-xs text-muted-foreground">{inspectingMember ? 'Model' : t('agentManagement.coordinatorModel')}</span>
-										<LlmSelect
-											id="coordinator-llm-select"
-											aria-label={inspectingMember ? 'Model của sub-agent' : t('agentManagement.coordinatorModel')}
-											variant="ghost"
-											className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
-											value={selectedModel}
-											onChange={handleLlmChange}
-											onAddCredential={() => setCredentialOpen(true)}
-											refetchTrigger={credentialRefetchTrigger}
-											disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
-										/>
-									</div>
-									<ModelParametersPopover
-										selectedModel={selectedModel}
-										modelCard={selectedModelCard}
-										onChange={handleParametersChange}
-										selectedFallbackModel={selectedFallbackModel}
-										onFallbackChange={handleFallbackChange}
-										selectedTTSModel={selectedTTSModel}
-										onTTSChange={handleTTSChange}
-										disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
-									/>
 									<PermissionModeSelect
 										id="tour-permission-mode"
 										variant={'ghost'}
@@ -926,6 +883,53 @@ export function ChatViewport({
 							</div>
 							<div className="flex flex-1 justify-center min-h-0 overflow-hidden relative [--chat-content-w:100%]">
 								<ChatContent
+									modelControls={
+										<div className="flex max-w-full flex-wrap items-center justify-end gap-1">
+											{agentRole === 'leader' && !inspectingMember && (
+												<div className="flex min-w-0 items-center gap-1">
+													<span className="text-xs text-muted-foreground">{t('agentManagement.subagentModel')}</span>
+													<LlmSelect
+														id="tour-llm-select"
+														aria-label={t('agentManagement.subagentModel')}
+														variant="ghost"
+														className="h-8 min-w-0 max-w-36 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+														value={selectedSubAgentModel}
+														allowClear
+														placeholder={t('agentManagement.inheritModel')}
+														clearLabel={t('agentManagement.inheritModel')}
+														onChange={handleSubAgentLlmChange}
+														onAddCredential={() => setCredentialOpen(true)}
+														refetchTrigger={credentialRefetchTrigger}
+														disabled={configPending || (!view && !draft) || view?.status === 'running'}
+													/>
+												</div>
+											)}
+											<div className="flex min-w-0 items-center gap-1">
+												{agentRole === 'leader' && <span className="text-xs text-muted-foreground">{t('agentManagement.coordinatorModel')}</span>}
+												<LlmSelect
+													id="coordinator-llm-select"
+													aria-label={agentRole === 'leader' ? t('agentManagement.coordinatorModel') : 'Model'}
+													variant="ghost"
+													className="h-8 min-w-0 max-w-36 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+													value={selectedModel}
+													onChange={handleLlmChange}
+													onAddCredential={() => setCredentialOpen(true)}
+													refetchTrigger={credentialRefetchTrigger}
+													disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
+												/>
+											</div>
+											<ModelParametersPopover
+												selectedModel={selectedModel}
+												modelCard={selectedModelCard}
+												onChange={handleParametersChange}
+												selectedFallbackModel={selectedFallbackModel}
+												onFallbackChange={handleFallbackChange}
+												selectedTTSModel={selectedTTSModel}
+												onTTSChange={handleTTSChange}
+												disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
+											/>
+										</div>
+									}
 									className={'max-w-[var(--chat-content-w)] w-full'}
 									msgs={msgs}
 									teamChat={isTeamChat}

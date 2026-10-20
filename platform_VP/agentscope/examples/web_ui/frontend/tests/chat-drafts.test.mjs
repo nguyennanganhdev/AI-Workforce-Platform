@@ -160,7 +160,10 @@ for (const role of ['leader', 'business']) {
     let tree = env.render(ChatViewport, props);
     assert.equal(env.calls.created.length, 0);
     const alternate = { ...model, model: 'selected-before-first-message' };
-    await nodes(tree, (node) => node.props?.id === 'coordinator-llm-select')[0].props.onChange(alternate);
+    const controls = component(tree, 'ChatContent').props.modelControls;
+    assert.equal(nodes(tree, (node) => node.type === 'LlmSelect').length, 0);
+    assert.equal(nodes(controls, (node) => node.type === 'LlmSelect').length, role === 'leader' ? 2 : 1);
+    await nodes(controls, (node) => node.props?.id === 'coordinator-llm-select')[0].props.onChange(alternate);
     tree = env.render(ChatViewport, props);
     assert.equal(env.calls.updated.length, 0);
     assert.equal(component(tree, 'ChatContent').props.disabled, false);

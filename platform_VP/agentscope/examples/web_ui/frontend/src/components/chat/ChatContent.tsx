@@ -95,6 +95,7 @@ interface ChatContentProps {
 	 * looking, rather than scrolled off the top.
 	 */
 	footerSlot?: React.ReactNode;
+	modelControls?: React.ReactNode;
 	/** @see TextInputProps.allowedInputTypes */
 	allowedInputTypes: string[];
 	/** @see TextInputProps.fileProcessor */
@@ -125,6 +126,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	className,
 	onInterrupt,
 	footerSlot,
+	modelControls,
 	allowedInputTypes,
 	fileProcessor,
 	agentId,
@@ -309,13 +311,9 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 							footerSlot
 						)}
 					</FlipCard>
-					{/* Concentric radii: the pill stays rounded-[28px] on all four
-				    corners and floats on this surface, whose own radius is
-				    28 + the 4px padding. Matching them is what keeps the two
-				    edges parallel — a plain rectangle here would show the
-				    pill's corners cutting into it. */}
 					<TextInput
-						className="min-w-full max-w-full w-full rounded-3xl border border-border bg-background p-1 shadow-[var(--cue-shadow-composer)]"
+						className="min-w-full max-w-full w-full rounded-[28px] border border-border bg-background p-1 shadow-[var(--cue-shadow-composer)]"
+						toolbarSlot={modelControls}
 						onSend={handleSend}
 						disabled={disabled}
 						autoComplete={autoComplete}
