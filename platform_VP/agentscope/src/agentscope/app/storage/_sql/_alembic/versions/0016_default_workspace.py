@@ -31,8 +31,8 @@ def upgrade() -> None:
         sa.text(
             """
             INSERT INTO business_domains (id, tenant_id, name, status)
-            VALUES (:id, :tenant_id, 'Workspace', 'active')
-            ON CONFLICT (id) DO NOTHING
+            VALUES (:id, :tenant_id, 'Default workspace (self sign-up)', 'active')
+            ON CONFLICT DO NOTHING
             """,
         ),
         {"id": _DOMAIN_ID, "tenant_id": tenant_id},
@@ -41,8 +41,8 @@ def upgrade() -> None:
         sa.text(
             """
             INSERT INTO areas (id, domain_id, name, status)
-            VALUES (:id, :domain_id, 'Workspace', 'active')
-            ON CONFLICT (id) DO NOTHING
+            VALUES (:id, :domain_id, 'Default workspace (self sign-up)', 'active')
+            ON CONFLICT DO NOTHING
             """,
         ),
         {"id": _AREA_ID, "domain_id": _DOMAIN_ID},
