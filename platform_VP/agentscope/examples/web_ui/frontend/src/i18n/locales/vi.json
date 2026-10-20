@@ -1,7 +1,7 @@
 {
 	"auth": {
-		"heroTitle": "Xây dựng và vận hành tác nhân AI cho khu vực của bạn",
-		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý tác nhân AI và nhận yêu cầu được định tuyến đúng lĩnh vực, đúng khu vực.",
+		"heroTitle": "Xây dựng và vận hành teamAI",
+		"heroDescription": "Tạo tác nhân AI, tổ chức thành teamAI và tự động định tuyến yêu cầu đến đúng chuyên môn.",
 		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
 		"loginTitle": "Chào mừng bạn quay lại",
 		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",
@@ -24,18 +24,27 @@
 		"authenticationDisabled": "Máy chủ chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại.",
 		"showcase": {
 			"live": "Đang hoạt động",
-			"caption": "Minh hoạ: yêu cầu của cư dân được Leader định tuyến tới đúng agent và được xử lý",
+			"caption": "Minh họa: user gửi yêu cầu cho Leader; agent1 tổng hợp thông tin, trao đổi hai chiều với agent2 để kiểm tra; agent2 và agent3 thống nhất phương án, rồi báo lại Leader để trả kết quả cho user.",
 			"statusIdle": "Chờ yêu cầu",
-			"statusBusy": "Đang xử lý",
+			"statusBusy": "Đang phối hợp",
 			"statusDone": "Hoàn tất",
-			"resident": "Cư dân",
-			"routed": "Định tuyến: Ocean Park 1 · Điện nước",
-			"request": "Nhà tôi bị vỡ ống nước, nhờ gọi thợ giúp.",
-			"reply": "Đã hẹn thợ lúc 14:00 hôm nay, mã phiếu SC-1042.",
-			"agents": {
-				"reception": "Lễ tân",
-				"technical": "Kỹ thuật",
-				"hotel": "Khách sạn"
+			"user": "user",
+			"request": "Hãy tổng hợp thông tin và đề xuất phương án giúp tôi.",
+			"reply": "Leader: Team đã tổng hợp, kiểm tra thông tin và gửi bạn phương án đề xuất.",
+			"stages": {
+				"route": "Leader phân công công việc",
+				"handoff": "Leader → agent1 · Tổng hợp thông tin",
+				"share": "agent1 ↔ agent2 · Chia sẻ và kiểm tra",
+				"review": "agent2 ↔ agent3 · Thống nhất phương án",
+				"report": "agent3 → Leader · Báo cáo kết quả",
+				"done": "Leader → user · Trả kết quả"
+			},
+			"messages": {
+				"handoff": "agent1: Mình sẽ tổng hợp thông tin rồi gửi team kiểm tra.",
+				"share": "agent1 → agent2: Kiểm tra bản tổng hợp giúp mình nhé.\nagent2 → agent1: Đã kiểm tra và bổ sung thông tin.",
+				"review": "agent2 → agent3: Bạn đề xuất phương án từ thông tin này nhé.\nagent3 → agent2: Mình đã đề xuất, cùng thống nhất kết quả nhé.",
+				"report": "agent3 → Leader: Team đã thống nhất phương án, mình gửi kết quả.",
+				"done": "agent1 ↔ agent2 ↔ agent3: Đã trao đổi và thống nhất kết quả."
 			}
 		},
 		"brand": "Nền tảng VAgents",

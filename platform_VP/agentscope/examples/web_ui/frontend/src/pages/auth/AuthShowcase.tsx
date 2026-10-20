@@ -7,30 +7,25 @@ import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 import './auth-showcase.css';
 
-/**
- * The beats of one request, played on a loop: it arrives from a resident, the
- * Leader routes it to the right area and domain, hands it to the one agent
- * that fits, and that agent answers. What the product does, shown rather than
- * said, in the chat's own pieces (clay avatars, grey bubbles, status dots).
- */
-const BEATS = ['idle', 'request', 'route', 'handoff', 'done'] as const;
+/** One request moves through the team, then returns to the user. */
+const BEATS = ['idle', 'request', 'route', 'handoff', 'share', 'review', 'report', 'done'] as const;
 type Beat = (typeof BEATS)[number];
-/** How long each beat holds, in ms; the last one lingers so it can be read. */
 const HOLD: Record<Beat, number> = {
 	idle: 900,
-	request: 1700,
-	route: 1700,
-	handoff: 1900,
-	done: 3200,
+	request: 2200,
+	route: 1800,
+	handoff: 2400,
+	share: 3200,
+	review: 3200,
+	report: 2600,
+	done: 4200,
 };
 
-/** The agents the Leader can choose from; the middle one gets the job. */
-const AGENTS = [
-	{ id: 'reception', label: 'Lễ tân', key: 'reception' },
-	{ id: 'technical', label: 'Kỹ thuật', key: 'technical' },
-	{ id: 'hotel', label: 'Khách sạn', key: 'hotel' },
-] as const;
-const CHOSEN = 'technical';
+const AGENTS = ['agent1', 'agent2', 'agent3'] as const;
+const TEAM_PATHS = {
+	handoff: 'M0 44 H15 V13 H100',
+	report: 'M100 87 H15 V44 H0',
+};
 
 function useReducedMotion() {
 	const [reduced, setReduced] = useState(
@@ -62,8 +57,18 @@ export function AuthShowcase() {
 		return () => clearTimeout(timer);
 	}, [beat, reduced]);
 
-	const leaderWorking = beat === 'route';
-	const agentWorking = beat === 'handoff';
+	const leaderWorking = beat === 'route' || beat === 'report';
+	const activeAgents =
+		beat === 'handoff'
+			? ['agent1']
+			: beat === 'share'
+				? ['agent1', 'agent2']
+				: beat === 'review'
+					? ['agent2', 'agent3']
+					: beat === 'report'
+						? ['agent3']
+						: [];
+	const exchangeAgent = beat === 'review' ? 'agent2' : beat === 'report' ? 'agent3' : 'agent1';
 	const status =
 		beat === 'idle'
 			? { tone: 'idle', label: t('auth.showcase.statusIdle') }
@@ -87,17 +92,19 @@ export function AuthShowcase() {
 				</span>
 			</header>
 
-			{/* The route a request travels: resident → Leader → the agent that fits. */}
+			{/* The Leader coordinates the team; agents also exchange information directly. */}
 			<div className="as-flow" aria-hidden="true">
 				<div className={cn('as-node', step >= 1 && 'as-on')}>
 					<span className="as-person">
 						<UserRound className="size-5" />
 					</span>
-					<span className="as-name">{t('auth.showcase.resident')}</span>
+					<span className="as-name">{t('auth.showcase.user')}</span>
 				</div>
 
 				<span className={cn('as-link', step >= 1 && 'as-link-on')}>
-					{beat === 'request' && <span className="as-dot" />}
+					{(beat === 'request' || (beat === 'done' && !reduced)) && (
+						<span key={beat} className={cn('as-dot', beat === 'done' && 'as-dot-return')} />
+					)}
 				</span>
 
 				<div className={cn('as-node', step >= 2 && 'as-on')}>
@@ -107,37 +114,51 @@ export function AuthShowcase() {
 					<span className="as-name">Leader</span>
 				</div>
 
-				<span className={cn('as-link', step >= 3 && 'as-link-on')}>
-					{beat === 'handoff' && <span className="as-dot" />}
-				</span>
-
-				<ul className="as-agents">
-					{AGENTS.map((agent) => {
-						const chosen = agent.id === CHOSEN;
-						return (
-							<li
-								key={agent.id}
-								className={cn(
-									'as-agent',
-									step >= 3 && (chosen ? 'as-agent-chosen' : 'as-agent-passed'),
-								)}
-							>
-								<ClayAvatar
-									id={agent.id}
-									label={agent.label}
-									size={32}
-									working={chosen && agentWorking}
-								/>
-								<span>{t(`auth.showcase.agents.${agent.key}`)}</span>
-							</li>
-						);
-					})}
-				</ul>
+				<div className="as-team">
+					<svg className="as-network" viewBox="0 0 100 100" preserveAspectRatio="none">
+						<path
+							className={cn('as-network-line', beat === 'done' && 'as-network-active')}
+							d="M100 13 H15 V87 H100 M0 44 H15 M15 50 H100"
+						/>
+						{(beat === 'handoff' || beat === 'report') && (
+							<g key={beat}>
+								<path className="as-network-active" d={TEAM_PATHS[beat]} />
+								<circle className="as-network-dot" r="3">
+									<animateMotion dur="1.6s" path={TEAM_PATHS[beat]} fill="freeze" />
+								</circle>
+							</g>
+						)}
+					</svg>
+					<ul className="as-agents">
+						{AGENTS.map((agent, agentIndex) => {
+							const working = activeAgents.includes(agent);
+							const exchanging =
+								(agentIndex === 0 && beat === 'share') ||
+								(agentIndex === 1 && beat === 'review');
+							return (
+								<li
+									key={agent}
+									className={cn('as-agent', (working || beat === 'done') && 'as-agent-active')}
+								>
+									<ClayAvatar id={agent} label={agent} size={32} working={working} />
+									<span>{agent}</span>
+									{agentIndex < AGENTS.length - 1 && (
+										<span className={cn('as-peer-link', (exchanging || beat === 'done') && 'as-peer-link-on')}>
+											{exchanging && <span className="as-peer-dot" />}
+										</span>
+									)}
+								</li>
+							);
+						})}
+					</ul>
+				</div>
 			</div>
 
-			{/* Where it was routed: area and domain, the platform's two keys. */}
+			{/* Describe the current exchange alongside the animated connections. */}
 			<div className="as-route" aria-hidden="true">
-				{step >= 2 && <span className="as-chip cue-pop">{t('auth.showcase.routed')}</span>}
+				{step >= 2 && (
+					<span key={beat} className="as-chip cue-pop">{t(`auth.showcase.stages.${beat}`)}</span>
+				)}
 			</div>
 
 			<div className="as-chat" aria-hidden="true">
@@ -146,16 +167,19 @@ export function AuthShowcase() {
 						<BubbleContent>{t('auth.showcase.request')}</BubbleContent>
 					</Bubble>
 				)}
-				{beat === 'handoff' && (
-					<span className="as-typing cue-pop">
-						<span />
-						<span />
-						<span />
-					</span>
+				{step >= 3 && (
+					<div key={beat} className="as-reply cue-pop">
+						<ClayAvatar id={exchangeAgent} label={exchangeAgent} size={28} />
+						<Bubble variant="agent">
+							<BubbleContent className="whitespace-pre-line">
+								{t(`auth.showcase.messages.${beat}`)}
+							</BubbleContent>
+						</Bubble>
+					</div>
 				)}
 				{beat === 'done' && (
 					<div className="as-reply cue-pop">
-						<ClayAvatar id="technical" label="Kỹ thuật" size={28} />
+						<ClayAvatar id="leader" label="Leader" size={28} />
 						<Bubble variant="agent">
 							<BubbleContent>{t('auth.showcase.reply')}</BubbleContent>
 						</Bubble>
