@@ -355,7 +355,7 @@ class AgentInvite(_TeamToolBase):
         assignments: list[tuple[str, str]],
         selected_agents: list[AgentRecord],
     ) -> str | None:
-        """Require an available calculator for an explicit calculation task."""
+        """Require calculation coverage from the batch or existing team."""
 
         request_text = "\n".join(prompt for _target, prompt in assignments)
         if self._shared_context is not None:
@@ -384,6 +384,13 @@ class AgentInvite(_TeamToolBase):
             _has_calculation_capability(agent) for agent in selected_agents
         ):
             return None
+        team = await self._require_leader_team("invite members")
+        for member in await _ensure_team_members(
+            self._storage, self._user_id, team,
+        ):
+            agent = await self._storage.get_agent(member.owner_id, member.agent_id)
+            if agent is not None and _has_calculation_capability(agent):
+                return None
         candidates = [
             _display_name(agent.data.name, agent.id)
             for agent in self._pool_by_id.values()

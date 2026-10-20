@@ -1871,6 +1871,46 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             result.content[0].text,
         )
 
+    async def test_existing_calculator_covers_new_invite(self):
+        calculator = _make_agent_record(self.user_id, "Calculator")
+        calculator.data.lifecycle_state = "published"
+        calculator.data.invite_config = self.monday_agent.data.invite_config.model_copy()
+        await self.storage.upsert_agent(self.user_id, calculator)
+        await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=calculator.id,
+            config=SessionConfig(workspace_id="ws-calculator"),
+        )
+        tool = AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent, calculator],
+        )
+        first = await tool(
+            target=f"Calculator@{calculator.id[:8]}",
+            prompt="Calculate the supplied costs.",
+        )
+        self.assertNotEqual(first.state, ToolResultState.ERROR, first.content)
+
+        result = await tool(
+            target=f"Monday@{self.monday_agent.id[:8]}",
+            prompt="Find providers within the total budget.",
+        )
+
+        self.assertEqual(result.state, ToolResultState.RUNNING, result.content)
+        leader = await self.storage.get_session(
+            self.user_id, self.leader_agent.id, self.leader_session.id,
+        )
+        team = await self.storage.get_team(self.user_id, leader.team_id)
+        self.assertEqual(
+            {member.agent_id for member in team.data.members},
+            {calculator.id, self.monday_agent.id},
+        )
+
     async def test_batch_starts_only_primary_after_full_roster(self):
         pool = [self.monday_agent]
         for name in ("Search specialist", "Resource specialist", "Calculator"):
