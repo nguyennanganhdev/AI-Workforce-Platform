@@ -5,12 +5,21 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 // Execute the actual client with only Vite's build-time env and browser I/O mocked.
-function clientWith(fetch) {
+function clientWith(fetch, language = 'vi') {
   const source = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
     .replace('import.meta.env.VITE_API_BASE_URL', 'undefined');
   const events = [];
+  const notifications = [];
+  const translations = JSON.parse(readFileSync(
+    new URL(`../src/i18n/locales/${language}.json`, import.meta.url), 'utf8'));
   const context = {
-    exports: {}, require: () => ({ toast: { error() {} } }),
+    exports: {}, require: (name) => {
+      if (name === 'sonner') return { toast: { error: (message) => notifications.push(message) } };
+      if (name === '../i18n') return { __esModule: true, default: {
+        t: (key) => key.split('.').reduce((value, part) => value[part], translations),
+      } };
+      throw new Error(`Unexpected import: ${name}`);
+    },
     URL, AbortSignal, DOMException, Event, fetch,
     localStorage: { getItem: () => null },
     window: { dispatchEvent: (event) => events.push(event.type) },
@@ -18,7 +27,7 @@ function clientWith(fetch) {
   vm.runInNewContext(ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText, context);
-  return { ...context.exports, events };
+  return { ...context.exports, events, notifications };
 }
 const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
 const unauthorized = () => new Response('expired', { status: 401 });

@@ -196,6 +196,7 @@
 		"loading": "Đang tải…"
 	},
 	"error": {
+		"credentialNotFound": "Không tìm thấy API key đã cấu hình hoặc bạn không có quyền sử dụng. Vui lòng thêm/chọn lại key trong mục Thông tin xác thực và cập nhật cấu hình Agent.",
 		"description": "Trang gặp lỗi không mong muốn. Bạn có thể thử lại hoặc về trang chủ.",
 		"retry": "Thử lại",
 		"home": "Về trang chủ"

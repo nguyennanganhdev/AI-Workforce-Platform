@@ -1,5 +1,7 @@
 import { toast } from 'sonner';
 
+import i18n from '../i18n';
+
 const DEFAULT_API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
 export const AUTH_EXPIRED_EVENT = 'agentscope:auth-expired';
@@ -155,7 +157,10 @@ async function streamRequest(path: string, options: RequestOptions = {}): Promis
 	}
 
 	if (!response.ok) {
-		const detail = await extractErrorDetail(response);
+		const rawDetail = await extractErrorDetail(response);
+		const detail = response.status === 404 && /^Credential '[^']+' not found\.$/.test(rawDetail)
+			? i18n.t('error.credentialNotFound')
+			: rawDetail;
 		const error = new ApiError(response.status, detail);
 		if (!silent) toast.error(detail);
 		throw error;
