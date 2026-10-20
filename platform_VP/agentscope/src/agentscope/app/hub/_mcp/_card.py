@@ -169,6 +169,21 @@ class MCPCard(BaseModel):
         ),
     )
 
+    supported: bool = Field(
+        default=True,
+        title="Supported",
+        description=(
+            "Whether this platform can run the card. Set by the app, not "
+            "the hub: stdio cards are unsupported unless stdio is allowed."
+        ),
+    )
+
+    unsupported_reason: str | None = Field(
+        default=None,
+        title="Unsupported Reason",
+        description="Why the card cannot be installed, when it cannot.",
+    )
+
     @model_validator(mode="after")
     def _default_id_to_name(self) -> Self:
         """Fall back to ``name`` when the hub exposes no separate id."""

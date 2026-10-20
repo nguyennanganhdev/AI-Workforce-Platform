@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """Schemas for installing and editing MCPs from a hub."""
+from typing import Literal
+
 from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, field_validator
 
+from ..._mcp_policy import is_stdio, mcp_allowed
 from ...storage import MCPRecord
 
 
@@ -69,6 +72,14 @@ class MCPView(BaseModel):
     name: str = Field(description="The MCP name, unique for this user.")
     is_stateful: bool = Field(description="Whether it needs a session.")
     enabled: bool = Field(description="Whether the user has it turned on.")
+    transport: Literal["http", "stdio"] = Field(
+        default="http",
+        description="How the platform reaches it.",
+    )
+    supported: bool = Field(
+        default=True,
+        description="Whether this platform will run it.",
+    )
     display_name: str | None = Field(
         default=None,
         description="The card's user-facing name at install time.",
@@ -127,6 +138,8 @@ class MCPView(BaseModel):
             name=record.client.name,
             is_stateful=record.client.is_stateful,
             enabled=record.enabled,
+            transport="stdio" if is_stdio(record.client) else "http",
+            supported=mcp_allowed(record.client),
             display_name=record.display_name,
             description=record.description,
             tags=record.tags,

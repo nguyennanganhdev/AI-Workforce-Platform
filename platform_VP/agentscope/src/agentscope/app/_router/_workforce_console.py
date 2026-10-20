@@ -36,6 +36,11 @@ from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
 from .._service import ResourceAccessService, get_model
+from .._mcp_policy import (
+    MCPPolicyError,
+    check_mcp_allowed,
+    mcp_allowed,
+)
 from .._service import _builder_eval as builder_eval
 from .._workforce_policy import (
     WORKFORCE_LEADER_PROMPT,
@@ -516,7 +521,8 @@ async def _model_config(storage: StorageBase, user_id: str) -> ChatModelConfig:
 async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
     catalog: list[BuilderTool] = []
     for record in await storage.list_mcps(user_id):
-        if not record.enabled:
+        # A disallowed MCP cannot run, so its tools are not offered.
+        if not record.enabled or not mcp_allowed(record.client):
             continue
         for tool in record.discovered_tools:
             tool_name = str(tool.get("name") or "").strip()
@@ -3318,6 +3324,10 @@ async def publish_builder(
                     detail=f"MCP {mcp_id} không còn khả dụng",
                 )
             client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
+            try:
+                check_mcp_allowed(client)
+            except MCPPolicyError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
             client.enable_tools = list(dict.fromkeys(enabled_tools))
             await workspace.add_mcp(client, agent_id=record.id, session_id=session.id)
         await workspace.add_skill_archive(
@@ -3405,6 +3415,10 @@ async def _replace_agent_workspace_mcps(
         client = MCPClient.model_validate(
             mcp_record.client.model_dump(mode="json"),
         )
+        try:
+            check_mcp_allowed(client)
+        except MCPPolicyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         client.enable_tools = list(dict.fromkeys(tool_names))
         clients.append(client)
 

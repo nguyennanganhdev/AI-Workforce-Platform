@@ -25,6 +25,7 @@ from ..deps import (
 )
 from ..hub import SkillHubBase
 from .._service import WorkspaceService, WorkspaceStatus
+from .._mcp_policy import MCPPolicyError, check_mcp_allowed
 from .._service._workspace import SkillUploadError, UploadManifest
 from ..storage import MCPRecord, StorageBase
 from ...mcp import MCPClient
@@ -119,6 +120,13 @@ async def add_mcp(
         session_id,
     )
     try:
+        check_mcp_allowed(mcp, workspace.default_mcps)
+    except MCPPolicyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e),
+        ) from e
+    try:
         await workspace.add_mcp(mcp, agent_id=agent_id, session_id=session_id)
     except ValueError as e:
         raise HTTPException(
@@ -179,6 +187,7 @@ async def add_mcps_from_library(
             # Already there: not an error, just nothing to do.
             continue
         try:
+            check_mcp_allowed(record.client)
             await workspace.add_mcp(
                 record.client,
                 agent_id=agent_id,

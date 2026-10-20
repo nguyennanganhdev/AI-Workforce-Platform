@@ -615,6 +615,9 @@ export interface MCPCard extends HubCardBase {
 	readme?: string | null;
 	/** Shown read-only; the placeholders are resolved server-side. */
 	config_template: StdioMCPConfig | HttpMCPConfig;
+	/** `false` when this platform will not run it (stdio packages). */
+	supported?: boolean;
+	unsupported_reason?: string | null;
 }
 
 /** A skill listing. Unlike an MCP there is nothing to configure. */
@@ -700,6 +703,9 @@ export interface MCPView {
 	name: string;
 	is_stateful: boolean;
 	enabled: boolean;
+	transport?: 'http' | 'stdio';
+	/** `false` when this platform will not run it (stdio packages). */
+	supported?: boolean;
 	/**
 	 * Snapshotted from the card at install time, so they survive the hub
 	 * going away — and may lag behind it.

@@ -15,6 +15,12 @@ from pydantic import ValidationError
 from ..._utils._common import _describe_exception
 from ...mcp import HttpMCPConfig, MCPClient
 from .._service import MCPRenderError, render_mcp
+from .._mcp_policy import (
+    STDIO_DISABLED,
+    MCPPolicyError,
+    check_mcp_allowed,
+    mcp_allowed,
+)
 from ..deps import get_current_user_id, get_mcp_hubs, get_storage
 from ..hub import MCPHubBase
 from ..storage import MCPRecord, StorageBase
@@ -189,6 +195,11 @@ async def sync_mcp_tools(
         raise HTTPException(status_code=404, detail="MCP not found")
     if not record.enabled:
         raise HTTPException(status_code=409, detail="MCP is disabled")
+    if not mcp_allowed(record.client):
+        # Never start a user's stdio process, not even to list tools.
+        record.last_sync_error = STDIO_DISABLED
+        await storage.upsert_mcp(user_id, record)
+        raise HTTPException(status_code=409, detail=STDIO_DISABLED)
     if not await refresh_catalog(record):
         await storage.upsert_mcp(user_id, record)
         raise HTTPException(
@@ -257,6 +268,12 @@ async def update_mcp(
                 merged,
                 body.name or record.client.name,
             )
+            check_mcp_allowed(record.client)
+        except MCPPolicyError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(e),
+            ) from e
         except MCPRenderError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

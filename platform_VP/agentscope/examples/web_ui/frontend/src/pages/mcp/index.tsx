@@ -133,7 +133,15 @@ function CardItem({ card, installed, now, onInstall, onOpen }: CardItemProps) {
 					{card.author && (
 						<span className="text-xs text-muted-foreground">@{card.author}</span>
 					)}
-					{card.auth === 'inputs' && (
+					{card.supported === false && (
+						<Badge
+							title={card.unsupported_reason ?? undefined}
+							className="rounded-full border-0 bg-muted px-2 py-0.5 text-[10.5px] font-normal text-muted-foreground"
+						>
+							Chưa hỗ trợ · chạy bằng package
+						</Badge>
+					)}
+					{card.supported !== false && card.auth === 'inputs' && (
 						// Sans, not mono: this one is a warning meant for a
 						// person, while the tags below are machine metadata.
 						<Badge className="rounded-full border-0 bg-amber-600/10 px-2 py-0.5 text-[10.5px] font-normal text-amber-700">
@@ -184,6 +192,8 @@ function CardItem({ card, installed, now, onInstall, onOpen }: CardItemProps) {
 					) : (
 						<Button
 							className="h-7 rounded-full px-3.5 text-xs font-normal hover:opacity-86"
+							disabled={card.supported === false}
+							title={card.unsupported_reason ?? undefined}
 							// Installing straight from the row must not also
 							// open the drawer behind it.
 							onClick={(e) => {
@@ -306,7 +316,12 @@ function HubPanel({ hubId, hub, installedNames, onInstalled }: HubPanelProps) {
 				body={<MCPDetailBody card={drawer.opened as MCPCard | null} />}
 				action={
 					<Button
-						disabled={drawer.opened !== null && installedNames.has(drawer.opened.name)}
+						disabled={
+							drawer.opened !== null &&
+							(installedNames.has(drawer.opened.name) ||
+								(drawer.opened as MCPCard).supported === false)
+						}
+						title={(drawer.opened as MCPCard | null)?.unsupported_reason ?? undefined}
 						onClick={() => {
 							// One overlay at a time: the install form replaces
 							// the drawer rather than stacking on top of it.
@@ -465,7 +480,13 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 								<ItemDescription className="line-clamp-1">
 									{mcp.description} · {mcp.tools.length} tool đã đăng ký
 								</ItemDescription>
-								{mcp.tools.length === 0 && mcp.last_sync_error && (
+								{mcp.supported === false && (
+									<p className="mt-1 line-clamp-2 text-xs text-destructive">
+										Chưa hỗ trợ: MCP chạy bằng package không được chạy trên
+										platform. Hãy dùng bản kết nối từ xa (HTTP) nếu có.
+									</p>
+								)}
+								{mcp.supported !== false && mcp.tools.length === 0 && mcp.last_sync_error && (
 									<p className="mt-1 line-clamp-2 text-xs text-destructive">
 										{mcp.last_sync_error}
 									</p>

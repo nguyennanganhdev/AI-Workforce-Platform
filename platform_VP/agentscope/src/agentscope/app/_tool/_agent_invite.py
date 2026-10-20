@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..._utils._common import _generate_id
 from ...mcp import MCPClient
+from .._mcp_policy import check_mcp_allowed, mcp_allowed
 from ...message import HintBlock, TextBlock, ToolResultState
 from ...state import AgentState
 from ...tool import ParamsBase, ToolChunk
@@ -732,15 +733,20 @@ class AgentInvite(_TeamToolBase):
                         spec = MCPClient.model_validate(
                             record.client.model_dump(mode="json"),
                         )
+                        check_mcp_allowed(spec)
                         spec.enable_tools = list(dict.fromkeys(enabled_tools))
                         mcp_specs.append(spec)
                 else:
                     # Compatibility for manually-authored invitable agents
                     # created before Builder persisted exact tool bindings.
-                    mcp_specs = await workspace.list_mcps(
-                        agent_id=invited.id,
-                        session_id=primary.id,
-                    )
+                    mcp_specs = [
+                        spec
+                        for spec in await workspace.list_mcps(
+                            agent_id=invited.id,
+                            session_id=primary.id,
+                        )
+                        if mcp_allowed(spec, workspace.default_mcps)
+                    ]
                 for source_mcp in mcp_specs:
                     await workspace.add_mcp(
                         MCPClient.model_validate(

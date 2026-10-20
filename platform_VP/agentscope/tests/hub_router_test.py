@@ -2,12 +2,14 @@
 # pylint: disable=too-many-public-methods
 """Hub router test case — browse and install, without any network."""
 import io
+import os
 import json
 import tempfile
 import zipfile
 from typing import Any, AsyncIterator
 from urllib.parse import quote
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import patch
 
 import fakeredis.aioredis
 from fastapi.testclient import TestClient
@@ -353,6 +355,51 @@ class HubRouterTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_stdio_cards_are_listed_as_unsupported(self) -> None:
+        """Users may not run packages on the server, so the hub says so."""
+        cards = {
+            card["id"]: card
+            for card in self._client.get(
+                "/hub/mcp/fake/cards",
+                headers=HEADERS,
+            ).json()["cards"]
+        }
+
+        self.assertFalse(cards["gitlab"]["supported"])
+        self.assertIn("HTTP", cards["gitlab"]["unsupported_reason"])
+        self.assertTrue(cards["notion"]["supported"])
+
+    def test_stdio_card_cannot_be_installed(self) -> None:
+        response = self._install_mcp("gitlab", values={"api_key": "sk"})
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("HTTP", response.json()["detail"])
+        self.assertEqual(self._client.get("/mcp", headers=HEADERS).json(), [])
+
+    async def test_stdio_record_is_never_synced(self) -> None:
+        """A stdio MCP already in the library is refused before any
+        process starts."""
+        from agentscope.app.storage import MCPRecord
+        from agentscope.mcp import MCPClient, StdioMCPConfig
+
+        record = MCPRecord(
+            user_id="alice",
+            client=MCPClient(
+                name="local_pkg",
+                is_stateful=True,
+                mcp_config=StdioMCPConfig(command="npx", args=["-y", "x"]),
+            ),
+        )
+        storage = self._client.app.state.storage
+        await storage.upsert_mcp("alice", record)
+
+        response = self._client.post(f"/mcp/{record.id}/sync", headers=HEADERS)
+
+        self.assertEqual(response.status_code, 409)
+        listed = self._client.get("/mcp", headers=HEADERS).json()
+        self.assertEqual(listed[0]["transport"], "stdio")
+        self.assertFalse(listed[0]["supported"])
+
     def test_install_lands_in_the_library(self) -> None:
         """A successful install shows up under ``GET /mcp`` carrying the
         provenance of the card it came from."""
@@ -489,9 +536,10 @@ class HubRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(record.values, {"api_key": "old"})
         self.assertEqual(record.client.name, "notion-2")
 
+    @patch.dict(os.environ, {"MCP_ALLOW_STDIO": "true"})
     async def test_rekey_preserves_custom_non_secret_value(self) -> None:
         """Editing one input must not replace another with its schema
-        default."""
+        default. (The GitLab card is stdio, so stdio is allowed here.)"""
         mcp_id = self._install_mcp(
             "gitlab",
             values={

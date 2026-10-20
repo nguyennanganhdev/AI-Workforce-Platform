@@ -36,6 +36,7 @@ from ..message_bus import MessageBus
 from ..storage import AgentRecord, SessionRecord, StorageBase
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
+from .._mcp_policy import mcp_allowed
 
 
 async def get_toolkit(
@@ -294,6 +295,12 @@ time or interval"
         agent_id=agent_record.id,
         session_id=session_record.id,
     )
+    # Specs persisted before the stdio rule (or added around it) never run.
+    workspace_mcps = [
+        client
+        for client in workspace_mcps
+        if mcp_allowed(client, workspace.default_mcps)
+    ]
     if agent_record.data.execution_mode is not None:
         allowed_by_mcp: dict[str, list[str]] = {}
         for binding in agent_record.data.tool_bindings:

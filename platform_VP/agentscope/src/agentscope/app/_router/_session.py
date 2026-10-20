@@ -35,6 +35,7 @@ from ._schema import (
     UpdateSessionRequest,
 )
 from ..message_bus import MessageBus, MessageBusKeys
+from .._mcp_policy import MCPPolicyError, check_mcp_allowed
 from .._service import (
     AgentView,
     ResourceAccessService,
@@ -486,6 +487,13 @@ async def create_session(
                     detail=f"MCP {mcp_id} không còn khả dụng.",
                 )
             client = MCPClient.model_validate(record.client.model_dump(mode="json"))
+            try:
+                check_mcp_allowed(client)
+            except MCPPolicyError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=str(exc),
+                ) from exc
             client.enable_tools = list(dict.fromkeys(tool_names))
             mcps.append(client)
 

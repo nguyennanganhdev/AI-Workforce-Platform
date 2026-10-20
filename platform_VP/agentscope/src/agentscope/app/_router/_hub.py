@@ -28,6 +28,12 @@ from ..hub import (
     SkillHubPage,
 )
 from .._service import MCPRenderError, render_mcp
+from .._mcp_policy import (
+    STDIO_DISABLED,
+    MCPPolicyError,
+    check_mcp_allowed,
+    stdio_allowed,
+)
 from ..storage import MCPRecord, SkillRecord, StorageBase
 from ...mcp import HttpMCPConfig
 from ._mcp import refresh_catalog
@@ -91,6 +97,14 @@ def _describe(hubs: dict) -> list[HubInfo]:
 # ---------------------------------------------------------------------------
 
 
+def _mark_support(card: MCPCard) -> MCPCard:
+    """Flag a card this platform will not run (see ``_mcp_policy``)."""
+    if card.config_template.type == "stdio_mcp" and not stdio_allowed():
+        card.supported = False
+        card.unsupported_reason = STDIO_DISABLED
+    return card
+
+
 @hub_router.get("/mcp")
 async def list_mcp_hubs(
     hubs: dict[str, MCPHubBase] = Depends(get_mcp_hubs),
@@ -111,7 +125,10 @@ async def list_mcp_cards(
 ) -> MCPHubPage:
     """Browse or search one MCP hub's catalog."""
     hub = _pick_hub(hubs, hub_id)
-    return await hub.list_mcps(user_id, q=q, cursor=cursor, limit=limit)
+    page = await hub.list_mcps(user_id, q=q, cursor=cursor, limit=limit)
+    for card in page.cards:
+        _mark_support(card)
+    return page
 
 
 @hub_router.get("/mcp/{hub_id}/cards/{card_id}")
@@ -125,7 +142,7 @@ async def get_mcp_card(
     """Return one MCP card, including the inputs the user must fill."""
     hub = _pick_hub(hubs, hub_id)
     try:
-        return await hub.get_mcp(user_id, card_id)
+        return _mark_support(await hub.get_mcp(user_id, card_id))
     except KeyError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -170,6 +187,12 @@ async def install_mcp(
 
     try:
         client = render_mcp(card, body.values, body.name)
+        check_mcp_allowed(client)
+    except MCPPolicyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(e),
+        ) from e
     except MCPRenderError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
