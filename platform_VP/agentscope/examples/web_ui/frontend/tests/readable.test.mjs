@@ -33,3 +33,12 @@ test('JSON objects become label/value lines, other text is left alone', () => {
 	assert.equal(readableFields('plain text'), null);
 	assert.equal(readableFields('[1, 2]'), null);
 });
+
+test('nested results are summarised, ids kept when asked, layout preserved', () => {
+	const { readableFields, withoutInternalIds } = load();
+	const fields = readableFields('{"items": [{"hotel": "Sala", "price": 1450000}, {"hotel": "Haian", "price": 1200000}]}');
+	assert.deepEqual([...fields[0]], ['items', 'hotel: Sala · price: 1450000; hotel: Haian · price: 1200000']);
+	const approval = readableFields('{"booking_id": "48f88bd98fab4e998fe2f13e4a0c1d2e"}', { keepIds: true });
+	assert.deepEqual([...approval[0]], ['booking id', '48f88bd98fab4e998fe2f13e4a0c1d2e']);
+	assert.equal(withoutInternalIds('name    price\nSala    1450000'), 'name    price\nSala    1450000');
+});

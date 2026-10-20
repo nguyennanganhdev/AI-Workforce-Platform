@@ -156,10 +156,11 @@
 		"trace": {
 			"running": "Working",
 			"done": "How it was handled",
-			"steps": "{{count}} steps",
 			"customer": "Customer",
 			"teammate": "Teammate",
-			"sendFailed": "Not delivered"
+			"sendFailed": "Not delivered",
+			"steps_one": "{{count}} step",
+			"steps_other": "{{count}} steps"
 		}
 	},
 	"chat": {
