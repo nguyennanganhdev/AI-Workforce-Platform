@@ -17,7 +17,6 @@ import { CreateGroupDialog } from '@/components/dialog/CreateGroupDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
-import { AccountMenu } from '@/components/layout/AccountMenu';
 import { Brand } from '@/components/layout/Brand';
 import { AgentSelect } from '@/components/select/AgentSelect';
 import { ChatTourController } from '@/components/tour/ChatTourController';
@@ -31,7 +30,6 @@ import {
 import {
 	Sidebar,
 	SidebarContent,
-	SidebarFooter,
 	SidebarHeader,
 	SidebarProvider,
 	useSidebar,
@@ -101,6 +99,7 @@ const ChatPageInner = () => {
 	const [sessionToDelete, setSessionToDelete] = useState<SessionRecord | null>(null);
 
 	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
+	const isLeader = selectedAgent?.data.system_role === 'leader';
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
 	const visibleSessions = useMemo(() => sessions.filter((view) =>
 		(view.session.origin.type !== 'team' || view.team?.team.session_id === view.session.id) && (
@@ -251,13 +250,15 @@ const ChatPageInner = () => {
 									<Settings2 />
 									{t('shell.agentStudio')}
 								</DropdownMenuItem>
-								<DropdownMenuItem
-									onClick={() => setDeleteOpen(true)}
-									variant="destructive"
-								>
-									<Trash2 />
-									{t('agent-menu.delete')}
-								</DropdownMenuItem>
+								{!isLeader && (
+									<DropdownMenuItem
+										onClick={() => setDeleteOpen(true)}
+										variant="destructive"
+									>
+										<Trash2 />
+										{t('agent-menu.delete')}
+									</DropdownMenuItem>
+								)}
 							</DropdownMenuContent>
 						</DropdownMenu>
 					</div>
@@ -338,9 +339,6 @@ const ChatPageInner = () => {
 						);
 					})}
 				</SidebarContent>
-				<SidebarFooter className="border-t border-sidebar-border px-2 py-2">
-					<AccountMenu showSettings showTour />
-				</SidebarFooter>
 			</Sidebar>
 			<div className="flex min-w-0 flex-1">
 				<ChatViewport
@@ -372,7 +370,7 @@ const ChatPageInner = () => {
 						onUpdated={refetchAgents}
 					/>
 					<DeleteDialog
-						open={deleteOpen}
+						open={deleteOpen && !isLeader}
 						onOpenChange={setDeleteOpen}
 						title={t('common.deleteTitle', {
 							entity: t('dialog-agent-delete.entity'),
@@ -381,6 +379,7 @@ const ChatPageInner = () => {
 						description={t('common.deleteDescription')}
 						confirmLabel={t('dialog-agent-delete.confirm')}
 						onConfirm={async () => {
+							if (isLeader) return;
 							await removeAgent(selectedAgent.id);
 							await handleAgentDeleted();
 						}}

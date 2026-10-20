@@ -116,6 +116,37 @@ function nodes(tree, predicate) {
 }
 const component = (tree, name) => nodes(tree, (node) => node.type === name)[0];
 
+test('Leader chat hides agent deletion while editing and business agent deletion stay available', async () => {
+  for (const role of ['leader', 'business']) {
+    const removed = [];
+    const env = environment({
+      '@/hooks/useAgents': { useAgents: () => ({
+        agents: [{ id: 'agent', editable: true, data: { system_role: role } }],
+        remove: async (id) => removed.push(id), refetch: async () => {},
+      }) },
+    });
+    const { ChatPage } = env.load('../src/pages/chat/index.tsx');
+    const inner = nodes(ChatPage(), (node) => node.type?.name === 'ChatPageInner')[0].type;
+    const tree = env.render(inner);
+    for (const label of ['agent-menu.settings', 'agent-menu.delete']) {
+      const actions = nodes(tree, (node) => node.type === 'DropdownMenuItem'
+        && node.props.children.includes(label));
+      assert.equal(actions.length, role === 'leader' && label === 'agent-menu.delete' ? 0 : 1);
+    }
+    assert.ok(component(tree, 'EditAgentDialog'));
+    const deleteDialogs = nodes(tree, (node) => node.type === 'DeleteDialog'
+      && node.props.confirmLabel === 'dialog-agent-delete.confirm');
+    deleteDialogs[0].props.onOpenChange(true);
+    const opened = env.render(inner);
+    const dialog = nodes(opened, (node) => node.type === 'DeleteDialog'
+      && node.props.confirmLabel === 'dialog-agent-delete.confirm')[0];
+    assert.equal(dialog.props.open, role !== 'leader');
+    await dialog.props.onConfirm();
+    assert.deepEqual(removed, role === 'leader' ? [] : ['agent']);
+    assert.ok(component(tree, 'ChatViewport'));
+  }
+});
+
 test('a session created with a message must load its history on first open', async () => {
   const env = environment({ './client': { client: { post: async () => ({ session_id: 'saved' }) } } });
   const { sessionApi, takeFreshlyCreated } = env.load('../src/api/session.ts');
@@ -426,3 +457,22 @@ test('the Leader group panel opens after loading, can be closed, and closes when
   tree = env.render(ChatViewport, draft);
   assert.equal(checkbox(tree).props.checked, false);
 });
+
+for (const pathname of ['/chat/agent', '/workforce/agents/agent']) {
+  test(`one account menu stays in the shared footer on ${pathname}`, () => {
+    const env = environment();
+    env.mocks['react-router-dom'].useLocation = () => ({ pathname });
+    env.mocks['@/components/ui/sidebar'].SidebarFooter = 'SidebarFooter';
+    const { SettingsSidebar } = env.load('../src/components/layout/SettingsSidebar.tsx');
+    const tree = env.render(SettingsSidebar);
+    const footer = component(tree, 'SidebarFooter');
+    const accounts = nodes(tree, (node) => node.type === 'AccountMenu');
+    assert.equal(accounts.length, 1);
+    assert.equal(component(footer, 'AccountMenu'), accounts[0]);
+    assert.equal(accounts[0].props.showTour, pathname.startsWith('/chat'));
+    assert.equal(nodes(footer, (node) => node.props?.tooltip === 'shell.agentStudio').length, 0);
+    const { ChatPage } = env.load('../src/pages/chat/index.tsx');
+    const inner = nodes(ChatPage(), (node) => node.type?.name === 'ChatPageInner')[0].type;
+    assert.equal(nodes(env.render(inner), (node) => node.type === 'AccountMenu').length, 0);
+  });
+}

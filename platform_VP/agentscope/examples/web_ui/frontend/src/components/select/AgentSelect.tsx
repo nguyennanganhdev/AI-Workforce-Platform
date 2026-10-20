@@ -52,9 +52,11 @@ export function AgentSelect({
 		? selected.data.name
 		: (placeholder ?? t('chat.agent.selectPlaceholder'));
 
-	const hasShared = agents.some((a) => !a.editable);
-	const yours = agents.filter((a) => a.editable);
-	const shared = agents.filter((a) => !a.editable);
+	const leaders = agents.filter((a) => a.data.system_role === 'leader');
+	const others = agents.filter((a) => a.data.system_role !== 'leader');
+	const hasShared = others.some((a) => !a.editable);
+	const yours = others.filter((a) => a.editable);
+	const shared = others.filter((a) => !a.editable);
 
 	const renderItem = (agent: AgentView) => {
 		const isSelected = agent.id === value;
@@ -108,6 +110,8 @@ export function AgentSelect({
 					</div>
 				) : hasShared ? (
 					<>
+						{leaders.map(renderItem)}
+						{leaders.length > 0 && <DropdownMenuSeparator />}
 						{yours.length > 0 && (
 							<DropdownMenuGroup>
 								<DropdownMenuLabel>{t('chat.agent.groupYours')}</DropdownMenuLabel>
@@ -123,7 +127,7 @@ export function AgentSelect({
 						)}
 					</>
 				) : (
-					agents.map(renderItem)
+					[...leaders, ...others].map(renderItem)
 				)}
 			</DropdownMenuContent>
 		</DropdownMenu>

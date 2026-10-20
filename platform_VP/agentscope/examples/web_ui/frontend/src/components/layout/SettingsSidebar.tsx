@@ -7,7 +7,6 @@ import {
 	House,
 	KeyRound,
 	LibraryBig,
-	Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -48,7 +47,6 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 		items: [
 			{ label: 'common.chat', icon: House, path: '/workforce/leader' },
 			{ label: 'shell.builder', icon: Hammer, path: '/workforce/builder' },
-			{ label: 'shell.agentStudio', icon: Users, path: '/workforce/agents', prefix: true },
 		],
 	},
 	{
@@ -150,7 +148,7 @@ export function SettingsSidebar() {
 				))}
 			</SidebarContent>
 			<SidebarFooter className="border-t border-sidebar-border p-2">
-				<AccountMenu />
+				<AccountMenu showTour={location.pathname.startsWith('/chat')} />
 			</SidebarFooter>
 		</Sidebar>
 	);
