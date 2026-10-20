@@ -158,7 +158,10 @@
 			"steps": "{{count}} 步",
 			"customer": "客户",
 			"teammate": "团队成员",
-			"sendFailed": "发送失败"
+			"sendFailed": "发送失败",
+			"delegated": "已将任务交给 {{names}}",
+			"coordinating": "正在协调团队",
+			"working": "{{names}} 正在处理…"
 		}
 	},
 	"chat": {
