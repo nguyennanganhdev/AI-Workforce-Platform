@@ -4,6 +4,7 @@ import {
 	ArrowRight,
 	Bot,
 	Check,
+	ChevronRight,
 	Clock3,
 	Crown,
 	LoaderCircle,
@@ -21,6 +22,7 @@ import { AddTeamMemberDialog } from '@/components/dialog/AddTeamMemberDialog';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
 	useTeamActivity,
 	type TeamActivityItem,
@@ -96,6 +98,48 @@ const activityIcon = (item: TeamActivityItem): ReactNode => {
 	return <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />;
 };
 
+/** Keep the exchange readable; longer messages expand without leaving the log. */
+function ActivityEntry({ item }: { item: TeamActivityItem }) {
+	const label = item.state === 'error'
+		? 'Thất bại'
+		: item.state === 'running' ? 'Đang chạy' : 'Hoàn tất';
+	const longDetail = (item.detail?.length ?? 0) > 180 || (item.detail?.split('\n').length ?? 0) > 3;
+	return (
+		<li className="relative flex gap-2.5 py-3 first:pt-1">
+			<span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
+				{activityIcon(item)}
+			</span>
+			<div className="min-w-0 flex-1">
+				<div className="flex items-start gap-2 text-[11px]">
+					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 font-medium">
+						<span className="break-words [overflow-wrap:anywhere]">{item.sourceName}</span>
+						{item.targetName && <>
+							<ArrowRight className="size-3 shrink-0 text-muted-foreground" />
+							<span className="break-words [overflow-wrap:anywhere]">{item.targetName}</span>
+						</>}
+					</div>
+					<time dateTime={item.createdAt} className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{formatTime(item.createdAt)}</time>
+				</div>
+				<p className={cn('mt-1 text-[10px] text-muted-foreground', item.state === 'error' && 'text-destructive')}>
+					{item.type === 'communication'
+						? item.state === 'error' ? 'Gửi tin thất bại' : ACTIVITY_KIND_LABEL[item.kind ?? ''] ?? 'Gửi tin'
+						: <><span className="break-all font-medium">{item.toolName}</span> · {label}</>}
+				</p>
+				{item.detail && (longDetail ? (
+					<Collapsible className="group/message mt-1.5">
+						<p className="line-clamp-3 whitespace-pre-wrap break-words text-xs leading-5 group-data-[state=open]/message:hidden [overflow-wrap:anywhere]">{item.detail}</p>
+						<CollapsibleContent className="whitespace-pre-wrap break-words text-xs leading-5 [overflow-wrap:anywhere]">{item.detail}</CollapsibleContent>
+						<CollapsibleTrigger className="mt-1 rounded text-[11px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+							<span className="group-data-[state=open]/message:hidden">Xem thêm</span>
+							<span className="hidden group-data-[state=open]/message:inline">Thu gọn</span>
+						</CollapsibleTrigger>
+					</Collapsible>
+				) : <p className="mt-1.5 whitespace-pre-wrap break-words text-xs leading-5 [overflow-wrap:anywhere]">{item.detail}</p>)}
+			</div>
+		</li>
+	);
+}
+
 /**
  * Team observability panel. It intentionally exposes only observable
  * runtime events such as status, tools and TeamSay traffic. Private model
@@ -148,6 +192,11 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 			</div>
 		);
 	}
+
+	const communications = activities.filter((item) => item.type === 'communication');
+	const tools = activities.filter((item) => item.type === 'tool');
+	const runningTools = tools.filter((item) => item.state === 'running').length;
+	const failedTools = tools.filter((item) => item.state === 'error').length;
 
 	const leaderAgentId = team.leader_agent?.id ?? null;
 	const leaderSessionId = team.team.session_id;
@@ -316,71 +365,43 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 				) : null}
 			</section>
 
-			<section className="flex min-h-0 flex-1 flex-col py-3">
-				<div className="flex items-center justify-between px-2 pb-2">
-					<span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-						Nhật ký phối hợp
-					</span>
+			<section className="flex min-h-0 flex-1 flex-col gap-2 px-2 py-3">
+				<div className="flex items-center justify-between pb-1">
+					<h2 className="text-xs font-semibold">Nhật ký phối hợp</h2>
 					<Clock3 className="size-3.5 text-muted-foreground" />
 				</div>
-				<p className="px-2 pb-2 text-[10px] leading-4 text-muted-foreground">
-					Hiển thị trạng thái, tool và nội dung TeamSay. Không hiển thị suy luận riêng tư.
-				</p>
-				{activities.length === 0 ? (
-					<div className="mx-2 flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center">
-						<Radio className="mb-2 size-5 text-muted-foreground" />
-						<p className="text-xs font-medium">Chưa có hoạt động</p>
-						<p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-							Tool và luồng gọi giữa các agent sẽ xuất hiện tại đây.
-						</p>
-					</div>
-				) : (
-					<ol className="divide-y px-2">
-						{activities.map((item) => (
-							<li key={item.id} className="py-2.5 first:pt-1">
-								<div className="flex items-start gap-2">
-									<span className="mt-0.5 shrink-0">{activityIcon(item)}</span>
-									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-1.5 text-[11px]">
-											<span className="truncate font-medium">{item.sourceName}</span>
-											{item.targetName ? (
-												<>
-													<ArrowRight className="size-3 shrink-0 text-muted-foreground" />
-													<span className="truncate font-medium">{item.targetName}</span>
-												</>
-											) : null}
-							<time
-								className="ml-auto shrink-0 text-[10px] text-muted-foreground"
-								dateTime={item.createdAt}
-							>
-												{formatTime(item.createdAt)}
-											</time>
-										</div>
-										<div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-											{item.type === 'tool' ? <Wrench className="size-3" /> : null}
-											<span>
-												{item.state === 'error'
-													? item.type === 'communication'
-														? 'Gửi tin thất bại'
-														: `Tool ${item.toolName} thất bại`
-													: item.type === 'communication'
-													? ACTIVITY_KIND_LABEL[item.kind ?? ''] ?? 'Gửi tin'
-													: `Gọi tool ${item.toolName}`}
-											</span>
-										</div>
-										{item.detail ? (
-											<p
-												className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground"
-												title={item.detail}
-											>
-												{item.detail}
-											</p>
-										) : null}
-									</div>
-								</div>
-							</li>
-						))}
+				{communications.length > 0 ? (
+					<ol className="divide-y divide-border/50">
+						{communications.map((item) => <ActivityEntry key={item.id} item={item} />)}
 					</ol>
+				) : (
+					<p className="py-4 text-center text-xs leading-5 text-muted-foreground">
+						{tools.length > 0 ? 'Chưa có trao đổi giữa các agent.' : 'Chưa có hoạt động phối hợp.'}
+					</p>
+				)}
+				{tools.length > 0 && (
+					<Collapsible key={team.team.id} defaultOpen={false} className="rounded-xl border border-border/60 bg-muted/20">
+						<CollapsibleTrigger asChild>
+							<button type="button" className="group/tools flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+								<Wrench className="size-3.5 shrink-0" />
+								<span className="min-w-0 flex-1">
+									<span className="block font-medium">Hoạt động công cụ <span className="ml-1 tabular-nums">({tools.length})</span></span>
+									{(runningTools > 0 || failedTools > 0) && (
+										<span role="status" className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10px]">
+											{runningTools > 0 && <span className="inline-flex items-center gap-1"><LoaderCircle className="size-3 motion-safe:animate-spin" />{runningTools} đang chạy</span>}
+											{failedTools > 0 && <span className="inline-flex items-center gap-1 text-destructive"><AlertCircle className="size-3" />{failedTools} thất bại</span>}
+										</span>
+									)}
+								</span>
+								<ChevronRight className="size-3.5 shrink-0 transition-transform motion-reduce:transition-none group-data-[state=open]/tools:rotate-90" />
+							</button>
+						</CollapsibleTrigger>
+						<CollapsibleContent>
+							<ol className="max-h-80 overflow-y-auto overscroll-contain border-t border-border/60 px-3 divide-y divide-border/50">
+								{tools.map((item) => <ActivityEntry key={item.id} item={item} />)}
+							</ol>
+						</CollapsibleContent>
+					</Collapsible>
 				)}
 			</section>
 		</div>
