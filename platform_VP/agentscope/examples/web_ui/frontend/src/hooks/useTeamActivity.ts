@@ -401,12 +401,14 @@ export function useTeamActivity(participants: TeamActivityParticipant[]) {
 						}));
 					} catch (error) {
 						if (controller.signal.aborted || (error as Error).name === 'AbortError') return;
+						// A member session deleted after the team was formed is gone, not failing.
+						const gone = (error as { status?: number }).status === 404;
 						setRuntimeBySession((current) => ({
 							...current,
 							[participant.sessionId as string]: {
 								...initialRuntime(participant),
-								status: 'error',
-								detail: 'Không tải được lịch sử hoạt động',
+								status: gone ? 'idle' : 'error',
+								detail: gone ? 'Phiên làm việc không còn' : 'Không tải được lịch sử hoạt động',
 							},
 						}));
 					}

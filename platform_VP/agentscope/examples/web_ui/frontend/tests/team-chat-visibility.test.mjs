@@ -107,3 +107,15 @@ test('a question already in the reply text is not shown a second time as a card'
   assert.equal(nodes(tree, (node) => node.type === 'CommunicationCard').length, 0);
   assert.equal(tree.props['data-coordination'], undefined);
 });
+
+test('a reply stored twice (start and final copy) is shown once, with its final content', () => {
+  const start = member('planner', 'Lập kế hoạch', [], null);
+  const done = member('planner', 'Lập kế hoạch', [{ type: 'text', id: 'x', text: 'Mình đã kiểm tra lại.' }]);
+  const flightsStart = member('flights', 'Chuyên viên chuyến bay', [], null);
+  const flightsDone = member('flights', 'Chuyên viên chuyến bay', [teamSay('c1', 'Lập kế hoạch@1a2b3c4d', 'Đã tra')]);
+  const tree = chat([start, flightsStart, done, flightsDone]);
+  assert.deepEqual(shown(tree), ['planner']);
+  const [bubbleNode] = nodes(tree, (node) => node.type === 'ASMessageBubble');
+  assert.equal(bubbleNode.props.message.content[0].text, 'Mình đã kiểm tra lại.');
+  assert.doesNotMatch(text(tree), /trace\.working/);
+});

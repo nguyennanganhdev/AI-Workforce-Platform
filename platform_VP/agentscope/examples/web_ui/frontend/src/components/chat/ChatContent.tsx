@@ -113,6 +113,22 @@ interface ChatContentProps {
 	onRefreshGit?: () => void | Promise<void>;
 }
 
+/**
+ * One entry per message id, at its first position with its latest copy. Older
+ * team sessions stored a member reply twice (its start and its final copy).
+ */
+function latestCopies(msgs: Msg[]): Msg[] {
+	const latest = new Map<string, Msg>();
+	for (const message of msgs) latest.set(message.id, message);
+	if (latest.size === msgs.length) return msgs;
+	const seen = new Set<string>();
+	return msgs.flatMap((message) => {
+		if (seen.has(message.id)) return [];
+		seen.add(message.id);
+		return [latest.get(message.id)!];
+	});
+}
+
 /** Whether a member's reply says something to the customer (text or a question). */
 function addressesCustomer(content: ContentBlock[]): boolean {
 	return content.some((block) => {
@@ -151,9 +167,10 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const { visibleMsgs, workingMembers } = useMemo(() => {
-		if (!teamChat) return { visibleMsgs: msgs, workingMembers: [] as string[] };
+		const unique = latestCopies(msgs);
+		if (!teamChat) return { visibleMsgs: unique, workingMembers: [] as string[] };
 		const working = new Set<string>();
-		const visible = msgs.flatMap((message) => {
+		const visible = unique.flatMap((message) => {
 			if (message.role !== 'assistant') return [message];
 			// Runtime hints stay out of team chats. Thinking is kept: the bubble
 			// folds it into the collapsed trace. A finished reply with nothing

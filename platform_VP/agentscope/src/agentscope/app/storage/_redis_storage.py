@@ -1456,17 +1456,24 @@ class RedisStorage(StorageBase):
         session_id: str,
         msg: Msg,
     ) -> None:
-        """Persist a message to the session's message list."""
+        """Persist a message to the session's message list.
+
+        An existing message is replaced where it is. In a team chat several
+        members' replies are open at once, so a reply's earlier copy is often
+        not the last entry; appending it again showed it twice.
+        """
         key = self._message_key(user_id, session_id)
-        last_raw = await self._client.lindex(key, -1)
-        if last_raw:
-            last_msg = Msg.model_validate_json(last_raw)
-            if last_msg.id == msg.id:
-                await self._client.lset(key, -1, msg.model_dump_json())
+        recent = await self._client.lrange(key, -self._UPSERT_WINDOW, -1)
+        for offset, raw in enumerate(reversed(recent)):
+            if Msg.model_validate_json(raw).id == msg.id:
+                await self._client.lset(key, -1 - offset, msg.model_dump_json())
                 await self._refresh_key_ttl(key)
                 return
         await self._client.rpush(key, msg.model_dump_json())
         await self._refresh_key_ttl(key)
+
+    # How far back an upsert looks for the message it replaces.
+    _UPSERT_WINDOW = 500
 
     async def get_message(
         self,
