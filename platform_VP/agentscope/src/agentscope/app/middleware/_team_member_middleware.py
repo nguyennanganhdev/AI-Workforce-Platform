@@ -3,8 +3,10 @@
 within a team."""
 
 import json
+import re
 from collections import Counter
 from collections.abc import Awaitable
+from datetime import datetime
 from typing import AsyncGenerator, Callable
 
 from ..._utils._common import _generate_id, _json_loads_with_repair
@@ -68,6 +70,60 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         self._pending_question = pending_question
         self._paused = False
         self._require_report = require_report
+
+    # Read lookups whose identical repeat is answered from the earlier result.
+    _READ_TOOL = re.compile(
+        r"^mcp__[^_].*?__(search|get|check|list|find|lookup|query|fetch|read)_",
+    )
+    _WRITE_WORD = re.compile(
+        r"book|cancel|pay|create|update|delete|reserve|order|submit|send",
+    )
+    _CACHE_SECONDS = 15 * 60
+
+    @classmethod
+    def _cached_result(
+        cls,
+        agent: "Agent",
+        call: ToolCallBlock,
+        args: str,
+    ) -> ToolResultBlock | None:
+        """A recent successful result of the same read lookup, if any.
+
+        Models often send the same lookup twice in one batch or again after a
+        nudge; serving the earlier result avoids extra provider calls without
+        hiding new information. Writes are never served from cache.
+        """
+
+        if not cls._READ_TOOL.match(call.name) or cls._WRITE_WORD.search(
+            call.name.rsplit("__", 1)[-1],
+        ):
+            return None
+        for message in reversed(agent.state.context):
+            if message.role != "assistant":
+                continue
+            blocks = message.get_content_blocks()
+            results = {b.id: b for b in blocks if isinstance(b, ToolResultBlock)}
+            for earlier in reversed(blocks):
+                if (
+                    not isinstance(earlier, ToolCallBlock)
+                    or earlier.id == call.id
+                    or earlier.name != call.name
+                ):
+                    continue
+                result = results.get(earlier.id)
+                if result is None or result.state != ToolResultState.SUCCESS:
+                    continue
+                try:
+                    earlier_args = json.dumps(
+                        json.loads(earlier.input), sort_keys=True, ensure_ascii=False,
+                    )
+                    created = datetime.fromisoformat(result.created_at)
+                    age = (datetime.now(created.tzinfo) - created).total_seconds()
+                except (ValueError, TypeError):
+                    continue
+                if earlier_args == args and 0 <= age <= cls._CACHE_SECONDS:
+                    return result
+        return None
 
     @staticmethod
     def _repeated_calls(agent: "Agent") -> set[tuple[str, str]]:
@@ -186,6 +242,29 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     )
                 ],
                 state=ToolResultState.ERROR,
+            )
+            yield result
+            yield ToolResponse(content=result.content, state=result.state)
+            return
+        cached = self._cached_result(agent, call, args)
+        if cached is not None:
+            output = (
+                [TextBlock(text=cached.output)]
+                if isinstance(cached.output, str)
+                else [block.model_copy() for block in cached.output]
+            )
+            result = ToolChunk(
+                content=[
+                    TextBlock(
+                        text=(
+                            "Same lookup with the same arguments already succeeded; "
+                            "this is that result (not called again). Use it, or "
+                            "change the arguments if you need different data."
+                        ),
+                    ),
+                    *output,
+                ],
+                state=ToolResultState.SUCCESS,
             )
             yield result
             yield ToolResponse(content=result.content, state=result.state)
@@ -323,14 +402,22 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
 
     @staticmethod
     def _reply_has_customer_question(agent: "Agent", question: str) -> bool:
+        """Whether the reply already asks the customer something.
+
+        The model is told to ask the registered question in its own words;
+        appending the exact text after a paraphrase showed the customer the
+        same question twice.
+        """
+
         normalized = " ".join(question.casefold().split())
-        return any(
-            isinstance(block, TextBlock)
-            and normalized in " ".join(block.text.casefold().split())
+        texts = [
+            " ".join(block.text.casefold().split())
             for msg in agent.state.context
             if msg.id == agent.state.reply_id and msg.role == "assistant"
             for block in msg.get_content_blocks()
-        )
+            if isinstance(block, TextBlock) and block.text.strip()
+        ]
+        return any(normalized in text or "?" in text for text in texts)
 
     def _last_report_used_stale_context(self, agent: "Agent") -> bool:
         """Whether the last TeamSay was rejected by the revision guard."""
