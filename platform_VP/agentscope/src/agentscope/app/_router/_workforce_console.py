@@ -36,6 +36,7 @@ from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
 from .._service import ResourceAccessService, get_model
+from .._service import _builder_eval as builder_eval
 from .._workforce_policy import (
     WORKFORCE_LEADER_PROMPT,
     governed_system_prompt,
@@ -296,6 +297,12 @@ class PublishResponse(BaseModel):
     agents: list[PublishedAgent]
 
 
+class EvaluateRequest(BaseModel):
+    conversation_id: str
+    proposal_id: str
+    expected_revision: int = Field(ge=1)
+
+
 class LifecycleRequest(BaseModel):
     state: Literal["draft", "published"]
 
@@ -356,6 +363,11 @@ class UpdateAgentToolsRequest(BaseModel):
 
 
 _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+# Live behavioural evaluations, keyed by (user, conversation). Finished results
+# are also written into the stored proposal, so a reload or restart keeps them.
+_eval_runs: dict[tuple[str, str], dict] = {}
+_eval_tasks: dict[tuple[str, str], asyncio.Task] = {}
+_EVAL_RUNS_PER_USER = 2
 
 
 def _fixed_config() -> dict:
@@ -2493,7 +2505,7 @@ async def prepare_builder(
     if body.confirm_outline:
         if (
             previous_proposal is None
-            or previous_proposal.status != "needs_input"
+            or previous_proposal.status not in {"needs_input", "ready", "blocked"}
             or body.expected_revision != previous_proposal.revision
         ):
             raise HTTPException(
@@ -2881,14 +2893,160 @@ async def prepare_builder(
         chat_model_config=body.chat_model_config,
         fixed_config=_fixed_config(),
     )
-    await _persist_builder_turn(
-        storage,
-        user_id,
-        session.id,
-        body.message,
-        proposal,
-    )
+    async with _proposal_locks[user_id]:
+        # A publish (or another rebuild) may have finished while this one
+        # generated; never save a rebuild on top of it.
+        latest = _stored_proposal(
+            await _list_all_builder_messages(storage, user_id, session.id),
+        )
+        if latest is None or latest.revision != previous_proposal.revision or latest.status == "published":
+            raise HTTPException(
+                status_code=409,
+                detail="Plan đã thay đổi hoặc đã phát hành. Hãy tải lại hội thoại.",
+            )
+        await _persist_builder_turn(
+            storage,
+            user_id,
+            session.id,
+            body.message,
+            proposal,
+        )
     return proposal
+
+
+def _eval_agents(proposal: ProposalView) -> list[builder_eval.EvalAgent]:
+    """The new agents of a built proposal; reused agents were checked before."""
+    return [
+        builder_eval.EvalAgent(
+            name=agent.name,
+            objective=agent.objective,
+            system_prompt=agent.system_prompt,
+            skill_markdown=agent.skill_markdown,
+            tools=[tool.model_dump() for tool in agent.selected_tools],
+        )
+        for agent in proposal.agents
+        if not agent.reuse_agent_id
+    ]
+
+
+async def _save_eval(storage: StorageBase, user_id: str, conversation_id: str, progress: dict) -> None:
+    """Write each agent's evaluation into the proposal it was run on."""
+    async with _proposal_locks[user_id]:
+        messages, _ = await storage.list_messages(user_id, conversation_id, limit=200)
+        for message in reversed(messages):
+            payload = (message.structured_output or {}).get("workforce_builder_proposal")
+            if not payload or payload.get("proposal_id") != progress["proposal_id"]:
+                continue
+            if payload.get("revision") != progress["revision"]:
+                return
+            results = {entry["name"]: entry for entry in progress["agents"]}
+            for agent in payload.get("agents", []):
+                entry = results.get(agent.get("name"))
+                if entry is not None:
+                    agent.setdefault("evaluation", {})["eval"] = {
+                        **entry,
+                        "finished_at": progress["updated_at"],
+                    }
+            message.structured_output = {
+                **message.structured_output,
+                "workforce_builder_proposal": payload,
+            }
+            await storage.upsert_message(user_id, conversation_id, message)
+            return
+
+
+def _stored_eval(proposal: ProposalView | None) -> dict:
+    if proposal is None:
+        return {"status": "idle", "agents": []}
+    agents = [agent.evaluation.get("eval") for agent in proposal.agents if agent.evaluation.get("eval")]
+    if not agents:
+        return {"status": "idle", "agents": []}
+    return {
+        "status": "completed",
+        "proposal_id": proposal.proposal_id,
+        "revision": proposal.revision,
+        "agents": agents,
+    }
+
+
+@workforce_console_router.post("/builder/evaluate")
+async def evaluate_builder(
+    body: EvaluateRequest,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    access: ResourceAccessService = Depends(get_resource_access_service),
+) -> dict:
+    """Start behavioural tests for a built proposal; poll the conversation's eval for progress."""
+    key = (user_id, body.conversation_id)
+    running = _eval_runs.get(key)
+    if (
+        running
+        and running["status"] == "running"
+        and running["proposal_id"] == body.proposal_id
+        and running["revision"] == body.expected_revision
+    ):
+        return running
+    session = await storage.get_session(user_id, _BUILDER_AGENT_ID, body.conversation_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hội thoại Agent Builder.")
+    messages, _ = await storage.list_messages(user_id, body.conversation_id, limit=200)
+    proposal = _stored_proposal(messages)
+    if proposal is None or proposal.proposal_id != body.proposal_id:
+        raise HTTPException(status_code=404, detail="Builder proposal not found")
+    if proposal.revision != body.expected_revision:
+        raise HTTPException(status_code=409, detail="Builder proposal revision changed")
+    agents = _eval_agents(proposal)
+    if not agents:
+        raise HTTPException(status_code=409, detail="Chưa có agent mới nào để đánh giá.")
+    others = sum(
+        1 for (owner, conversation), task in _eval_tasks.items()
+        if owner == user_id and conversation != body.conversation_id and not task.done()
+    )
+    if others >= _EVAL_RUNS_PER_USER:
+        raise HTTPException(
+            status_code=429,
+            detail="Bạn đang chạy eval ở hội thoại khác. Hãy chờ lượt đó xong rồi thử lại.",
+        )
+    model = await get_model(user_id, proposal.chat_model_config, access)
+    previous = _eval_tasks.pop(key, None)
+    if previous is not None and not previous.done():
+        previous.cancel()
+    progress = builder_eval.new_progress(body.proposal_id, body.expected_revision, agents)
+    _eval_runs[key] = progress
+
+    async def run() -> None:
+        try:
+            await builder_eval.evaluate_proposal(model, agents, progress)
+            await _save_eval(storage, user_id, body.conversation_id, progress)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - surfaced through the progress status
+            logger.exception("Builder eval run failed")
+            progress["status"] = "error"
+
+    _eval_tasks[key] = asyncio.create_task(run())
+    return progress
+
+
+@workforce_console_router.get("/builder/conversations/{conversation_id}/eval")
+async def get_builder_eval(
+    conversation_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> dict:
+    """The running evaluation, or the last one saved with the current proposal."""
+    # list_messages does not scope by user; the session lookup does.
+    if await storage.get_session(user_id, _BUILDER_AGENT_ID, conversation_id) is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hội thoại Agent Builder.")
+    running = _eval_runs.get((user_id, conversation_id))
+    messages, _ = await storage.list_messages(user_id, conversation_id, limit=200)
+    proposal = _stored_proposal(messages)
+    if running and (
+        proposal is None
+        or (running["proposal_id"] == proposal.proposal_id and running["revision"] == proposal.revision)
+    ):
+        return running
+    return _stored_eval(proposal)
 
 
 @workforce_console_router.post("/builder/publish", response_model=PublishResponse)
@@ -3056,7 +3214,11 @@ async def publish_builder(
                 ],
                 execution_mode=item.execution_mode,
                 generated_skill=item.skill_markdown,
-                evaluation=item.evaluation,
+                # The full eval (answers, cases) stays with the proposal.
+                evaluation={
+                    **{key: value for key, value in item.evaluation.items() if key != "eval"},
+                    **({"eval_report": item.evaluation["eval"].get("report")} if item.evaluation.get("eval") else {}),
+                },
             ),
         )
         await storage.upsert_agent(user_id, record)
