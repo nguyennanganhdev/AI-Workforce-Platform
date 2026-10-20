@@ -7,6 +7,18 @@ const DEFAULT_API_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8
 export const AUTH_EXPIRED_EVENT = 'agentscope:auth-expired';
 export const getBaseUrl = () => localStorage.getItem('server_url') ?? DEFAULT_API_URL;
 
+/**
+ * Join an API path onto the base URL, keeping any base path ("/api" or
+ * "https://host/api"). `new URL('/x', base)` would drop that path, and a
+ * relative base like "/api" is not a valid URL base on its own.
+ */
+export function apiUrl(path: string, baseUrl: string = getBaseUrl()): URL {
+	const base = new URL(baseUrl, globalThis.location?.origin ?? 'http://localhost');
+	if (!base.pathname.endsWith('/')) base.pathname += '/';
+	// "./" keeps a first segment containing ":" from being read as a scheme.
+	return new URL(`./${path.replace(/^\/+/, '')}`, base);
+}
+
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -68,7 +80,7 @@ async function refreshAccessToken(baseUrl: string): Promise<boolean> {
 	if (!refreshPromise) {
 		refreshPromise = (async () => {
 			try {
-				const response = await fetch(new URL('/auth/refresh', baseUrl), {
+				const response = await fetch(apiUrl('/auth/refresh', baseUrl), {
 					method: 'POST',
 					credentials: 'include',
 				});
@@ -97,7 +109,7 @@ async function refreshAccessToken(baseUrl: string): Promise<boolean> {
 async function streamRequest(path: string, options: RequestOptions = {}): Promise<Response> {
 	const { method = 'GET', body, params, signal, silent = false, baseUrl, timeoutMs } = options;
 	const requestBaseUrl = baseUrl ?? getBaseUrl();
-	const url = new URL(path, requestBaseUrl);
+	const url = apiUrl(path, requestBaseUrl);
 	if (params) {
 		Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 	}
