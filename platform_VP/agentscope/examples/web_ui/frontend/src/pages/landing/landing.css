@@ -1502,11 +1502,6 @@
 	font-size: 10px;
 }
 
-.footer-bottom > div {
-	display: flex;
-	gap: 20px;
-}
-
 @media (max-width: 1080px) {
 	.landing-header {
 		grid-template-columns: 1fr auto;
