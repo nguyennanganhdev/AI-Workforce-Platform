@@ -578,14 +578,6 @@ export function AgentBuilderPage() {
 							{proposal && (
 								<section className="flex flex-col gap-4 rounded-3xl border border-border/70 bg-[var(--cue-bg-subtle,var(--muted))]/40 p-4 motion-safe:animate-in motion-safe:fade-in">
 									<ProposalSteps status={proposal.status} evalStatus={evalRun?.status ?? 'idle'} />
-									<div className="min-w-0">
-										<p className="text-[15px]/6 font-medium">{proposal.assistant_message}</p>
-										{proposal.clarification_question && (
-											<p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
-												{proposal.clarification_question}
-											</p>
-										)}
-									</div>
 									{proposal.planned_agents.length > 0 && proposal.agents.length === 0 && (
 										<div className="grid gap-3 md:grid-cols-2">
 											{proposal.planned_agents.map((agent, index) => (
