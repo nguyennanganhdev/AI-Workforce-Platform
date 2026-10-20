@@ -1,17 +1,28 @@
-import type { ChannelTypeSchema } from '@/api';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { avatarTint } from '@/utils/common';
+import { Cable, MessageCircle, MessagesSquare, Send, Webhook } from 'lucide-react';
 
-/** Brand avatar for a channel type; falls back to a tinted initial. */
+import type { ChannelTypeSchema } from '@/api';
+import { cn } from '@/lib/utils';
+
+/** Brand colour and mark per channel type, drawn locally (no remote favicon). */
+const BRAND: Record<string, { color: string; Icon: typeof Send }> = {
+	telegram: { color: '#229ED9', Icon: Send },
+	discord: { color: '#5865F2', Icon: MessagesSquare },
+	dingtalk: { color: '#3296FA', Icon: MessageCircle },
+	feishu: { color: '#3370FF', Icon: MessageCircle },
+	custom: { color: '#52525b', Icon: Webhook },
+};
+
+/** Brand tile for a channel type; unknown types get a neutral cable mark. */
 export function TypeAvatar({ type, className }: { type?: ChannelTypeSchema; className?: string }) {
-	const seed = type?.channel_type ?? '';
-	const label = type?.display_name ?? seed;
+	const brand = BRAND[type?.channel_type ?? ''] ?? { color: '#71717a', Icon: Cable };
+	const { Icon } = brand;
 	return (
-		<Avatar className={className}>
-			<AvatarImage src={type?.icon_url || undefined} alt={label} />
-			<AvatarFallback className="rounded-[inherit]" style={avatarTint(seed)}>
-				{label.slice(0, 1).toUpperCase()}
-			</AvatarFallback>
-		</Avatar>
+		<span
+			aria-hidden="true"
+			className={cn('flex shrink-0 items-center justify-center rounded-xl text-white', className)}
+			style={{ background: brand.color }}
+		>
+			<Icon className="size-[55%]" strokeWidth={2.2} />
+		</span>
 	);
 }
