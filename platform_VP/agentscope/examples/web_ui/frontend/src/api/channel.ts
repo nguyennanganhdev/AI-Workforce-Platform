@@ -10,17 +10,18 @@ import type {
 	UpdateChannelRequest,
 } from './types';
 
-const isVisibleChannel = ({ channel_type }: { channel_type: string }) =>
+// DingTalk/Feishu are no longer offered for new channels. Existing ones stay
+// listed so their owners can still disable or delete them.
+const isOfferedChannel = ({ channel_type }: { channel_type: string }) =>
 	!['dingtalk', 'feishu'].includes(channel_type);
 
 export const channelApi = {
 	listTypes: () =>
 		client
 			.get<ChannelTypeSchema[]>('/channels/types')
-			.then((types) => types.filter(isVisibleChannel)),
+			.then((types) => types.filter(isOfferedChannel)),
 
-	list: () =>
-		client.get<ChannelRecord[]>('/channels/').then((channels) => channels.filter(isVisibleChannel)),
+	list: () => client.get<ChannelRecord[]>('/channels/'),
 
 	get: (channelId: string) => client.get<ChannelRecord>(`/channels/${channelId}`),
 
