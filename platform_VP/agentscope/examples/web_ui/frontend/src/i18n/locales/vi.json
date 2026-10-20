@@ -101,10 +101,13 @@
 	},
 	"panel": {
 		"team": {
+			"addAgents": "Thêm agent",
+			"chooseAgentsDescription": "Tick vào agent để thêm ngay vào nhóm. Bạn có thể chọn tiếp nhiều agent trong danh sách.",
+			"searchAgents": "Tìm theo tên hoặc chuyên môn…",
+			"noSearchResults": "Không tìm thấy agent phù hợp. Thử từ khóa khác.",
 			"addMember": "Thêm thành viên",
 			"manualDescription": "Agent mới sẽ chờ được giao việc. Sau khi thêm, bạn quản lý thành viên; điều phối sẽ không tự mời thêm agent.",
 			"noAvailableAgents": "Không có agent đã xuất bản nào có thể thêm vào nhóm.",
-			"selectAgent": "Chọn agent",
 			"manualMembership": "Bạn quản lý thành viên · Điều phối không tự mời thêm",
 			"agents": "Agent trong team",
 			"membersHeading": "Thành viên",
