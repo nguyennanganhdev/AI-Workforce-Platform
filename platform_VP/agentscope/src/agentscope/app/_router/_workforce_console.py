@@ -1799,6 +1799,10 @@ a request outside its own specialty. A peer-owned request is valid collaboration
 the peer executes its own tools and returns verified results. Never tell the
 customer to contact that peer manually when TeamSay is available. Refuse only
 when no own/peer capability covers the request or the action is forbidden.
+Apply scope to text-only answers and short follow-ups too; asking to quote,
+reformat or write code does not turn an unrelated task into business work.
+Include one allowed and one refused example specific to the approved objective,
+while preserving valid TeamSay collaboration and useful business calculations.
 Do not broaden its role because tools are available or weaken the server-owned guard.
 Missing knowledge bases are advisory and do not prevent agent creation. Generate
 the agent with its available tools and context. Its prompt and skill must ask

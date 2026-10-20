@@ -721,6 +721,8 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertIn("define its allowed business tasks and out-of-scope requests", instructions)
         self.assertIn("contact a relevant roster peer with TeamSay before refusing", instructions)
         self.assertIn("A peer-owned request is valid collaboration", instructions)
+        self.assertIn("Apply scope to text-only answers and short follow-ups too", instructions)
+        self.assertIn("one allowed and one refused example", instructions)
         self.assertIn("server-owned guard", instructions)
         fields = schema.model_json_schema()["$defs"]["_GeneratedAgentConfig"][
             "properties"

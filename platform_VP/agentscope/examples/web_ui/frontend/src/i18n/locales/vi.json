@@ -1,7 +1,7 @@
 {
 	"auth": {
-		"heroTitle": "Xây dựng và vận hành teamAI",
-		"heroDescription": "Tạo tác nhân AI, tổ chức thành teamAI và tự động định tuyến yêu cầu đến đúng chuyên môn.",
+		"heroTitle": "Xây dựng và vận hành team agent",
+		"heroDescription": "Tạo tác nhân AI, tổ chức thành team agent và tự động định tuyến yêu cầu đến đúng chuyên môn.",
 		"securityHint": "Token truy cập ngắn hạn và phiên đăng nhập được tự động luân chuyển",
 		"loginTitle": "Chào mừng bạn quay lại",
 		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",

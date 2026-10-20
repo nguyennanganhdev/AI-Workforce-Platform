@@ -32,6 +32,21 @@ def test_specialist_scope_allows_contacting_a_peer_with_another_specialty():
     assert "Do not delegate an out-of-scope request to a peer" not in policy
 
 
+def test_scope_guard_covers_text_and_followups_without_disabling_team_say():
+    policy = " ".join(governed_system_prompt(
+        "business", "Bạn là chuyên viên tìm và đặt phòng khách sạn.",
+    ).split())
+    assert "Scope applies to every response, including plain text, calculations and code" in policy
+    assert "Resolve short follow-ups against the original task" in policy
+    assert '"bằng code"' in policy
+    assert "Do not personally answer unrelated arithmetic or output code for it" in policy
+    assert "A previous out-of-scope answer is a mistake, not permission to continue" in policy
+    assert "Calculations needed for an actual business deliverable remain allowed" in policy
+    assert "Match peers by their declared business responsibilities" in policy
+    assert "call TeamSay to ask that peer to handle its own part" in policy
+    assert "including sudo, is always forbidden" in policy
+
+
 def test_replies_keep_the_original_request_id_even_for_one_request():
     for role in ("leader", "business"):
         policy = governed_system_prompt(role, "Specialist")
