@@ -155,10 +155,18 @@ class TelegramChannel(ChannelBase):
                     self.status.last_error = ""
                     backoff = 1.0
                     for update in updates:
-                        # Advance first: a message that fails to handle is
-                        # logged and skipped instead of replayed forever.
+                        try:
+                            await self._on_message(update.get("message", {}))
+                        except Exception:  # pylint: disable=broad-except
+                            # Skip it rather than replay one bad message forever.
+                            # A stop mid-handling is not an Exception, so that
+                            # message stays unconfirmed and is delivered again.
+                            logger.warning(
+                                "Telegram '%s' skipped update %s",
+                                self._channel_id,
+                                update.get("update_id"),
+                            )
                         offset = update["update_id"] + 1
-                        await self._on_message(update.get("message", {}))
                 except ChannelError as exc:
                     self.status.last_error = str(exc)
                     if exc.status_code in (401, 403, 409):
@@ -183,8 +191,10 @@ class TelegramChannel(ChannelBase):
                     backoff = min(backoff * 2, 30.0)
         finally:
             self.status.state = "stopped"
-            await self._confirm_offset(offset)
-            await self.aclose()
+            try:
+                await self._confirm_offset(offset)
+            finally:
+                await self.aclose()
 
     async def _confirm_offset(self, offset: int) -> None:
         """Tell Telegram the handled updates are done, so a restart does not replay them.
@@ -197,7 +207,8 @@ class TelegramChannel(ChannelBase):
         try:
             await asyncio.wait_for(
                 self._request("getUpdates", offset=offset, timeout=0, limit=1),
-                timeout=5.0,
+                # Channels stop one after another; keep shutdown short.
+                timeout=2.0,
             )
         except Exception:  # pylint: disable=broad-except
             logger.info("Telegram '%s' could not confirm its last offset", self._channel_id)
