@@ -193,6 +193,10 @@ class SessionView(BaseModel):
             "``GET /sessions/{id}/messages``."
         ),
     )
+    preview: str | None = Field(
+        default=None,
+        description="Opening user text, capped at 160 characters for the sidebar.",
+    )
     is_running: bool = Field(
         description=(
             "**Deprecated** — use :attr:`status`. True only while a "

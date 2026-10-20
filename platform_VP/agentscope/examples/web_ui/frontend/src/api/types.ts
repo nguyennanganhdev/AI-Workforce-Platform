@@ -371,6 +371,8 @@ export type SessionStatus = 'running' | 'idle' | 'awaiting_permission' | 'awaiti
  * participates in a team — the resolved team detail.
  */
 export interface SessionView {
+	/** Opening user text, bounded by the server for list display. */
+	preview?: string | null;
 	/**
 	 * The record with the bulk of `state` stripped: `context`, `summary`
 	 * and `tool_context` arrive cleared, since they hold the model's

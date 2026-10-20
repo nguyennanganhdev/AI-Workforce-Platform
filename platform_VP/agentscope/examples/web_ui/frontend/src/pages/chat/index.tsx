@@ -14,7 +14,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
 import type { SessionRecord } from '@/api';
-import { sessionTime, sessionTitle, useSessionPreview } from '@/components/chat/session-row-utils';
+import { sessionTime, sessionDisplayTitle, useSessionPreview } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { CreateGroupDialog } from '@/components/dialog/CreateGroupDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -294,7 +294,7 @@ const ChatPageInner = () => {
 								key={view.session.id}
 								avatarId={urlAgentId ?? ''}
 								avatarLabel={selectedAgent?.data.name}
-								title={sessionTitle(view.session.config.name) ?? t('chat.newSession')}
+								title={sessionDisplayTitle(view, t('chat.newSession'))}
 								time={sessionTime(view.session.updated_at)}
 								preview={sessionPreview(view, selectedAgent?.data.name ?? '')}
 								status={view.status}

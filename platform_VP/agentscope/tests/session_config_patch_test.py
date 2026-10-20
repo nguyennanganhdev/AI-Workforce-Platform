@@ -33,7 +33,7 @@ from agentscope.app.storage import (
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 from agentscope.credential import OpenAICredential
 from agentscope.permission import PermissionMode
-from agentscope.message import UserMsg
+from agentscope.message import AssistantMsg, UserMsg
 from agentscope.state import Task
 from agentscope.state._state import ReadCacheEntry
 
@@ -126,7 +126,8 @@ class SessionConfigPatchTest(IsolatedAsyncioTestCase):
         # The heavy fields, so trimming them is observable rather than
         # vacuously true against a freshly created session.
         record.state.context = [
-            UserMsg(name="alice", content="a long conversation"),
+            AssistantMsg(name="agent", content="internal assistant text"),
+            UserMsg(name="alice", content="  a long\n conversation  " + "x" * 200),
         ]
         record.state.summary = "a compressed history"
         record.state.tool_context.read_file_cache = [
@@ -392,6 +393,7 @@ class SessionConfigPatchTest(IsolatedAsyncioTestCase):
             params={"agent_id": self.agent_id},
         ).json()["sessions"][0]
 
+        self.assertEqual(listed["preview"], ("a long conversation " + "x" * 200)[:160])
         state = listed["session"]["state"]
         self.assertEqual(state["context"], [])
         self.assertEqual(state["summary"], "")

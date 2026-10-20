@@ -191,6 +191,8 @@
 			"recent": "最近对话",
 			"results": "结果",
 			"noResults": "没有匹配“{{query}}”的对话。",
+			"previewExternal": "等待结果",
+			"previewTeam": "团队",
 			"previewAgent": "智能体：{{name}}",
 			"previewRunning": "处理中…",
 			"previewAwaiting": "等待你的操作",

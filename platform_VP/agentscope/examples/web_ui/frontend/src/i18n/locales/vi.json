@@ -337,6 +337,8 @@
 			"recent": "Trò chuyện gần đây",
 			"results": "Kết quả",
 			"noResults": "Không có cuộc trò chuyện nào khớp “{{query}}”.",
+			"previewExternal": "Đang chờ kết quả",
+			"previewTeam": "Nhóm làm việc",
 			"previewAgent": "Agent: {{name}}",
 			"previewRunning": "Đang xử lý…",
 			"previewAwaiting": "Đang chờ bạn",

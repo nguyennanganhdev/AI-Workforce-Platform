@@ -8,7 +8,7 @@ import ts from 'typescript';
 const require = createRequire(import.meta.url);
 const context = {
 	exports: {},
-	require: (id) => id === '@/i18n/useI18n' ? {} : require(id),
+	require: (id) => id === '@/i18n/useI18n' ? { useTranslation: () => ({ t: (key, values) => values?.name ? `Agent: ${values.name}` : key }) } : require(id),
 };
 vm.runInNewContext(ts.transpileModule(readFileSync(
 	new URL('../src/components/chat/session-row-utils.ts', import.meta.url), 'utf8',
@@ -18,7 +18,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(
 
 test('placeholder titles are hidden, including tickets with existing messages', () => {
 	for (const name of [undefined, null, '', 'Ticket mới', 'Phiếu đối tác', 'Partner ticket',
-		'2026-10-19 10:30', '2026-10-19T10:30:12.000Z']) {
+		'Mới', 'Phiên mới', 'Nhóm mới', 'New session', '   ', 'team:37aa4e10a5744e57ad5e423', '2026-10-19 10:30', '2026-10-19T10:30:12.000Z']) {
 		assert.equal(context.exports.sessionTitle(name), null);
 	}
 });
@@ -26,5 +26,29 @@ test('placeholder titles are hidden, including tickets with existing messages', 
 test('real conversation titles remain intact', () => {
 	for (const name of ['Sửa điều hoà', 'Ticket mới về thang máy', 'Partner ticket update']) {
 		assert.equal(context.exports.sessionTitle(name), name);
+	}
+});
+
+const view = (name, extra = {}) => ({
+	session: { config: { name }, created_at: '2026-10-20T08:30:00', origin: { type: 'user' } },
+	status: 'idle', team: null, ...extra,
+});
+const team = { team: { data: { name: 'Đội du lịch' } }, members: [{ agent: { data: { name: 'Lập lịch' } } }] };
+
+test('session labels prefer real titles, then opening text, then team names', () => {
+	const title = context.exports.sessionDisplayTitle;
+	assert.equal(title(view('Tên đã đặt', { preview: 'Tin nhắn', team }), 'Hội thoại'), 'Tên đã đặt');
+	assert.equal(title(view('Mới', { preview: 'Đi Hà Nội', team }), 'Hội thoại'), 'Đi Hà Nội');
+	assert.equal(title(view('team:abc123', { team }), 'Hội thoại'), 'Đội du lịch');
+	assert.equal(title(view('', { preview: '  ' }), 'Hội thoại'), 'Hội thoại · 20/10 08:30');
+	assert.equal(context.exports.sessionTitle('Team: kế hoạch'), 'Team: kế hoạch');
+});
+
+test('preview shows members instead of duplicating titles and gives status priority', () => {
+	const preview = context.exports.useSessionPreview();
+	assert.equal(preview(view('Thuật toán BFS'), 'Leader'), 'Agent: Leader');
+	assert.equal(preview(view('Đi Hà Nội', { team }), 'Leader'), 'Đội du lịch · Lập lịch');
+	for (const [status, key] of [['running', 'previewRunning'], ['awaiting_permission', 'previewAwaiting'], ['awaiting_external_result', 'previewExternal']]) {
+		assert.equal(preview(view('Tên', { status, team }), 'Leader'), `chat.session.${key}`);
 	}
 });

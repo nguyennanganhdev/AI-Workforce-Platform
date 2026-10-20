@@ -2,8 +2,8 @@ import { Bot, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { sessionApi, workforceApi } from '@/api';
-import type { LeaderSession } from '@/api';
-import { sessionTime, sessionTitle } from '@/components/chat/session-row-utils';
+import type { LeaderSession, SessionView } from '@/api';
+import { sessionTime, sessionTitle, sessionDisplayTitle, useSessionPreview } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,9 @@ import { useSessions } from '@/hooks/useSessions';
 import { ChatViewport } from '@/pages/chat/ChatViewport';
 
 /** A row's name: the session's title without the unit code it once led with. */
-function rowTitle(name: string | undefined): string {
-	const title = (name ?? '').replace(/^[A-Z0-9][A-Z0-9-]{3,}\s*·\s*/, '').trim();
-	return sessionTitle(title) ?? 'Mới';
+function rowTitle(view: SessionView): string {
+	const title = (view.session.config.name ?? '').replace(/^[A-Z0-9][A-Z0-9-]{3,}\s*·\s*/, '').trim();
+	return sessionTitle(title) ?? sessionDisplayTitle(view, 'Hội thoại');
 }
 
 /**
@@ -24,6 +24,7 @@ function rowTitle(name: string | undefined): string {
  * each, and the selected session's chat (and its room) beside them.
  */
 function LeaderPageInner() {
+	const sessionPreview = useSessionPreview();
 	const [leader, setLeader] = useState<LeaderSession | null>(null);
 	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -116,7 +117,7 @@ function LeaderPageInner() {
 						</p>
 					) : (
 						sessions.map((view, index) => {
-							const title = rowTitle(view.session.config.name);
+							const title = rowTitle(view);
 							return (
 								<ChatRow
 									key={view.session.id}
@@ -126,7 +127,7 @@ function LeaderPageInner() {
 									avatarLabel="Leader"
 									title={title}
 									time={sessionTime(view.session.updated_at ?? view.session.created_at)}
-									compact
+									preview={sessionPreview(view, 'Leader')}
 									status={view.status}
 									active={selectedSessionId === view.session.id}
 									onSelect={() => setSelectedSessionId(view.session.id)}
@@ -152,7 +153,7 @@ function LeaderPageInner() {
 			<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
 				<div className="flex items-center gap-2 border-b p-2 md:hidden">
 					<select aria-label="Hội thoại" className="min-w-0 flex-1 rounded-lg border p-2 text-sm" value={selectedSessionId ?? ''} onChange={(event) => setSelectedSessionId(event.target.value)}>
-						{sessions.map(({ session }) => <option key={session.id} value={session.id}>{rowTitle(session.config.name)}</option>)}
+						{sessions.map((view) => <option key={view.session.id} value={view.session.id}>{rowTitle(view)}</option>)}
 					</select>
 					<Button variant="ghost" size="icon" aria-label="Tạo phiên" disabled={creating} onClick={createTicket}><Plus /></Button>
 				</div>

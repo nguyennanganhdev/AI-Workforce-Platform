@@ -380,6 +380,15 @@ async def list_sessions(
                         ),
                     },
                 ),
+                preview=next(
+                    (
+                        text[:160]
+                        for msg in session.state.context
+                        if msg.role == "user"
+                        and (text := " ".join((msg.get_text_content() or "").split()))
+                    ),
+                    None,
+                ),
                 is_running=is_running,
                 status=session_status,
                 team=team_detail,

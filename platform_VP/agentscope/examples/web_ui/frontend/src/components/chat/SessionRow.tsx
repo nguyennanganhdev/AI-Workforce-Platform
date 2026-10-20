@@ -55,6 +55,7 @@ export function ChatRow({
 			<button
 				type="button"
 				onClick={onSelect}
+				title={title}
 				data-active={active || undefined}
 				className={cn(
 					'flex w-full items-center rounded-xl text-left outline-none transition-colors',
@@ -65,7 +66,7 @@ export function ChatRow({
 				)}
 				{...rest}
 			>
-				<span className="relative">
+				<span className="relative shrink-0">
 					{avatar ?? (
 						<ClayAvatar id={avatarId} label={avatarLabel} size={compact ? 28 : 36} />
 					)}
@@ -105,7 +106,7 @@ export function ChatRow({
 					{!compact && (
 						<span className="flex min-w-0 items-center gap-1 text-[13px]/[18px] text-[var(--cue-text-secondary,var(--muted-foreground))]">
 							{icon}
-							<span className="truncate">{preview}</span>
+							<span className="truncate" title={typeof preview === 'string' ? preview : undefined}>{preview}</span>
 						</span>
 					)}
 				</span>

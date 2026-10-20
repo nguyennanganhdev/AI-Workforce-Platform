@@ -194,6 +194,8 @@
 			"recent": "Recent chats",
 			"results": "Results",
 			"noResults": "No chats match “{{query}}”.",
+			"previewExternal": "Waiting for results",
+			"previewTeam": "Team",
 			"previewAgent": "Agent: {{name}}",
 			"previewRunning": "Working on it…",
 			"previewAwaiting": "Waiting for you",

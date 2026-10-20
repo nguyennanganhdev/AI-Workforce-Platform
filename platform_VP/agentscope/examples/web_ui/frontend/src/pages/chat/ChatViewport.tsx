@@ -24,7 +24,7 @@ import type {
 import { sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
-import { sessionTitle } from '@/components/chat/session-row-utils';
+import { sessionDisplayTitle } from '@/components/chat/session-row-utils';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { AgentToolsPanel } from '@/components/panel/AgentToolsPanel';
@@ -276,7 +276,7 @@ export function ChatViewport({
 		[sessionId],
 	);
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
-	const title = sessionTitle(view?.session.config.name);
+	const title = view ? sessionDisplayTitle(view, t('chat.newSession')) : null;
 	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 	const inspectingMember = readOnly || (!!view?.team && !isTeamChat);
 	const showAssignedTools = agentData?.execution_mode != null
