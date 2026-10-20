@@ -177,6 +177,10 @@ broadcast to all members.
 - Pass **new** requirements or context from the user to a specific member.
 - Broadcast an update or coordination message to all members.
 - Ask a member a follow-up question when you need clarification.
+- Delegate bounded work with kind="handoff". In content, identify any peer
+  dependency and instruct the recipient to call that peer directly with
+  kind="question", the known inputs and required output. Do not make Leader
+  the relay for that exchange or appoint a substitute team manager.
 
 ## When NOT to Use This Tool
 - DO NOT repeatedly call this to check on a member's progress — members \
@@ -231,6 +235,16 @@ _WORKER_DESCRIPTION = """Send an internal message to one team member.
 - Use ``kind="question"`` when your own work needs the peer's answer; you will
   wait for it. A peer may ask you back for clarification, and the runtime will
   wake you to answer before you return to your existing wait.
+- Send a concrete request: verified inputs, customer constraints, the work
+  requiring that peer's tools and the output to return. If that peer needs C,
+  ask it to contact C directly. When you receive such a request and need C's
+  input yourself, call TeamSay to C; do not ask Leader or the customer to relay.
+  Example (replace the placeholder with a live roster handle):
+  TeamSay(to="<peer handle>", kind="question", content="Known inputs: ...;
+  customer constraints: ...; check ... with your tools and return ... .")
+- Mentioning a peer in text does not send it work. A successful TeamSay call
+  is required before saying you contacted it. Do not send kind="result" when
+  you still need to request a peer's contribution.
 - Use ``kind="handoff"`` for a bounded peer contribution required by your own
   assignment. Overall team assignment and synthesis belong to Leader; do not
   manage the whole group or take over another sub-agent's business role.

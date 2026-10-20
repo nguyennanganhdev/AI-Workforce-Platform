@@ -1806,6 +1806,14 @@ An agent without tools works from customer input, equipped KBs and verified peer
 results. Do not change model parameters, permissions or platform policy.
 peer_dependencies identify verified results to request from the named owner via
 TeamSay; never instruct a dependent agent to execute that owner's tools itself.
+In both system_prompt and skill_markdown, make each dependency actionable:
+which peer capability to contact, which known inputs/constraints to send, and
+which verified output to request with TeamSay(kind="question"). Resolve its
+exact handle from the runtime roster; never invent handles while authoring.
+If that peer needs another specialist, it asks that specialist directly and
+answers the requester. Do not route those messages through Leader or hard-code
+a fixed chain. A received answer resumes the original task; it is not a new
+assignment to acknowledge. Never claim a peer was contacted without a tool call.
 Leader is the only team manager. Author each sub-agent for its bounded business
 work, with direct peer requests for necessary inputs; never add a separate
 coordinator role or delegate overall team management to a sub-agent.
