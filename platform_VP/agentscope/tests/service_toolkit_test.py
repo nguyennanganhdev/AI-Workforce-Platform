@@ -16,8 +16,10 @@ Verifies the assembly rules:
   is never exposed in chat runtime;
 - caller-supplied ``extra_factory`` results land at the end.
 """
+from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 from utils import FakeWorkspaceManager
 
@@ -38,6 +40,8 @@ from agentscope.app.storage import (
     SessionRecord,
 )
 from agentscope.mcp import HttpMCPConfig, MCPClient
+from agentscope.message import ToolCallBlock, ToolResultState
+from agentscope.state import AgentState
 from agentscope.tool import Bash, Edit, Glob, Grep, PowerShell, Read, ToolBase, Write
 
 
@@ -582,8 +586,14 @@ class TestGetToolkitExtraFactory(IsolatedAsyncioTestCase):
 
             name: str = "my-extra"
             description: str = "stub extra tool"
+            input_schema = {"type": "object", "properties": {}}
 
         extra_tool = _ExtraTool()
+
+        class _RenamedBash(Bash):
+            name = "host_command"
+
+        host_tools = [Bash(), PowerShell(), Read(), Write(), Edit(), Glob(), Grep(), _RenamedBash()]
 
         async def factory(
             _user_id: str,
@@ -591,7 +601,7 @@ class TestGetToolkitExtraFactory(IsolatedAsyncioTestCase):
             _session_id: str,
         ) -> list[ToolBase]:
             """Stub extra-factory that always returns ``extra_tool``."""
-            return [extra_tool]
+            return [extra_tool, *host_tools]
 
         agent = _make_agent()
         session = _make_session(
@@ -601,7 +611,7 @@ class TestGetToolkitExtraFactory(IsolatedAsyncioTestCase):
         )
         toolkit = await get_toolkit(
             storage=_NoOpStorage(),  # type: ignore[arg-type]
-            workspace=_FakeWorkspace(),  # type: ignore[arg-type]
+            workspace=_FakeWorkspace(tools=host_tools),
             workspace_manager=FakeWorkspaceManager(),
             scheduler_manager=SchedulerManager(
                 storage=_NoOpStorage(),  # type: ignore[arg-type]
@@ -616,7 +626,19 @@ class TestGetToolkitExtraFactory(IsolatedAsyncioTestCase):
             agent_record=agent,
             session_record=session,
             extra_factory=factory,
-            middlewares=[],
+            middlewares=[
+                SimpleNamespace(list_tools=AsyncMock(return_value=host_tools)),
+            ],
+            channel_tools=host_tools,
             resource_access_service=_make_access(_NoOpStorage()),
         )
         self.assertIn("my-extra", _tool_names(toolkit))
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as spawn:
+            for tool in host_tools:
+                self.assertNotIn(tool.name, _tool_names(toolkit))
+                results = [result async for result in toolkit.call_tool(
+                    ToolCallBlock(id="blocked-call", name=tool.name, input='{"command":"sudo id"}'),
+                    AgentState(),
+                )]
+                self.assertEqual(results[-1].state, ToolResultState.ERROR)
+            spawn.assert_not_awaited()

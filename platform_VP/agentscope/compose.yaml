@@ -7,6 +7,11 @@ services:
       dockerfile: Dockerfile
     image: agentscope-local:latest
     restart: unless-stopped
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       AGENTSCOPE_SQL_URL: ${AGENTSCOPE_SQL_URL:-postgresql+asyncpg://agentscope:agentscope@postgres:5432/agentscope}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}

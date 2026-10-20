@@ -10,6 +10,12 @@ from typing import Any, Literal
 
 from ...middleware import MiddlewareBase
 from ...tool import (
+    Bash,
+    Edit,
+    Glob,
+    Grep,
+    PowerShell,
+    Read,
     TaskCreate,
     TaskGet,
     TaskList,
@@ -17,6 +23,7 @@ from ...tool import (
     ToolBase,
     ToolGroup,
     Toolkit,
+    Write,
 )
 from ...workspace import WorkspaceBase
 from .._manager import BackgroundTaskManager, SchedulerManager
@@ -315,8 +322,13 @@ time or interval"
             if client.name in allowed_by_mcp
         ]
 
+    # Never expose host shell/filesystem tools, including those supplied by
+    # factories, middleware or channels. Stored confirmations cannot restore them.
     return Toolkit(
-        tools=tools,
+        tools=[
+            tool for tool in tools
+            if not isinstance(tool, (Bash, PowerShell, Read, Write, Edit, Glob, Grep))
+        ],
         skills_or_loaders=[] if is_leader else await workspace.list_skills(
             agent_id=agent_record.id,
         ),
