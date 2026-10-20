@@ -1188,6 +1188,25 @@
 		"draft": "Bản nháp",
 		"published": "Đã phát hành",
 		"withdrawn": "Đã thu hồi",
-		"panels": "Hiển thị bảng phụ"
+		"panels": "Hiển thị bảng phụ",
+		"configureShort": "Cấu hình",
+		"more": "Thêm thao tác",
+		"noDescription": "Chưa có mô tả công việc.",
+		"createWithBuilder": "Tạo với Agent Builder",
+		"createWithBuilderHint": "Mô tả việc cần làm, Builder đề xuất và dựng đội agent cho bạn.",
+		"createManual": "Tạo thủ công",
+		"createManualHint": "Tự đặt tên, lời dặn và cấu hình cho một agent.",
+		"heroEyebrow": "Đội agent của bạn",
+		"heroTitle": "Quản lý các agent đang làm việc cho bạn",
+		"heroDescription": "Xem trạng thái, mở chat, cấu hình và phát hành agent. Agent đã phát hành có thể được mời vào nhóm.",
+		"statTotal": "Tổng agent",
+		"statPublished": "Đã phát hành",
+		"statDraft": "Bản nháp",
+		"filter": {
+			"all": "Tất cả",
+			"published": "Đã phát hành",
+			"draft": "Bản nháp"
+		},
+		"leaderDescription": "Điều phối cả đội: nhận yêu cầu, giao việc cho agent phù hợp và tổng hợp kết quả cho bạn."
 	}
 }

@@ -51,6 +51,8 @@ export interface AgentData {
 	lifecycle_state?: 'draft' | 'published' | 'withdrawn';
 	build_description?: string;
 	execution_mode?: 'context_only' | 'tool_backed' | null;
+	/** Knowledge bases bound to the agent. */
+	knowledge_base_ids?: string[];
 	tool_bindings?: Array<{
 		id?: string;
 		mcp_id: string;

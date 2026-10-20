@@ -1192,6 +1192,25 @@
 		"draft": "Draft",
 		"published": "Published",
 		"withdrawn": "Withdrawn",
-		"panels": "Show side panels"
+		"panels": "Show side panels",
+		"configureShort": "Configure",
+		"more": "More actions",
+		"noDescription": "No job description yet.",
+		"createWithBuilder": "Create with Agent Builder",
+		"createWithBuilderHint": "Describe the work; the Builder proposes and builds the agents for you.",
+		"createManual": "Create manually",
+		"createManualHint": "Set the name, instructions and configuration of one agent yourself.",
+		"heroEyebrow": "Your agent team",
+		"heroTitle": "Manage the agents working for you",
+		"heroDescription": "Check status, open a chat, configure and publish agents. Published agents can be invited into groups.",
+		"statTotal": "Agents",
+		"statPublished": "Published",
+		"statDraft": "Drafts",
+		"filter": {
+			"all": "All",
+			"published": "Published",
+			"draft": "Drafts"
+		},
+		"leaderDescription": "Coordinates the team: takes your request, hands work to the right agents and sums up the results."
 	}
 }
