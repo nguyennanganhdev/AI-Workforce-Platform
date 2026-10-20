@@ -113,6 +113,37 @@ interface ChatContentProps {
 	onRefreshGit?: () => void | Promise<void>;
 }
 
+/**
+ * One entry per message id, at its first position with its latest copy. Older
+ * team sessions stored a member reply twice (its start and its final copy).
+ */
+function latestCopies(msgs: Msg[]): Msg[] {
+	const latest = new Map<string, Msg>();
+	for (const message of msgs) latest.set(message.id, message);
+	if (latest.size === msgs.length) return msgs;
+	const seen = new Set<string>();
+	return msgs.flatMap((message) => {
+		if (seen.has(message.id)) return [];
+		seen.add(message.id);
+		return [latest.get(message.id)!];
+	});
+}
+
+/** Whether a member's reply says something to the customer (text or a question). */
+function addressesCustomer(content: ContentBlock[]): boolean {
+	return content.some((block) => {
+		if (block.type === 'text') return Boolean(block.text.trim());
+		if (block.type !== 'tool_call' || block.name !== 'TeamSay') return false;
+		try {
+			const { to } = JSON.parse(block.input) as { to?: string | null };
+			const target = typeof to === 'string' ? to.trim().toLowerCase() : '';
+			return !target || target === 'null' || target === 'none';
+		} catch {
+			return false;
+		}
+	});
+}
+
 const ChatContentComponent: React.FC<ChatContentProps> = ({
 	msgs,
 	loading = false,
@@ -135,16 +166,31 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	onRefreshGit,
 }) => {
 	const { t, i18n } = useTranslation();
-	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
-		if (message.role !== 'assistant') return [message];
-		// Runtime hints stay out of team chats. Thinking is kept: the bubble
-		// folds it into the collapsed trace. A finished reply with nothing
-		// else to show is dropped.
-		const content = message.content.filter((block) => block.type !== 'hint');
-		const hasOutput = content.some((block) => block.type !== 'thinking');
-		if (!hasOutput && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
-		return [{ ...message, content }];
-	}) : msgs, [msgs, teamChat]);
+	const { visibleMsgs, workingMembers } = useMemo(() => {
+		const unique = latestCopies(msgs);
+		if (!teamChat) return { visibleMsgs: unique, workingMembers: [] as string[] };
+		const working = new Set<string>();
+		const visible = unique.flatMap((message) => {
+			if (message.role !== 'assistant') return [message];
+			// Runtime hints stay out of team chats. Thinking is kept: the bubble
+			// folds it into the collapsed trace. A finished reply with nothing
+			// else to show is dropped.
+			const content = message.content.filter((block) => block.type !== 'hint');
+			const hasOutput = content.some((block) => block.type !== 'thinking');
+			const failed = message.finished_reason === ReplyFinishedReason.ERROR;
+			if (!hasOutput && message.finished_reason && !failed) return [];
+			// A member's internal turn (lookups and messages to teammates) lives
+			// in the team panel; the chat keeps what is addressed to the customer.
+			const memberSession = message.metadata?.team_session_id;
+			const isMember = typeof memberSession === 'string' && !!sessionId && memberSession !== sessionId;
+			if (isMember && !failed && !addressesCustomer(content)) {
+				if (!message.finished_reason && message.name) working.add(message.name);
+				return [];
+			}
+			return [{ ...message, content }];
+		});
+		return { visibleMsgs: visible, workingMembers: [...working] };
+	}, [msgs, teamChat, sessionId]);
 	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
 	useEffect(() => setReplyTarget(null), [sessionId]);
 	const handleSend = (content: ContentBlock[]) => {
@@ -234,6 +280,11 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 										</MessageScrollerItem>
 									);
 								})}
+								{workingMembers.length > 0 && (
+									<p className="flex items-center gap-2 px-4 text-sm text-muted-foreground shimmer" role="status">
+										{t('messageBubble.trace.working', { names: workingMembers.join(', ') })}
+									</p>
+								)}
 								{msgs.length > 0 &&
 									msgs[msgs.length - 1].finished_reason ===
 										ReplyFinishedReason.EXCEED_MAX_ITERS &&

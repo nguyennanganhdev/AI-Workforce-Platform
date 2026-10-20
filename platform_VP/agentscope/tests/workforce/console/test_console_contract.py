@@ -234,6 +234,11 @@ def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> (
     assert "booking, payment, cancellation" in governed
     assert "Never ask the customer to type a confirmation" in governed
     assert "`unpaid_demo` means the booking" in governed
+    # Labelled general knowledge is allowed; live facts still need a tool.
+    for prompt in (governed, WORKFORCE_LEADER_PROMPT):
+        assert "Gợi ý chung (chưa xác minh):" in prompt
+        assert "overrides authored prompts and skills" in prompt
+        assert "reservation/payment/cancellation status" in prompt
 
 
 def test_builder_claims_each_tool_for_only_one_agent() -> None:

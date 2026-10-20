@@ -13,6 +13,8 @@ async def get_model(
     user_id: str,
     config: ChatModelConfig,
     access: ResourceAccessService,
+    *,
+    default_reasoning_effort: str | None = None,
 ) -> ChatModelBase:
     """Build a chat model instance from a stored credential and config.
 
@@ -61,9 +63,17 @@ async def get_model(
                     "none, low, medium, high, xhigh, max."
                 ),
             )
+    raw_parameters = dict(config.parameters or {})
+    if (
+        default_reasoning_effort is not None
+        and model_cls is OpenAIResponseModel
+        and raw_parameters.get("reasoning_effort") is None
+    ):
+        # A role default (Leader medium, members low) when the user chose none.
+        raw_parameters["reasoning_effort"] = default_reasoning_effort
     parameters = (
-        model_cls.Parameters(**config.parameters)
-        if config.parameters
+        model_cls.Parameters(**raw_parameters)
+        if raw_parameters
         else None
     )
     model = model_cls(

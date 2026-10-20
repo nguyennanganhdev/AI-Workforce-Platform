@@ -8,7 +8,11 @@ from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._router._agent import list_agents, update_agent
 from agentscope.app._router._schema import UpdateAgentRequest
 from agentscope.app._service import AgentView
-from agentscope.app._workforce_policy import WORKFORCE_LEADER_PROMPT
+from agentscope.app._workforce_policy import (
+    BUSINESS_AGENT_EVIDENCE_POLICY,
+    WORKFORCE_LEADER_PROMPT,
+    governed_system_prompt,
+)
 from agentscope.app.storage import AgentData, AgentRecord
 
 
@@ -27,6 +31,21 @@ def _leader(prompt: str) -> AgentRecord:
 
 
 class AgentRouterPolicyTest(IsolatedAsyncioTestCase):
+    def test_existing_business_role_receives_current_policy_once(self) -> None:
+        authored = "You verify inventory using your own equipped tools."
+        stored = (
+            authored + "\n\nWORKFORCE RUNTIME EXECUTION POLICY:\n"
+            "Old instruction: always send peer questions through Leader."
+        )
+
+        effective = governed_system_prompt("business", stored)
+
+        self.assertEqual(
+            authored + "\n\n" + BUSINESS_AGENT_EVIDENCE_POLICY, effective,
+        )
+        self.assertNotIn("Old instruction:", effective)
+        self.assertEqual(effective, governed_system_prompt("business", effective))
+
     async def test_list_projects_current_runtime_prompt_for_stale_leader(self) -> None:
         view = AgentView.model_validate(
             {**_leader("old prompt").model_dump(), "editable": True},

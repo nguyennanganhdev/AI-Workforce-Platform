@@ -3,11 +3,12 @@
 
 from collections import OrderedDict
 from datetime import datetime
-from typing import Literal, Any, AsyncGenerator, List, TYPE_CHECKING, Type
+from typing import Literal, Any, AsyncGenerator, ClassVar, List, TYPE_CHECKING, Type
 
 import openai
 from pydantic import BaseModel, Field
 
+from ..._logging import logger
 from ..._utils._common import _generate_id
 from .._base import ChatModelBase, _TOOL_CHOICE_LITERAL_MODES
 from .._model_response import ChatResponse
@@ -97,6 +98,15 @@ class OpenAIResponseModel(ChatModelBase):
             ),
         )
 
+        reasoning_summary: Literal["auto", "concise", "detailed", "none"] = Field(
+            default="auto",
+            title="Reasoning Summary",
+            description=(
+                "Ask a reasoning model for a summary of its reasoning, shown "
+                "as thinking. 'none' asks for no summary."
+            ),
+        )
+
         temperature: float | None = Field(
             default=None,
             title="Temperature",
@@ -118,6 +128,10 @@ class OpenAIResponseModel(ChatModelBase):
             title="Parallel Tool Calls",
             description="Whether to enable parallel tool calls.",
         )
+
+    # Models whose provider refused reasoning summaries (e.g. an unverified
+    # organization); later calls skip the summary instead of failing again.
+    _summary_unsupported: ClassVar[set[str]] = set()
 
     type: Literal["openai_response"] = "openai_response"
     """The type of the chat model."""
@@ -252,10 +266,24 @@ class OpenAIResponseModel(ChatModelBase):
         if self.parameters.top_p is not None:
             api_kwargs["top_p"] = self.parameters.top_p
 
+        reasoning: dict[str, Any] = {}
         if self.parameters.reasoning_effort is not None:
-            api_kwargs["reasoning"] = {
-                "effort": self.parameters.reasoning_effort,
-            }
+            reasoning["effort"] = self.parameters.reasoning_effort
+        # Luna always reasons (medium by default); other models only when an
+        # effort is set. The summary is what the UI shows as thinking.
+        reasons = (
+            reasoning.get("effort", "medium") != "none"
+            if reasoning or model_name == "gpt-6-luna"
+            else False
+        )
+        if (
+            reasons
+            and self.parameters.reasoning_summary != "none"
+            and model_name not in self._summary_unsupported
+        ):
+            reasoning["summary"] = self.parameters.reasoning_summary
+        if reasoning:
+            api_kwargs["reasoning"] = reasoning
 
         # The Responses API does not yet support audio output
         # (modalities / audio params).  Strip them so callers that
@@ -292,7 +320,26 @@ class OpenAIResponseModel(ChatModelBase):
                 ]
 
         start_datetime = datetime.now()
-        response = await self.client.responses.create(**api_kwargs)
+        try:
+            response = await self.client.responses.create(**api_kwargs)
+        except openai.BadRequestError as error:
+            if "summary" not in api_kwargs.get("reasoning", {}) or (
+                "summar" not in str(error).casefold()
+            ):
+                raise
+            logger.warning(
+                "Model %s refused reasoning summaries; retrying without them.",
+                model_name,
+            )
+            self._summary_unsupported.add(model_name)
+            api_kwargs["reasoning"] = {
+                key: value
+                for key, value in api_kwargs["reasoning"].items()
+                if key != "summary"
+            }
+            if not api_kwargs["reasoning"]:
+                api_kwargs.pop("reasoning")
+            response = await self.client.responses.create(**api_kwargs)
 
         if self.stream:
             return self._parse_stream_response(start_datetime, response)

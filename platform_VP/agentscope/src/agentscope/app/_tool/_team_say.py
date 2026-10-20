@@ -177,6 +177,10 @@ broadcast to all members.
 - Pass **new** requirements or context from the user to a specific member.
 - Broadcast an update or coordination message to all members.
 - Ask a member a follow-up question when you need clarification.
+- Delegate bounded work with kind="handoff". In content, identify any peer
+  dependency and instruct the recipient to call that peer directly with
+  kind="question", the known inputs and required output. Do not make Leader
+  the relay for that exchange or appoint a substitute team manager.
 
 ## When NOT to Use This Tool
 - DO NOT repeatedly call this to check on a member's progress — members \
@@ -231,6 +235,16 @@ _WORKER_DESCRIPTION = """Send an internal message to one team member.
 - Use ``kind="question"`` when your own work needs the peer's answer; you will
   wait for it. A peer may ask you back for clarification, and the runtime will
   wake you to answer before you return to your existing wait.
+- Send a concrete request: verified inputs, customer constraints, the work
+  requiring that peer's tools and the output to return. If that peer needs C,
+  ask it to contact C directly. When you receive such a request and need C's
+  input yourself, call TeamSay to C; do not ask Leader or the customer to relay.
+  Example (replace the placeholder with a live roster handle):
+  TeamSay(to="<peer handle>", kind="question", content="Known inputs: ...;
+  customer constraints: ...; check ... with your tools and return ... .")
+- Mentioning a peer in text does not send it work. A successful TeamSay call
+  is required before saying you contacted it. Do not send kind="result" when
+  you still need to request a peer's contribution.
 - Use ``kind="handoff"`` for a bounded peer contribution required by your own
   assignment. Overall team assignment and synthesis belong to Leader; do not
   manage the whole group or take over another sub-agent's business role.
@@ -769,7 +783,13 @@ class TeamSay(_TeamToolBase):
                             ),
                         ),
                     ],
-                    metadata={"kind": "requires_user_input"},
+                    metadata={
+                        "kind": "requires_user_input",
+                        "handoff_id": question_id,
+                        "thread_id": thread_id,
+                        "in_reply_to": in_reply_to,
+                        "to": None,
+                    },
                 )
 
             if self._role == "worker" and to is None:
@@ -918,6 +938,12 @@ class TeamSay(_TeamToolBase):
                                 ),
                             ),
                         ],
+                        metadata={
+                            "kind": "requires_user_input",
+                            "thread_id": thread_id,
+                            "in_reply_to": in_reply_to,
+                            "to": to,
+                        },
                     )
                 wake = first_question and turn.status == "running"
 
@@ -1274,6 +1300,13 @@ class TeamSay(_TeamToolBase):
                     count += 1
             await shared_context.mark_handoff(intent, "consumed")
             target = "broadcast" if to is None else f"member {to!r}"
+            # Display handles of the final recipients (coordination may
+            # reroute), so observers can draw "sender -> recipient" threads
+            # without re-resolving names against the directory.
+            names_by_session = {sid: name for name, (sid, _aid) in directory.items()}
+            recipient_names = [
+                names_by_session[sid] for sid, _aid in recipients if sid in names_by_session
+            ]
             return ToolChunk(
                 content=[
                     TextBlock(
@@ -1284,6 +1317,13 @@ class TeamSay(_TeamToolBase):
                     "handoff_id": handoff_id,
                     "kind": kind,
                     "collaboration_status": coordination["status"],
+                    "thread_id": thread_id,
+                    "in_reply_to": in_reply_to,
+                    "to": (
+                        recipient_names[0]
+                        if len(recipient_names) == 1
+                        else to
+                    ),
                 },
             )
         except Exception as e:  # noqa: BLE001 - tool returns structured error

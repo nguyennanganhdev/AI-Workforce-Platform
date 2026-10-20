@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { sessionApi } from '@/api';
 import { getResultText } from '@/components/chat/tool-renderers/_shared';
 import { isInternalId, withoutInternalIds } from '@/lib/readable';
+import { summarizeToolArgs, type TeamActivityItem } from '@/lib/teamThreads';
 
 export type TeamRuntimeStatus =
 	| 'loading'
@@ -29,26 +30,24 @@ export interface TeamMemberRuntime {
 	connected: boolean;
 }
 
-export interface TeamActivityItem {
-	id: string;
-	sessionId: string;
-	sourceName: string;
-	targetName: string | null;
-	type: 'communication' | 'tool';
-	kind: string | null;
-	toolName: string;
-	detail: string | null;
-	state: 'running' | 'success' | 'error';
-	createdAt: string;
-}
+export type { TeamActivityItem };
 
 interface ParsedTeamSay {
-	kind: string;
+	kind: string | null;
 	targetName: string;
 	content: string | null;
+	handoffId: string | null;
+	threadId: string | null;
+	inReplyTo: string | null;
 }
 
-const MAX_ACTIVITIES = 80;
+interface InviteAssignment {
+	target: string;
+	prompt: string | null;
+}
+
+// Threads nest tool calls, so keep enough history to reach their requests.
+const MAX_ACTIVITIES = 120;
 const POLL_INTERVAL_MS = 1_500;
 
 const initialRuntime = (participant: TeamActivityParticipant): TeamMemberRuntime => ({
@@ -60,6 +59,12 @@ const initialRuntime = (participant: TeamActivityParticipant): TeamMemberRuntime
 });
 
 const isTeamSay = (toolName: string) => toolName.toLowerCase().endsWith('teamsay');
+const isAgentInvite = (toolName: string) => toolName.toLowerCase().endsWith('agentinvite');
+
+const metaString = (metadata: Record<string, unknown> | undefined, key: string): string | null => {
+	const value = metadata?.[key];
+	return typeof value === 'string' && value.trim() ? value : null;
+};
 
 const displayHandle = (value: string): string => {
 	const handle = value.split('@')[0]?.trim() || value;
@@ -90,21 +95,50 @@ const resolveTargetName = (
 	return resolved?.name ?? displayHandle(target);
 };
 
+/**
+ * Read a TeamSay call. The tool result's metadata (runtime-resolved kind,
+ * recipient and thread links) wins over the model's raw input; older
+ * sessions without that metadata fall back to the input.
+ */
 const parseTeamSay = (
 	input: string,
 	participants: TeamActivityParticipant[],
-	effectiveKind?: unknown,
+	metadata?: Record<string, unknown>,
 ): ParsedTeamSay | null => {
 	try {
 		const value = JSON.parse(input) as Record<string, unknown>;
-		const kind = typeof effectiveKind === 'string' ? effectiveKind : typeof value.kind === 'string' ? value.kind : 'result';
+		const kind = metaString(metadata, 'kind') ?? (typeof value.kind === 'string' ? value.kind : null);
+		const hasResolvedTarget = metadata !== undefined && 'to' in metadata;
 		return {
 			kind,
-			targetName: resolveTargetName(value.to, kind, participants),
+			targetName: resolveTargetName(hasResolvedTarget ? metadata.to : value.to, kind ?? '', participants),
 			content: typeof value.content === 'string' ? value.content.trim() || null : null,
+			handoffId: metaString(metadata, 'handoff_id'),
+			threadId: metaString(metadata, 'thread_id') ?? (typeof value.thread_id === 'string' ? value.thread_id : null),
+			inReplyTo:
+				metaString(metadata, 'in_reply_to') ?? (typeof value.in_reply_to === 'string' ? value.in_reply_to : null),
 		};
 	} catch {
 		return null;
+	}
+};
+
+/** AgentInvite may brief several agents in one call: `target` plus `additional_assignments`. */
+const parseAgentInvite = (input: string): InviteAssignment[] => {
+	try {
+		const value = JSON.parse(input) as Record<string, unknown>;
+		const rows: unknown[] = [
+			{ target: value.target, prompt: value.prompt },
+			...(Array.isArray(value.additional_assignments) ? value.additional_assignments : []),
+		];
+		return rows.flatMap((row) => {
+			if (!row || typeof row !== 'object') return [];
+			const { target, prompt } = row as Record<string, unknown>;
+			if (typeof target !== 'string' || !target.trim()) return [];
+			return [{ target: target.trim(), prompt: typeof prompt === 'string' ? prompt.trim() || null : null }];
+		});
+	} catch {
+		return [];
 	}
 };
 
@@ -139,24 +173,58 @@ const buildHistoryActivities = (
 		}
 		for (const block of message.content) {
 			if (block.type !== 'tool_call') continue;
-			const teamCall = isTeamSay(block.name);
-			const teamSay = teamCall ? parseTeamSay(block.input, participants, results.get(block.id)?.metadata?.kind) : null;
 			const result = results.get(block.id);
-			activities.push({
-				// Tool-call ids survive transcript projection, so they are the
-				// stable identity across Leader and worker history copies.
-				id: `tool:${block.id}`,
+			const state = activityState(block, result);
+			const createdAt = block.created_at || message.created_at;
+			const base = {
 				sessionId: sourceSessionId as string,
 				sourceName,
+				toolName: block.name,
+				state,
+				createdAt,
+				handoffId: null,
+				threadId: null,
+				inReplyTo: null,
+				argsSummary: null,
+			};
+			if (isAgentInvite(block.name)) {
+				// Inviting is how the Leader assigns work: one "Giao việc"
+				// message per briefed agent, so each starts its own thread.
+				const failed = result?.metadata?.failed_targets;
+				parseAgentInvite(block.input).forEach((assignment, index) => {
+					const assignmentFailed =
+						state === 'error' && (!Array.isArray(failed) || failed.includes(assignment.target));
+					activities.push({
+						...base,
+						// Tool-call ids survive transcript projection, so they are the
+						// stable identity across Leader and worker history copies.
+						id: index === 0 ? `tool:${block.id}` : `tool:${block.id}:${index}`,
+						targetName: resolveTargetName(assignment.target, 'assign', participants),
+						type: 'communication',
+						kind: 'assign',
+						detail: assignmentFailed
+							? withoutInternalIds(getResultText(result)) || assignment.prompt
+							: assignment.prompt,
+						state: assignmentFailed ? 'error' : state === 'error' ? 'success' : state,
+					});
+				});
+				continue;
+			}
+			const teamCall = isTeamSay(block.name);
+			const teamSay = teamCall ? parseTeamSay(block.input, participants, result?.metadata) : null;
+			activities.push({
+				...base,
+				id: `tool:${block.id}`,
 				targetName: teamSay?.targetName ?? (teamCall ? 'Cả nhóm' : null),
 				type: teamCall ? 'communication' : 'tool',
 				kind: teamSay?.kind ?? null,
-				toolName: block.name,
 				detail: teamCall && result?.state === 'error'
 					? withoutInternalIds(getResultText(result)) || teamSay?.content || null
 					: teamSay?.content ?? null,
-				state: activityState(block, results.get(block.id)),
-				createdAt: block.created_at || message.created_at,
+				handoffId: teamSay?.handoffId ?? null,
+				threadId: teamSay?.threadId ?? null,
+				inReplyTo: teamSay?.inReplyTo ?? null,
+				argsSummary: teamCall ? null : summarizeToolArgs(block.input),
 			});
 		}
 	}
@@ -213,7 +281,7 @@ const runtimeFromHistory = (
 		};
 	}
 	if (call && isTeamSay(call.name) && activityState(call, result ?? undefined) !== 'error') {
-		const teamSay = parseTeamSay(call.input, participants, result?.metadata?.kind);
+		const teamSay = parseTeamSay(call.input, participants, result?.metadata);
 		if (teamSay?.kind === 'requires_user_input') {
 			return {
 				status: 'waiting',
@@ -256,6 +324,13 @@ const mergeActivities = (
 	incoming: TeamActivityItem[],
 ): TeamActivityItem[] => {
 	const byId = new Map(current.map((item) => [item.id, item]));
+	// An idle poll returns the same items; keep the array so memoised
+	// thread grouping and the panel skip the work.
+	const unchanged = incoming.every((item) => {
+		const known = byId.get(item.id);
+		return known !== undefined && JSON.stringify(known) === JSON.stringify(item);
+	});
+	if (unchanged) return current;
 	for (const item of incoming) byId.set(item.id, item);
 	return [...byId.values()]
 		.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -326,12 +401,14 @@ export function useTeamActivity(participants: TeamActivityParticipant[]) {
 						}));
 					} catch (error) {
 						if (controller.signal.aborted || (error as Error).name === 'AbortError') return;
+						// A member session deleted after the team was formed is gone, not failing.
+						const gone = (error as { status?: number }).status === 404;
 						setRuntimeBySession((current) => ({
 							...current,
 							[participant.sessionId as string]: {
 								...initialRuntime(participant),
-								status: 'error',
-								detail: 'Không tải được lịch sử hoạt động',
+								status: gone ? 'idle' : 'error',
+								detail: gone ? 'Phiên làm việc không còn' : 'Không tải được lịch sử hoạt động',
 							},
 						}));
 					}

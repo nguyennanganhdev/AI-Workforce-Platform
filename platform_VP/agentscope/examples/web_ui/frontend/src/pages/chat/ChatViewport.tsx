@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import type {
 	AgentData,
 	ChatModelConfig,
+	ModelCard,
 	PermissionMode,
 	SessionKnowledgeConfig,
 	TTSModelConfig,
@@ -107,6 +108,19 @@ const KNOWN_PANELS: Record<PanelKey, true> = {
 	knowledge: true,
 	team: true,
 };
+
+/** The model card of a selected chat model, or null when none matches. */
+function findModelCard(
+	groups: Record<string, { models: ModelCard[] }[]>,
+	config: ChatModelConfig | null,
+): ModelCard | null {
+	if (!config) return null;
+	for (const { models } of groups[config.type] ?? []) {
+		const card = models.find((m) => m.name === config.model);
+		if (card) return card;
+	}
+	return null;
+}
 
 /**
  * Restore the persisted dock layout, dropping anything that is no
@@ -596,16 +610,11 @@ export function ChatViewport({
 		setSelectedKnowledgeConfig(null);
 	}, [agentId, sessionId]);
 
-	const selectedModelCard = useMemo(() => {
-		if (!selectedModel) return null;
-		const items = groups[selectedModel.type];
-		if (!items) return null;
-		for (const { models } of items) {
-			const card = models.find((m) => m.name === selectedModel.model);
-			if (card) return card;
-		}
-		return null;
-	}, [groups, selectedModel]);
+	const selectedModelCard = useMemo(() => findModelCard(groups, selectedModel), [groups, selectedModel]);
+	const selectedSubAgentModelCard = useMemo(
+		() => findModelCard(groups, selectedSubAgentModel),
+		[groups, selectedSubAgentModel],
+	);
 
 	// Seed tasks + permission from the session snapshot ONCE per
 	// session, then leave them to the CustomEvent(name="state_updated")
@@ -669,6 +678,16 @@ export function ChatViewport({
 		await patchConfig(
 			{ sub_agent_chat_model_config: config },
 			() => setSelectedSubAgentModel(config),
+		);
+	};
+
+	/** Persist a parameter change (e.g. reasoning effort) on the members' shared model. */
+	const handleSubAgentParametersChange = async (parameters: Record<string, unknown>) => {
+		if (!selectedSubAgentModel) return;
+		const updated = { ...selectedSubAgentModel, parameters };
+		await patchConfig(
+			{ sub_agent_chat_model_config: updated },
+			() => setSelectedSubAgentModel(updated),
 		);
 	};
 
@@ -785,6 +804,13 @@ export function ChatViewport({
 												refetchTrigger={credentialRefetchTrigger}
 												disabled={configPending || !view || view.status === 'running'}
 											/>
+											<ModelParametersPopover
+												label={t('agentManagement.subagentModel')}
+												selectedModel={selectedSubAgentModel}
+												modelCard={selectedSubAgentModelCard}
+												onChange={handleSubAgentParametersChange}
+												disabled={configPending || !view || view.status === 'running'}
+											/>
 										</div>
 									)}
 									<div className="flex items-center gap-1">
@@ -802,6 +828,7 @@ export function ChatViewport({
 										/>
 									</div>
 									<ModelParametersPopover
+										label={t('agentManagement.coordinatorModel')}
 										selectedModel={selectedModel}
 										modelCard={selectedModelCard}
 										onChange={handleParametersChange}

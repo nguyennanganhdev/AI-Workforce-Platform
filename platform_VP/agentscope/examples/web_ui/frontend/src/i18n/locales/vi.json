@@ -297,7 +297,10 @@
 			"steps": "{{count}} bước",
 			"customer": "Khách hàng",
 			"teammate": "Thành viên nhóm",
-			"sendFailed": "Gửi thất bại"
+			"sendFailed": "Gửi thất bại",
+			"delegated": "Đã giao việc cho {{names}}",
+			"coordinating": "Đang điều phối nhóm",
+			"working": "{{names}} đang xử lý…"
 		}
 	},
 	"chat": {

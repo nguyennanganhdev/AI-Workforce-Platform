@@ -137,6 +137,37 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         )
         self.assertEqual(reply.metadata["handoff_id"], repeated.metadata["handoff_id"])
 
+    async def test_result_metadata_carries_thread_reply_link_and_recipient(self):
+        request = await self.say(
+            "worker", to="Peer", kind="question", content="Find available options",
+        )
+        self.assertEqual("question", request.metadata["kind"])
+        self.assertIn("collaboration_status", request.metadata)
+        self.assertIsNone(request.metadata["thread_id"])
+        self.assertIsNone(request.metadata["in_reply_to"])
+        self.assertEqual("Peer", request.metadata["to"])
+
+        # The runtime binds the reply; the resolved link is surfaced so the
+        # team panel can thread request and answer without parsing hints.
+        reply = await self.say(
+            "peer", to="Worker", kind="answer", content="Two options are available",
+        )
+        self.assertEqual(request.metadata["handoff_id"], reply.metadata["in_reply_to"])
+        self.assertEqual(request.metadata["handoff_id"], reply.metadata["thread_id"])
+        self.assertEqual("Worker", reply.metadata["to"])
+        self.assertEqual("answer", reply.metadata["kind"])
+
+    async def test_customer_question_metadata_carries_thread_keys(self):
+        question = await self.say(
+            "worker", to="null", kind="requires_user_input",
+            content="Which account should I inspect?",
+        )
+        self.assertEqual("requires_user_input", question.metadata["kind"])
+        self.assertIn("handoff_id", question.metadata)
+        self.assertIsNone(question.metadata["thread_id"])
+        self.assertIsNone(question.metadata["in_reply_to"])
+        self.assertIsNone(question.metadata["to"])
+
     async def test_resolution_without_ids_uses_the_delivered_result(self):
         report = await self.say(
             "worker", to="Leader", kind="result", content="Verified partial result",

@@ -121,8 +121,9 @@ class GeneratedAgent(BaseModel):
     objective: str = Field(min_length=1, max_length=4000)
     execution_mode: Literal["context_only", "tool_backed"] = Field(
         description=(
-            "context_only uses customer input, retrieved knowledge and peer "
-            "results; tool_backed requires at least one selected MCP tool."
+            "context_only uses customer input, retrieved knowledge, peer "
+            "results and labelled general knowledge; tool_backed requires at "
+            "least one selected MCP tool for its live facts."
         ),
     )
     system_prompt: str = Field(min_length=20, max_length=30000)
@@ -1843,12 +1844,28 @@ An agent without tools works from customer input, equipped KBs and verified peer
 results. Do not change model parameters, permissions or platform policy.
 peer_dependencies identify verified results to request from the named owner via
 TeamSay; never instruct a dependent agent to execute that owner's tools itself.
+In both system_prompt and skill_markdown, make each dependency actionable:
+which peer capability to contact, which known inputs/constraints to send, and
+which verified output to request with TeamSay(kind="question"). Resolve its
+exact handle from the runtime roster; never invent handles while authoring.
+If that peer needs another specialist, it asks that specialist directly and
+answers the requester. Do not route those messages through Leader or hard-code
+a fixed chain. A received answer resumes the original task; it is not a new
+assignment to acknowledge. Never claim a peer was contacted without a tool call.
 Leader is the only team manager. Author each sub-agent for its bounded business
 work, with direct peer requests for necessary inputs; never add a separate
 coordinator role or delegate overall team management to a sub-agent.
 Missing knowledge bases are advisory and do not prevent agent creation. Generate
 the agent with its available tools and context. Its prompt and skill must ask
 for missing policy/reference facts when needed and never invent those facts.
+Live facts (prices, fees, availability, schedules of a concrete service,
+booking/payment status, ids) come only from tools, KBs or verified peer results.
+Do not forbid general knowledge: prompts and skills must let the agent add
+helpful general suggestions (ideas, typical itineraries, places, tips, how to
+choose) under a line starting with "Gợi ý chung (chưa xác minh):", kept apart
+from verified results, and must not tell it to answer only from tool data. When
+a tool finds nothing, the agent says so, gives labelled general suggestions and
+the concrete change (date, time, catalog value) that could find options.
 Answer naturally in the user's language; generated prompts and skills must tell
 runtime agents to follow the language of their user's latest message.
 """

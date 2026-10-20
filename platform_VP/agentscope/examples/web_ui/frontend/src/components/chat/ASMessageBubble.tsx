@@ -446,8 +446,6 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 		(b): b is DataBlock => b.type === 'data' && b.source.media_type.split('/')[0] === 'audio',
 	);
 
-	const blocks = groupToolCalls(message.content);
-
 	// What the copy button hands over — the prose of the message, without
 	// the tool calls and attachments around it.
 	const plainText = message.content
@@ -455,17 +453,23 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 		.map((b) => b.text)
 		.join('\n\n');
 	const teamAgentId = message.metadata?.team_agent_id;
+	// TeamSay calls render as message cards, not again as tool runs.
+	const teamSayIds = new Set<string>();
 	const communications = message.content.flatMap((block) => {
 		if (block.type !== 'tool_call' || block.name !== 'TeamSay') return [];
 		try {
 			const payload = JSON.parse(block.input) as { to?: string | null; kind?: string; content?: string };
-			if (!payload.content || plainText.includes(payload.content.trim())) return [];
-			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
+			if (!payload.content) return [];
 			const to = payload.to?.trim() ?? '';
+			const toCustomer = !to || ['null', 'none'].includes(to.toLowerCase());
+			teamSayIds.add(block.id);
+			// The reply's own text already asks the customer; one question is enough.
+			if (toCustomer && plainText.trim()) return [];
+			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
 			return [{
 				id: block.id,
 				...payload,
-				toCustomer: !to || ['null', 'none'].includes(to.toLowerCase()),
+				toCustomer,
 				failed: result?.state === 'error',
 				error: result?.state === 'error' ? withoutInternalIds(getResultText(result)) : '',
 			}];
@@ -473,6 +477,29 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 			return [];
 		}
 	});
+	const blocks = groupToolCalls(
+		message.content.filter(
+			(block) => !((block.type === 'tool_call' || block.type === 'tool_result') && teamSayIds.has(block.id)),
+		),
+	);
+	// Whom the Leader handed work to in this reply (TeamSay and AgentInvite).
+	const delegatedTo = [...new Set([
+		...communications.filter((c) => !c.toCustomer).map((c) => (c.to ?? '').split('@')[0].trim()),
+		...message.content.flatMap((block) => {
+			if (block.type !== 'tool_call' || block.name !== 'AgentInvite') return [];
+			try {
+				const payload = JSON.parse(block.input) as Record<string, unknown>;
+				// The starting specialist is `target`; the others ride in `additional_assignments`.
+				const extra = Array.isArray(payload.additional_assignments) ? payload.additional_assignments : [];
+				const targets = [payload.target, ...extra]
+					.map((item) => (item && typeof item === 'object' ? (item as { target?: unknown }).target : item));
+				return targets.filter((item): item is string => typeof item === 'string')
+					.map((item) => item.split('@')[0].trim());
+			} catch {
+				return [];
+			}
+		}),
+	].filter((name) => name && !isInternalId(name)))];
 
 	// The working (thinking, hints, tool runs, messages between agents) folds
 	// into one line; the answer and questions to the customer stay in view.
@@ -490,6 +517,42 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	const endMs = isRunning ? now : new Date(terminalTime).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
+
+	// A reply that only coordinated the team (no answer, no question for the
+	// customer) is one quiet line instead of an empty bubble.
+	const onlyCoordinated =
+		!isUser &&
+		!plainText.trim() &&
+		customerCommunications.length === 0 &&
+		shownBlocks.length === 0 &&
+		audioBlocks.length === 0 &&
+		message.finished_reason !== ReplyFinishedReason.ERROR &&
+		(traceBlocks.length > 0 || teamCommunications.length > 0);
+	if (onlyCoordinated) {
+		return (
+			<Message align="start" data-role={message.role} data-coordination="true">
+				<MessageContent>
+					<div className="flex items-center gap-2 px-2 pt-1 text-sm text-muted-foreground" data-agent-name={message.name}>
+						{message.name && (
+							<ClayAvatar id={String(message.metadata?.team_agent_id ?? message.name)} label={message.name} size={20} />
+						)}
+						<span>
+							{message.name ? `${message.name} · ` : ''}
+							{delegatedTo.length > 0
+								? t('messageBubble.trace.delegated', { names: delegatedTo.join(', ') })
+								: t('messageBubble.trace.coordinating')}
+						</span>
+					</div>
+					<TraceDisclosure running={isRunning} steps={countSteps(traceBlocks) + teamCommunications.length}>
+						{teamCommunications.map((communication) => (
+							<CommunicationCard key={communication.id} communication={communication} />
+						))}
+						{traceBlocks.map((block, index) => <ASBlock key={index} block={block} />)}
+					</TraceDisclosure>
+				</MessageContent>
+			</Message>
+		);
+	}
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>

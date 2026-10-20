@@ -257,6 +257,51 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
         )
 
+    async def test_identical_read_lookup_is_served_from_the_earlier_result(self):
+        tool = _OtherTool()
+        tool.name = "mcp__test__search_items"
+        batch = ChatResponse(
+            content=[
+                ToolCallBlock(type="tool_call", id=f"call-batch-{i}", name=tool.name,
+                              input=json.dumps({"content": "Đà Nẵng"}))
+                for i in range(2)
+            ],
+            is_last=True,
+        )
+        items = await self._run(
+            [
+                batch,  # the same lookup twice in one batch
+                _call(tool.name, content="Đà Nẵng"),  # and again after it
+                _call(tool.name, content="Huế"),  # new arguments still run
+                _call("TeamSay", to="Leader", content="done"),
+                _text("reported"),
+            ],
+            extra_tools=[tool],
+            max_iters=10,
+        )
+        self.assertEqual([c["content"] for c in tool.calls], ["Đà Nẵng", "Huế"])
+        cached = {
+            item.tool_call_id for item in items
+            if isinstance(item, ToolResultTextDeltaEvent)
+            and "not called again" in item.delta
+        }
+        self.assertEqual(len(cached), 2)
+
+    async def test_write_tools_are_never_served_from_cache(self):
+        tool = _OtherTool()
+        tool.name = "mcp__test__get_and_book_item"
+        await self._run(
+            [
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),
+                _call("TeamSay", to="Leader", content="done"),
+                _text("reported"),
+            ],
+            extra_tools=[tool],
+            max_iters=10,
+        )
+        self.assertEqual(len(tool.calls), 2)
+
     @staticmethod
     def _end_events(items: list) -> list[ReplyEndEvent]:
         """The reply-end events that escaped the middleware."""
@@ -282,6 +327,30 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 "reasons": [ReplyFinishedReason.COMPLETED],
                 "team_say_calls": [{"to": "Leader", "content": "done"}],
             },
+        )
+
+    async def test_paraphrased_customer_question_is_not_asked_twice(self) -> None:
+        # As in production, the model writes its own wording next to the call.
+        asked = ChatResponse(
+            content=[
+                TextBlock(text="Mình cần thêm thông tin: bạn đi ngày nào trong tháng 11, mấy người?"),
+                ToolCallBlock(
+                    type="tool_call", id="call-question", name="TeamSay",
+                    input=json.dumps({
+                        "to": "null", "kind": "requires_user_input",
+                        "content": "Bạn dự định đi ngày nào và có bao nhiêu người?",
+                    }),
+                ),
+            ],
+            is_last=True,
+        )
+        items = await self._run([asked, _text("Đã đăng ký câu hỏi.")])
+
+        deltas = [item.delta for item in items if isinstance(item, TextBlockDeltaEvent)]
+        self.assertNotIn("Bạn dự định đi ngày nào và có bao nhiêu người?", deltas)
+        self.assertEqual(
+            ReplyFinishedReason.COMPLETED,
+            self._end_events(items)[0].finished_reason,
         )
 
     async def test_registered_customer_question_is_emitted_without_model_text(

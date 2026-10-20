@@ -160,6 +160,9 @@
 			"customer": "Customer",
 			"teammate": "Teammate",
 			"sendFailed": "Not delivered",
+			"delegated": "Handed the work to {{names}}",
+			"coordinating": "Coordinating the team",
+			"working": "{{names}} working…",
 			"steps_one": "{{count}} step",
 			"steps_other": "{{count}} steps"
 		}

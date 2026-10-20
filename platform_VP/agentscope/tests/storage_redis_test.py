@@ -397,6 +397,20 @@ class TestMessage(IsolatedAsyncioTestCase):
             "Duplicate must not be created; existing entry must be replaced.",
         )
 
+    async def test_upsert_replaces_an_earlier_message_in_place(self) -> None:
+        """Interleaved team replies: a reply's final copy replaces its start
+        copy where it is, even after other messages were appended."""
+        first = AssistantMsg(name="planner", content="")
+        other = AssistantMsg(name="flights", content="searching")
+        for msg in (first, other):
+            await self.storage.upsert_message(self.user_id, self.session_id, msg)
+        final = first.model_copy(update={"content": [TextBlock(text="done")]})
+        await self.storage.upsert_message(self.user_id, self.session_id, final)
+
+        messages, _ = await self.storage.list_messages(self.user_id, self.session_id)
+        self.assertEqual([m.id for m in messages], [first.id, other.id])
+        self.assertEqual(messages[0].content[0].text, "done")
+
     async def test_replace_refreshes_message_list_ttl(self) -> None:
         """Streaming message replacement keeps the message key expiring."""
         self.storage.key_ttl = 60

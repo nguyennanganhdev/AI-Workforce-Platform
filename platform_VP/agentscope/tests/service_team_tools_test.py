@@ -1067,7 +1067,12 @@ class TestTeamSay(_TeamToolsTestBase):
                 ],
                 "state": "running",
                 "is_last": True,
-                "metadata": {"handoff_id": AnyString(), "kind": "result", "collaboration_status": "running"},
+                "metadata": {
+                    "handoff_id": AnyString(), "kind": "result",
+                    "collaboration_status": "running",
+                    "thread_id": None, "in_reply_to": None,
+                    "to": target_agent.data.name,
+                },
                 "id": AnyString(),
             },
         )
@@ -1135,7 +1140,12 @@ class TestTeamSay(_TeamToolsTestBase):
                 ],
                 "state": "running",
                 "is_last": True,
-                "metadata": {"handoff_id": AnyString(), "kind": "result", "collaboration_status": "running"},
+                "metadata": {
+                    "handoff_id": AnyString(), "kind": "result",
+                    "collaboration_status": "running",
+                    "thread_id": None, "in_reply_to": None,
+                    "to": None,
+                },
                 "id": AnyString(),
             },
         )
