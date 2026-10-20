@@ -3,8 +3,8 @@ import {
 	BookText,
 	Cable,
 	Calendars,
-	Crown,
 	Hammer,
+	House,
 	KeyRound,
 	LibraryBig,
 	Users,
@@ -46,7 +46,7 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	{
 		label: 'shell.groupWorkforce',
 		items: [
-			{ label: 'shell.leader', icon: Crown, path: '/workforce/leader' },
+			{ label: 'common.chat', icon: House, path: '/workforce/leader' },
 			{ label: 'shell.builder', icon: Hammer, path: '/workforce/builder' },
 			{ label: 'shell.agentStudio', icon: Users, path: '/workforce/agents', prefix: true },
 		],
@@ -129,11 +129,12 @@ export function SettingsSidebar() {
 								{group.items.map((item) => (
 									<SidebarMenuItem key={item.path}>
 										<SidebarMenuButton
-											className={ITEM}
+											className={item.label === 'common.chat' ? `${ITEM} rounded-full` : ITEM}
 											isActive={
-												item.prefix
+												(item.label === 'common.chat' && location.pathname.startsWith('/chat')) ||
+												(item.prefix
 													? location.pathname.startsWith(item.path)
-													: location.pathname === item.path
+													: location.pathname === item.path)
 											}
 											tooltip={t(item.label)}
 											onClick={() => go(item.path)}

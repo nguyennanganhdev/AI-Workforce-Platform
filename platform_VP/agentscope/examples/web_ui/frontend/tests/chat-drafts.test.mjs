@@ -181,21 +181,36 @@ for (const role of ['leader', 'business']) {
   });
 }
 
-test('Leader new-chat button opens a local draft and uses the shared viewport after sending', async () => {
+for (const sessionId of [null, 'existing']) {
+  test(`Leader entry opens the main chat with ${sessionId ?? 'a draft'} and preserves its model`, async () => {
+    const env = environment();
+    env.mocks['@/api'].workforceApi.bootstrapLeader = async () => ({
+      agent_id: 'leader', session_id: sessionId, chat_model_config: model,
+    });
+    const { LeaderPage } = env.load('../src/pages/workforce/leader/index.tsx');
+    env.render(LeaderPage);
+    env.effects();
+    await flush();
+    assert.equal(env.calls.created.length, 0);
+    assert.equal(env.calls.navigated.length, 1);
+    const [path, options] = env.calls.navigated[0];
+    assert.equal(path, `/chat/leader/${sessionId ?? 'new'}`);
+    assert.equal(options.replace, true);
+    assert.equal(options.state.draftConfig.agent_id, 'leader');
+    assert.deepEqual(options.state.draftConfig.chat_model_config, model);
+  });
+}
+
+test('Leader bootstrap failure keeps the error visible without navigating', async () => {
   const env = environment();
+  env.mocks['@/api'].workforceApi.bootstrapLeader = async () => { throw new Error('Offline'); };
   const { LeaderPage } = env.load('../src/pages/workforce/leader/index.tsx');
-  const inner = nodes(LeaderPage(), (node) => node.type?.name === 'LeaderPageInner')[0].type;
-  env.render(inner);
+  env.render(LeaderPage);
   env.effects();
   await flush();
-  let tree = env.render(inner);
-  nodes(tree, (node) => node.props?.['aria-label'] === 'Tạo phiên')[0].props.onClick();
-  tree = env.render(inner);
-  assert.equal(env.calls.created.length, 0);
-  assert.equal(component(tree, 'ChatViewport').props.draft, true);
-  component(tree, 'ChatViewport').props.onSessionCreated('saved');
-  tree = env.render(inner);
-  assert.equal(component(tree, 'ChatViewport').props.sessionId, 'saved');
+  const tree = env.render(LeaderPage);
+  assert.equal(component(tree, 'EmptyTitle').props.children, 'Không thể mở Leader');
+  assert.equal(env.calls.navigated.length, 0);
 });
 
 test('a failed first run still opens the session containing the saved user message', async () => {
@@ -279,3 +294,30 @@ test('failed draft creation keeps typed text; concurrent submits cannot create d
   assert.equal(component(tree, 'textarea').props.value, '');
   assert.equal(attempts, 2);
 });
+
+
+test('chat and Leader entry share the settings shell so the icon rail stays mounted', () => {
+  const env = environment();
+  let routes;
+  env.mocks.react.lazy = () => null;
+  env.mocks['react-router-dom'].createBrowserRouter = (value) => { routes = value; };
+  env.load('../src/App.tsx');
+  const shell = routes.find((route) => route.element?.type === 'SettingsLayout');
+  const paths = shell.children[0].children.map((route) => route.path);
+  assert.ok(paths.includes('/chat/:agentId?/:sessionId?/:memberId?'));
+  assert.ok(paths.includes('/workforce/leader'));
+});
+
+for (const pathname of ['/chat/leader/new', '/workforce/leader', '/workforce/builder']) {
+  test(`round chat navigation shows its active state on ${pathname}`, () => {
+    const env = environment();
+    env.mocks['react-router-dom'].useLocation = () => ({ pathname });
+    const { SettingsSidebar } = env.load('../src/components/layout/SettingsSidebar.tsx');
+    const tree = env.render(SettingsSidebar);
+    const chat = nodes(tree, (node) => node.props?.tooltip === 'common.chat')[0];
+    assert.equal(chat.props.isActive, pathname !== '/workforce/builder');
+    assert.ok(chat.props.className.includes('rounded-full'));
+    chat.props.onClick();
+    assert.equal(env.calls.navigated[0][0], '/workforce/leader');
+  });
+}

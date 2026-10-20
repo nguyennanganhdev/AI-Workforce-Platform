@@ -10,7 +10,6 @@ import { authApi } from '@/api';
 import type { AuthUser } from '@/api';
 import { AUTH_EXPIRED_EVENT } from '@/api/client';
 import { RouteError } from '@/components/error/RouteError';
-import { ChatLayout } from '@/components/layout/ChatLayout';
 import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { buildChatTour } from '@/components/tour/chatTourSteps';
 import { TourCard } from '@/components/tour/TourCard';
@@ -30,11 +29,6 @@ import { LeaderPage } from '@/pages/workforce/leader';
 
 const router = createBrowserRouter([
 	{
-		element: <ChatLayout />,
-		errorElement: <RouteError />,
-		children: [{ path: '/chat/:agentId?/:sessionId?/:memberId?', element: <ChatPage /> }],
-	},
-	{
 		element: <SettingsLayout />,
 		errorElement: <RouteError />,
 		children: [
@@ -47,6 +41,7 @@ const router = createBrowserRouter([
 				children: [
 					// Signing in or registering lands on the chat page.
 					{ path: '/', element: <Navigate to="/chat" replace /> },
+					{ path: '/chat/:agentId?/:sessionId?/:memberId?', element: <ChatPage /> },
 					{ path: '/workforce/leader', element: <LeaderPage /> },
 					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
 					{ path: '/workforce/agents/:agentId?', element: <AgentManagementPage /> },

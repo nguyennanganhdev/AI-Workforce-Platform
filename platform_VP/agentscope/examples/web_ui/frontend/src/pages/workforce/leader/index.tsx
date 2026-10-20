@@ -1,93 +1,42 @@
-import { Bot, Plus, Trash2 } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import { sessionApi, workforceApi } from '@/api';
-import type { CreateSessionRequest, LeaderSession, SessionView } from '@/api';
-import { sessionTime, sessionTitle, sessionDisplayTitle } from '@/components/chat/session-row-utils';
-import { ChatRow } from '@/components/chat/SessionRow';
-import { DeleteDialog } from '@/components/dialog/DeleteDialog';
-import { Button } from '@/components/ui/button';
+import { workforceApi } from '@/api';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Spinner } from '@/components/ui/spinner';
-import { AudioProvider } from '@/context/AudioContext';
-import { useSessions } from '@/hooks/useSessions';
-import { ChatViewport } from '@/pages/chat/ChatViewport';
 
-/** A row's name: the session's title without the unit code it once led with. */
-function rowTitle(view: SessionView): string {
-	const title = (view.session.config.name ?? '').replace(/^[A-Z0-9][A-Z0-9-]{3,}\s*·\s*/, '').trim();
-	return sessionTitle(title) ?? sessionDisplayTitle(view, 'Hội thoại');
-}
-
-/**
- * The Leader: one session per ticket a customer's reception sent, one line
- * each, and the selected session's chat (and its room) beside them.
- */
-function LeaderPageInner() {
-	const [leader, setLeader] = useState<LeaderSession | null>(null);
-	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [draftConfig, setDraftConfig] = useState<CreateSessionRequest>();
-	const [draftKey, setDraftKey] = useState(0);
-	const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
-	const { sessions, refetch } = useSessions(leader?.agent_id ?? null);
+/** Keep existing Leader links and bootstrap, using the main chat for every conversation. */
+export function LeaderPage() {
+	const navigate = useNavigate();
+	const [failed, setFailed] = useState(false);
 
 	useEffect(() => {
 		let active = true;
 		workforceApi
 			.bootstrapLeader()
-			.then((value) => {
+			.then((leader) => {
 				if (!active) return;
-				setLeader(value);
-				setSelectedSessionId(value.session_id);
-				setDraftConfig({ agent_id: value.agent_id, chat_model_config: value.chat_model_config });
+				navigate(`/chat/${leader.agent_id}/${leader.session_id ?? 'new'}`, {
+					replace: true,
+					state: {
+						draftConfig: { agent_id: leader.agent_id, chat_model_config: leader.chat_model_config },
+					},
+				});
 			})
-			.catch(() => { /* The API client displays the failure. */ })
-			.finally(() => {
-				if (active) setLoading(false);
+			.catch(() => {
+				if (active) setFailed(true);
 			});
 		return () => {
 			active = false;
 		};
-	}, []);
+	}, [navigate]);
 
-	const createTicket = () => {
-		if (!leader) return;
-		const seed = sessions.find((view) => view.session.id === selectedSessionId)?.session.config
-			?? sessions[0]?.session.config;
-		setDraftConfig({
-			agent_id: leader.agent_id,
-			chat_model_config: seed?.chat_model_config ?? leader.chat_model_config,
-			sub_agent_chat_model_config: seed?.sub_agent_chat_model_config,
-			fallback_chat_model_config: seed?.fallback_chat_model_config,
-		});
-		setSelectedSessionId(null);
-		setDraftKey((key) => key + 1);
-	};
-
-	const removeSession = async (sessionId: string) => {
-		if (!leader) return;
-		await sessionApi.delete(sessionId, leader.agent_id);
-		const rest = sessions.filter((view) => view.session.id !== sessionId);
-		if (selectedSessionId === sessionId) setSelectedSessionId(rest[0]?.session.id ?? null);
-		await refetch();
-	};
-
-	if (loading) {
-		return (
-			<div className="flex size-full items-center justify-center">
-				<Spinner />
-			</div>
-		);
-	}
-
-	if (!leader) {
+	if (failed) {
 		return (
 			<Empty className="size-full border-none">
 				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<Bot />
-					</EmptyMedia>
+					<EmptyMedia variant="icon"><Bot /></EmptyMedia>
 					<EmptyTitle>Không thể mở Leader</EmptyTitle>
 					<EmptyDescription>Kiểm tra credential rồi tải lại.</EmptyDescription>
 				</EmptyHeader>
@@ -95,98 +44,5 @@ function LeaderPageInner() {
 		);
 	}
 
-	return (
-		<div className="flex size-full min-h-0">
-			<aside className="cue-column flex w-56 lg:w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar hidden md:flex">
-				<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
-					<h1 className="truncate text-[15px]/5 font-semibold">Leader</h1>
-					<Button
-						variant="ghost"
-						size="icon"
-						aria-label="Tạo phiên"
-						title="Tạo phiên"
-						onClick={createTicket}
-					>
-						<Plus className="size-5" />
-					</Button>
-				</header>
-				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-					{sessions.length === 0 ? (
-						<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
-							Chưa có hội thoại
-						</p>
-					) : (
-						sessions.map((view, index) => {
-							const title = rowTitle(view);
-							return (
-								<ChatRow
-									key={view.session.id}
-									className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left-1 motion-safe:fill-mode-both"
-									style={{ animationDelay: `${Math.min(index, 10) * 30}ms` }}
-									avatarId={leader.agent_id}
-									avatarLabel="Leader"
-									title={title}
-									time={sessionTime(view.session.updated_at ?? view.session.created_at)}
-									status={view.status}
-									active={selectedSessionId === view.session.id}
-									onSelect={() => setSelectedSessionId(view.session.id)}
-									actions={
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											aria-label={`Xoá phiên ${title}`}
-											title="Xoá phiên"
-											className="text-muted-foreground"
-											onClick={() => setDeleting({ id: view.session.id, title })}
-										>
-											<Trash2 />
-										</Button>
-									}
-								/>
-							);
-						})
-					)}
-				</div>
-			</aside>
-
-			<main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-				<div className="flex items-center gap-2 border-b p-2 md:hidden">
-					<select aria-label="Hội thoại" className="min-w-0 flex-1 rounded-lg border p-2 text-sm" value={selectedSessionId ?? ''} onChange={(event) => setSelectedSessionId(event.target.value)}>
-						{sessions.map((view) => <option key={view.session.id} value={view.session.id}>{rowTitle(view)}</option>)}
-					</select>
-					<Button variant="ghost" size="icon" aria-label="Tạo phiên" onClick={createTicket}><Plus /></Button>
-				</div>
-				<ChatViewport
-					agentRole="leader"
-					agentId={leader.agent_id}
-					sessionId={selectedSessionId}
-					draft={selectedSessionId === null}
-					draftConfig={selectedSessionId === null ? draftConfig : undefined}
-					onSessionCreated={setSelectedSessionId}
-					onSessionsChanged={refetch}
-					key={selectedSessionId ?? `draft:${draftKey}`}
-					agentName="Leader"
-				/>
-			</main>
-
-			<DeleteDialog
-				open={deleting !== null}
-				onOpenChange={(open) => !open && setDeleting(null)}
-				title={`Xoá phiên "${deleting?.title ?? ''}"?`}
-				description="Xoá phiên và tin nhắn. Giữ lại agent."
-				confirmLabel="Xoá phiên"
-				onConfirm={async () => {
-					if (deleting) await removeSession(deleting.id);
-				}}
-			/>
-		</div>
-	);
-}
-
-export function LeaderPage() {
-	return (
-		<AudioProvider>
-			<LeaderPageInner />
-		</AudioProvider>
-	);
+	return <div className="flex size-full items-center justify-center"><Spinner /></div>;
 }

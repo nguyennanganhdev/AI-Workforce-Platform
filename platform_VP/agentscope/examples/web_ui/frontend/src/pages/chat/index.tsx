@@ -262,6 +262,7 @@ const ChatPageInner = () => {
 					<div className="grid grid-cols-2 gap-2">
 						<Button
 							id="tour-create-session"
+							className="rounded-full"
 							variant="outline"
 							disabled={!urlAgentId}
 							onClick={handleCreateSession}
@@ -269,7 +270,7 @@ const ChatPageInner = () => {
 							<Plus />
 							{t('chat.newSession')}
 						</Button>
-						<Button variant="outline" onClick={() => setGroupOpen(true)}>
+						<Button variant="outline" className="rounded-full" onClick={() => setGroupOpen(true)}>
 							<Users />
 							{t('groupChat.create')}
 						</Button>
@@ -285,6 +286,7 @@ const ChatPageInner = () => {
 						return (
 							<ChatRow
 								key={view.session.id}
+								className="rounded-2xl"
 								avatarId={urlAgentId ?? ''}
 								avatarLabel={selectedAgent?.data.name}
 								title={sessionDisplayTitle(view, t('chat.newSession'))}
