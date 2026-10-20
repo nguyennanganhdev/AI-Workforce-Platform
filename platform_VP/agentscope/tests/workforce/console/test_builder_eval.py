@@ -189,3 +189,44 @@ class TestBuilderEvalRoutes(IsolatedAsyncioTestCase):
                 "user", self.storage, access=None,
             )
         self.assertEqual(error.exception.status_code, 409)
+
+
+class TestBuilderEvalLimits(TestBuilderEvalRoutes):
+    async def test_another_users_conversation_eval_is_not_readable(self):
+        from unittest.mock import AsyncMock
+
+        from fastapi import HTTPException
+
+        self.storage.get_session = AsyncMock(return_value=None)
+        with self.assertRaises(HTTPException) as error:
+            await self.console.get_builder_eval("builder", "intruder", self.storage)
+        self.assertEqual(error.exception.status_code, 404)
+
+    async def test_running_evals_per_user_are_bounded(self):
+        import asyncio
+
+        from fastapi import HTTPException
+
+        blocker = asyncio.Event()
+        tasks = [asyncio.create_task(blocker.wait()) for _ in range(self.console._EVAL_RUNS_PER_USER)]
+        for index, task in enumerate(tasks):
+            self.console._eval_tasks[("user", f"other-{index}")] = task
+        try:
+            with self.assertRaises(HTTPException) as error:
+                await self.console.evaluate_builder(
+                    self.console.EvaluateRequest(conversation_id="builder", proposal_id="p1", expected_revision=3),
+                    "user", self.storage, access=None,
+                )
+            self.assertEqual(error.exception.status_code, 429)
+        finally:
+            blocker.set()
+            await asyncio.gather(*tasks)
+            self.console._eval_tasks.clear()
+
+    async def test_tool_calls_per_step_are_capped(self):
+        calls = [ToolCallBlock(id=f"c{i}", name="search_hotels", input="{}") for i in range(10)]
+        model = _ScriptedModel(chat=[ChatResponse(content=calls, is_last=True), _text("Xong.")])
+        transcript = await builder_eval.run_case(model, HOTEL, builder_eval.EvalCase(scenario="x", expected="y"))
+        modes = [c["mode"] for c in transcript["tool_calls"]]
+        self.assertEqual(modes.count("fixture"), builder_eval.MAX_TOOL_CALLS_PER_STEP)
+        self.assertEqual(modes.count("skipped"), 10 - builder_eval.MAX_TOOL_CALLS_PER_STEP)
