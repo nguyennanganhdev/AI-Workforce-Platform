@@ -13,10 +13,12 @@ import { ChatViewport } from './ChatViewport';
 import type { CreateSessionRequest, SessionRecord } from '@/api';
 import { sessionTime, sessionTitle, sessionDisplayTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
+import { TeamSessionAvatar } from '@/components/chat/TeamSessionAvatar';
 import { CreateGroupDialog } from '@/components/dialog/CreateGroupDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
+import { AccountMenu } from '@/components/layout/AccountMenu';
 import { Brand } from '@/components/layout/Brand';
 import { AgentSelect } from '@/components/select/AgentSelect';
 import { ChatTourController } from '@/components/tour/ChatTourController';
@@ -30,6 +32,7 @@ import {
 import {
 	Sidebar,
 	SidebarContent,
+	SidebarFooter,
 	SidebarHeader,
 	SidebarProvider,
 	useSidebar,
@@ -292,6 +295,14 @@ const ChatPageInner = () => {
 								className="rounded-2xl"
 								avatarId={urlAgentId ?? ''}
 								avatarLabel={selectedAgent?.data.name}
+								avatar={view.team ? (
+									<TeamSessionAvatar
+										team={view.team}
+										agentId={urlAgentId ?? ''}
+										agentName={selectedAgent?.data.name}
+										working={view.status === 'running'}
+									/>
+								) : undefined}
 								title={sessionDisplayTitle(view, t('chat.newSession'))}
 								time={sessionTime(view.session.updated_at)}
 								status={view.status}
@@ -339,6 +350,9 @@ const ChatPageInner = () => {
 						);
 					})}
 				</SidebarContent>
+				<SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+					<AccountMenu showSettings showTour />
+				</SidebarFooter>
 			</Sidebar>
 			<div className="flex min-w-0 flex-1">
 				<ChatViewport

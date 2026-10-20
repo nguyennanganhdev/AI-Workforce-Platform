@@ -327,32 +327,29 @@ test('failed draft creation keeps typed text; concurrent submits cannot create d
 });
 
 
-test('chat and Leader entry share the settings shell so the icon rail stays mounted', () => {
+test('chat has its own shell and settings opens agent management', () => {
   const env = environment();
   let routes;
   env.mocks.react.lazy = () => null;
   env.mocks['react-router-dom'].createBrowserRouter = (value) => { routes = value; };
   env.load('../src/App.tsx');
-  const shell = routes.find((route) => route.element?.type === 'SettingsLayout');
-  const paths = shell.children[0].children.map((route) => route.path);
-  assert.ok(paths.includes('/chat/:agentId?/:sessionId?/:memberId?'));
-  assert.ok(paths.includes('/workforce/leader'));
+  const chat = routes.find((route) => route.element?.type === 'ChatLayout');
+  assert.ok(chat.children.some((route) => route.path === '/chat/:agentId?/:sessionId?/:memberId?'));
+  assert.ok(chat.children.some((route) => route.path === '/workforce/leader'));
+  const settings = routes.find((route) => route.element?.type === 'SettingsLayout').children[0].children;
+  assert.ok(!settings.some((route) => route.path.startsWith('/chat')));
+  assert.equal(settings.find((route) => route.path === '/settings').element.props.to, '/workforce/agents');
 });
 
-for (const pathname of ['/chat/leader/new', '/workforce/leader', '/workforce/builder']) {
-  test(`round chat navigation shows its active state on ${pathname}`, () => {
-    const env = environment();
-    env.mocks['react-router-dom'].useLocation = () => ({ pathname });
-    const { SettingsSidebar } = env.load('../src/components/layout/SettingsSidebar.tsx');
-    const tree = env.render(SettingsSidebar);
-    const chat = nodes(tree, (node) => node.props?.tooltip === 'common.chat')[0];
-    assert.equal(chat.props.isActive, pathname !== '/workforce/builder');
-    assert.ok(chat.props.className.includes('rounded-full'));
-    chat.props.onClick();
-    assert.equal(env.calls.navigated[0][0], '/workforce/leader');
-  });
-}
-
+test('settings navigation omits the chat icon and keeps the return button', () => {
+  const env = environment();
+  const { SettingsSidebar } = env.load('../src/components/layout/SettingsSidebar.tsx');
+  const tree = env.render(SettingsSidebar);
+  assert.equal(nodes(tree, (node) => node.props?.tooltip === 'common.chat').length, 0);
+  const back = nodes(tree, (node) => node.props?.tooltip === 'shell.backToChat')[0];
+  back.props.onClick();
+  assert.equal(env.calls.navigated[0][0], '/chat');
+});
 
 test('a saved team panel starts unchecked in a new viewport while other panels persist', () => {
   const stored = new Map([['chat_panel_layout', JSON.stringify([['team', 'mcp'], ['knowledge']])]]);
@@ -458,21 +455,62 @@ test('the Leader group panel opens after loading, can be closed, and closes when
   assert.equal(checkbox(tree).props.checked, false);
 });
 
-for (const pathname of ['/chat/agent', '/workforce/agents/agent']) {
-  test(`one account menu stays in the shared footer on ${pathname}`, () => {
-    const env = environment();
-    env.mocks['react-router-dom'].useLocation = () => ({ pathname });
-    env.mocks['@/components/ui/sidebar'].SidebarFooter = 'SidebarFooter';
-    const { SettingsSidebar } = env.load('../src/components/layout/SettingsSidebar.tsx');
-    const tree = env.render(SettingsSidebar);
-    const footer = component(tree, 'SidebarFooter');
-    const accounts = nodes(tree, (node) => node.type === 'AccountMenu');
-    assert.equal(accounts.length, 1);
-    assert.equal(component(footer, 'AccountMenu'), accounts[0]);
-    assert.equal(accounts[0].props.showTour, pathname.startsWith('/chat'));
-    assert.equal(nodes(footer, (node) => node.props?.tooltip === 'shell.agentStudio').length, 0);
-    const { ChatPage } = env.load('../src/pages/chat/index.tsx');
-    const inner = nodes(ChatPage(), (node) => node.type?.name === 'ChatPageInner')[0].type;
-    assert.equal(nodes(env.render(inner), (node) => node.type === 'AccountMenu').length, 0);
+test('chat and settings each keep one account menu in their own footer', () => {
+  const env = environment();
+  env.mocks['react-router-dom'].useLocation = () => ({ pathname: '/workforce/agents/agent' });
+  env.mocks['@/components/ui/sidebar'].SidebarFooter = 'SidebarFooter';
+  const { SettingsSidebar } = env.load('../src/components/layout/SettingsSidebar.tsx');
+  const tree = env.render(SettingsSidebar);
+  const accounts = nodes(tree, (node) => node.type === 'AccountMenu');
+  assert.equal(accounts.length, 1);
+  assert.equal(component(component(tree, 'SidebarFooter'), 'AccountMenu'), accounts[0]);
+  assert.ok(!accounts[0].props.showSettings);
+  assert.ok(!accounts[0].props.showTour);
+  const management = nodes(tree, (node) => node.props?.tooltip === 'shell.agentStudio')[0];
+  assert.equal(management.props.isActive, true);
+  management.props.onClick();
+  assert.equal(env.calls.navigated[0][0], '/workforce/agents');
+  const { ChatPage } = env.load('../src/pages/chat/index.tsx');
+  const inner = nodes(ChatPage(), (node) => node.type?.name === 'ChatPageInner')[0].type;
+  const chatTree = env.render(inner);
+  const chatAccounts = nodes(chatTree, (node) => node.type === 'AccountMenu');
+  assert.equal(chatAccounts.length, 1);
+  assert.equal(component(component(chatTree, 'SidebarFooter'), 'AccountMenu'), chatAccounts[0]);
+  assert.equal(chatAccounts[0].props.showSettings, true);
+  assert.equal(chatAccounts[0].props.showTour, true);
+});
+
+for (const memberCount of [0, 1, 4]) {
+  test(`room avatar represents ${memberCount} other agents without duplicating the coordinator`, () => {
+    const env = environment({ '@/components/ui/clay-avatar': {
+      ClayAvatar: 'ClayAvatar', clayTone: (id) => ({ background: `color-${id}` }),
+    } });
+    const { TeamSessionAvatar } = env.load('../src/components/chat/TeamSessionAvatar.tsx');
+    const leader = { id: 'leader', data: { name: 'Workforce Leader' } };
+    const workers = Array.from({ length: memberCount }, (_, index) => ({
+      id: `worker-${index}`, data: { name: `Specialist ${index}` },
+    }));
+    const team = { leader_agent: leader, members: [leader, ...workers].map((agent) => ({ agent })) };
+    const props = { team, agentId: leader.id, working: true };
+    const tree = env.render(TeamSessionAvatar, props);
+    const portraits = nodes(tree, (node) => node.type === 'ClayAvatar');
+    assert.equal(portraits.length, Math.min(3, memberCount + 1));
+    assert.equal(portraits[0].props.id, 'leader');
+    const count = nodes(tree, (node) => node.type === 'span' &&
+      Array.isArray(node.props.children) && node.props.children[0] === '+');
+    if (memberCount === 0) {
+      assert.equal(tree.type, 'ClayAvatar');
+      assert.equal(count.length, 0);
+    } else {
+      assert.equal(count[0].props.children[1], memberCount);
+      assert.equal(portraits[0].props.working, true);
+      assert.ok(tree.props['aria-label'].includes(workers[memberCount - 1].data.name));
+      const tiles = nodes(tree, (node) => node.props?.style?.borderColor);
+      assert.equal(new Set(tiles.map((tile) => tile.props.style.borderColor)).size, tiles.length);
+      assert.ok(tiles.every((tile) => tile.props.className.includes('motion-safe:')));
+      const idle = env.render(TeamSessionAvatar, { ...props, working: false });
+      assert.ok(nodes(idle, (node) => node.props?.style?.borderColor)
+        .every((tile) => !tile.props.className.includes('animate-')));
+    }
   });
 }

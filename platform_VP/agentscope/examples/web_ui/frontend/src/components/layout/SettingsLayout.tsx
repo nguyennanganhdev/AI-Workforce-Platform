@@ -6,7 +6,7 @@ import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 
-/** Shared shell keeps chat and configuration pages beside the same navigation rail. */
+/** Configuration pages share an icon rail and a way back to the chat. */
 export function SettingsLayout() {
 	useCueTheme();
 	const { t } = useTranslation();

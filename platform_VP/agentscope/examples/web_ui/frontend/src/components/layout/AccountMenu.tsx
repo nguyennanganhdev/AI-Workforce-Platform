@@ -1,5 +1,6 @@
-import { ChevronsUpDown, Compass, Languages, LogOut } from 'lucide-react';
+import { ChevronRight, ChevronsUpDown, Compass, Languages, LogOut, Settings } from 'lucide-react';
 import { useOnborda } from 'onborda';
+import { useNavigate } from 'react-router-dom';
 
 import { authApi } from '@/api';
 import { CHAT_TOUR_NAME } from '@/components/tour/chatTourSteps';
@@ -19,13 +20,16 @@ import { useTranslation } from '@/i18n/useI18n';
 const ROW =
 	'h-12 w-full justify-start gap-3 rounded-xl px-2 text-[15px]/5 font-normal group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:[&>*:not(:first-child)]:hidden';
 
-/** Account actions at the bottom of the shared navigation rail. */
+/** Account actions and an optional entry to settings at the bottom of a sidebar. */
 export function AccountMenu({
+	showSettings = false,
 	showTour = false,
 }: {
+	showSettings?: boolean;
 	/** Only where the chat tour's targets are on screen. */
 	showTour?: boolean;
 }) {
+	const navigate = useNavigate();
 	const { t } = useTranslation();
 	const { startOnborda } = useOnborda();
 	const user = useCurrentUser();
@@ -42,6 +46,15 @@ export function AccountMenu({
 
 	return (
 		<div className="flex flex-col gap-px">
+			{showSettings && (
+				<Button variant="ghost" className={ROW} onClick={() => navigate('/settings')}>
+					<span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border">
+						<Settings className="size-4" />
+					</span>
+					<span className="min-w-0 flex-1 truncate text-left">{t('common.settings')}</span>
+					<ChevronRight className="size-4 text-muted-foreground" />
+				</Button>
+			)}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button variant="ghost" className={ROW}>

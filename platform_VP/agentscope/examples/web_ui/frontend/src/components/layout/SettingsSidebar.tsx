@@ -4,9 +4,9 @@ import {
 	Cable,
 	Calendars,
 	Hammer,
-	House,
 	KeyRound,
 	LibraryBig,
+	Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -45,8 +45,8 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	{
 		label: 'shell.groupWorkforce',
 		items: [
-			{ label: 'common.chat', icon: House, path: '/workforce/leader' },
 			{ label: 'shell.builder', icon: Hammer, path: '/workforce/builder' },
+			{ label: 'shell.agentStudio', icon: Users, path: '/workforce/agents', prefix: true },
 		],
 	},
 	{
@@ -127,9 +127,8 @@ export function SettingsSidebar() {
 								{group.items.map((item) => (
 									<SidebarMenuItem key={item.path}>
 										<SidebarMenuButton
-											className={item.label === 'common.chat' ? `${ITEM} rounded-full` : ITEM}
+											className={ITEM}
 											isActive={
-												(item.label === 'common.chat' && location.pathname.startsWith('/chat')) ||
 												(item.prefix
 													? location.pathname.startsWith(item.path)
 													: location.pathname === item.path)
@@ -148,7 +147,7 @@ export function SettingsSidebar() {
 				))}
 			</SidebarContent>
 			<SidebarFooter className="border-t border-sidebar-border p-2">
-				<AccountMenu showTour={location.pathname.startsWith('/chat')} />
+				<AccountMenu />
 			</SidebarFooter>
 		</Sidebar>
 	);
