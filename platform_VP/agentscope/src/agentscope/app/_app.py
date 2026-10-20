@@ -13,6 +13,7 @@ from ._lifespan import lifespan
 from ._router import (
     agent_router,
     auth_router,
+    bridge_router,
     business_router,
     channel_router,
     chat_router,
@@ -23,6 +24,7 @@ from ._router import (
     knowledge_base_router,
     mcp_router,
     model_router,
+    openapi_router,
     schedule_router,
     session_router,
     skill_router,
@@ -441,7 +443,11 @@ def create_app(
         health_router,
         hub_router,
         knowledge_base_router,
+        # Before mcp_router: its "/mcp/{mcp_id}" routes would otherwise
+        # claim "/mcp/openapi".
+        openapi_router,
         mcp_router,
+        bridge_router,
         schedule_router,
         session_router,
         skill_router,

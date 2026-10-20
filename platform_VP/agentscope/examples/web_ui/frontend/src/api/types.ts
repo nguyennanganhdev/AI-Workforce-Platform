@@ -726,6 +726,32 @@ export interface MCPView {
 	last_sync_error: string | null;
 }
 
+/** A spec to read, by link or pasted. */
+export interface OpenAPISource {
+	spec_url?: string | null;
+	spec_text?: string | null;
+}
+
+export interface OpenAPIPreview {
+	title: string;
+	description: string;
+	base_urls: string[];
+	operations: { name: string; method: string; path: string; description: string }[];
+	/** Operations the bridge cannot send (e.g. multipart bodies). */
+	skipped: string[];
+	max_operations: number;
+}
+
+export interface OpenAPIImportRequest extends OpenAPISource {
+	name: string;
+	display_name?: string | null;
+	base_url: string;
+	operations: string[];
+	auth_type: 'none' | 'bearer' | 'header' | 'query';
+	auth_name?: string;
+	auth_value?: string | null;
+}
+
 export interface DirectInstallMCPRequest {
 	name: string;
 	display_name?: string | null;

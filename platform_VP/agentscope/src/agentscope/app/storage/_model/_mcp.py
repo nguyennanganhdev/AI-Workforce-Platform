@@ -1,11 +1,52 @@
 # -*- coding: utf-8 -*-
 """The installed-MCP record."""
 from datetime import datetime
+from typing import Literal
 
-from pydantic import Field, computed_field
+from pydantic import BaseModel, Field, computed_field
 
 from ....mcp import MCPClient
 from ._base import _RecordBase
+
+
+class OpenAPIOperation(BaseModel):
+    """One API operation served as one tool by the OpenAPI bridge."""
+
+    name: str
+    """The tool name, unique within the import."""
+
+    method: str
+    path: str
+    description: str = ""
+
+    params: list[dict] = Field(default_factory=list)
+    """``{"name", "in", "arg"}`` per path/query/header parameter: where it
+    goes in the request, and the tool argument that carries it."""
+
+    body: Literal["none", "json", "form"] = "none"
+    """How the ``body`` argument is sent, if the operation takes one."""
+
+    input_schema: dict = Field(default_factory=dict)
+
+
+class OpenAPIBridge(BaseModel):
+    """An API imported from its OpenAPI spec and served as an HTTP MCP by
+    the app itself (``/mcp-bridge/openapi/...``)."""
+
+    title: str = ""
+    spec_url: str | None = None
+    base_url: str
+    operations: list[OpenAPIOperation] = Field(default_factory=list)
+
+    auth_type: Literal["none", "bearer", "header", "query"] = "none"
+    auth_name: str = ""
+    """The header or query parameter name for ``header``/``query`` auth."""
+
+    auth_value: str = ""
+    """The API key. Secret: never projected onto a view."""
+
+    token_sha256: str = ""
+    """Hash of the token the record's client sends to the bridge."""
 
 
 class MCPRecord(_RecordBase):
@@ -100,3 +141,6 @@ class MCPRecord(_RecordBase):
 
     last_sync_error: str | None = Field(default=None, max_length=2000)
     """Sanitized latest discovery error, never a credential payload."""
+
+    openapi: OpenAPIBridge | None = None
+    """Set when this MCP is an imported OpenAPI spec served by the app."""

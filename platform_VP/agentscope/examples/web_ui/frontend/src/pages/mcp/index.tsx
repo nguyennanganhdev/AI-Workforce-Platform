@@ -1,16 +1,4 @@
-import {
-	Blocks,
-	Check,
-	ChevronDown,
-	ChevronUp,
-	Download,
-	Pencil,
-	Plug,
-	PlugZap,
-	RefreshCw,
-	Trash2,
-	TriangleAlert,
-} from 'lucide-react';
+import { Blocks, Check, ChevronDown, ChevronUp, Download, FileCode2, Pencil, Plug, PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -18,6 +6,7 @@ import { hubApi, mcpApi } from '@/api';
 import type { HubInfo, MCPCard, MCPView } from '@/api';
 import { DirectMCPDialog } from '@/components/dialog/DirectMCPDialog.tsx';
 import { InstallMCPDialog } from '@/components/dialog/InstallMCPDialog.tsx';
+import { OpenAPIImportDialog } from '@/components/dialog/OpenAPIImportDialog.tsx';
 import { ResourceDetailDrawer } from '@/components/drawer/ResourceDetailDrawer.tsx';
 import { LoadMore } from '@/components/hub/LoadMore.tsx';
 import { ResourcePanel } from '@/components/hub/ResourcePanel.tsx';
@@ -360,10 +349,19 @@ interface MinePanelProps {
 	onEdit: (mcp: MCPView) => void;
 	onRemove: (mcpId: string) => void;
 	onAddDirect: () => void;
+	onImportOpenAPI: () => void;
 	onSync: (mcpId: string) => void;
 }
 
-function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: MinePanelProps) {
+function MinePanel({
+	mcps,
+	loading,
+	onEdit,
+	onRemove,
+	onAddDirect,
+	onImportOpenAPI,
+	onSync,
+}: MinePanelProps) {
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
 	const [expandedMcpId, setExpandedMcpId] = useState<string | null>(null);
@@ -399,12 +397,17 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 				<div>
 					<p className="text-sm font-medium">MCP Catalog của platform</p>
 					<p className="text-xs text-muted-foreground">
-						Cài MCP đối tác để Builder có thể chọn tool đã đăng ký.
+						Cài MCP đối tác, hoặc nhập API có OpenAPI, để Builder chọn tool đã đăng ký.
 					</p>
 				</div>
-				<Button size="sm" onClick={onAddDirect}>
-					<PlugZap /> Kết nối MCP đối tác
-				</Button>
+				<div className="flex flex-wrap justify-end gap-2">
+					<Button size="sm" variant="outline" onClick={onImportOpenAPI}>
+						<FileCode2 /> Nhập OpenAPI
+					</Button>
+					<Button size="sm" onClick={onAddDirect}>
+						<PlugZap /> Kết nối MCP đối tác
+					</Button>
+				</div>
 			</div>
 			{loading ? (
 				<div className="flex justify-center py-10">
@@ -590,6 +593,7 @@ export function MCPHubPage() {
 	const [editing, setEditing] = useState<MCPView | null>(null);
 	const [editingCard, setEditingCard] = useState<MCPCard | null>(null);
 	const [directOpen, setDirectOpen] = useState(false);
+	const [openapiOpen, setOpenapiOpen] = useState(false);
 	const syncMcp = async (mcpId: string) => {
 		try {
 			await mcpApi.sync(mcpId);
@@ -746,6 +750,7 @@ export function MCPHubPage() {
 						onEdit={setEditing}
 						onRemove={remove}
 						onAddDirect={() => setDirectOpen(true)}
+						onImportOpenAPI={() => setOpenapiOpen(true)}
 						onSync={syncMcp}
 					/>
 				)}
@@ -765,6 +770,11 @@ export function MCPHubPage() {
 			<DirectMCPDialog
 				open={directOpen}
 				onOpenChange={setDirectOpen}
+				onInstalled={refetchMcps}
+			/>
+			<OpenAPIImportDialog
+				open={openapiOpen}
+				onOpenChange={setOpenapiOpen}
 				onInstalled={refetchMcps}
 			/>
 		</div>

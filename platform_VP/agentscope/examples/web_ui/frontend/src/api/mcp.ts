@@ -1,5 +1,12 @@
 import { client } from './client';
-import type { DirectInstallMCPRequest, MCPView, UpdateMCPRequest } from './types';
+import type {
+	DirectInstallMCPRequest,
+	MCPView,
+	OpenAPIImportRequest,
+	OpenAPIPreview,
+	OpenAPISource,
+	UpdateMCPRequest,
+} from './types';
 
 /**
  * The user's own library of installed MCPs, which is where a hub install
@@ -11,6 +18,14 @@ export const mcpApi = {
 
 	installDirect: (body: DirectInstallMCPRequest) =>
 		client.post<MCPView>('/mcp', body, undefined, { silent: true }),
+
+	/** Reads a spec and lists its operations; saves nothing. */
+	previewOpenAPI: (body: OpenAPISource) =>
+		client.post<OpenAPIPreview>('/mcp/openapi/preview', body, undefined, { silent: true }),
+
+	/** Imports the chosen operations as tools of a new MCP. */
+	importOpenAPI: (body: OpenAPIImportRequest) =>
+		client.post<MCPView>('/mcp/openapi', body, undefined, { silent: true }),
 
 	sync: (mcpId: string) =>
 		client.post<MCPView>(`/mcp/${encodeURIComponent(mcpId)}/sync`, null),
