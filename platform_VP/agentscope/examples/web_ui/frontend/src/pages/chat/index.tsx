@@ -6,12 +6,12 @@ import {
 	Trash2,
 	Users,
 } from 'lucide-react';
-import { useEffect, useState, type CSSProperties } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
-import type { SessionRecord } from '@/api';
-import { sessionTime, sessionDisplayTitle } from '@/components/chat/session-row-utils';
+import type { CreateSessionRequest, SessionRecord } from '@/api';
+import { sessionTime, sessionTitle, sessionDisplayTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { CreateGroupDialog } from '@/components/dialog/CreateGroupDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -68,6 +68,10 @@ const LAST_SESSION_KEY = 'chat_last_session';
 
 const ChatPageInner = () => {
 	const navigate = useNavigate();
+	const location = useLocation();
+	const navigationState = location.state as {
+		draftConfig?: CreateSessionRequest;
+	} | null;
 	const {
 		agentId: urlAgentId,
 		sessionId: urlSessionId,
@@ -77,12 +81,12 @@ const ChatPageInner = () => {
 		sessionId?: string;
 		memberId?: string;
 	}>();
+	const isDraft = urlSessionId === 'new';
 	const { t } = useTranslation();
 	const { agents, refetch: refetchAgents, remove: removeAgent } = useAgents();
 	const {
 		sessions,
 		refetch: refetchSessions,
-		create: createSession,
 		update: updateSession,
 		remove: removeSession,
 	} = useSessions(urlAgentId ?? null);
@@ -98,6 +102,12 @@ const ChatPageInner = () => {
 
 	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
+	const visibleSessions = useMemo(() => sessions.filter((view) =>
+		view.preview?.trim()
+		|| sessionTitle(view.session.config.name)
+		|| view.team
+		|| view.status !== 'idle',
+	), [sessions]);
 
 	// "Inner focus" — when the URL carries a third `:memberId` segment
 	// the user is drilling into a team member's chat. The main sidebar
@@ -121,10 +131,10 @@ const ChatPageInner = () => {
 	// from another page, or from a new tab — reopens it instead of
 	// making them pick the same pair again.
 	useEffect(() => {
-		if (!urlAgentId || !urlSessionId) return;
+		if (!urlAgentId || !urlSessionId || isDraft) return;
 		localStorage.setItem(LAST_AGENT_KEY, urlAgentId);
 		localStorage.setItem(LAST_SESSION_KEY, urlSessionId);
-	}, [urlAgentId, urlSessionId]);
+	}, [urlAgentId, urlSessionId, isDraft]);
 
 	// Redirect: URL is missing an agent → reopen the last one viewed,
 	// falling back to the first, and rewrite the URL in-place (replace
@@ -140,31 +150,26 @@ const ChatPageInner = () => {
 	// longer exists for this agent → reopen the last session viewed
 	// under *this* agent, falling back to the first available one.
 	useEffect(() => {
-		if (!urlAgentId || sessions.length === 0) return;
+		if (!urlAgentId || isDraft || sessions.length === 0) return;
 		const matches = urlSessionId && sessions.some((v) => v.session.id === urlSessionId);
 		if (matches) return;
 		const remembered =
 			localStorage.getItem(LAST_AGENT_KEY) === urlAgentId
 				? localStorage.getItem(LAST_SESSION_KEY)
 				: null;
-		const view = sessions.find((v) => v.session.id === remembered) ?? sessions[0];
+		const view = visibleSessions.find((v) => v.session.id === remembered) ?? visibleSessions[0];
+		if (!view) return;
 		navigate(`/chat/${urlAgentId}/${view.session.id}`, { replace: true });
-	}, [urlAgentId, urlSessionId, sessions, navigate]);
+	}, [urlAgentId, urlSessionId, isDraft, sessions, visibleSessions, navigate]);
 
 	/**
-	 * Create a new session under the currently selected agent and
-	 * pre-fill it with the model + fallback the currently open session
-	 * is using (so "new chat" inherits whatever the user just had
-	 * configured). Falls back to any other session under this agent
-	 * when there is no current one — keeps the model choice sticky
-	 * across "delete last → create new" instead of dropping back to
-	 * whatever ChatViewport's auto-pick happens to land on. Navigates
-	 * to the freshly created session.
+	 * Open an unsaved draft, inheriting the current session's models.
+	 * ChatViewport creates the session only when the first message is sent.
 	 */
-	const handleCreateSession = async () => {
+	const handleCreateSession = () => {
 		if (!urlAgentId) return;
 		const seedConfig = currentView?.session.config ?? sessions[0]?.session.config;
-		const res = await createSession({
+		const draftConfig: CreateSessionRequest = {
 			agent_id: urlAgentId,
 			...(seedConfig?.chat_model_config
 				? { chat_model_config: seedConfig.chat_model_config }
@@ -175,8 +180,9 @@ const ChatPageInner = () => {
 			...(seedConfig?.fallback_chat_model_config
 				? { fallback_chat_model_config: seedConfig.fallback_chat_model_config }
 				: {}),
-		});
-		navigate(`/chat/${urlAgentId}/${res.session_id}`);
+		};
+		navigate(`/chat/${urlAgentId}/new`, { state: { draftConfig } });
+		setOpenMobile(false);
 	};
 
 	const handleAgentDeleted = async () => {
@@ -275,7 +281,7 @@ const ChatPageInner = () => {
 							{t('chat.session.emptyTitle')}
 						</p>
 					)}
-					{sessions.map((view) => {
+					{visibleSessions.map((view) => {
 						return (
 							<ChatRow
 								key={view.session.id}
@@ -334,10 +340,12 @@ const ChatPageInner = () => {
 			</Sidebar>
 			<div className="flex min-w-0 flex-1">
 				<ChatViewport
-					key={`${effectiveAgentId}:${effectiveSessionId}`}
+					key={isDraft ? location.key : `${effectiveAgentId}:${effectiveSessionId}`}
 					agentId={effectiveAgentId}
 					agentData={agents.find((agent) => agent.id === effectiveAgentId)?.data}
 					sessionId={effectiveSessionId}
+					draft={isDraft || !urlSessionId}
+					draftConfig={navigationState?.draftConfig}
 					readOnly={focusedMember !== null}
 					onSessionsChanged={refetchSessions}
 				/>

@@ -18,9 +18,9 @@ export interface MessagesResponse {
 }
 
 /**
- * Sessions this tab created and has not opened yet.
+ * Empty sessions this tab created and has not opened yet.
  *
- * A session created here cannot have any history, so asking the server
+ * A session created without an initial message cannot have history, so asking the server
  * for it is a guaranteed-empty round trip — and one that paints a
  * loading state over a conversation the user is about to start.
  *
@@ -50,7 +50,7 @@ export const sessionApi = {
 
 	create: async (body: CreateSessionRequest) => {
 		const res = await client.post<CreateSessionResponse>('/sessions/', body);
-		freshlyCreated.add(res.session_id);
+		if (!body.initial_message) freshlyCreated.add(res.session_id);
 		return res;
 	},
 

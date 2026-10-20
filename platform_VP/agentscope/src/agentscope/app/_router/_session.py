@@ -463,6 +463,8 @@ async def create_session(
 
     # Builder bindings belong to the agent; MCP clients belong to each session.
     mcps: list[MCPClient] | None = None
+    if body.initial_message is not None and getattr(agent_record.data, "system_role", None) == "leader":
+        mcps = []
     if (
         getattr(agent_record.data, "execution_mode", None) is not None
         and agent_record.data.system_role == "business"
@@ -538,6 +540,8 @@ async def create_session(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=_describe_exception(exc),
             ) from exc
+    if body.initial_message is not None:
+        await storage.upsert_message(user_id, session_record.id, body.initial_message)
     return CreateSessionResponse(session_id=session_record.id)
 
 

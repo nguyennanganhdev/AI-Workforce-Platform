@@ -313,8 +313,9 @@ class WorkforceAgentView(BaseModel):
 
 class LeaderSessionView(BaseModel):
     agent_id: str
-    session_id: str
+    session_id: str | None
     name: str
+    chat_model_config: ChatModelConfig | None = None
 
 
 class BuilderMessageView(BaseModel):
@@ -3394,7 +3395,7 @@ async def _leader(
     user_id: str,
     storage: StorageBase,
     workspace_manager: WorkspaceManagerBase,
-) -> tuple[AgentRecord, SessionRecord]:
+) -> tuple[AgentRecord, SessionRecord | None]:
     record = next(
         (
             item
@@ -3422,14 +3423,10 @@ async def _leader(
         # The Leader is platform-owned, so bootstrap also upgrades old records.
         record.data.system_prompt = _LEADER_PROMPT
         await storage.upsert_agent(user_id, record)
-    session = await _primary_session(
-        storage,
-        workspace_manager,
-        user_id,
-        record.id,
-        await _model_config(storage, user_id),
-        "Ticket mới",
-    )
+    sessions = await storage.list_sessions(user_id, record.id)
+    session = sessions[0] if sessions else None
+    if session is None:
+        return record, None
     workspace = await workspace_manager.get_workspace(
         user_id,
         record.id,
@@ -3456,8 +3453,11 @@ async def bootstrap_leader(
     leader, session = await _leader(user_id, storage, workspace_manager)
     return LeaderSessionView(
         agent_id=leader.id,
-        session_id=session.id,
-        name=session.config.name,
+        session_id=session.id if session else None,
+        name=session.config.name if session else leader.data.name,
+        chat_model_config=(
+            session.config.chat_model_config if session else await _model_config(storage, user_id)
+        ),
     )
 
 
@@ -3483,7 +3483,9 @@ async def create_leader_ticket(
         config=SessionConfig(
             workspace_id=workspace_id,
             name="Ticket mới",
-            chat_model_config=seed.config.chat_model_config,
+            chat_model_config=(
+                seed.config.chat_model_config if seed else await _model_config(storage, user_id)
+            ),
         ),
     )
     workspace = await workspace_manager.get_workspace(

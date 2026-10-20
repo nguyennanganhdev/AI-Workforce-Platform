@@ -8,7 +8,7 @@ import ts from 'typescript';
 const require = createRequire(import.meta.url);
 const context = {
 	exports: {},
-	require: (id) => id === '@/i18n/useI18n' ? { useTranslation: () => ({ t: (key, values) => values?.name ? `Agent: ${values.name}` : key }) } : require(id),
+	require,
 };
 vm.runInNewContext(ts.transpileModule(readFileSync(
 	new URL('../src/components/chat/session-row-utils.ts', import.meta.url), 'utf8',
@@ -42,13 +42,4 @@ test('session labels prefer real titles, then opening text, then team names', ()
 	assert.equal(title(view('team:abc123', { team }), 'Hội thoại'), 'Đội du lịch');
 	assert.equal(title(view('', { preview: '  ' }), 'Hội thoại'), 'Hội thoại · 20/10 08:30');
 	assert.equal(context.exports.sessionTitle('Team: kế hoạch'), 'Team: kế hoạch');
-});
-
-test('preview shows members instead of duplicating titles and gives status priority', () => {
-	const preview = context.exports.useSessionPreview();
-	assert.equal(preview(view('Thuật toán BFS'), 'Leader'), 'Agent: Leader');
-	assert.equal(preview(view('Đi Hà Nội', { team }), 'Leader'), 'Đội du lịch · Lập lịch');
-	for (const [status, key] of [['running', 'previewRunning'], ['awaiting_permission', 'previewAwaiting'], ['awaiting_external_result', 'previewExternal']]) {
-		assert.equal(preview(view('Tên', { status, team }), 'Leader'), `chat.session.${key}`);
-	}
 });

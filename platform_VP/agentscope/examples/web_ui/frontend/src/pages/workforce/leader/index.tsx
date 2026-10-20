@@ -2,7 +2,7 @@ import { Bot, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { sessionApi, workforceApi } from '@/api';
-import type { LeaderSession, SessionView } from '@/api';
+import type { CreateSessionRequest, LeaderSession, SessionView } from '@/api';
 import { sessionTime, sessionTitle, sessionDisplayTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -27,7 +27,8 @@ function LeaderPageInner() {
 	const [leader, setLeader] = useState<LeaderSession | null>(null);
 	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
-	const [creating, setCreating] = useState(false);
+	const [draftConfig, setDraftConfig] = useState<CreateSessionRequest>();
+	const [draftKey, setDraftKey] = useState(0);
 	const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
 	const { sessions, refetch } = useSessions(leader?.agent_id ?? null);
 
@@ -39,6 +40,7 @@ function LeaderPageInner() {
 				if (!active) return;
 				setLeader(value);
 				setSelectedSessionId(value.session_id);
+				setDraftConfig({ agent_id: value.agent_id, chat_model_config: value.chat_model_config });
 			})
 			.catch(() => { /* The API client displays the failure. */ })
 			.finally(() => {
@@ -49,18 +51,18 @@ function LeaderPageInner() {
 		};
 	}, []);
 
-	const createTicket = async () => {
-		setCreating(true);
-		try {
-			const value = await workforceApi.createTicket();
-			setLeader(value);
-			setSelectedSessionId(value.session_id);
-			await refetch();
-		} catch {
-			// The API client displays the failure.
-		} finally {
-			setCreating(false);
-		}
+	const createTicket = () => {
+		if (!leader) return;
+		const seed = sessions.find((view) => view.session.id === selectedSessionId)?.session.config
+			?? sessions[0]?.session.config;
+		setDraftConfig({
+			agent_id: leader.agent_id,
+			chat_model_config: seed?.chat_model_config ?? leader.chat_model_config,
+			sub_agent_chat_model_config: seed?.sub_agent_chat_model_config,
+			fallback_chat_model_config: seed?.fallback_chat_model_config,
+		});
+		setSelectedSessionId(null);
+		setDraftKey((key) => key + 1);
 	};
 
 	const removeSession = async (sessionId: string) => {
@@ -103,10 +105,9 @@ function LeaderPageInner() {
 						size="icon"
 						aria-label="Tạo phiên"
 						title="Tạo phiên"
-						disabled={creating}
 						onClick={createTicket}
 					>
-						{creating ? <Spinner className="size-4" /> : <Plus className="size-5" />}
+						<Plus className="size-5" />
 					</Button>
 				</header>
 				<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -153,14 +154,17 @@ function LeaderPageInner() {
 					<select aria-label="Hội thoại" className="min-w-0 flex-1 rounded-lg border p-2 text-sm" value={selectedSessionId ?? ''} onChange={(event) => setSelectedSessionId(event.target.value)}>
 						{sessions.map((view) => <option key={view.session.id} value={view.session.id}>{rowTitle(view)}</option>)}
 					</select>
-					<Button variant="ghost" size="icon" aria-label="Tạo phiên" disabled={creating} onClick={createTicket}><Plus /></Button>
+					<Button variant="ghost" size="icon" aria-label="Tạo phiên" onClick={createTicket}><Plus /></Button>
 				</div>
 				<ChatViewport
 					agentRole="leader"
 					agentId={leader.agent_id}
 					sessionId={selectedSessionId}
+					draft={selectedSessionId === null}
+					draftConfig={selectedSessionId === null ? draftConfig : undefined}
+					onSessionCreated={setSelectedSessionId}
 					onSessionsChanged={refetch}
-					key={selectedSessionId}
+					key={selectedSessionId ?? `draft:${draftKey}`}
 					agentName="Leader"
 				/>
 			</main>

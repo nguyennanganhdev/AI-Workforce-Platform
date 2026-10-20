@@ -75,7 +75,7 @@ interface ChatContentProps {
 	 */
 	phase: ReplyPhase;
 	disabled: boolean;
-	onSend: (content: ContentBlock[], targetAgentId?: string) => void;
+	onSend: (content: ContentBlock[], targetAgentId?: string) => void | Promise<void>;
 	teamChat?: boolean;
 	onUserConfirm: (
 		toolCall: ToolCallBlock,
@@ -147,8 +147,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	}) : msgs, [msgs, teamChat]);
 	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
 	useEffect(() => setReplyTarget(null), [sessionId]);
-	const handleSend = (content: ContentBlock[]) => {
-		onSend(content, replyTarget?.agentId);
+	const handleSend = async (content: ContentBlock[]) => {
+		await onSend(content, replyTarget?.agentId);
 		setReplyTarget(null);
 	};
 	// Only a session that finished loading with nothing in it is empty.

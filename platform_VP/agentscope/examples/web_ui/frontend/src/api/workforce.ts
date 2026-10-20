@@ -111,8 +111,9 @@ export interface AgentToolSettings {
 
 export interface LeaderSession {
 	agent_id: string;
-	session_id: string;
+	session_id: string | null;
 	name: string;
+	chat_model_config?: ChatModelConfig | null;
 }
 
 export const workforceApi = {
@@ -182,5 +183,5 @@ export const workforceApi = {
 			{ state },
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
-	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
+	createTicket: () => client.post<LeaderSession & { session_id: string }>('/workforce/console/leader/tickets'),
 };

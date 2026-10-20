@@ -50,7 +50,7 @@ interface ProcessedFile {
 }
 
 interface TextInputProps {
-	onSend: (blocks: ContentBlock[]) => void;
+	onSend: (blocks: ContentBlock[]) => void | Promise<void>;
 	placeholder?: string;
 	autoComplete?: (input: string) => string | null;
 	disabled?: boolean;
@@ -134,7 +134,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			onSend,
 			placeholder,
 			autoComplete,
-			disabled = false,
+			disabled: disabledProp = false,
 			className,
 			allowedInputTypes,
 			fileProcessor,
@@ -149,6 +149,9 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		const [value, setValue] = useState('');
 		const [files, setFiles] = useState<ProcessedFile[]>([]);
 		const [isFocused, setIsFocused] = useState(false);
+		const [sending, setSending] = useState(false);
+		const sendingRef = useRef(false);
+		const disabled = disabledProp || sending;
 		const textareaRef = useRef<HTMLTextAreaElement>(null);
 		const fileInputRef = useRef<HTMLInputElement>(null);
 		const measureRef = useRef<HTMLSpanElement>(null);
@@ -218,10 +221,10 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			}
 		};
 
-		const handleSend = () => {
+		const handleSend = async () => {
 			// ``phase`` is guarded here rather than only on the button, since Enter
 			// calls this directly and would otherwise send during a running reply.
-			if (phase !== 'idle' || !value.trim() || disabled || hasProcessing) return;
+			if (phase !== 'idle' || !value.trim() || disabled || sendingRef.current || hasProcessing) return;
 
 			const blocks: ContentBlock[] = [];
 
@@ -244,9 +247,18 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 				}
 			});
 
-			onSend?.(blocks);
-			setValue('');
-			setFiles([]);
+			sendingRef.current = true;
+			setSending(true);
+			try {
+				await onSend(blocks);
+				setValue('');
+				setFiles([]);
+			} catch {
+				// The API shows the error; keep the draft and attachments for retry.
+			} finally {
+				sendingRef.current = false;
+				setSending(false);
+			}
 		};
 
 		/**

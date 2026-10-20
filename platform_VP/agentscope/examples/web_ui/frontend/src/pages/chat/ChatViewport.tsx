@@ -1,3 +1,5 @@
+import type { ContentBlock } from '@agentscope-ai/agentscope/message';
+import { UserMsg } from '@agentscope-ai/agentscope/message';
 import type { PermissionContext } from '@agentscope-ai/agentscope/permission';
 import type { TaskContext } from '@agentscope-ai/agentscope/state';
 import {
@@ -16,12 +18,13 @@ import { useNavigate } from 'react-router-dom';
 import type {
 	AgentData,
 	ChatModelConfig,
+	CreateSessionRequest,
 	PermissionMode,
 	SessionKnowledgeConfig,
 	TTSModelConfig,
 	UpdateSessionRequest,
 } from '@/api';
-import { sessionApi } from '@/api';
+import { chatApi, sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { sessionDisplayTitle } from '@/components/chat/session-row-utils';
@@ -80,6 +83,10 @@ interface ChatViewportProps {
 	 * workspace drive every control rendered here.
 	 */
 	sessionId: string | null;
+	/** Drafts stay local until their first message is submitted. */
+	draft?: boolean;
+	draftConfig?: CreateSessionRequest;
+	onSessionCreated?: (sessionId: string) => void;
 	/** Read-only team-member inspection: poll history and never open an SSE stream. */
 	readOnly?: boolean;
 	/**
@@ -187,6 +194,9 @@ export function ChatViewport({
 	agentRole = agentData?.system_role,
 	agentId,
 	sessionId,
+	draft = false,
+	draftConfig,
+	onSessionCreated,
 	readOnly = false,
 	onSessionsChanged,
 }: ChatViewportProps) {
@@ -198,7 +208,7 @@ export function ChatViewport({
 		activeSession.current = `${agentId}:${sessionId}`;
 		return () => { activeSession.current = null; };
 	}, [agentId, sessionId]);
-	const { sessions, refetch: refetchSessions } = useSessions(agentId);
+	const { sessions, refetch: refetchSessions, create: createSession } = useSessions(agentId);
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
@@ -300,6 +310,32 @@ export function ChatViewport({
 		onStateUpdated: handleStateUpdated,
 		onSessionUpdated: handleSessionUpdated,
 	});
+	const handleSend = async (content: ContentBlock[], targetAgentId?: string) => {
+		if (sessionId) return send(content, targetAgentId);
+		if (!draft || !agentId || !selectedModel || content.length === 0) return;
+		const target = activeSession.current;
+		const input = UserMsg({ name: 'user', content });
+		const { session_id } = await createSession({
+			agent_id: agentId,
+			workspace_id: crypto.randomUUID(),
+			initial_message: input,
+			chat_model_config: selectedModel,
+			sub_agent_chat_model_config: selectedSubAgentModel,
+			fallback_chat_model_config: selectedFallbackModel,
+			tts_model_config: selectedTTSModel,
+			...(selectedKnowledgeConfig ? { knowledge_config: selectedKnowledgeConfig } : {}),
+		});
+		try {
+			await chatApi.trigger({ agent_id: agentId, session_id, input });
+		} finally {
+			// The first message is already saved, even if starting the run fails.
+			if (activeSession.current === target) {
+				if (onSessionCreated) onSessionCreated(session_id);
+				else navigate(`/chat/${agentId}/${session_id}`, { replace: true });
+			}
+			void refetchSessions();
+		}
+	};
 	const {
 		mcps,
 		loading: mcpsLoading,
@@ -365,6 +401,10 @@ export function ChatViewport({
 	 */
 	const patchConfig = useCallback(
 		async (body: UpdateSessionRequest, apply: () => void) => {
+			if (!readOnly && draft && !sessionId && agentId) {
+				apply();
+				return;
+			}
 			if (readOnly || configPending || !view || view.status === 'running' || !sessionId || !agentId) return;
 			const target = `${agentId}:${sessionId}`;
 			setConfigPending(true);
@@ -379,7 +419,7 @@ export function ChatViewport({
 				if (activeSession.current === target) setConfigPending(false);
 			}
 		},
-		[readOnly, configPending, view, sessionId, agentId, refetchSessions],
+		[readOnly, draft, configPending, view, sessionId, agentId, refetchSessions],
 	);
 
 	const handleKnowledgeConfigChange = useCallback(
@@ -589,12 +629,12 @@ export function ChatViewport({
 	// a session whose backend config doesn't actually have that model.
 	useEffect(() => {
 		setConfigPending(false);
-		setSelectedModel(null);
-		setSelectedSubAgentModel(null);
-		setSelectedFallbackModel(null);
-		setSelectedTTSModel(null);
-		setSelectedKnowledgeConfig(null);
-	}, [agentId, sessionId]);
+		setSelectedModel(draftConfig?.chat_model_config ?? null);
+		setSelectedSubAgentModel(draftConfig?.sub_agent_chat_model_config ?? null);
+		setSelectedFallbackModel(draftConfig?.fallback_chat_model_config ?? null);
+		setSelectedTTSModel(draftConfig?.tts_model_config ?? null);
+		setSelectedKnowledgeConfig(draftConfig?.knowledge_config ?? null);
+	}, [agentId, sessionId, draftConfig]);
 
 	const selectedModelCard = useMemo(() => {
 		if (!selectedModel) return null;
@@ -783,7 +823,7 @@ export function ChatViewport({
 												onChange={handleSubAgentLlmChange}
 												onAddCredential={() => setCredentialOpen(true)}
 												refetchTrigger={credentialRefetchTrigger}
-												disabled={configPending || !view || view.status === 'running'}
+												disabled={configPending || (!view && !draft) || view?.status === 'running'}
 											/>
 										</div>
 									)}
@@ -798,7 +838,7 @@ export function ChatViewport({
 											onChange={handleLlmChange}
 											onAddCredential={() => setCredentialOpen(true)}
 											refetchTrigger={credentialRefetchTrigger}
-											disabled={inspectingMember || configPending || !view || view.status === 'running'}
+											disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
 										/>
 									</div>
 									<ModelParametersPopover
@@ -809,7 +849,7 @@ export function ChatViewport({
 										onFallbackChange={handleFallbackChange}
 										selectedTTSModel={selectedTTSModel}
 										onTTSChange={handleTTSChange}
-										disabled={inspectingMember || configPending || !view || view.status === 'running'}
+										disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
 									/>
 									<PermissionModeSelect
 										id="tour-permission-mode"
@@ -897,8 +937,8 @@ export function ChatViewport({
 									git={workspaceStatus?.git ?? null}
 									onRefreshGit={refetchWorkspaceStatus}
 									phase={phase}
-									disabled={readOnly || selectedModel === null}
-									onSend={send}
+									disabled={readOnly || !agentId || selectedModel === null}
+									onSend={handleSend}
 									autoComplete={completeTeamMention}
 									onUserConfirm={onUserConfirm}
 									onInterrupt={interrupt}

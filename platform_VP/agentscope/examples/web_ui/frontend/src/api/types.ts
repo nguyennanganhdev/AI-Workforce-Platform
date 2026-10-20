@@ -183,6 +183,8 @@ export interface SessionRecord extends RecordBase {
 
 export interface CreateSessionRequest {
 	agent_id: string;
+	/** Saved with a chat draft's session before its first run starts. */
+	initial_message?: Msg;
 	workspace_id?: string;
 	chat_model_config?: ChatModelConfig | null;
 	sub_agent_chat_model_config?: ChatModelConfig | null;
