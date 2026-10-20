@@ -170,13 +170,11 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertNotIn("tool_0_0_0", questions)
         self.assertIn("Search hotel rooms", questions["tool_1_0_0"].instructions)
 
-    async def test_jev_records_missing_capability(self):
+    async def test_jev_does_not_report_missing_tools(self):
         selected = await console._jev_resources(
             _Classifier(missing=True), OUTLINE, "Plan trip", TOOLS, KBS
         )
-        self.assertEqual(
-            selected.agents[1].missing_resources, ["tool: Search hotel rooms"]
-        )
+        self.assertEqual(selected.agents[1].missing_resources, [])
 
     async def test_shared_dispatch_is_a_peer_dependency_not_a_missing_tool(self):
         tools = [TOOLS[0].model_copy(update={
@@ -257,7 +255,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertNotIn("tool: Operation 7", selected.agents[3].missing_resources)
         self.assertNotIn("tool: Operation 0", selected.agents[0].missing_resources)
         self.assertEqual(selected.agents[0].peer_dependencies, ["Specialist 3: Operation 0"])
-        self.assertIn("tool: Operation 1", selected.agents[0].missing_resources)
+        self.assertEqual(selected.agents[0].missing_resources, [])
 
     async def test_batch_payload_contains_only_referenced_agents_tools_and_kbs(self):
         tools = [TOOLS[0].model_copy(update={
@@ -384,23 +382,19 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertIn("'search'", questions["tool_1_1_0"].instructions)
         self.assertIn("another service/subject", questions["tool_1_1_0"].criteria.false)
 
-    async def test_partial_selection_falls_back_and_keeps_accepted_tools(self):
+    async def test_partial_selection_keeps_tools_without_a_coverage_check(self):
         outline = OUTLINE.model_copy(deep=True)
         outline.agents[1].tool_requirements.append("Weather forecast")
-        fallback = console.BuilderOutline(agents=[outline.agents[1].model_copy(deep=True)])
-        fallback.agents[0].suggested_tool_ids = [tool.id for tool in TOOLS]
-        model = _Model(fallback.model_dump())
+        model = _Model({})
         classifier = _Classifier()
         selected, source = await self._select(outline, classifier, model)
-        self.assertEqual(source, "hybrid")
-        self.assertEqual(selected.agents[1].suggested_tool_ids, [tool.id for tool in TOOLS])
+        self.assertEqual(source, "jev")
+        self.assertEqual(selected.agents[1].suggested_tool_ids, [TOOLS[0].id])
         self.assertEqual(selected.agents[1].missing_resources, [])
-        payload = json.loads(model.calls[0][0][-1].get_text_content())
-        self.assertEqual(payload["outline"]["agents"][0]["suggested_tool_ids"], [TOOLS[0].id])
-        self.assertIn("tool: Weather forecast", payload["outline"]["agents"][0]["missing_resources"])
+        self.assertEqual(model.calls, [])
         self.assertEqual(len(classifier.calls), 1)
 
-    async def test_hotel_availability_does_not_cover_booking_requirement(self):
+    async def test_unmatched_booking_requirement_does_not_report_missing_tool(self):
         tools = [
             console.BuilderTool(
                 id="travel:check_hotel_availability", mcp_id="travel", mcp_name="travel",
@@ -418,49 +412,46 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         classifier = _Classifier(probabilities={"tool_0_0_0": 0.95})
         selected = await console._jev_resources(classifier, outline, "Book hotel", tools, [])
         self.assertEqual(selected.agents[0].suggested_tool_ids, [tools[0].id])
-        self.assertEqual(selected.agents[0].missing_resources, ["tool: Create a hotel booking"])
-        fallback = outline.model_copy(deep=True)
-        fallback.agents[0].suggested_tool_ids = [tool.id for tool in tools]
-        selected, source = await self._select(outline, classifier, _Model(fallback.model_dump()), tools)
-        self.assertEqual(source, "hybrid")
-        self.assertEqual(selected.agents[0].suggested_tool_ids, [tool.id for tool in tools])
         self.assertEqual(selected.agents[0].missing_resources, [])
+        model = _Model({})
+        selected, source = await self._select(outline, classifier, model, tools)
+        self.assertEqual(source, "jev")
+        self.assertEqual(selected.agents[0].suggested_tool_ids, [tools[0].id])
+        self.assertEqual(selected.agents[0].missing_resources, [])
+        self.assertEqual(model.calls, [])
 
-    async def test_partial_fallback_cannot_drop_or_transfer_accepted_tools(self):
-        outline = OUTLINE.model_copy(deep=True)
-        outline.agents[0].tool_requirements = ["Weather forecast"]
-        outline.agents[1].tool_requirements.append("Weather forecast")
-        for ids in ([], [TOOLS[1].id]):
-            with self.subTest(ids=ids):
-                fallback = outline.model_copy(deep=True)
-                fallback.agents[0].suggested_tool_ids = ids
-                fallback.agents[1].suggested_tool_ids = []
-                with self.assertRaises(HTTPException) as error:
-                    await self._select(outline, _Classifier(), _Model(fallback.model_dump()))
-                self.assertEqual(error.exception.status_code, 502)
-
-    async def test_unavailable_route_stays_missing_despite_other_selected_tool(self):
+    async def test_unavailable_route_does_not_report_missing_tools(self):
         outline = console.BuilderOutline(agents=[console.PlannedAgent(
             name="Travel", objective="Search rooms and plan travel",
             tool_requirements=["Search hotel rooms", "Route between arbitrary addresses"],
         )])
-        fallback = outline.model_copy(deep=True)
-        fallback.agents[0].suggested_tool_ids = [TOOLS[0].id]
-        fallback.agents[0].missing_resources = ["tool: Route between arbitrary addresses"]
+        model = _Model({})
         selected, source = await self._select(
             outline, _Classifier(probabilities={"tool_0_0_0": 0.95}),
-            _Model(fallback.model_dump()),
+            model,
         )
-        self.assertEqual(source, "hybrid")
+        self.assertEqual(source, "jev")
         self.assertEqual(selected.agents[0].suggested_tool_ids, [TOOLS[0].id])
-        self.assertEqual(selected.agents[0].missing_resources, fallback.agents[0].missing_resources)
+        self.assertEqual(selected.agents[0].missing_resources, [])
+        self.assertEqual(model.calls, [])
 
-    async def test_requirements_without_candidates_stay_missing_without_jev_call(self):
+    async def test_llm_missing_tool_warnings_are_discarded_but_kb_warning_is_kept(self):
+        fallback = OUTLINE.model_copy(deep=True)
+        fallback.agents[1].missing_resources = [
+            "tool: Search hotel rooms", " Tool: catalog lookup", "Need tool",
+            "knowledge: Hotel policy",
+        ]
+        selected, source = await self._select(
+            OUTLINE, None, _Model(fallback.model_dump()),
+        )
+        self.assertEqual(source, "llm")
+        self.assertEqual(selected.agents[1].missing_resources, ["knowledge: Hotel policy"])
+
+    async def test_no_candidates_reports_only_missing_knowledge_without_jev_call(self):
         classifier = _Classifier()
         selected = await console._jev_resources(classifier, OUTLINE, "Find rooms", [], [])
         self.assertEqual(classifier.calls, [])
-        self.assertIn("tool: Search hotel rooms", selected.agents[1].missing_resources)
-        self.assertIn("knowledge: Hotel policy", selected.agents[1].missing_resources)
+        self.assertEqual(selected.agents[1].missing_resources, ["knowledge: Hotel policy"])
 
     async def test_tool_need_accepts_probability_at_or_above_point_six(self):
         for confidence in (0.6, 0.75):
@@ -512,14 +503,14 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
                     OUTLINE, "Plan trip", TOOLS, KBS,
                 )
 
-    async def test_uncertain_excluded_tool_still_checks_required_coverage(self):
+    async def test_uncertain_excluded_tool_does_not_report_missing_tools(self):
         outline = OUTLINE.model_copy(deep=True)
         outline.agents[1].tool_requirements.append("Weather forecast")
         selected = await console._jev_resources(
             _Classifier(probabilities={"tool_1_0_1": 0.5}, missing=True),
             outline, "Plan trip with weather", TOOLS, KBS,
         )
-        self.assertIn("tool: Weather forecast", selected.agents[1].missing_resources)
+        self.assertEqual(selected.agents[1].missing_resources, [])
 
     async def test_missing_credential_logs_llm_fallback(self):
         with (
@@ -562,7 +553,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         self.assertNotIn("tool: Search hotel rooms", selected.agents[1].missing_resources)
         classifier.client.aclose.assert_awaited_once()
         self.assertEqual(len(model.calls), 1)
-        self.assertIn("reason=unmet_tool_requirements", "\n".join(logs.output))
+        self.assertIn("reason=no_selected_tools", "\n".join(logs.output))
         self.assertIn("source=hybrid", "\n".join(logs.output))
         payload = json.loads(model.calls[0][0][-1].get_text_content())
         self.assertEqual(len(payload["outline"]["agents"]), 1)
@@ -630,13 +621,13 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
             await self._select(outline, _Classifier(), _Model(fallback.model_dump()))
         self.assertEqual(error.exception.status_code, 502)
 
-    async def test_no_free_tools_reports_missing_without_llm(self):
+    async def test_no_free_tools_does_not_report_missing_tools_or_call_llm(self):
         outline = OUTLINE.model_copy(deep=True)
         outline.agents[0].tool_requirements = ["Search hotel rooms"]
         model = _Model({})
         selected, source = await self._select(outline, _Classifier(), model, TOOLS[:1])
         self.assertEqual(source, "jev")
-        self.assertIn("tool: Search hotel rooms", selected.agents[0].missing_resources)
+        self.assertEqual(selected.agents[0].missing_resources, [])
         self.assertEqual(model.calls, [])
 
     async def test_empty_agents_share_one_fallback_with_exclusive_tools(self):
@@ -688,9 +679,7 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
                 OUTLINE, "Plan trip", TOOLS, KBS, model, object(), "user"
             )
         self.assertEqual(source, "llm")
-        self.assertIn(
-            "tool: Search hotel rooms", selected.agents[1].missing_resources
-        )
+        self.assertEqual(selected.agents[1].missing_resources, ["knowledge: Hotel policy"])
 
     async def test_no_resources_does_not_call_jev_for_empty_candidates(self):
         outline = console.BuilderOutline(
@@ -784,11 +773,8 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
                 {**generated()["agents"][0], "selected_tool_ids": ["invented"]}
             )
 
-    def test_stale_resources_and_missing_resources_block_confirmation(self):
+    def test_stale_resources_still_block_confirmation(self):
         cases = [(TOOLS[1:], KBS, approved()), (TOOLS, [], approved())]
-        missing = approved()
-        missing.planned_agents[1].missing_resources = ["Need tool"]
-        cases.append((TOOLS, KBS, missing))
         for tools, kbs, proposal in cases:
             with (
                 self.subTest(proposal=proposal),
@@ -1303,17 +1289,26 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
             self.assertEqual(call.args[1].data.knowledge_base_ids, [])
             self.assertTrue(call.args[1].data.generated_skill)
 
-    async def test_missing_tool_still_blocks_when_kb_is_also_missing(self):
+    async def test_saved_missing_tool_warning_does_not_block_confirmation(self):
         previous = approved()
         previous.planned_agents[1].missing_resources = [
             "knowledge: Hotel policy",
             "tool: Search hotel rooms",
         ]
         model = _Model(generated())
-        with self.assertRaises(HTTPException) as error:
-            await self._prepare(previous, model)
-        self.assertEqual(error.exception.status_code, 409)
-        self.assertEqual(model.calls, [])
+        result = await self._prepare(previous, model)
+        self.assertEqual(result.status, "ready")
+        self.assertEqual(len(model.calls), 1)
+
+    async def test_tool_requirements_without_selected_tools_do_not_block_generation(self):
+        previous = approved()
+        previous.planned_agents[1].suggested_tools = []
+        previous.planned_agents[1].tool_requirements = ["Search hotel rooms"]
+        previous.planned_agents[1].missing_resources = ["Need tool"]
+        result = await self._prepare(previous, _Model(generated()))
+        self.assertEqual(result.status, "ready")
+        self.assertEqual(result.agents[1].selected_tools, [])
+        self.assertEqual(result.agents[1].execution_mode, "context_only")
 
     async def test_publication_rejects_kb_change_after_generation(self):
         proposal = await self._prepare(approved(), _Model(generated()))

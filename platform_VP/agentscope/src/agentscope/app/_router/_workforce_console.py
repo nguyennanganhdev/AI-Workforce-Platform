@@ -749,26 +749,21 @@ def _validate_resource_selection(
             raise ValueError(
                 "Resource selection contains unavailable or duplicate resources"
             )
+        agent.missing_resources = [
+            missing for missing in agent.missing_resources
+            if missing.strip().lower().startswith("knowledge:")
+        ]
         if agent.reuse_agent_id:
             continue
-        for kind, ids in (
-            ("tool", agent.suggested_tool_ids),
-            ("knowledge", agent.suggested_knowledge_base_ids),
-        ):
-            if not ids:
-                agent.missing_resources = list(
-                    dict.fromkeys(
-                        [
-                            *agent.missing_resources,
-                            *(
-                                f"{kind}: {requirement}"
-                                for requirement in getattr(
-                                    agent, f"{kind}_requirements"
-                                )
-                            ),
-                        ]
-                    )
+        if not agent.suggested_knowledge_base_ids:
+            agent.missing_resources = list(
+                dict.fromkeys(
+                    [
+                        *agent.missing_resources,
+                        *(f"knowledge: {requirement}" for requirement in agent.knowledge_requirements),
+                    ]
                 )
+            )
 
 
 async def _builder_classifier(
@@ -1325,7 +1320,7 @@ async def _jev_resources(
                             agent.peer_dependencies.append(dependency)
                         continue
                 own_requirements.append(requirement)
-                if not covered:
+                if kind == "knowledge" and not covered:
                     agent.missing_resources.append(f"{kind}: {requirement}")
             if kind == "tool":
                 agent.tool_requirements = own_requirements
@@ -1344,7 +1339,7 @@ async def _select_builder_resources(
     user_requests: list[str] | None = None,
     preserved_agents: Sequence[PlannedAgentView] = (),
 ) -> tuple[BuilderOutline, Literal["jev", "llm", "hybrid"]]:
-    """Keep matched resources; let the LLM resolve unmet tool requirements."""
+    """Keep matched resources; let the LLM select tools for empty agents."""
     classifier = None
     selected = None
     stage = "credential"
@@ -1394,20 +1389,14 @@ async def _select_builder_resources(
     }
     pending_agents = [
         (index, agent) for index, agent in enumerate(selected.agents)
-        if agent.tool_requirements and (
-            not agent.suggested_tool_ids
-            or any(missing.startswith("tool:") for missing in agent.missing_resources)
-        )
+        if agent.tool_requirements and not agent.suggested_tool_ids
     ]
-    retained_tools = {
-        tool_id for _, agent in pending_agents for tool_id in agent.suggested_tool_ids
-    }
     available_tools = [
-        tool for tool in tools if tool.id not in claimed or tool.id in retained_tools
+        tool for tool in tools if tool.id not in claimed
     ]
     if pending_agents and available_tools:
         logger.info(
-            "Builder tool selection fallback: agent_indices=%s reason=unmet_tool_requirements",
+            "Builder tool selection fallback: agent_indices=%s reason=no_selected_tools",
             [index for index, _ in pending_agents],
         )
         selected_kbs = {
@@ -1424,13 +1413,6 @@ async def _select_builder_resources(
         )
         for (_, agent), replacement in zip(pending_agents, fallback.agents):
             agent.suggested_tool_ids = replacement.suggested_tool_ids
-            agent.missing_resources = [
-                missing for missing in agent.missing_resources
-                if missing.strip().lower().startswith("knowledge:")
-            ] + [
-                missing for missing in replacement.missing_resources
-                if not missing.strip().lower().startswith("knowledge:")
-            ]
         source = "hybrid"
     _validate_resource_selection(selected, tools, knowledge_bases)
     logger.info("Builder resource selection completed: source=%s", source)
@@ -1460,8 +1442,8 @@ async def _llm_builder_resources(
                         "one tool may satisfy several requirements. "
                         "Retain every supplied suggested_tool_id on its current agent and add tools as needed. "
                         "Reassess existing missing_resources from the catalog; they are unresolved judgments, not facts. "
-                        "Record each unmet tool/knowledge requirement in missing_resources "
-                        "with tool: for missing operations and knowledge: for missing KBs. "
+                        "Record only unmet knowledge requirements in missing_resources "
+                        "with knowledge: for missing KBs. Do not report missing tools or operations. "
                         "in the user's language. An agent may need no resources. Never invent a tool or "
                         "treat a KB/instruction as a missing external operation. Do not generate skills or prompts."
                     ),
@@ -1531,14 +1513,6 @@ def _check_approved_resources(
     }
     claimed = set()
     for agent in proposal.planned_agents:
-        if any(
-            not missing.strip().lower().startswith("knowledge:")
-            for missing in agent.missing_resources
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="Plan còn thiếu tài nguyên. Hãy bổ sung hoặc sửa yêu cầu.",
-            )
         for tool in agent.suggested_tools:
             if by_id.get(tool.id) != tool or tool.id in claimed:
                 raise HTTPException(

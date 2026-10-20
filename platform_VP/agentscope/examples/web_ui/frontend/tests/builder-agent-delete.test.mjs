@@ -135,3 +135,45 @@ test('a conversation without a proposal restores its model and can continue chat
   assert.ok(find(render(), (node) => node.type === 'Markdown' && node.props.children === 'Chào bạn!'));
   assert.equal(find(render(), (node) => node.type === 'ProposalSteps'), undefined);
 });
+
+test('a saved missing tool warning is hidden and does not disable outline confirmation', async () => {
+  const model = { type: 'openai_credential', credential_id: 'chat', model: 'chat', parameters: {} };
+  const stored = {
+    conversation_id: 'builder', title: 'Travel', chat_model_config: model, messages: [],
+    proposal: {
+      conversation_id: 'builder', revision: 1, status: 'needs_input', agents: [],
+      chat_model_config: model, fixed_config: {}, resources_locked: true,
+      planned_agents: [{
+        name: 'Travel', objective: 'Plan a trip', reuse_agent_id: null,
+        suggested_tools: [], suggested_knowledge_bases: [],
+        missing_resources: ['tool: get_service_catalog', 'Need tool', 'knowledge: Travel policy'],
+      }],
+    },
+  };
+  const requests = [];
+  const render = await builderWith(async () => {}, {
+    listBuilderConversations: async () => [{ conversation_id: 'builder', title: 'Travel' }],
+    getBuilderConversation: async () => stored,
+    prepare: async (...args) => { requests.push(args); return stored; },
+  });
+  const confirm = find(render(), (node) => node.type === 'Button' &&
+    node.props.children?.includes?.('Chốt định hướng và sinh cấu hình'));
+  assert.equal(confirm.disabled, false);
+  let card;
+  find(render(), (node) => {
+    if (node.type?.name !== 'PlannedAgentCard') return false;
+    card = node;
+    return true;
+  });
+  const warnings = [];
+  find(card.type(card.props), (node) => {
+    if (node.type === 'li') warnings.push(node.props.children);
+    return false;
+  });
+  assert.deepEqual(warnings, ['knowledge: Travel policy']);
+  confirm.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0][3], true);
+  assert.equal(requests[0][4], 1);
+});

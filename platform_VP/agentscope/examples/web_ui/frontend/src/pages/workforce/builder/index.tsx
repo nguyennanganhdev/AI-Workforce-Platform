@@ -530,14 +530,7 @@ export function AgentBuilderPage() {
 										{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (
 											<Button
 												onClick={() => void confirmOutline()}
-												disabled={
-													working ||
-													proposal.planned_agents.some((agent) =>
-														agent.missing_resources?.some(
-															(missing) => !missing.trim().toLowerCase().startsWith('knowledge:'),
-														),
-													)
-												}
+												disabled={working}
 											>
 												<CheckCircle2 />{' '}
 												{proposal.planned_agents.every((agent) => agent.reuse_agent_id)
@@ -689,6 +682,10 @@ function PlannedAgentCard({
 	agent: BuilderProposal['planned_agents'][number];
 	index: number;
 }) {
+	const missingKnowledge = agent.missing_resources?.filter((missing) =>
+		missing.trim().toLowerCase().startsWith('knowledge:'),
+	) ?? [];
+
 	return (
 		<article
 			className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background p-3.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both"
@@ -716,13 +713,13 @@ function PlannedAgentCard({
 					</ul>
 				</div>
 			)}
-			{!!agent.missing_resources?.length && (
+			{!!missingKnowledge.length && (
 				<div className="rounded-xl bg-destructive/5 p-2.5 text-[13px]/[18px] text-destructive">
 					<p className="flex items-center gap-1.5 font-medium">
-						<CircleAlert className="size-3.5 shrink-0" /> Thiếu tài nguyên:
+						<CircleAlert className="size-3.5 shrink-0" /> Thiếu Knowledge Base:
 					</p>
 					<ul className="mt-1 list-disc pl-4">
-						{agent.missing_resources.map((missing) => (
+						{missingKnowledge.map((missing) => (
 							<li key={missing}>{missing}</li>
 						))}
 					</ul>
