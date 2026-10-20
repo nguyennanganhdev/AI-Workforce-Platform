@@ -237,6 +237,8 @@ interface Props {
 	 * whenever no primary model is selected.
 	 */
 	disabled?: boolean;
+	/** Accessible name of the trigger, e.g. which model it configures. */
+	label?: string;
 }
 
 /**
@@ -256,6 +258,7 @@ export function ModelParametersPopover({
 	onFallbackChange,
 	selectedTTSModel,
 	onTTSChange,
+	label,
 	disabled: locked = false,
 }: Props) {
 	const [values, setValues] = useState<Record<string, unknown>>({});
@@ -307,7 +310,7 @@ export function ModelParametersPopover({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon-sm" disabled={disabled}>
+				<Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={label} title={label}>
 					<SlidersHorizontal />
 				</Button>
 			</DropdownMenuTrigger>

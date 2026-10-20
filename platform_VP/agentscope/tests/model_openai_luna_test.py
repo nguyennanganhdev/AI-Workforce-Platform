@@ -67,7 +67,10 @@ class TestOpenAILuna(IsolatedAsyncioTestCase):
                 self._mock_api(model)
                 await model._call_api("gpt-6-luna", [], tools=TOOLS)
                 kwargs = model.client.responses.create.call_args.kwargs
-                self.assertEqual(kwargs["reasoning"], {"effort": effort})
+                expected = {"effort": effort}
+                if effort != "none":
+                    expected["summary"] = "auto"
+                self.assertEqual(kwargs["reasoning"], expected)
                 self.assertEqual(kwargs["tools"][0]["name"], "probe")
                 self.assertFalse(kwargs["parallel_tool_calls"])
                 model.client.chat.completions.create.assert_not_awaited()
@@ -96,6 +99,66 @@ class TestOpenAILuna(IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["reasoning"], {"effort": "none"})
         self.assertEqual(kwargs["temperature"], 0.4)
         self.assertEqual(kwargs["top_p"], 0.8)
+
+    async def test_role_default_effort_applies_only_when_unset(self):
+        async def built(default, **parameters):
+            return await get_model(
+                "user",
+                ChatModelConfig(
+                    type="openai_credential", credential_id="credential",
+                    model="gpt-6-luna", parameters=parameters,
+                ),
+                SimpleNamespace(resolve_credential=AsyncMock(
+                    return_value=SimpleNamespace(data={
+                        "type": "openai_credential", "api_key": "test",
+                    }),
+                )),
+                default_reasoning_effort=default,
+            )
+
+        self.assertEqual((await built("low")).parameters.reasoning_effort, "low")
+        self.assertEqual(
+            (await built("low", reasoning_effort="high")).parameters.reasoning_effort,
+            "high",
+        )
+        self.assertIsNone((await built(None)).parameters.reasoning_effort)
+
+    async def test_luna_asks_for_a_reasoning_summary_by_default(self):
+        model = await self._model()
+        self._mock_api(model)
+        await model._call_api("gpt-6-luna", [])
+        kwargs = model.client.responses.create.call_args.kwargs
+        self.assertEqual(kwargs["reasoning"], {"summary": "auto"})
+
+        model = await self._model(reasoning_effort="low", reasoning_summary="none")
+        self._mock_api(model)
+        await model._call_api("gpt-6-luna", [])
+        kwargs = model.client.responses.create.call_args.kwargs
+        self.assertEqual(kwargs["reasoning"], {"effort": "low"})
+
+    async def test_refused_summary_retries_without_it_and_is_remembered(self):
+        import httpx
+        import openai
+
+        OpenAIResponseModel._summary_unsupported.discard("gpt-6-luna")
+        self.addCleanup(OpenAIResponseModel._summary_unsupported.discard, "gpt-6-luna")
+        refused = openai.BadRequestError(
+            "Your organization must be verified to generate reasoning summaries.",
+            response=httpx.Response(400, request=httpx.Request("POST", "https://x")),
+            body=None,
+        )
+        model = await self._model(reasoning_effort="medium")
+        self._mock_api(model)
+        model.client.responses.create = AsyncMock(side_effect=[refused, object()])
+        await model._call_api("gpt-6-luna", [])
+        calls = model.client.responses.create.call_args_list
+        self.assertEqual(calls[0].kwargs["reasoning"], {"effort": "medium", "summary": "auto"})
+        self.assertEqual(calls[1].kwargs["reasoning"], {"effort": "medium"})
+
+        model.client.responses.create = AsyncMock(return_value=object())
+        await model._call_api("gpt-6-luna", [])
+        kwargs = model.client.responses.create.call_args.kwargs
+        self.assertEqual(kwargs["reasoning"], {"effort": "medium"})
 
     async def test_luna_rejects_unsupported_effort_before_api_call(self):
         for effort in ("minimal", "ultra", "invalid"):

@@ -1422,7 +1422,16 @@ class ChatService:
                         status_code=404,
                         detail=(f"No model configuration found for agent {agent_id}"),
                     )
-                model = await get_model(user_id, model_cfg, self._access)
+                model = await get_model(
+                    user_id,
+                    model_cfg,
+                    self._access,
+                    default_reasoning_effort=(
+                        "medium"
+                        if agent_record.data.system_role == "leader"
+                        else "low"
+                    ),
+                )
 
                 # Persist customer-visible input before any agent reasons.
                 # Message ids make retries idempotent. Team handoff wakeups
