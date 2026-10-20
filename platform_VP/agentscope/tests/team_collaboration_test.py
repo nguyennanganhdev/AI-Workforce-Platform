@@ -167,6 +167,52 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual(before, len(self.storage.handoffs))
         self.assertEqual("review", self.branch("worker").status)
 
+    async def test_resolution_excludes_reports_already_sent_for_verification(self):
+        report = await self.say(
+            "worker", to="Leader", kind="result", content="Initial finding",
+        )
+        verification = await self.say(
+            "leader", to="Worker", kind="handoff", content="Verify this finding",
+            resolution="verify",
+        )
+        self.assertEqual(report.metadata["handoff_id"], next(
+            e.in_reply_to for e in self.storage.context.state.events
+            if e.id == verification.metadata["handoff_id"]
+        ))
+        repeated = await self.say(
+            "leader", to="Worker", kind="handoff", content="Verify this finding",
+            resolution="verify",
+        )
+        self.assertEqual(verification.metadata["handoff_id"], repeated.metadata["handoff_id"])
+        self.assertEqual(1, self.branch("worker").verifications)
+
+        updated = await self.say(
+            "worker", to="Leader", kind="result", content="Verified finding",
+            in_reply_to=verification.metadata["handoff_id"],
+        )
+        completed = await self.say(
+            "leader", to="Worker", kind="handoff", content="Accept verified finding",
+            resolution="complete",
+        )
+        self.assertEqual(updated.metadata["handoff_id"], next(
+            e.in_reply_to for e in self.storage.context.state.events
+            if e.id == completed.metadata["handoff_id"]
+        ))
+        self.assertEqual("completed", self.branch("worker").status)
+
+    async def test_multiple_unresolved_reports_still_require_an_explicit_id(self):
+        reports = [await self.say(
+            "worker", to="Leader", kind="result", content=content,
+        ) for content in ("First finding", "Second finding")]
+        result = await self.tool("leader")(
+            to="Worker", kind="handoff", content="Accept finding", resolution="complete",
+        )
+        self.assertEqual("ambiguous_handoff_link", result.metadata["reason"])
+        self.assertEqual(
+            {r.metadata["handoff_id"] for r in reports},
+            set(result.metadata["candidate_handoff_ids"]),
+        )
+
     async def test_ambiguous_reply_requires_an_explicit_id(self):
         requests = []
         for content in ("Find options", "Check availability"):
