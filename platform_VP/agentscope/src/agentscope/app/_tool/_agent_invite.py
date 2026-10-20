@@ -141,9 +141,10 @@ class _AdditionalAssignment(BaseModel):
     prompt: str = Field(
         min_length=1,
         description=(
-            "Team-role briefing for a dormant roster member. Adding this "
-            "member does not start its run; a specialist wakes it later with "
-            "a concrete TeamSay question or handoff."
+            "Business capability and expected contribution of this roster "
+            "member. It starts only after a concrete TeamSay request, not "
+            "from this briefing. Do not tell it to wait for a coordinator's "
+            "permission; it may ask capable peers directly once working."
         ),
     )
 
@@ -168,10 +169,13 @@ class _AgentInviteParams(ParamsBase):
     prompt: str = Field(
         description=(
             "The first task delivered to the invited agent as a user "
-            "message. Include its specific deliverable and any dependencies "
-            "on other specialists. It starts on joining and reads shared "
-            "context; do not copy the full conversation. A dependency is an "
-            "internal wait, not a request for the customer to supply peer results."
+            "message. State its own deliverable, verified inputs and customer "
+            "constraints. For each missing peer-owned input, name the exact "
+            "peer handle and tell this agent to call TeamSay(kind='question') "
+            "directly with the inputs, bounded task and required output. The "
+            "peer may consult another roster specialist before answering. "
+            "Do not appoint this agent as manager of the whole team. It starts "
+            "on joining and reads shared context; do not copy the full chat."
         ),
     )
     additional_assignments: list[_AdditionalAssignment] = Field(
@@ -179,9 +183,10 @@ class _AgentInviteParams(ParamsBase):
         max_length=32,
         description=(
             "Other required specialists to add to the roster without starting "
-            "them. Use prompt only as a short role briefing. The primary target "
-            "is the single starting agent and chooses which peer to wake through "
-            "TeamSay as dependencies emerge. Each target must be different."
+            "them. Use prompt as a short capability/contribution briefing. "
+            "The primary target starts first and contacts relevant peers "
+            "through actual TeamSay calls as dependencies emerge. Include "
+            "these peer instructions in its prompt. Each target must differ."
         ),
     )
 
