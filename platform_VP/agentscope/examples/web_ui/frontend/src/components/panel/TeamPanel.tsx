@@ -10,15 +10,17 @@ import {
 	LoaderCircle,
 	MessageSquareMore,
 	Radio,
-	Settings2,
+	Trash2,
 	UsersRound,
 	Wrench,
 } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
+import { sessionApi } from '@/api';
 import { AddTeamMemberDialog } from '@/components/dialog/AddTeamMemberDialog';
+import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
@@ -148,6 +150,7 @@ function ActivityEntry({ item }: { item: TeamActivityItem }) {
 export function TeamPanel({ team, currentSessionId, agentId, canManage, onMembersChanged }: TeamPanelProps) {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
+	const [memberToRemove, setMemberToRemove] = useState<TeamMemberInfo | null>(null);
 	const participants = useMemo<TeamActivityParticipant[]>(() => {
 		if (!team) return [];
 		const rows: TeamActivityParticipant[] = [];
@@ -231,7 +234,7 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 		sessionId: string | null,
 		disabled: boolean,
 		onClick: () => void,
-		editable: boolean,
+		member?: TeamMemberInfo,
 	) => {
 		const runtime: TeamMemberRuntime = sessionId
 			? (runtimeBySession[sessionId] ?? {
@@ -281,7 +284,12 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 						</span>
 					</span>
 				</Button>
-				{editable && <Button variant="ghost" size="icon-sm" aria-label={`${t('agentManagement.configure')}: ${label}`} onClick={() => navigate(`/workforce/agents/${key}?edit=1`)}><Settings2 className="size-3.5" /></Button>}
+				{canManage && member && <Button variant="ghost" size="icon-sm"
+					className="text-muted-foreground hover:text-destructive"
+					aria-label={`Gỡ ${label} khỏi phòng`} title="Gỡ khỏi phòng"
+					disabled={runtime.status === 'active' || runtime.status === 'communicating'
+						|| runtimeBySession[leaderSessionId]?.status === 'active'}
+					onClick={() => setMemberToRemove(member)}><Trash2 className="size-3.5" /></Button>}
 			</li>
 		);
 	};
@@ -294,7 +302,6 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 			leaderSessionId,
 			false,
 			goToLeader,
-			leader.editable,
 		);
 
 	const renderMember = (member: TeamMemberInfo) =>
@@ -305,7 +312,7 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 			member.session_id,
 			member.session_id === null,
 			() => goToMember(member.agent.id),
-			member.agent.editable,
+			member,
 		);
 
 	return (
@@ -313,6 +320,17 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 			className="flex min-h-0 flex-1 flex-col overflow-y-auto text-sm"
 			aria-label="Hoạt động của team"
 		>
+			{canManage && leaderAgentId && memberToRemove && team.members.some(
+				(member) => member.session_id === memberToRemove.session_id && member.agent.id === memberToRemove.agent.id,
+			) && <DeleteDialog open onOpenChange={(open) => { if (!open) setMemberToRemove(null); }}
+				title={`Gỡ ${memberToRemove.agent.data.name} khỏi phòng?`}
+				description="Agent và lịch sử làm việc vẫn được giữ lại. Bạn có thể thêm agent vào phòng lại sau."
+				confirmLabel="Gỡ khỏi phòng"
+				onConfirm={async () => {
+					await sessionApi.removeTeamMember(leaderSessionId, leaderAgentId, memberToRemove.agent.id);
+					setMemberToRemove(null);
+					await onMembersChanged();
+				}} />}
 			<header className="shrink-0 border-b px-2 pb-3 pt-1">
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0">

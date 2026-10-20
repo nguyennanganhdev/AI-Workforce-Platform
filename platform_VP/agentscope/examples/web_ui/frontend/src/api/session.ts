@@ -46,6 +46,10 @@ export const sessionApi = {
 		client.post<TeamDetailResponse>(`/sessions/${sessionId}/team/members`,
 			{ agent_id: memberId }, { agent_id: agentId }),
 
+	removeTeamMember: (sessionId: string, agentId: string, memberId: string) =>
+		client.delete<TeamDetailResponse>(`/sessions/${sessionId}/team/members/${memberId}`,
+			{ agent_id: agentId }),
+
 	list: (agentId: string) => client.get<SessionListResponse>('/sessions/', { agent_id: agentId }),
 
 	create: async (body: CreateSessionRequest) => {
