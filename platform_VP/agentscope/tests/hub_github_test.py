@@ -371,12 +371,55 @@ class GitHubGetCardTest(IsolatedAsyncioTestCase):
         with self.assertRaises(KeyError):
             await self.hub.get_mcp("u", "f" * 32)
 
-    async def test_a_listed_card_is_served_from_the_listing(self) -> None:
-        listed = {"server": {"id": "x", "name": "com.acme/listed", "remotes": [{"url": "https://l"}]},
-                  "x-github": {"primary_language": "Go"}}
-        self.hub._listed["com.acme~listed"] = listed
+    async def test_listing_uses_the_official_route_and_its_cursor(self) -> None:
+        page = {
+            "servers": [
+                {
+                    "server": {
+                        "name": "com.acme/hosted",
+                        "description": "Hosted thing",
+                        "remotes": [{"type": "streamable-http", "url": "https://h"}],
+                        "_meta": {
+                            "io.modelcontextprotocol.registry/publisher-provided": {
+                                "github": {
+                                    "displayName": "Hosted",
+                                    "primaryLanguage": "Go",
+                                    "nameWithOwner": "acme/hosted",
+                                    "preferredImage": "https://img",
+                                },
+                            },
+                        },
+                    },
+                },
+            ],
+            "metadata": {"nextCursor": "mcp.cursor.abc"},
+        }
+        seen: list[dict | None] = []
 
-        card = await self.hub.get_mcp("u", "com.acme~listed")
+        async def request(path: str, params: dict | None = None) -> Any:
+            self.paths.append(path)
+            seen.append(params)
+            return SimpleNamespace(json=lambda: page)
 
-        self.assertEqual(self.paths, [])
-        self.assertEqual(card.tags, ["Go"])
+        self.hub._request = request  # type: ignore[method-assign]
+
+        result = await self.hub.list_mcps("u", q=" sup ", cursor="mcp.cursor.prev", limit=20)
+
+        self.assertEqual(self.paths, ["/v0.1/servers"])
+        self.assertEqual(seen, [{"limit": 20, "cursor": "mcp.cursor.prev", "search": "sup"}])
+        self.assertEqual(result.next_cursor, "mcp.cursor.abc")
+        card = result.cards[0]
+        self.assertEqual(
+            (card.id, card.display_name, card.tags, card.author, card.icon_url),
+            ("com.acme~hosted", "Hosted", ["Go"], "acme", "https://img"),
+        )
+        # A remote that declares no auth still offers an optional key,
+        # without being flagged as needing configuration.
+        self.assertEqual(card.auth, "none")
+        self.assertNotIn("required", card.inputs_schema)
+        self.assertIn("API_KEY", card.inputs_schema["properties"])
+        self.assertEqual(render_mcp(card, {}).mcp_config.headers or {}, {})
+        self.assertEqual(
+            render_mcp(card, {"API_KEY": "pat"}).mcp_config.headers,
+            {"Authorization": "Bearer pat"},
+        )

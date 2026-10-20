@@ -155,9 +155,9 @@ async def install_mcp(
 
     An HTTP MCP's tools are fetched right away, since Agent Builder only
     sees synced tools; a failure (often a missing key) is stored on the
-    record, not raised. A stdio MCP is not connected here: that would
-    spawn its command in the app process instead of the workspace
-    sandbox.
+    record, not raised. A stdio MCP is not started here: its package
+    would run inside the app container (workspaces are local, there is
+    no sandbox), so that waits for an explicit sync.
     """
     hub = _pick_hub(hubs, hub_id)
     try:

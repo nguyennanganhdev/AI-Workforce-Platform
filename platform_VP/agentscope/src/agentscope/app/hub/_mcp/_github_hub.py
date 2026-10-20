@@ -53,9 +53,17 @@ _LEGACY_ID = re.compile(r"[0-9a-f]{32}")
 # What runs a package when the official schema names only its registry.
 _RUNTIME_BY_REGISTRY = {"npm": "npx", "pypi": "uvx", "oci": "docker"}
 
-# Listed entries kept for detail/install, so those keep the GitHub block
-# (icon, language, README) that the by-name route does not return.
-_LISTED_LIMIT = 600
+# Where ``v0.1`` keeps the GitHub block that ``v0`` served as ``x-github``.
+_PUBLISHER = "io.modelcontextprotocol.registry/publisher-provided"
+
+# Offered on a remote that declares no auth: hosted servers such as
+# Supabase also take a personal token, and left blank nothing is sent.
+_OPTIONAL_KEY = {
+    "description": "API key hoặc token, nếu MCP yêu cầu. Để trống nếu không cần.",
+    "is_required": False,
+    "is_secret": True,
+    "fallback": True,
+}
 
 
 def _card_id(name: str) -> str:
@@ -83,6 +91,7 @@ def _from_official(payload: dict) -> dict:
     official = (payload.get("_meta") or {}).get(
         "io.modelcontextprotocol.registry/official",
     ) or {}
+    github = ((server.get("_meta") or {}).get(_PUBLISHER) or {}).get("github") or {}
     icons = [icon for icon in server.get("icons") or [] if isinstance(icon, dict)]
     return {
         "server": {
@@ -114,8 +123,13 @@ def _from_official(payload: dict) -> dict:
             ],
         },
         "x-github": {
-            "display_name": server.get("title"),
-            "preferred_image": icons[0].get("src") if icons else None,
+            "display_name": github.get("displayName") or server.get("title"),
+            "preferred_image": github.get("preferredImage")
+            or (icons[0].get("src") if icons else None),
+            "owner_avatar_url": github.get("ownerAvatarUrl"),
+            "primary_language": github.get("primaryLanguage"),
+            "name_with_owner": github.get("nameWithOwner") or "",
+            "readme": github.get("readme"),
         },
     }
 
@@ -221,7 +235,6 @@ class GitHubMCPHub(MCPHubBase):
         self.api_token = api_token
         self.timeout = timeout
         self._client: "httpx.AsyncClient | None" = None
-        self._listed: dict[str, dict] = {}
 
     async def __aenter__(self) -> "GitHubMCPHub":
         """Open the HTTP client shared by every request.
@@ -324,6 +337,10 @@ class GitHubMCPHub(MCPHubBase):
                     "is_required": True,
                     "is_secret": header.get("is_secret", True),
                 }
+
+        if not remote.get("headers"):
+            headers["Authorization"] = "${API_KEY}"
+            inputs["API_KEY"] = dict(_OPTIONAL_KEY)
 
         config: dict = {"type": "http_mcp", "url": remote["url"]}
         if headers:
@@ -464,7 +481,11 @@ class GitHubMCPHub(MCPHubBase):
             else None,
             # STDIO servers must be stateful — the process is the session.
             is_stateful=config["type"] == "stdio_mcp",
-            auth="inputs" if inputs else "none",
+            # The fallback key is optional, so it does not mark the card
+            # as needing configuration.
+            auth="inputs"
+            if any(not spec.get("fallback") for spec in inputs.values())
+            else "none",
             inputs_schema=inputs_schema,
             config_template=config,  # type: ignore[arg-type]
         )
@@ -478,10 +499,10 @@ class GitHubMCPHub(MCPHubBase):
     ) -> MCPHubPage:
         """Browse the registry, one cursor page at a time.
 
-        ``q`` is applied here rather than upstream: the registry accepts
-        no search parameter, so a page is fetched and then filtered. A
-        page whose entries all filter out still carries a cursor, which
-        the caller is expected to follow.
+        Uses ``v0.1``: its cursors are opaque and hold, while ``v0``
+        cursors are entry ids that the registry itself rejects ("Invalid
+        cursor parameter") for some entries. ``q`` is the registry's own
+        search, so it covers the whole catalog, not one page.
 
         Args:
             user_id (`str`):
@@ -505,26 +526,20 @@ class GitHubMCPHub(MCPHubBase):
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
+        if q and q.strip():
+            params["search"] = q.strip()
 
-        payload = (await self._request("/v0/servers", params)).json()
+        payload = (await self._request("/v0.1/servers", params)).json()
 
-        needle = (q or "").lower()
         cards = []
         for entry in payload.get("servers") or []:
-            card = self._to_card(entry)
-            if card is None:
-                continue
-            if card.id not in self._listed and len(self._listed) >= _LISTED_LIMIT:
-                self._listed.pop(next(iter(self._listed)))
-            self._listed[card.id] = entry
-            haystack = f"{card.name} {card.display_name} {card.description}"
-            if needle and needle not in haystack.lower():
-                continue
-            cards.append(card)
+            card = self._to_card(_from_official(entry))
+            if card is not None:
+                cards.append(card)
 
         return MCPHubPage(
             cards=cards,
-            next_cursor=(payload.get("metadata") or {}).get("next_cursor"),
+            next_cursor=(payload.get("metadata") or {}).get("nextCursor"),
         )
 
     async def get_mcp(self, user_id: str, card_id: str) -> MCPCard:
@@ -550,21 +565,19 @@ class GitHubMCPHub(MCPHubBase):
                 When the registry returns any other failure.
         """
         legacy = _LEGACY_ID.fullmatch(card_id) is not None
-        entry = None if legacy else self._listed.get(card_id)
-        if entry is None:
-            path = (
-                f"/v0/servers/{card_id}"
-                if legacy
-                else f"/v0.1/servers/{quote(card_id.replace('~', '/'), safe='')}"
-                "/versions/latest"
-            )
-            try:
-                response = await self._request(path)
-            except HubError as e:
-                if e.status_code in (400, 404):
-                    raise KeyError(card_id) from e
-                raise
-            entry = response.json() if legacy else _from_official(response.json())
+        path = (
+            f"/v0/servers/{card_id}"
+            if legacy
+            else f"/v0.1/servers/{quote(card_id.replace('~', '/'), safe='')}"
+            "/versions/latest"
+        )
+        try:
+            response = await self._request(path)
+        except HubError as e:
+            if e.status_code in (400, 404):
+                raise KeyError(card_id) from e
+            raise
+        entry = response.json() if legacy else _from_official(response.json())
 
         card = self._to_card(entry, readme=True)
         if card is None:
