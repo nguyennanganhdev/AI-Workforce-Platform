@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Workspace router — manage MCP clients and skills on a workspace."""
 import mimetypes
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import (
@@ -25,6 +26,7 @@ from ..deps import (
 )
 from ..hub import SkillHubBase
 from .._service import WorkspaceService, WorkspaceStatus
+from .._host_policy import host_paths_allowed, inside
 from .._mcp_policy import MCPPolicyError, check_mcp_allowed
 from .._service._openapi import OpenAPIError, ensure_public_url
 from ...mcp import HttpMCPConfig
@@ -32,6 +34,7 @@ from .._service._workspace import SkillUploadError, UploadManifest
 from ..storage import MCPRecord, StorageBase
 from ...mcp import MCPClient
 from ...skill import Skill
+from ...workspace import LocalWorkspace
 from ._schema import (
     AddFromLibraryRequest,
     AddFromLibraryResponse,
@@ -416,6 +419,22 @@ async def remove_skill(
 # ---------------------------------------------------------------------------
 
 
+def _confined(workspace: Any, target: str) -> str:
+    """``target``, if the caller may reach it: inside the workspace, unless
+    the workspace is sandboxed or host paths are allowed (``_host_policy``).
+    """
+    if (
+        host_paths_allowed()
+        or not isinstance(workspace, LocalWorkspace)
+        or inside(workspace.workdir, target)
+    ):
+        return target
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Chỉ xem được thư mục và file trong không gian làm việc của agent.",
+    )
+
+
 @workspace_router.get("/directories")
 async def list_workspace_directory(
     agent_id: str = Query(...),
@@ -432,9 +451,9 @@ async def list_workspace_directory(
 ) -> DirectoryListing:
     """List one directory level, reachable from a session's workspace.
 
-    Paths are not confined to the workspace root: for a sandboxed
-    backend the reachable filesystem is the sandbox, and for a local
-    one the caller is already trusted with the host.
+    A sandboxed backend may be browsed freely (its filesystem is the
+    sandbox); a local one only inside the workspace, since outside it is
+    the app's own host.
 
     The resolved absolute path comes back alongside the entries, so a
     caller browsing with relative paths can still show where it is.
@@ -445,7 +464,7 @@ async def list_workspace_directory(
         session_id,
     )
     backend = workspace.get_backend()
-    target = backend.abspath(path, cwd=workspace.workdir)
+    target = _confined(workspace, backend.abspath(path, cwd=workspace.workdir))
 
     entry = await backend.stat(target)
     if entry is None:
@@ -590,7 +609,7 @@ async def read_workspace_file(
         session_id,
     )
     backend = workspace.get_backend()
-    target = backend.abspath(path, cwd=workspace.workdir)
+    target = _confined(workspace, backend.abspath(path, cwd=workspace.workdir))
     basename = backend.basename(target) or "download"
 
     entry = await backend.stat(target)

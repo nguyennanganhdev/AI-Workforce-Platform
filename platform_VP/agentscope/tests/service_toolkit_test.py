@@ -17,7 +17,9 @@ Verifies the assembly rules:
 - caller-supplied ``extra_factory`` results land at the end.
 """
 from typing import Any
+import os
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import patch
 
 from utils import FakeWorkspaceManager
 
@@ -306,9 +308,53 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
         self.assertIn("TeamSay", names)
         self.assertEqual(toolkit.tool_groups[0].mcps, [])
 
+    async def _user_agent_tool_names(self) -> set:
+        """Tool names a standalone user agent gets from a workspace whose
+        only tool is a stub shell."""
+        agent = _make_agent(source="user")
+        session = _make_session(user_id="u", agent_id=agent.id, with_model=True)
+
+        class _WsTool(_StubTool):
+            name: str = "ws-bash"
+            description: str = "stub workspace tool"
+
+        toolkit = await get_toolkit(
+            storage=_NoOpStorage(),  # type: ignore[arg-type]
+            workspace=_FakeWorkspace(tools=[_WsTool()]),  # type: ignore[arg-type]
+            workspace_manager=FakeWorkspaceManager(),
+            scheduler_manager=SchedulerManager(
+                storage=_NoOpStorage(),  # type: ignore[arg-type]
+                message_bus=_NullBus(),  # type: ignore[arg-type]
+                workspace_manager=FakeWorkspaceManager(),
+            ),
+            background_task_manager=BackgroundTaskManager(
+                message_bus=_NullBus(),  # type: ignore[arg-type]
+            ),
+            message_bus=_NullBus(),  # type: ignore[arg-type]
+            user_id="u",
+            agent_record=agent,
+            session_record=session,
+            extra_factory=None,
+            middlewares=[],
+            resource_access_service=_make_access(_NoOpStorage()),
+        )
+        return set(_tool_names(toolkit))
+
+    @patch.dict(os.environ, {"AGENT_WORKSPACE_TOOLS": ""})
+    async def test_user_agent_gets_no_host_tools_by_default(self) -> None:
+        """Shell/file tools run on the host, so an open platform hands out
+        none of them (nor ToolStop, which only controls them)."""
+        names = await self._user_agent_tool_names()
+
+        self.assertNotIn("ws-bash", names)
+        self.assertNotIn("ToolStop", names)
+        self.assertTrue({"TaskCreate", "TaskList", "TaskGet", "TaskUpdate"} <= names)
+
+    @patch.dict(os.environ, {"AGENT_WORKSPACE_TOOLS": "true"})
     async def test_user_agent_gets_all_sources(self) -> None:
         """A user-owned agent receives workspace, planning, scheduling,
-        and ToolStop, but no team tools while standalone."""
+        and ToolStop, but no team tools while standalone. (Host tools are
+        enabled here, as on a trusted single-tenant host.)"""
         agent = _make_agent(source="user")
         session = _make_session(
             user_id="u",

@@ -714,6 +714,28 @@ class HubRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(again["added"], [])
         self.assertEqual(again["failed"], {})
 
+    def test_workspace_browser_stays_inside_the_workspace(self) -> None:
+        """Outside the workspace is the app's own host: its files, its
+        environment, other users' workspaces."""
+        root = self._client.get("/workspace/directories", params=self._scope, headers=HEADERS)
+        self.assertEqual(root.status_code, 200)
+
+        for path in ("/", "..", "../..", os.path.expanduser("~")):
+            with self.subTest(path=path):
+                listed = self._client.get(
+                    "/workspace/directories",
+                    params={**self._scope, "path": path},
+                    headers=HEADERS,
+                )
+                self.assertEqual(listed.status_code, 403)
+
+        secret = self._client.get(
+            "/workspace/files",
+            params={**self._scope, "path": os.path.abspath(__file__)},
+            headers=HEADERS,
+        )
+        self.assertEqual(secret.status_code, 403)
+
     def test_private_mcp_url_is_refused(self) -> None:
         """A user may not point the server at its own network."""
         response = self._client.post(

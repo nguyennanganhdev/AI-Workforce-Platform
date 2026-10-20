@@ -28,16 +28,20 @@ from agentscope.embedding import OpenAIEmbeddingModel
 from agentscope.mcp import HttpMCPConfig, MCPClient, StdioMCPConfig
 from agentscope.rag import ApproxTokenChunker, QdrantStore
 
-default_mcps = [
-    MCPClient(
-        name="playwright",
-        mcp_config=StdioMCPConfig(
-            command="npx",
-            args=["@playwright/mcp@latest"],
+# A browser running inside the app container can open the container's own
+# network and files, so it is off unless the operator turns it on.
+default_mcps = []
+if os.getenv("ENABLE_PLAYWRIGHT_MCP", "").strip().lower() in {"1", "true", "yes"}:
+    default_mcps.append(
+        MCPClient(
+            name="playwright",
+            mcp_config=StdioMCPConfig(
+                command="npx",
+                args=["@playwright/mcp@latest"],
+            ),
+            is_stateful=True,
         ),
-        is_stateful=True,
-    ),
-]
+    )
 
 cors_allowed_origins = [
     origin.strip()

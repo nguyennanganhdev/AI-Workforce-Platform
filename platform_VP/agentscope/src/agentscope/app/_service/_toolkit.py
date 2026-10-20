@@ -37,6 +37,7 @@ from ..message_bus import MessageBus
 from ..storage import AgentRecord, SessionRecord, StorageBase
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
+from .._host_policy import workspace_tools_allowed
 from .._mcp_policy import mcp_allowed
 from . import _mcp_oauth as oauth_flow
 
@@ -189,9 +190,13 @@ optional):
         or bool(agent_record.data.tool_bindings)
         or agent_record.data.execution_mode is not None
     )
-    tools = [] if business_runtime else await workspace.list_tools()
+    # Shell and file tools run on the host (see ``_host_policy``), so they
+    # are only handed out where the operator allows it.
+    host_tools = not business_runtime and workspace_tools_allowed()
+    tools = await workspace.list_tools() if host_tools else []
     if not business_runtime:
         tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
+    if host_tools:
         tools += await background_task_manager.list_tools(
             session_id=session_record.id,
         )

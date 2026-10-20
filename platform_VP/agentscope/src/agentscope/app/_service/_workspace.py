@@ -17,7 +17,8 @@ from ..storage import SessionRecord, StorageBase
 from ..workspace_manager import WorkspaceManagerBase
 from ..._logging import logger
 from ...tool import BackendBase
-from ...workspace import WorkspaceBase
+from ...workspace import LocalWorkspace, WorkspaceBase
+from .._host_policy import host_paths_allowed, inside
 
 #: Ceilings on one upload. Peak memory is a chunk per concurrent
 #: install; these bound the sandbox's disk and how long a slot is held.
@@ -246,6 +247,13 @@ class WorkspaceService:
         # Stored as the user gave it: absolute, relative to a root the
         # client cannot see, or unset for the root itself.
         cwd = backend.abspath(record.config.cwd or "", cwd=workspace.workdir)
+        if (
+            not host_paths_allowed()
+            and isinstance(workspace, LocalWorkspace)
+            and not inside(workspace.workdir, cwd)
+        ):
+            # Never read git state outside a local workspace.
+            cwd = workspace.workdir
         return WorkspaceStatus(
             workdir=workspace.workdir,
             cwd=cwd,
