@@ -221,6 +221,13 @@ your top priority is to complete the overall task.
 _WORKER_DESCRIPTION = """Send an internal message to one team member.
 
 ## When to Use This Tool
+- Coordinate directly with the peer who owns the needed capability, without
+  waiting for Leader's permission. Check Shared Context for shared budget,
+  timing, location or compatibility constraints; ask that peer with kind=question
+  for unresolved inputs before choosing an option or reporting completion.
+  Do not send a dependency to Leader for forwarding. If your output changes a
+  peer's work, use kind=handoff with the concrete check or adjustment needed.
+  Do not copy Leader on routine peer exchanges or contact unrelated peers.
 - When you finish, report to the assignment requester identified by the incoming
   team-message, using its exact roster handle and original handoff_id when provided.
   A peer question needs kind=answer with in_reply_to=that question's handoff_id.

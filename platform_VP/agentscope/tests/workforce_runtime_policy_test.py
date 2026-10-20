@@ -57,6 +57,21 @@ def test_replies_keep_the_original_request_id_even_for_one_request():
         assert "Omit in_reply_to" not in policy
 
 
+def test_shared_constraints_require_direct_peer_coordination_before_completion():
+    for role in ("leader", "business"):
+        policy = " ".join(governed_system_prompt(role, "Specialist").split())
+        assert "Peer-to-peer TeamSay is the default" in policy
+        assert "do not wait for Leader to authorize contact" in policy
+        assert "Shared budgets, timing, location and compatibility" in policy
+        assert "ask the responsible peer directly for anything unresolved" in policy
+        assert "it does not wake dormant peers" in policy
+        assert "Do not copy Leader on routine peer exchanges" in policy
+        assert "work assigned directly by Leader reports to Leader" in policy
+
+    leader = " ".join(governed_system_prompt("leader", "").split())
+    assert "do not label them independent merely because they use different tools" in leader
+
+
 def test_direct_conversation_is_not_an_external_ticket():
     policy = conversation_policy("platform_chat", "session-a")
     assert '"source": "platform_chat"' in policy

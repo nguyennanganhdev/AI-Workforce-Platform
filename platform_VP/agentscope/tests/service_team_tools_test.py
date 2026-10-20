@@ -1960,6 +1960,8 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
             inbox = await self.bus.inbox_drain(member.session_id, max_count=10)
             self.assertEqual(len(inbox), 1)
             self.assertIn(task_by_agent[member.agent_id], inbox[0][1]["hint"])
+            self.assertIn("contact relevant peers directly", inbox[0][1]["hint"])
+            self.assertIn("without waiting for Leader's permission", inbox[0][1]["hint"])
             if member.session_id == primary.session_id:
                 self.assertNotIn("dormant", inbox[0][1]["hint"])
             else:
