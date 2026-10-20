@@ -730,7 +730,8 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         messages, schema = model.calls[0]
         instructions = messages[0].get_text_content()
         self.assertIn("define its allowed business tasks and out-of-scope requests", instructions)
-        self.assertIn("refuse unrelated requests", instructions)
+        self.assertIn("contact a relevant roster peer with TeamSay before refusing", instructions)
+        self.assertIn("A peer-owned request is valid collaboration", instructions)
         self.assertIn("server-owned guard", instructions)
         fields = schema.model_json_schema()["$defs"]["_GeneratedAgentConfig"][
             "properties"
