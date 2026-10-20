@@ -7,7 +7,6 @@
 @import '@fontsource/be-vietnam-pro/700.css';
 @import '@fontsource/be-vietnam-pro/800.css';
 @import '@fontsource/be-vietnam-pro/900.css';
-@import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 /* The Cue design layer. It only declares tokens under `.cue-theme`, so this
    import alone changes nothing — `useCueTheme` is what switches it on. */

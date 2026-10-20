@@ -52,7 +52,8 @@
 		"llm": "LLM",
 		"tts": "TTS",
 		"embedding": "Embedding",
-		"switchToVi": "Chuyển sang tiếng Việt"
+		"switchToVi": "Chuyển sang tiếng Việt",
+		"secondsElapsed": "{{count}}s"
 	},
 	"error": {
 		"credentialNotFound": "The configured API key credential was not found or you do not have access. Add or select a key in Credentials and update the Agent configuration.",

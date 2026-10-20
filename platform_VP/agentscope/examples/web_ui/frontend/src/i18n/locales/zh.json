@@ -52,7 +52,8 @@
 		"llm": "LLM",
 		"tts": "TTS",
 		"embedding": "向量",
-		"switchToVi": "Chuyển sang tiếng Việt"
+		"switchToVi": "Chuyển sang tiếng Việt",
+		"secondsElapsed": "{{count}} 秒"
 	},
 	"error": {
 		"credentialNotFound": "找不到已配置的 API 密钥凭证，或你无权使用。请在凭证中添加或重新选择密钥，并更新智能体配置。",

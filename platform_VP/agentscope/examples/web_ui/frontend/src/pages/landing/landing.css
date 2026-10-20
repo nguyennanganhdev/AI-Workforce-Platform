@@ -1472,63 +1472,11 @@
 	line-height: 1.65;
 }
 
-.footer-brand-column form label,
 .footer-grid h3 {
 	display: block;
 	margin: 0 0 13px;
 	font-size: 12px;
 	font-weight: 750;
-}
-
-.footer-brand-column form > div {
-	display: flex;
-	max-width: 370px;
-	border: 1px solid var(--landing-border);
-	border-radius: 12px;
-	background: var(--landing-surface);
-	padding: 4px;
-}
-
-.footer-brand-column input {
-	min-width: 0;
-	flex: 1;
-	border: 0;
-	outline: none;
-	background: transparent;
-	padding: 0 10px;
-	color: var(--landing-text);
-	font-size: 12px;
-}
-
-.footer-brand-column input::placeholder {
-	color: color-mix(in srgb, var(--landing-muted) 68%, transparent);
-}
-
-.footer-brand-column button {
-	display: inline-flex;
-	height: 36px;
-	align-items: center;
-	gap: 7px;
-	border: 0;
-	border-radius: 9px;
-	background: var(--landing-accent);
-	padding: 0 12px;
-	color: #251208;
-	font-size: 11px;
-	font-weight: 730;
-	cursor: pointer;
-}
-
-.footer-brand-column button svg {
-	width: 13px;
-	height: 13px;
-}
-
-.newsletter-message {
-	min-height: 18px;
-	margin: 8px 0 0 !important;
-	color: var(--landing-accent-strong) !important;
-	font-size: 10px !important;
 }
 
 .footer-grid > div:not(:first-child) {
@@ -1552,11 +1500,6 @@
 	padding-top: 20px;
 	color: var(--landing-muted);
 	font-size: 10px;
-}
-
-.footer-bottom > div {
-	display: flex;
-	gap: 20px;
 }
 
 @media (max-width: 1080px) {

@@ -32,7 +32,6 @@ import {
 	X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 
 import agentSupport from '@/assets/images/landing-agent-cskh.webp';
@@ -351,20 +350,12 @@ function WorkflowDemo() {
 export function LandingPage() {
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [useCaseIndex, setUseCaseIndex] = useState(0);
-	const [email, setEmail] = useState('');
-	const [newsletterMessage, setNewsletterMessage] = useState('');
 	const activeUseCase = useCases[useCaseIndex];
 	const ActiveUseCaseIcon = activeUseCase.icon;
 
 	useEffect(() => {
 		document.title = 'VAgents | Đội ngũ AI cho mọi quy trình';
 	}, []);
-
-	const submitNewsletter = (event: FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
-		setNewsletterMessage('Cảm ơn bạn. Chúng tôi sẽ gửi cập nhật khi có tin mới.');
-		setEmail('');
-	};
 
 	return (
 		<div className="landing-page">
@@ -864,25 +855,6 @@ export function LandingPage() {
 							<span>VAgents</span>
 						</a>
 						<p>Tạo agent, kết nối công cụ và vận hành mọi quy trình.</p>
-						<form onSubmit={submitNewsletter}>
-							<label htmlFor="newsletter-email">Nhận tin mới từ VAgents</label>
-							<div>
-								<input
-									id="newsletter-email"
-									type="email"
-									value={email}
-									onChange={(event) => setEmail(event.target.value)}
-									placeholder="ban@congty.vn"
-									required
-								/>
-								<button type="submit">
-									Đăng ký <ArrowRight />
-								</button>
-							</div>
-							<p className="newsletter-message" aria-live="polite">
-								{newsletterMessage}
-							</p>
-						</form>
 					</div>
 					<div>
 						<h3>Sản phẩm</h3>
@@ -904,10 +876,6 @@ export function LandingPage() {
 				</div>
 				<div className="landing-shell footer-bottom">
 					<span>© 2026 VAgents</span>
-					<div>
-						<a href="#">Điều khoản</a>
-						<a href="#">Bảo mật</a>
-					</div>
 				</div>
 			</footer>
 		</div>
