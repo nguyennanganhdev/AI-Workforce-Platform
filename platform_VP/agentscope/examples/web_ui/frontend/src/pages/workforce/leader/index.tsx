@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { sessionApi, workforceApi } from '@/api';
 import type { LeaderSession, SessionView } from '@/api';
-import { sessionTime, sessionTitle, sessionDisplayTitle, useSessionPreview } from '@/components/chat/session-row-utils';
+import { sessionTime, sessionTitle, sessionDisplayTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,6 @@ function rowTitle(view: SessionView): string {
  * each, and the selected session's chat (and its room) beside them.
  */
 function LeaderPageInner() {
-	const sessionPreview = useSessionPreview();
 	const [leader, setLeader] = useState<LeaderSession | null>(null);
 	const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -127,7 +126,6 @@ function LeaderPageInner() {
 									avatarLabel="Leader"
 									title={title}
 									time={sessionTime(view.session.updated_at ?? view.session.created_at)}
-									preview={sessionPreview(view, 'Leader')}
 									status={view.status}
 									active={selectedSessionId === view.session.id}
 									onSelect={() => setSelectedSessionId(view.session.id)}

@@ -1,7 +1,4 @@
 import {
-	BotMessageSquare,
-	Cable,
-	CalendarClock,
 	Ellipsis,
 	Pencil,
 	Plus,
@@ -14,7 +11,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
 import type { SessionRecord } from '@/api';
-import { sessionTime, sessionDisplayTitle, useSessionPreview } from '@/components/chat/session-row-utils';
+import { sessionTime, sessionDisplayTitle } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { CreateGroupDialog } from '@/components/dialog/CreateGroupDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -69,13 +66,6 @@ import { useTranslation } from '@/i18n/useI18n.ts';
 const LAST_AGENT_KEY = 'chat_last_agent';
 const LAST_SESSION_KEY = 'chat_last_session';
 
-const SOURCE_ICON = {
-	user: BotMessageSquare,
-	schedule: CalendarClock,
-	channel: Cable,
-	team: Users,
-};
-
 const ChatPageInner = () => {
 	const navigate = useNavigate();
 	const {
@@ -88,7 +78,6 @@ const ChatPageInner = () => {
 		memberId?: string;
 	}>();
 	const { t } = useTranslation();
-	const sessionPreview = useSessionPreview();
 	const { agents, refetch: refetchAgents, remove: removeAgent } = useAgents();
 	const {
 		sessions,
@@ -109,7 +98,6 @@ const ChatPageInner = () => {
 
 	const selectedAgent = agents.find((a) => a.id === urlAgentId) ?? null;
 	const currentView = sessions.find((v) => v.session.id === urlSessionId) ?? null;
-	const showSourceIcons = new Set(sessions.map((view) => view.session.origin.type)).size > 1;
 
 	// "Inner focus" — when the URL carries a third `:memberId` segment
 	// the user is drilling into a team member's chat. The main sidebar
@@ -288,7 +276,6 @@ const ChatPageInner = () => {
 						</p>
 					)}
 					{sessions.map((view) => {
-						const SourceIcon = SOURCE_ICON[view.session.origin.type];
 						return (
 							<ChatRow
 								key={view.session.id}
@@ -296,9 +283,7 @@ const ChatPageInner = () => {
 								avatarLabel={selectedAgent?.data.name}
 								title={sessionDisplayTitle(view, t('chat.newSession'))}
 								time={sessionTime(view.session.updated_at)}
-								preview={sessionPreview(view, selectedAgent?.data.name ?? '')}
 								status={view.status}
-								icon={showSourceIcons && <SourceIcon className="size-3 shrink-0" />}
 								active={urlSessionId === view.session.id}
 								onSelect={() => {
 									navigate(`/chat/${urlAgentId}/${view.session.id}`);
