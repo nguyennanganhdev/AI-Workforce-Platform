@@ -445,16 +445,6 @@ export function AgentBuilderPage() {
 								</option>
 							))}
 						</select>
-						<LlmSelect
-							value={selectedModel}
-							onChange={setSelectedModel}
-							onAddCredential={() => setCredentialOpen(true)}
-							refetchTrigger={credentialRefetchTrigger}
-							placeholder="Chọn model"
-							variant="ghost"
-							className="w-44 font-mono text-[13px] text-muted-foreground hover:text-foreground"
-							disabled={working}
-						/>
 						<Button variant="ghost" size="sm" className="xl:hidden" onClick={() => setAgentsOpen(true)}>
 							<Bot /> Agent
 							<Badge variant="secondary" className="ml-0.5">
@@ -591,7 +581,7 @@ export function AgentBuilderPage() {
 					</div>
 
 					<div className="shrink-0 px-4 pb-4">
-						<div className="mx-auto max-w-3xl rounded-[24px] border border-[var(--cue-border,var(--border))] bg-background p-1.5 shadow-[var(--cue-shadow-composer,none)] focus-within:border-ring/60">
+						<div className="mx-auto flex max-w-3xl flex-wrap items-end rounded-[28px] border border-[var(--cue-border,var(--border))] bg-background p-1.5 shadow-[var(--cue-shadow-composer,none)] focus-within:border-ring/60">
 							<Textarea
 								value={message}
 								onChange={(event) => setMessage(event.target.value)}
@@ -602,13 +592,21 @@ export function AgentBuilderPage() {
 									}
 								}}
 								placeholder="Nhắn cho Builder hoặc mô tả agent cần tạo…"
-								className="min-h-12 resize-none border-none bg-transparent px-3 text-[15px] shadow-none focus-visible:ring-0"
+								className="min-h-12 max-h-40 min-w-[min(100%,12rem)] flex-1 resize-none overflow-y-auto border-none bg-transparent px-3 text-[15px] shadow-none focus-visible:ring-0"
 								disabled={working}
 							/>
-							<div className="flex items-center justify-between gap-2 pr-1 pl-3">
-								<p className="text-xs text-amber-700 dark:text-amber-400">
-									{!selectedModel && 'Chọn model để bắt đầu'}
-								</p>
+							<div className="ml-auto flex max-w-full shrink-0 items-center justify-end gap-1 px-1 py-1.5">
+								<LlmSelect
+									value={selectedModel}
+									onChange={setSelectedModel}
+									onAddCredential={() => setCredentialOpen(true)}
+									refetchTrigger={credentialRefetchTrigger}
+									placeholder="Chọn model"
+									variant="ghost"
+									aria-label="Model của Builder"
+									className="h-8 min-w-0 max-w-36 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+									disabled={working}
+								/>
 								<Button
 									size="icon"
 									aria-label="Gửi cho Builder"

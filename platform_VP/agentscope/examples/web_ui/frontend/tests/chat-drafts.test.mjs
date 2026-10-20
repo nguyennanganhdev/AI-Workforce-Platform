@@ -238,6 +238,13 @@ test('Builder new conversation stays local until the user sends text', async () 
   nodes(tree, (node) => node.props?.['aria-label'] === 'Hội thoại mới')[0].props.onClick();
   tree = env.render(AgentBuilderPage);
   assert.equal(env.calls.sent.length, 0);
+  const selector = component(tree, 'LlmSelect');
+  assert.equal(nodes(component(tree, 'header'), (node) => node.type === 'LlmSelect').length, 0);
+  const composer = nodes(tree, (node) => node.type === 'div' &&
+    nodes(node, (child) => child.type === 'Textarea').length === 1 &&
+    node.props.className?.includes('rounded-[28px]'))[0];
+  assert.equal(component(composer, 'LlmSelect'), selector);
+  assert.ok(nodes(composer, (node) => node.props?.['aria-label'] === 'Gửi cho Builder').length);
   component(tree, 'LlmSelect').props.onChange(model);
   component(tree, 'Textarea').props.onChange({ target: { value: 'Build an agent' } });
   tree = env.render(AgentBuilderPage);
