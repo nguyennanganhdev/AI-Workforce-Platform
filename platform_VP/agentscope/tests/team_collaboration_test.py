@@ -1152,14 +1152,18 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             "requires_user_input", self.storage.context.state.events[-1].kind
         )
 
-    async def test_real_agent_sleeps_immediately_after_peer_question(self):
+    async def test_real_agent_finishes_mcp_batch_then_sleeps_after_peer_question(self):
         from agentscope.agent import Agent, InjectionConfig, ReActConfig
         from agentscope.app.middleware import TeamMemberLoopMiddleware
         from agentscope.message import ToolCallBlock, UserMsg
         from agentscope.model import ChatResponse
         from agentscope.tool import Toolkit
+        from tests.team_member_middleware_test import _OtherTool
         from tests.utils import MockModel
 
+        lookup = _OtherTool()
+        lookup.name = "mcp__travel__check_hotel_availability"
+        lookup.is_concurrency_safe = False
         model = MockModel()
         model.set_responses(
             [
@@ -1175,7 +1179,14 @@ class TestCollaboration(IsolatedAsyncioTestCase):
                                     "content": "Find verified options",
                                 }
                             ),
-                        )
+                        ),
+                        *[
+                            ToolCallBlock(
+                                id=f"hotel-{index}", name=lookup.name,
+                                input=json.dumps({"content": f"hotel-{index}"}),
+                            )
+                            for index in range(3)
+                        ],
                     ],
                     is_last=True,
                 )
@@ -1185,7 +1196,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             name="Worker",
             system_prompt="Coordinate",
             model=model,
-            toolkit=Toolkit(tools=[self.tool("worker")]),
+            toolkit=Toolkit(tools=[self.tool("worker"), lookup]),
             react_config=ReActConfig(max_iters=4),
             middlewares=[
                 TeamMemberLoopMiddleware(
@@ -1204,6 +1215,8 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             )
         ]
         self.assertEqual(1, model.cnt)
+        self.assertEqual([call["content"] for call in lookup.calls],
+                         [f"hotel-{index}" for index in range(3)])
         self.assertEqual("waiting_peer", self.branch("worker").status)
         self.assertTrue(events)
 

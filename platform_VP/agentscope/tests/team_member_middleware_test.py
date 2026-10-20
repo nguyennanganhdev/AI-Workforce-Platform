@@ -217,6 +217,77 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             for event in items if isinstance(event, ToolResultTextDeltaEvent)
         ))
 
+    async def test_peer_wait_finishes_independent_mcp_batch_then_sleeps(self):
+        checks = 0
+
+        async def question():
+            nonlocal checks
+            checks += 1
+            return None if checks == 1 else "waiting_peer"
+
+        tool = _OtherTool()
+        tool.name = "mcp__travel__check_hotel_availability"
+        tool.is_concurrency_safe = False
+        batch = ChatResponse(content=[
+            block
+            for hotel in ("hotel-a", "hotel-b", "hotel-c")
+            for block in _call(tool.name, content=hotel).content
+        ], is_last=True)
+        items = await self._run(
+            [batch, _text("must wait for peer")],
+            extra_tools=[tool], pending_question=question,
+        )
+        self.assertEqual([call["content"] for call in tool.calls],
+                         ["hotel-a", "hotel-b", "hotel-c"])
+        self.assertEqual(self.model.cnt, 1)
+        self.assertEqual(self._end_events(items)[0].finished_reason,
+                         ReplyFinishedReason.COMPLETED)
+
+    async def test_internal_pause_does_not_claim_customer_input_is_missing(self):
+        for reason in ("review", "completed", "stopped"):
+            with self.subTest(reason=reason):
+                checks = 0
+
+                async def question():
+                    nonlocal checks
+                    checks += 1
+                    return None if checks == 1 else reason
+
+                tool = _OtherTool()
+                tool.name = "mcp__travel__check_hotel_availability"
+                items = await self._run(
+                    [_call(tool.name, content="hotel-a")],
+                    extra_tools=[tool], pending_question=question,
+                )
+                self.assertEqual(tool.calls, [])
+                output = "".join(event.delta for event in items
+                                 if isinstance(event, ToolResultTextDeltaEvent))
+                self.assertIn(reason, output)
+                self.assertNotIn("waiting for customer input", output)
+
+    async def test_customer_pause_still_blocks_mcp_batch(self):
+        checks = 0
+
+        async def question():
+            nonlocal checks
+            checks += 1
+            return None if checks == 1 else "awaiting_user_input"
+
+        tool = _OtherTool()
+        tool.name = "mcp__travel__check_hotel_availability"
+        batch = ChatResponse(content=[
+            block
+            for hotel in ("hotel-a", "hotel-b", "hotel-c")
+            for block in _call(tool.name, content=hotel).content
+        ], is_last=True)
+        items = await self._run([batch], extra_tools=[tool], pending_question=question)
+        self.assertEqual(tool.calls, [])
+        self.assertEqual(self.model.cnt, 1)
+        self.assertTrue(any(
+            "waiting for customer input" in event.delta
+            for event in items if isinstance(event, ToolResultTextDeltaEvent)
+        ))
+
     async def test_progress_is_not_a_terminal_report(self):
         items = await self._run(
             [

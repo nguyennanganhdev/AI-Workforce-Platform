@@ -165,9 +165,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         call = input_kwargs["tool_call"]
         pause_reason = await self._pending_question() if self._pending_question else None
         # Finish the independent requests already generated in this batch.
-        paused = bool(pause_reason) and not (
-            pause_reason == "waiting_peer" and call.name == "TeamSay"
-        )
+        paused = bool(pause_reason) and pause_reason != "waiting_peer"
         try:
             args = json.dumps(
                 json.loads(call.input), sort_keys=True, ensure_ascii=False
@@ -175,11 +173,16 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         except (ValueError, TypeError):
             args = call.input
         if paused or (call.name, args) in self._repeated_calls(agent):
+            pause_message = (
+                f"Execution paused: internal assignment status is {pause_reason}. No tool was executed."
+                if pause_reason in {"review", "completed", "stopped"}
+                else "Execution paused: waiting for customer input. No tool was executed."
+            )
             result = ToolChunk(
                 content=[
                     TextBlock(
                         text=(
-                            "Execution paused: waiting for customer input. No tool was executed."
+                            pause_message
                             if paused
                             else "Repeated unchanged result: stop retrying and report the blocker via TeamSay. No tool was executed."
                         )
