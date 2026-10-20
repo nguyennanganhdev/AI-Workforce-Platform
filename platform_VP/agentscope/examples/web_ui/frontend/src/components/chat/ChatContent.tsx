@@ -16,7 +16,6 @@ import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
 import { FlipCard } from '@/components/chat/FlipCard.tsx';
 import { TextInput } from '@/components/chat/TextInput.tsx';
-import { WorkingDirectoryDialog } from '@/components/dialog/WorkingDirectoryDialog';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert.tsx';
 import { ClayPortrait } from '@/components/ui/clay-portrait';
 import { Marker, MarkerContent } from '@/components/ui/marker';
@@ -100,15 +99,9 @@ interface ChatContentProps {
 	allowedInputTypes: string[];
 	/** @see TextInputProps.fileProcessor */
 	fileProcessor: (file: File) => Promise<ContentBlock | null>;
-	/** Agent owning the open session — drives the directory picker. */
-	agentId: string | null;
-	/** The open session, whose working directory the picker edits. */
+	/** The open session. */
 	sessionId: string | null;
-	/** Current working directory, relative to the workspace root. */
-	cwd: string | null;
-	/** Persists a new working directory. */
-	onCwdChange: (cwd: string | null) => void | Promise<void>;
-	/** Git state of {@link cwd}; `null` hides the branch badge entirely. */
+	/** Git state of the working directory; `null` hides the branch badge entirely. */
 	git?: GitStatus | null;
 	/** Re-reads the git state, since nothing polls for it. */
 	onRefreshGit?: () => void | Promise<void>;
@@ -129,10 +122,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	modelControls,
 	allowedInputTypes,
 	fileProcessor,
-	agentId,
 	sessionId,
-	cwd,
-	onCwdChange,
 	git,
 	onRefreshGit,
 }) => {
@@ -321,14 +311,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 						fileProcessor={fileProcessor}
 						phase={phase}
 						onInterrupt={onInterrupt}
-						headerSlot={
+						headerSlot={git && (
 							<div className="flex w-full items-center justify-between px-2 py-1 text-sm text-muted-foreground">
-								<WorkingDirectoryDialog
-									agentId={agentId}
-									sessionId={sessionId}
-									value={cwd}
-									onChange={onCwdChange}
-								/>
 								{git && (
 									<Button
 										className="font-mono"
@@ -363,7 +347,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 									</Button>
 								)}
 							</div>
-						}
+						)}
 					/>
 				</div>
 			)}

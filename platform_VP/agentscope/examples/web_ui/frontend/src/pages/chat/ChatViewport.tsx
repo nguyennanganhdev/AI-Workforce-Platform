@@ -748,28 +748,6 @@ export function ChatViewport({
 	 *
 	 * @param mode - New permission mode (e.g. `default`, `explore`).
 	 */
-	/**
-	 * Persist a new working directory.
-	 *
-	 * Nothing local mirrors it — the value is read straight off the
-	 * session view, which `patchConfig` refetches on success.
-	 *
-	 * @param next - Directory relative to the workspace root, or `null`
-	 *   for the root itself.
-	 */
-	const handleCwdChange = async (next: string | null) => {
-		// Bypasses `patchConfig`: the dialog shows the failure inline and
-		// stays open on it, so the toast would be a duplicate and the
-		// swallowed rejection would let the dialog close as if it worked.
-		if (readOnly || !sessionId || !agentId) return;
-		setConfigPending(true);
-		try {
-			await sessionApi.update(sessionId, agentId, { cwd: next }, { silent: true });
-			await refetchSessions();
-		} finally {
-			setConfigPending(false);
-		}
-	};
 
 	const handlePermissionModeChange = async (mode: string) => {
 		await patchConfig({ permission_mode: mode as PermissionMode }, () =>
@@ -934,10 +912,7 @@ export function ChatViewport({
 									msgs={msgs}
 									teamChat={isTeamChat}
 									loading={messagesLoading}
-									agentId={agentId}
 									sessionId={sessionId}
-									cwd={view?.session.config.cwd ?? null}
-									onCwdChange={handleCwdChange}
 									git={workspaceStatus?.git ?? null}
 									onRefreshGit={refetchWorkspaceStatus}
 									phase={phase}
