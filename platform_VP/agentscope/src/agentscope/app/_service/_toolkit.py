@@ -145,11 +145,12 @@ optional):
     # Builder agents operate through their validated MCP bindings. Coding,
     # shell/task/cron tools add schemas and encourage unrelated planning loops.
     is_leader = agent_record.data.system_role == "leader"
-    # The Builder execution contract identifies authored business agents even
-    # when their intentional effective MCP set is empty (for example a planner
-    # or a knowledge-base answerer). Keep them inside the restricted runtime.
+    # Legacy published agents and team workers may lack Builder metadata;
+    # they must not fall back to host coding, shell, task or cron tools.
     business_runtime = (
         is_leader
+        or team_role == "worker"
+        or agent_record.data.lifecycle_state == "published"
         or bool(agent_record.data.tool_bindings)
         or agent_record.data.execution_mode is not None
     )

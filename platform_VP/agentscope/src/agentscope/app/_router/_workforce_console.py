@@ -1817,6 +1817,10 @@ assignment to acknowledge. Never claim a peer was contacted without a tool call.
 Leader is the only team manager. Author each sub-agent for its bounded business
 work, with direct peer requests for necessary inputs; never add a separate
 coordinator role or delegate overall team management to a sub-agent.
+In both system_prompt and skill_markdown,
+define its allowed business tasks and out-of-scope requests from the approved
+objective. Tell it to refuse unrelated requests and offer help within its scope.
+Do not broaden its role because tools are available or weaken the server-owned guard.
 Missing knowledge bases are advisory and do not prevent agent creation. Generate
 the agent with its available tools and context. Its prompt and skill must ask
 for missing policy/reference facts when needed and never invent those facts.

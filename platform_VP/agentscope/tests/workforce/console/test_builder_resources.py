@@ -728,6 +728,10 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
         )
         self.assertTrue(result.agents[1].skill_markdown)
         messages, schema = model.calls[0]
+        instructions = messages[0].get_text_content()
+        self.assertIn("define its allowed business tasks and out-of-scope requests", instructions)
+        self.assertIn("refuse unrelated requests", instructions)
+        self.assertIn("server-owned guard", instructions)
         fields = schema.model_json_schema()["$defs"]["_GeneratedAgentConfig"][
             "properties"
         ]

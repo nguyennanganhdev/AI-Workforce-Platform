@@ -38,7 +38,7 @@ from agentscope.app.storage import (
     SessionRecord,
 )
 from agentscope.mcp import HttpMCPConfig, MCPClient
-from agentscope.tool import ToolBase
+from agentscope.tool import Bash, Edit, Glob, Grep, PowerShell, Read, ToolBase, Write
 
 
 class _FakeWorkspace:
@@ -199,6 +199,49 @@ class _StubTool(ToolBase):
 
 class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
     """User-owned agent (``source="user"``) gets the full set."""
+
+    async def test_legacy_business_agents_do_not_receive_host_tools(self):
+        host_tools = {"Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep"}
+        mcp = MCPClient(
+            name="hotel", is_stateful=False,
+            mcp_config=HttpMCPConfig(url="https://example.test/mcp"),
+        )
+        for lifecycle, team_role in (("draft", "worker"), ("published", None)):
+            with self.subTest(lifecycle=lifecycle, team_role=team_role):
+                agent = _make_agent()
+                agent.data.lifecycle_state = lifecycle
+                self.assertIsNone(agent.data.execution_mode)
+                self.assertEqual(agent.data.tool_bindings, [])
+                storage = _NoOpStorage()
+                toolkit = await get_toolkit(
+                    storage=storage,
+                    workspace=_FakeWorkspace(
+                        tools=[Bash(), PowerShell(), Read(), Write(), Edit(), Glob(), Grep()],
+                        mcps=[mcp],
+                    ),
+                    workspace_manager=FakeWorkspaceManager(),
+                    scheduler_manager=SchedulerManager(
+                        storage=storage, message_bus=_NullBus(),
+                        workspace_manager=FakeWorkspaceManager(),
+                    ),
+                    background_task_manager=BackgroundTaskManager(message_bus=_NullBus()),
+                    message_bus=_NullBus(),
+                    user_id="u", agent_record=agent,
+                    session_record=_make_session(
+                        user_id="u", agent_id=agent.id, with_model=True,
+                    ),
+                    middlewares=[], resource_access_service=_make_access(storage),
+                    team_role=team_role,
+                )
+                names = set(_tool_names(toolkit))
+                self.assertTrue(host_tools.isdisjoint(names))
+                self.assertTrue(
+                    {"TaskCreate", "TaskList", "TaskGet", "TaskUpdate", "ToolStop",
+                     "ScheduleCreate", "ScheduleList", "ScheduleView", "ScheduleDelete"}
+                    .isdisjoint(names),
+                )
+                self.assertEqual("TeamSay" in names, team_role == "worker")
+                self.assertEqual(toolkit.tool_groups[0].mcps, [mcp])
 
     async def test_workforce_runtime_omits_unrelated_coding_and_task_tools(self):
         for leader in (False, True):
