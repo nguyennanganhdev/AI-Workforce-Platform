@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Pin } from 'lucide-react';
 
 import type { AgentView } from '@/api';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,8 @@ interface Props extends Omit<React.ComponentPropsWithoutRef<typeof Button>, 'onC
 	/** Currently selected agent id, or `null` when none is selected. */
 	value?: string | null;
 	onChange?: (agentId: string) => void;
+	onSelectBuilder?: () => void;
+	builderSelected?: boolean;
 	/** Override the trigger label shown when no agent is selected. */
 	placeholder?: string;
 	className?: string;
@@ -41,6 +43,8 @@ export function AgentSelect({
 	agents,
 	value,
 	onChange,
+	onSelectBuilder,
+	builderSelected = false,
 	placeholder,
 	className,
 	size = 'sm',
@@ -48,9 +52,12 @@ export function AgentSelect({
 }: Props) {
 	const { t } = useTranslation();
 	const selected = agents.find((a) => a.id === value) ?? null;
-	const displayLabel = selected
-		? selected.data.name
-		: (placeholder ?? t('chat.agent.selectPlaceholder'));
+	const selectedLeader = !builderSelected && selected?.data.system_role === 'leader';
+	const selectedId = builderSelected ? 'agent-builder' : selected?.id;
+	const selectedName = builderSelected
+		? t('shell.builder')
+		: selectedLeader ? 'Agent group' : selected?.data.name;
+	const displayLabel = selectedName ?? placeholder ?? t('chat.agent.selectPlaceholder');
 
 	const leaders = agents.filter((a) => a.data.system_role === 'leader');
 	const others = agents.filter((a) => a.data.system_role !== 'leader');
@@ -59,14 +66,25 @@ export function AgentSelect({
 	const shared = others.filter((a) => !a.editable);
 
 	const renderItem = (agent: AgentView) => {
-		const isSelected = agent.id === value;
+		const isSelected = !builderSelected && agent.id === value;
+		const isLeader = agent.data.system_role === 'leader';
+		const name = isLeader ? 'Agent group' : agent.data.name;
 		return (
-			<DropdownMenuItem key={agent.id} onSelect={() => onChange?.(agent.id)}>
+			<DropdownMenuItem
+				key={agent.id}
+				onSelect={() => onChange?.(agent.id)}
+				className={isLeader ? 'bg-amber-50 font-semibold dark:bg-amber-950/30' : undefined}
+			>
 				<Check
 					className={`size-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}
 				/>
-				<ClayAvatar id={agent.id} label={agent.data.name} size={24} />
-				<span className="min-w-0 flex-1 truncate">{agent.data.name}</span>
+				<ClayAvatar
+					id={agent.id}
+					label={name}
+					size={24}
+					className={isLeader ? 'ring-1 ring-amber-400 dark:ring-amber-600' : undefined}
+				/>
+				<span className="min-w-0 flex-1 truncate">{name}</span>
 				{!agent.editable && (
 					<Badge
 						variant="secondary"
@@ -76,6 +94,7 @@ export function AgentSelect({
 						{t('common.readOnly')}
 					</Badge>
 				)}
+				{isLeader && <Pin className="size-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />}
 			</DropdownMenuItem>
 		);
 	};
@@ -86,15 +105,20 @@ export function AgentSelect({
 				<Button
 					variant="outline"
 					size={size}
-					className={cn('justify-between gap-1 font-normal', className)}
+					className={cn(
+						'justify-between gap-1 font-normal',
+						(selectedLeader || builderSelected) && 'font-semibold',
+						className,
+					)}
 					{...props}
 				>
 					<span className="flex min-w-0 items-center gap-2">
-						{selected && (
+						{selectedId && (
 							<ClayAvatar
-								id={selected.id}
-								label={selected.data.name}
+								id={selectedId}
+								label={selectedName}
 								size={size === 'lg' ? 28 : 24}
+								className={selectedLeader ? 'ring-1 ring-amber-400 dark:ring-amber-600' : undefined}
 							/>
 						)}
 						<span className="truncate">{displayLabel}</span>
@@ -103,15 +127,28 @@ export function AgentSelect({
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start" className="min-w-56 max-h-72 overflow-y-auto">
-				{agents.length === 0 ? (
+				{leaders.map(renderItem)}
+				{onSelectBuilder && (
+					<DropdownMenuItem
+						onSelect={onSelectBuilder}
+						className="bg-sky-50 font-semibold dark:bg-sky-950/30"
+					>
+						<Check
+							className={`size-3.5 shrink-0 ${builderSelected ? 'opacity-100' : 'opacity-0'}`}
+						/>
+						<ClayAvatar id="agent-builder" label={t('shell.builder')} size={24} />
+						<span className="min-w-0 flex-1 truncate">{t('shell.builder')}</span>
+						<Pin className="size-3.5 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+					</DropdownMenuItem>
+				)}
+				{others.length > 0 && (leaders.length > 0 || onSelectBuilder) && <DropdownMenuSeparator />}
+				{agents.length === 0 && !onSelectBuilder ? (
 					<div className="px-2 py-3 text-center text-sm text-muted-foreground">
 						<p className="font-medium">{t('chat.agent.emptyTitle')}</p>
 						<p className="text-xs mt-1">{t('chat.agent.emptyDescription')}</p>
 					</div>
 				) : hasShared ? (
 					<>
-						{leaders.map(renderItem)}
-						{leaders.length > 0 && <DropdownMenuSeparator />}
 						{yours.length > 0 && (
 							<DropdownMenuGroup>
 								<DropdownMenuLabel>{t('chat.agent.groupYours')}</DropdownMenuLabel>
@@ -127,7 +164,7 @@ export function AgentSelect({
 						)}
 					</>
 				) : (
-					[...leaders, ...others].map(renderItem)
+					others.map(renderItem)
 				)}
 			</DropdownMenuContent>
 		</DropdownMenu>

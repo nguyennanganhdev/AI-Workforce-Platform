@@ -49,6 +49,17 @@ async function builderWith(deleteAgent, builderApi = {}) {
       if (id === '@/hooks/useKnowledgeBases') return {
         useKnowledgeBases: () => ({ knowledgeBases: [], loading: false }),
       };
+      if (id === '@/hooks/useAgents') return {
+        useAgents: () => ({ agents: [] }),
+      };
+      if (id === '@/i18n/useI18n') return {
+        useTranslation: () => ({ t: (key) => key }),
+      };
+      if (id === '@/components/ui/sidebar') return {
+        SidebarProvider: 'SidebarProvider', Sidebar: 'Sidebar', SidebarHeader: 'SidebarHeader',
+        SidebarContent: 'SidebarContent', SidebarFooter: 'SidebarFooter', SidebarTrigger: 'SidebarTrigger',
+        useSidebar: () => ({ isMobile: false, setOpenMobile() {} }),
+      };
       if (id === '@/components/chat/session-row-utils') return { sessionTime: () => '' };
       if (id === 'sonner') return { toast: { success() {} } };
       return new Proxy({}, { get: (_, name) => name });
@@ -60,7 +71,8 @@ async function builderWith(deleteAgent, builderApi = {}) {
       jsx: ts.JsxEmit.ReactJSX,
     },
   }).outputText, context);
-  const render = () => { cursor = 0; return context.exports.AgentBuilderPage(); };
+  const Builder = context.exports.AgentBuilderPage().props.children.type;
+  const render = () => { cursor = 0; return Builder(); };
   render();
   effects.forEach((effect) => effect());
   await new Promise((resolve) => setImmediate(resolve));

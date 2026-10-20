@@ -228,6 +228,7 @@ const ChatPageInner = () => {
 							agents={agents}
 							value={urlAgentId ?? null}
 							onChange={(id) => navigate(`/chat/${id}`)}
+							onSelectBuilder={() => navigate('/workforce/builder')}
 							variant="ghost"
 							size="default"
 						/>

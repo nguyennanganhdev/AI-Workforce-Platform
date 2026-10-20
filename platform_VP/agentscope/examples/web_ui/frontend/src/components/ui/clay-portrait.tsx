@@ -41,7 +41,7 @@ const PORTRAITS: Record<PortraitKey, string> = {
  * phrases ("Agent Kỹ thuật", "Hotel Agent") rather than tags.
  */
 const ROLE_WORDS: [Exclude<PortraitKey, 'generic'>, string[]][] = [
-	['leader', ['leader', 'điều phối', 'dieu phoi', 'supervisor', 'trưởng nhóm']],
+	['leader', ['leader', 'agent group', 'điều phối', 'dieu phoi', 'supervisor', 'trưởng nhóm']],
 	['builder', ['builder', 'factory', 'tạo agent', 'tao agent', 'tạo nhiều agent', 'xây agent']],
 	[
 		'technician',

@@ -115,6 +115,10 @@ function nodes(tree, predicate) {
     ...[tree.props?.children].flat(Infinity).flatMap((child) => nodes(child, predicate))];
 }
 const component = (tree, name) => nodes(tree, (node) => node.type === name)[0];
+function builderPage(env) {
+  const { AgentBuilderPage } = env.load('../src/pages/workforce/builder/index.tsx');
+  return nodes(AgentBuilderPage(), (node) => node.type?.name === 'AgentBuilderPageInner')[0].type;
+}
 
 test('Leader chat hides agent deletion while editing and business agent deletion stay available', async () => {
   for (const role of ['leader', 'business']) {
@@ -279,10 +283,10 @@ test('Builder new conversation stays local until the user sends text', async () 
   const api = env.mocks['@/api'].workforceApi;
   api.prepare = async (...args) => { env.calls.sent.push(args); return { conversation_id: 'builder-saved' }; };
   api.getBuilderConversation = async () => ({ messages: [], proposal: null });
-  const { AgentBuilderPage } = env.load('../src/pages/workforce/builder/index.tsx');
-  let tree = env.render(AgentBuilderPage);
+  const Builder = builderPage(env);
+  let tree = env.render(Builder);
   nodes(tree, (node) => node.props?.['aria-label'] === 'Hội thoại mới')[0].props.onClick();
-  tree = env.render(AgentBuilderPage);
+  tree = env.render(Builder);
   assert.equal(env.calls.sent.length, 0);
   const selector = component(tree, 'LlmSelect');
   assert.equal(nodes(component(tree, 'header'), (node) => node.type === 'LlmSelect').length, 0);
@@ -293,7 +297,7 @@ test('Builder new conversation stays local until the user sends text', async () 
   assert.ok(nodes(composer, (node) => node.props?.['aria-label'] === 'Gửi cho Builder').length);
   component(tree, 'LlmSelect').props.onChange(model);
   component(tree, 'Textarea').props.onChange({ target: { value: 'Build an agent' } });
-  tree = env.render(AgentBuilderPage);
+  tree = env.render(Builder);
   nodes(tree, (node) => node.props?.['aria-label'] === 'Gửi cho Builder')[0].props.onClick();
   await flush();
   assert.equal(env.calls.sent.length, 1);
@@ -336,8 +340,10 @@ test('chat has its own shell and settings opens agent management', () => {
   const chat = routes.find((route) => route.element?.type === 'ChatLayout');
   assert.ok(chat.children.some((route) => route.path === '/chat/:agentId?/:sessionId?/:memberId?'));
   assert.ok(chat.children.some((route) => route.path === '/workforce/leader'));
+  assert.ok(chat.children.some((route) => route.path === '/workforce/builder'));
   const settings = routes.find((route) => route.element?.type === 'SettingsLayout').children[0].children;
   assert.ok(!settings.some((route) => route.path.startsWith('/chat')));
+  assert.ok(!settings.some((route) => route.path === '/workforce/builder'));
   assert.equal(settings.find((route) => route.path === '/settings').element.props.to, '/workforce/agents');
 });
 
@@ -346,9 +352,147 @@ test('settings navigation omits the chat icon and keeps the return button', () =
   const { SettingsSidebar } = env.load('../src/components/layout/SettingsSidebar.tsx');
   const tree = env.render(SettingsSidebar);
   assert.equal(nodes(tree, (node) => node.props?.tooltip === 'common.chat').length, 0);
+  assert.equal(nodes(tree, (node) => node.props?.tooltip === 'shell.builder').length, 0);
   const back = nodes(tree, (node) => node.props?.tooltip === 'shell.backToChat')[0];
   back.props.onClick();
   assert.equal(env.calls.navigated[0][0], '/chat');
+});
+
+test('Builder is pinned after Leader in flat and shared agent lists, only when enabled', () => {
+  for (const shared of [false, true]) {
+    const env = environment({ 'lucide-react': {
+      Check: 'Check', ChevronDown: 'ChevronDown', Crown: 'Crown', Pin: 'Pin',
+    } });
+    const { AgentSelect } = env.load('../src/components/select/AgentSelect.tsx');
+    const agents = [
+      { id: 'worker', editable: !shared, data: { name: 'Worker' } },
+      { id: 'leader', editable: true, data: { name: 'Leader', system_role: 'leader' } },
+    ];
+    const selected = [];
+    const tree = env.render(AgentSelect, { agents, value: 'leader', builderSelected: true,
+      onSelectBuilder: () => selected.push('builder'), onChange: (id) => selected.push(id) });
+    const items = nodes(tree, (node) => node.type === 'DropdownMenuItem');
+    assert.deepEqual(items.map((item) => component(item, 'ClayAvatar').props.id),
+      ['leader', 'agent-builder', 'worker']);
+    assert.equal(component(items[0], 'Crown'), undefined);
+    assert.equal(component(items[0], 'ClayAvatar').props.label, 'Agent group');
+    assert.ok(nodes(items[0], (node) => node.props?.children === 'Agent group').length);
+    assert.ok(component(items[0], 'Pin'));
+    assert.ok(component(items[1], 'Pin'));
+    assert.equal(component(items[2], 'Pin'), undefined);
+    assert.ok(items[0].props.className.includes('font-semibold'));
+    assert.ok(items[1].props.className.includes('font-semibold'));
+    assert.equal(items[2].props.className, undefined);
+    assert.equal(component(tree, 'ClayAvatar').props.id, 'agent-builder');
+    assert.ok(component(items[1], 'Check').props.className.includes('opacity-100'));
+    assert.ok(component(items[0], 'Check').props.className.includes('opacity-0'));
+    const leaderSelected = env.render(AgentSelect, { agents, value: 'leader' });
+    const trigger = component(leaderSelected, 'DropdownMenuTrigger');
+    assert.equal(component(trigger, 'ClayAvatar').props.label, 'Agent group');
+    assert.ok(nodes(trigger, (node) => node.props?.children === 'Agent group').length);
+    items[1].props.onSelect();
+    items[0].props.onSelect();
+    assert.deepEqual(selected, ['builder', 'leader']);
+    const resourcePicker = env.render(AgentSelect, { agents });
+    assert.equal(nodes(resourcePicker, (node) => node.type === 'DropdownMenuItem').length, 2);
+    const empty = env.render(AgentSelect, { agents: [], onSelectBuilder: () => {} });
+    assert.equal(nodes(empty, (node) => node.type === 'DropdownMenuItem').length, 1);
+  }
+});
+
+test('Agent group and Builder use different existing animated portrait roles', () => {
+  const env = environment();
+  const { portraitFor } = env.load('../src/components/ui/clay-portrait.tsx');
+  assert.equal(portraitFor('Agent group'), 'leader');
+  assert.equal(portraitFor('Builder'), 'builder');
+});
+
+test('chat opens the existing Builder and Builder can switch back to agents on desktop and mobile', () => {
+  const chat = environment();
+  const { ChatPage } = chat.load('../src/pages/chat/index.tsx');
+  const inner = nodes(ChatPage(), (node) => node.type?.name === 'ChatPageInner')[0].type;
+  component(chat.render(inner), 'AgentSelect').props.onSelectBuilder();
+  assert.equal(chat.calls.navigated[0][0], '/workforce/builder');
+
+  const closed = [];
+  const builder = environment({ '@/components/ui/sidebar': {
+    useSidebar: () => ({ isMobile: true, setOpenMobile: (open) => closed.push(open) }),
+  } });
+  const tree = builder.render(builderPage(builder));
+  const pickers = nodes(tree, (node) => node.type === 'AgentSelect');
+  assert.equal(pickers.length, 1);
+  for (const picker of pickers) {
+    assert.equal(picker.props.builderSelected, true);
+    picker.props.onSelectBuilder();
+    assert.equal(builder.calls.navigated.length, 0);
+    picker.props.onChange('leader');
+  }
+  assert.deepEqual(builder.calls.navigated.map(([path]) => path), ['/chat/leader']);
+  assert.deepEqual(closed, [false, false]);
+  assert.equal(component(tree, 'AccountMenu').props.showSettings, true);
+});
+
+test('Builder new session and group actions share the chat layout and reuse group creation', async () => {
+  let refreshed = 0;
+  const env = environment({ '@/hooks/useAgents': { useAgents: () => ({
+    agents: [], refetch: async () => { refreshed++; },
+  }) }, '@/components/ui/sidebar': {
+    SidebarHeader: 'SidebarHeader',
+    useSidebar: () => ({ isMobile: false, setOpenMobile() {} }),
+  } });
+  const Builder = builderPage(env);
+  let tree = env.render(Builder);
+  const header = component(tree, 'SidebarHeader');
+  const actions = nodes(header, (node) => node.props?.className === 'grid grid-cols-2 gap-2')[0];
+  const buttons = nodes(actions, (node) => node.type === 'Button');
+  assert.equal(buttons.length, 2);
+  assert.ok(buttons[0].props.children.includes('chat.newSession'));
+  assert.ok(buttons[1].props.children.includes('groupChat.create'));
+  component(tree, 'Textarea').props.onChange({ target: { value: 'Builder draft' } });
+  buttons[1].props.onClick();
+  tree = env.render(Builder);
+  assert.equal(component(tree, 'CreateGroupDialog').props.open, true);
+  assert.equal(component(tree, 'Textarea').props.value, 'Builder draft');
+  assert.equal(env.calls.created.length, 0);
+  await component(tree, 'CreateGroupDialog').props.onCreated('leader', 'group-session');
+  assert.equal(refreshed, 1);
+  assert.equal(env.calls.navigated[0][0], '/chat/leader/group-session');
+  buttons[0].props.onClick();
+  tree = env.render(Builder);
+  assert.equal(component(tree, 'Textarea').props.value, '');
+  assert.equal(env.calls.created.length, 0);
+});
+
+test('Builder uses the same sidebar frame as chat on desktop and mobile', () => {
+  for (const isMobile of [false, true]) {
+    const env = environment({
+      '@/hooks/use-mobile': { useIsMobile: () => isMobile },
+      '@/components/ui/sidebar': {
+        useSidebar: () => ({ isMobile, setOpenMobile() {} }), Sidebar: 'Sidebar', SidebarProvider: 'SidebarProvider',
+        SidebarHeader: 'SidebarHeader', SidebarContent: 'SidebarContent',
+        SidebarFooter: 'SidebarFooter', SidebarTrigger: 'SidebarTrigger',
+      },
+    });
+    const { ChatPage } = env.load('../src/pages/chat/index.tsx');
+    const chatPage = ChatPage();
+    const inner = nodes(chatPage, (node) => node.type?.name === 'ChatPageInner')[0].type;
+    const chat = env.render(inner);
+    const builderEnv = environment(env.mocks);
+    const { AgentBuilderPage } = builderEnv.load('../src/pages/workforce/builder/index.tsx');
+    const builderWrapper = AgentBuilderPage();
+    const builder = builderEnv.render(builderPage(builderEnv));
+    assert.equal(component(builderWrapper, 'SidebarProvider').props.style['--sidebar-width'],
+      component(chatPage, 'SidebarProvider').props.style['--sidebar-width']);
+    for (const part of ['Sidebar', 'SidebarHeader', 'SidebarContent', 'SidebarFooter']) {
+      assert.equal(component(builder, part).props.className, component(chat, part).props.className);
+    }
+    assert.equal(component(builder, 'Sidebar').props.collapsible,
+      component(chat, 'Sidebar').props.collapsible);
+    assert.ok(component(component(builder, 'SidebarHeader'), 'Brand'));
+    assert.ok(component(component(builder, 'SidebarHeader'), 'AgentSelect'));
+    assert.ok(component(builder, 'SidebarTrigger'));
+    assert.equal(nodes(builder, (node) => node.type === 'AgentSelect').length, 1);
+  }
 });
 
 test('a saved team panel starts unchecked in a new viewport while other panels persist', () => {

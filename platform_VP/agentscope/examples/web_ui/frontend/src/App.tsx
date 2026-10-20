@@ -36,6 +36,7 @@ const router = createBrowserRouter([
 			{ path: '/', element: <Navigate to="/chat" replace /> },
 			{ path: '/chat/:agentId?/:sessionId?/:memberId?', element: <ChatPage /> },
 			{ path: '/workforce/leader', element: <LeaderPage /> },
+			{ path: '/workforce/builder', element: <AgentBuilderPage /> },
 		],
 	},
 	{
@@ -49,7 +50,6 @@ const router = createBrowserRouter([
 				// last-resort catch-all for SettingsLayout/SettingsSidebar crashes.
 				errorElement: <RouteError />,
 				children: [
-					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
 					{ path: '/workforce/agents/:agentId?', element: <AgentManagementPage /> },
 					{ path: '/settings', element: <Navigate to="/workforce/agents" replace /> },
 					{ path: '/schedule', element: <SchedulePage /> },
