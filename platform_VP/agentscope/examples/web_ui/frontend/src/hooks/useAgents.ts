@@ -5,9 +5,9 @@ import type { AgentView, CreateAgentRequest, UpdateAgentRequest } from '../api';
 
 /**
  * Manages the full agent list with CRUD operations.
- * Fetches on mount and automatically re-fetches after each mutation.
+ * Fetches on mount (unless `fetchOnMount` is false) and re-fetches after each mutation.
  */
-export function useAgents() {
+export function useAgents({ fetchOnMount = true }: { fetchOnMount?: boolean } = {}) {
 	const [agents, setAgents] = useState<AgentView[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
@@ -26,8 +26,8 @@ export function useAgents() {
 	}, []);
 
 	useEffect(() => {
-		refetch();
-	}, [refetch]);
+		if (fetchOnMount) refetch();
+	}, [refetch, fetchOnMount]);
 
 	/** Creates a new agent and refreshes the list. */
 	const create = useCallback(

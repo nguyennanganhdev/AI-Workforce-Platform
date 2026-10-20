@@ -33,7 +33,8 @@ export function AddTeamMemberDialog({ agentId, sessionId, present, disabled, onA
 	const [adding, setAdding] = useState<string | null>(null);
 	const busy = adding !== null;
 	const [error, setError] = useState<string | null>(null);
-	const { agents, loading, error: loadError, refetch } = useAgents();
+	// Loaded when the dialog opens, not on every Leader session switch.
+	const { agents, loading, error: loadError, refetch } = useAgents({ fetchOnMount: false });
 	const available = agents.filter((agent) =>
 		agent.id !== agentId
 		&& agent.source === 'user' && agent.data.system_role === 'business'
