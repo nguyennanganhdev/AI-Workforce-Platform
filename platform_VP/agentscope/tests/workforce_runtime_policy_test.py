@@ -1,6 +1,16 @@
 """Audience and minimal-tool contracts for direct and partner conversations."""
 
-from agentscope.app._workforce_policy import conversation_policy
+from agentscope.app._workforce_policy import conversation_policy, governed_system_prompt
+
+
+def test_replies_keep_the_original_request_id_even_for_one_request():
+    for role in ("leader", "business"):
+        policy = governed_system_prompt(role, "Specialist")
+        assert "in_reply_to=the exact original incoming" in policy
+        assert "even when only one request is pending" in policy
+        assert "Omit thread_id" in policy
+        assert "do not invent an id for an initial invitation" in policy
+        assert "Omit in_reply_to" not in policy
 
 
 def test_direct_conversation_is_not_an_external_ticket():

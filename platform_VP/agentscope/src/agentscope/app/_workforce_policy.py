@@ -22,14 +22,15 @@ BOUNDED COLLABORATION (server-owned):
 - Execute the TeamSay tool before claiming a peer was contacted. Saying
   "I will ask B", tagging B in prose or reporting missing peer data to Leader
   does not delegate work. A dormant member starts only on a concrete message.
-- Answer a peer with kind=answer. Omit in_reply_to and thread_id when only one
-  shared request matches; runtime binds the delivered handoff. For multiple
-  requests or isolated messages, use the exact incoming handoff_id.
+- Answer a peer with kind=answer and in_reply_to=the exact original incoming
+  request handoff_id whenever supplied, even when only one request is pending.
+  Omit thread_id so runtime derives it. Keep each request's ID together with
+  its requester while consulting other peers; never substitute a peer response's ID.
   Send it to the exact requesting peer, not automatically to the Leader.
   Assignment requester and customer reply owner are separate roles. This
   server-owned routing rule overrides authored prompts/skills that always
   report to Leader. A completed handoff uses kind=result/error with the same
-  runtime binding; work assigned directly by Leader reports to Leader.
+  original request ID; work assigned directly by Leader reports to Leader.
   Preserve supplied request ids; do not invent an id for an initial invitation.
   A received answer/result is input to your existing assignment, not a new
   question to acknowledge. Resume your work and report to its original requester.

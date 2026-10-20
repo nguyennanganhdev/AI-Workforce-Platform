@@ -189,6 +189,33 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             in_reply_to=requests[0].metadata["handoff_id"],
         )
 
+    async def test_each_request_instructs_an_exact_reply_link(self):
+        requests = []
+        for content in ("Find options", "Check availability"):
+            request = await self.say(
+                "worker", to="Peer", kind="question", content=content,
+            )
+            requests.append(request)
+            hint = next(
+                h.payload["hint"] for h in self.storage.handoffs.values()
+                if h.handoff_id == request.metadata["handoff_id"]
+                and h.recipient_session_id == "peer-session"
+            )
+            self.assertIn(f"with in_reply_to={request.metadata['handoff_id']}", hint)
+            self.assertIn("even if this is the only request", hint)
+            self.assertIn("omit thread_id", hint.replace("\n", " "))
+            self.assertNotIn("omit in_reply_to", hint)
+
+        for request, content in zip(requests, ("Option A", "Option A is available")):
+            reply = await self.say(
+                "peer", to="Worker", kind="answer", content=content,
+                in_reply_to=request.metadata["handoff_id"],
+            )
+            event = next(e for e in self.storage.context.state.events
+                         if e.id == reply.metadata["handoff_id"])
+            self.assertEqual(request.metadata["handoff_id"], event.in_reply_to)
+            self.assertEqual(request.metadata["handoff_id"], event.thread_id)
+
     async def test_automatic_reply_does_not_reset_the_hop_limit(self):
         request = await self.say(
             "worker", to="Peer", kind="question", content="Find options",
