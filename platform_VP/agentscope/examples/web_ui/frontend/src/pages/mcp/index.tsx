@@ -465,6 +465,11 @@ function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: Min
 								<ItemDescription className="line-clamp-1">
 									{mcp.description} · {mcp.tools.length} tool đã đăng ký
 								</ItemDescription>
+								{mcp.tools.length === 0 && mcp.last_sync_error && (
+									<p className="mt-1 line-clamp-2 text-xs text-destructive">
+										{mcp.last_sync_error}
+									</p>
+								)}
 								{expandedMcpId === mcp.id && (
 									<div className="mt-3 grid gap-2 border-t pt-3">
 										{mcp.tools.map((tool) => (
@@ -565,7 +570,11 @@ export function MCPHubPage() {
 	const [editingCard, setEditingCard] = useState<MCPCard | null>(null);
 	const [directOpen, setDirectOpen] = useState(false);
 	const syncMcp = async (mcpId: string) => {
-		await mcpApi.sync(mcpId);
+		try {
+			await mcpApi.sync(mcpId);
+		} catch {
+			// The client already showed the reason; the list shows it too.
+		}
 		await refetchMcps();
 	};
 

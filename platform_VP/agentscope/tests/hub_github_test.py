@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """GitHub MCP registry card-building test case, without any network."""
-from unittest import TestCase
+from types import SimpleNamespace
+from typing import Any
+from unittest import IsolatedAsyncioTestCase, TestCase
 
 from agentscope.app._service import render_mcp
 from agentscope.app.hub import GitHubMCPHub
+from agentscope.app.hub._error import HubError
 
 
 class GitHubCardTest(TestCase):
@@ -245,7 +248,37 @@ class GitHubCardTest(TestCase):
         )
 
         self.assertEqual(card.name, "context7")
-        self.assertEqual(card.id, "abc")
+        # Keyed by name: registry ids are not stable.
+        self.assertEqual(card.id, "io.github.upstash~context7")
+
+    def test_header_without_template_is_itself_the_input(self) -> None:
+        """Most entries describe the header but give no ``{VAR}``."""
+        card = self._card(
+            {
+                "remotes": [
+                    {
+                        "url": "u",
+                        "headers": [
+                            {"description": "Token, 'Bearer <t>' or raw.", "is_secret": True},
+                        ],
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(card.auth, "inputs")
+        prop = card.inputs_schema["properties"]["AUTHORIZATION"]
+        self.assertEqual(prop["format"], "password")
+        self.assertNotIn("required", card.inputs_schema)
+        headers = lambda values: render_mcp(card, values).mcp_config.headers or {}
+        self.assertEqual(headers({"AUTHORIZATION": "sk"}), {"Authorization": "Bearer sk"})
+        self.assertEqual(
+            headers({"AUTHORIZATION": "Bearer sk"}),
+            {"Authorization": "Bearer sk"},
+        )
+        # Left blank or omitted, the header is not sent at all.
+        self.assertEqual(headers({"AUTHORIZATION": ""}), {})
+        self.assertEqual(headers({}), {})
 
     def test_display_fields_come_from_the_github_block(self) -> None:
         """Author, icon and language ride along on ``x-github``."""
@@ -277,3 +310,73 @@ class GitHubCardTest(TestCase):
         card = self._card({"remotes": [{"url": "u"}], "updated_at": "soon"})
 
         self.assertIsNone(card.updated_at)
+
+
+class GitHubGetCardTest(IsolatedAsyncioTestCase):
+    """Finding an installed card again."""
+
+    async def asyncSetUp(self) -> None:
+        self.hub = GitHubMCPHub()
+        self.paths: list[str] = []
+        official = {
+            "server": {
+                "name": "com.acme/thing",
+                "title": "Thing",
+                "version": "2.0.0",
+                "icons": [{"src": "https://icon"}],
+                "remotes": [
+                    {
+                        "type": "streamable-http",
+                        "url": "https://mcp.acme",
+                        "headers": [
+                            {"name": "Authorization", "isRequired": True, "isSecret": True},
+                        ],
+                    },
+                ],
+            },
+            "_meta": {"io.modelcontextprotocol.registry/official": {"updatedAt": "2026-10-19T12:00:00Z"}},
+        }
+        legacy = {"server": {"id": "0" * 32, "name": "com.acme/old", "remotes": [{"url": "https://old"}]}}
+
+        async def request(path: str, params: dict | None = None) -> Any:
+            self.paths.append(path)
+            if path.startswith("/v0.1/servers/com.acme%2Fthing/"):
+                return SimpleNamespace(json=lambda: official)
+            if path == f"/v0/servers/{'0' * 32}":
+                return SimpleNamespace(json=lambda: legacy)
+            raise HubError("github", 404, "not found")
+
+        self.hub._request = request  # type: ignore[method-assign]
+
+    async def test_card_is_found_by_name_through_the_official_route(self) -> None:
+        card = await self.hub.get_mcp("u", "com.acme~thing")
+
+        self.assertEqual(self.paths, ["/v0.1/servers/com.acme%2Fthing/versions/latest"])
+        self.assertEqual(card.id, "com.acme~thing")
+        self.assertEqual(card.display_name, "Thing")
+        self.assertEqual(card.icon_url, "https://icon")
+        self.assertEqual(card.version, "2.0.0")
+        self.assertEqual(card.inputs_schema["required"], ["AUTHORIZATION"])
+        self.assertEqual(card.config_template.url, "https://mcp.acme")
+
+    async def test_older_installs_keep_their_registry_id(self) -> None:
+        card = await self.hub.get_mcp("u", "0" * 32)
+
+        self.assertEqual(self.paths, [f"/v0/servers/{'0' * 32}"])
+        self.assertEqual(card.config_template.url, "https://old")
+
+    async def test_unknown_card_is_a_key_error(self) -> None:
+        with self.assertRaises(KeyError):
+            await self.hub.get_mcp("u", "com.acme~gone")
+        with self.assertRaises(KeyError):
+            await self.hub.get_mcp("u", "f" * 32)
+
+    async def test_a_listed_card_is_served_from_the_listing(self) -> None:
+        listed = {"server": {"id": "x", "name": "com.acme/listed", "remotes": [{"url": "https://l"}]},
+                  "x-github": {"primary_language": "Go"}}
+        self.hub._listed["com.acme~listed"] = listed
+
+        card = await self.hub.get_mcp("u", "com.acme~listed")
+
+        self.assertEqual(self.paths, [])
+        self.assertEqual(card.tags, ["Go"])
