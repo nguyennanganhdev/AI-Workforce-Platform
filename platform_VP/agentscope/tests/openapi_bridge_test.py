@@ -118,13 +118,13 @@ class AddressGuardTest(IsolatedAsyncioTestCase):
     """The bridge only reaches public addresses."""
 
     async def test_private_and_loopback_are_refused(self) -> None:
-        with patch.dict(os.environ, {"OPENAPI_ALLOW_PRIVATE": ""}):
+        with patch.dict(os.environ, {"MCP_ALLOW_PRIVATE_URLS": ""}):
             for url in ("http://127.0.0.1/x", "http://10.1.2.3/x", "http://localhost/x", "file:///etc/passwd"):
                 with self.subTest(url=url), self.assertRaises(OpenAPIError):
                     await ensure_public_url(url)
 
     async def test_opt_in_allows_private(self) -> None:
-        with patch.dict(os.environ, {"OPENAPI_ALLOW_PRIVATE": "true"}):
+        with patch.dict(os.environ, {"MCP_ALLOW_PRIVATE_URLS": "true"}):
             await ensure_public_url("http://127.0.0.1:9/x")
 
 
@@ -194,7 +194,7 @@ class BridgeEndToEndTest(IsolatedAsyncioTestCase):
         env = patch.dict(
             os.environ,
             {
-                "OPENAPI_ALLOW_PRIVATE": "true",
+                "MCP_ALLOW_PRIVATE_URLS": "true",
                 "MCP_BRIDGE_BASE_URL": f"http://127.0.0.1:{self.app_port}",
             },
         )

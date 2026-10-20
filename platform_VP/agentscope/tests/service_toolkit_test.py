@@ -141,6 +141,11 @@ class _NoOpStorage:
         """List agents for a team."""
         return []
 
+    async def list_mcps(self, _user_id: str) -> list:
+        """Library records, read for signed-in MCPs' current OAuth tokens
+        whenever the workspace holds MCPs. None are signed in here."""
+        return []
+
 
 class _AgentListStorage(_NoOpStorage):
     """Storage stub exposing a controlled runtime agent catalog."""

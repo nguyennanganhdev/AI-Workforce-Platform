@@ -28,6 +28,7 @@ from ..hub import (
     SkillHubPage,
 )
 from .._service import MCPRenderError, render_mcp
+from .._service._openapi import OpenAPIError, ensure_public_url
 from .._mcp_policy import (
     STDIO_DISABLED,
     MCPPolicyError,
@@ -188,7 +189,9 @@ async def install_mcp(
     try:
         client = render_mcp(card, body.values, body.name)
         check_mcp_allowed(client)
-    except MCPPolicyError as e:
+        if isinstance(client.mcp_config, HttpMCPConfig):
+            await ensure_public_url(client.mcp_config.url)
+    except (MCPPolicyError, OpenAPIError) as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),

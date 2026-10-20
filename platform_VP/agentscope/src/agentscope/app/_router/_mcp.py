@@ -15,6 +15,8 @@ from pydantic import ValidationError
 from ..._utils._common import _describe_exception
 from ...mcp import HttpMCPConfig, MCPClient
 from .._service import MCPRenderError, render_mcp
+from .._service import _mcp_oauth as oauth_flow
+from .._service._openapi import OpenAPIError, ensure_public_url
 from .._mcp_policy import (
     STDIO_DISABLED,
     MCPPolicyError,
@@ -56,6 +58,18 @@ def _leaves(error: BaseException) -> list[BaseException]:
     return [error]
 
 
+def _refused(error: BaseException) -> bool:
+    """Whether the MCP answered 401/403."""
+    return any(
+        getattr(getattr(leaf, "response", None), "status_code", None) in (401, 403)
+        for leaf in _leaves(error)
+    )
+
+
+OAUTH_NEEDED = "MCP này dùng đăng nhập OAuth. Bấm “Đăng nhập” để kết nối tài khoản."
+OAUTH_EXPIRED = "Phiên đăng nhập OAuth không còn hợp lệ. Bấm “Đăng nhập lại”."
+
+
 def _sync_error(
     error: BaseException,
     timeout: float,
@@ -94,6 +108,11 @@ async def refresh_catalog(
     # its package.
     limit = float(timeout or getattr(config, "timeout", None) or 60.0)
     try:
+        await oauth_flow.ensure_fresh(record)
+    except oauth_flow.OAuthError:
+        record.last_sync_error = OAUTH_EXPIRED
+        return False
+    try:
         record.discovered_tools = await _discover_tools(
             MCPClient.model_validate(record.client.model_dump(mode="json")),
             limit,
@@ -104,6 +123,17 @@ async def refresh_catalog(
             limit,
             getattr(config, "command", None),
         )
+        if _refused(exc) and isinstance(config, HttpMCPConfig) and record.openapi is None:
+            # A refused remote MCP may take sign-in rather than a key.
+            if record.oauth is None:
+                try:
+                    record.oauth = await oauth_flow.discover(config.url)
+                except Exception:  # discovery is a hint, never the error
+                    record.oauth = None
+            if record.oauth is not None:
+                record.last_sync_error = (
+                    OAUTH_EXPIRED if record.oauth.access_token else OAUTH_NEEDED
+                )
         return False
     record.catalog_revision += 1
     record.last_synced_at = datetime.now(UTC)
@@ -118,6 +148,10 @@ async def install_direct_mcp(
     storage: StorageBase = Depends(get_storage),
 ) -> MCPView:
     """Connect, discover and register a partner HTTP MCP."""
+    try:
+        await ensure_public_url(str(body.url))
+    except OpenAPIError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     headers = dict(body.headers)
     if body.api_key:
         value = body.api_key.get_secret_value()
@@ -269,7 +303,12 @@ async def update_mcp(
                 body.name or record.client.name,
             )
             check_mcp_allowed(record.client)
-        except MCPPolicyError as e:
+            if isinstance(record.client.mcp_config, HttpMCPConfig):
+                await ensure_public_url(record.client.mcp_config.url)
+            if record.oauth is not None and record.oauth.access_token:
+                # A signed-in MCP keeps its token across a re-render.
+                record.client = oauth_flow.with_token(record.client, record.oauth)
+        except (MCPPolicyError, OpenAPIError) as e:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(e),

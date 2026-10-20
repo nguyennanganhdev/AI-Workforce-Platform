@@ -80,6 +80,14 @@ class MCPView(BaseModel):
         default=True,
         description="Whether this platform will run it.",
     )
+    oauth_available: bool = Field(
+        default=False,
+        description="Whether it takes OAuth sign-in.",
+    )
+    oauth_connected: bool = Field(
+        default=False,
+        description="Whether the user has signed in.",
+    )
     display_name: str | None = Field(
         default=None,
         description="The card's user-facing name at install time.",
@@ -140,6 +148,8 @@ class MCPView(BaseModel):
             enabled=record.enabled,
             transport="stdio" if is_stdio(record.client) else "http",
             supported=mcp_allowed(record.client),
+            oauth_available=record.oauth is not None,
+            oauth_connected=bool(record.oauth and record.oauth.access_token),
             display_name=record.display_name,
             description=record.description,
             tags=record.tags,

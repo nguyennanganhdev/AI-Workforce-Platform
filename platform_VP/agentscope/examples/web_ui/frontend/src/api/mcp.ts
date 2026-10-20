@@ -27,6 +27,13 @@ export const mcpApi = {
 	importOpenAPI: (body: OpenAPIImportRequest) =>
 		client.post<MCPView>('/mcp/openapi', body, undefined, { silent: true }),
 
+	/** Returns the provider sign-in URL to send the browser to. */
+	startOAuth: (mcpId: string) =>
+		client.post<{ authorize_url: string }>(
+			`/mcp/${encodeURIComponent(mcpId)}/oauth/start`,
+			null,
+		),
+
 	sync: (mcpId: string) =>
 		client.post<MCPView>(`/mcp/${encodeURIComponent(mcpId)}/sync`, null),
 

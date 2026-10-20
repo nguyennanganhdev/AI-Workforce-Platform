@@ -9,7 +9,7 @@ call becomes one HTTP request built from the operation.
 
 Every URL the app fetches or calls on a user's behalf must resolve to a
 public address, so an import cannot reach the app's own network
-(``OPENAPI_ALLOW_PRIVATE=true`` lifts this for a trusted host).
+(``MCP_ALLOW_PRIVATE_URLS=true`` lifts this for a trusted host).
 """
 import asyncio
 import ipaddress
@@ -41,7 +41,7 @@ class OpenAPIError(ValueError):
 
 
 def _private_allowed() -> bool:
-    return os.getenv("OPENAPI_ALLOW_PRIVATE", "").strip().lower() in {
+    return os.getenv("MCP_ALLOW_PRIVATE_URLS", "").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -49,7 +49,11 @@ def _private_allowed() -> bool:
 
 
 async def ensure_public_url(url: str) -> None:
-    """Refuse a URL that is not http(s) or resolves to a non-public IP."""
+    """Refuse a URL that is not http(s) or resolves to a non-public IP.
+
+    Used for every URL a user can make the app reach: OpenAPI specs and
+    calls, OAuth endpoints, and remote MCP URLs.
+    """
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise OpenAPIError(f"URL không hợp lệ: {url!r}. Cần http(s)://…")
@@ -60,8 +64,9 @@ async def ensure_public_url(url: str) -> None:
             parts.hostname,
             parts.port or (443 if parts.scheme == "https" else 80),
         )
-    except OSError as exc:
-        raise OpenAPIError(f"Không phân giải được tên miền {parts.hostname}.") from exc
+    except OSError:
+        # Nothing to reach yet; the connection itself will say so.
+        return
     for info in infos:
         address = ipaddress.ip_address(info[4][0])
         if not address.is_global:

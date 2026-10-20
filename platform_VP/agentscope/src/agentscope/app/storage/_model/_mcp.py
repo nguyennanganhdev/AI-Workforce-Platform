@@ -49,6 +49,34 @@ class OpenAPIBridge(BaseModel):
     """Hash of the token the record's client sends to the bridge."""
 
 
+class MCPOAuth(BaseModel):
+    """OAuth sign-in for a remote MCP (MCP authorization spec: protected
+    resource metadata, authorization server metadata, dynamic client
+    registration, authorization code with PKCE).
+
+    The endpoints are discovered once; the client is registered on first
+    sign-in. Tokens are secrets and are never projected onto a view.
+    """
+
+    issuer: str = ""
+    authorization_endpoint: str
+    token_endpoint: str
+    registration_endpoint: str | None = None
+    scopes: list[str] = Field(default_factory=list)
+    resource: str = ""
+    """RFC 8707 resource indicator: the MCP's canonical URL."""
+
+    client_id: str = ""
+    client_secret: str = ""
+    token_auth: Literal["none", "client_secret_post", "client_secret_basic"] = "none"
+    redirect_uri: str = ""
+
+    access_token: str = ""
+    refresh_token: str = ""
+    expires_at: float | None = None
+    """Unix time the access token expires, when the server said."""
+
+
 class MCPRecord(_RecordBase):
     """One MCP a user has installed, at the user level rather than in any
     one workspace.
@@ -144,3 +172,6 @@ class MCPRecord(_RecordBase):
 
     openapi: OpenAPIBridge | None = None
     """Set when this MCP is an imported OpenAPI spec served by the app."""
+
+    oauth: MCPOAuth | None = None
+    """Set once the MCP is known to take OAuth sign-in."""

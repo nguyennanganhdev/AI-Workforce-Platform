@@ -745,7 +745,7 @@ class AgentInvite(_TeamToolBase):
                             agent_id=invited.id,
                             session_id=primary.id,
                         )
-                        if mcp_allowed(spec, workspace.default_mcps)
+                        if mcp_allowed(spec, getattr(workspace, "default_mcps", ()))
                     ]
                 for source_mcp in mcp_specs:
                     await workspace.add_mcp(

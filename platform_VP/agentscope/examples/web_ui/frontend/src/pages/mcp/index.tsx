@@ -1,6 +1,22 @@
-import { Blocks, Check, ChevronDown, ChevronUp, Download, FileCode2, Pencil, Plug, PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react';
+import {
+	Blocks,
+	Check,
+	ChevronDown,
+	ChevronUp,
+	Download,
+	FileCode2,
+	LogIn,
+	Pencil,
+	Plug,
+	PlugZap,
+	RefreshCw,
+	ShieldCheck,
+	Trash2,
+	TriangleAlert,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { hubApi, mcpApi } from '@/api';
 import type { HubInfo, MCPCard, MCPView } from '@/api';
@@ -351,6 +367,7 @@ interface MinePanelProps {
 	onAddDirect: () => void;
 	onImportOpenAPI: () => void;
 	onSync: (mcpId: string) => void;
+	onSignIn: (mcpId: string) => void;
 }
 
 function MinePanel({
@@ -361,6 +378,7 @@ function MinePanel({
 	onAddDirect,
 	onImportOpenAPI,
 	onSync,
+	onSignIn,
 }: MinePanelProps) {
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
@@ -529,6 +547,22 @@ function MinePanel({
 										{mcp.version}
 									</span>
 								)}
+								{mcp.oauth_connected && (
+									<span className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-emerald-700 dark:text-emerald-400">
+										<ShieldCheck className="size-3.5" /> Đã đăng nhập
+									</span>
+								)}
+								{mcp.oauth_available && mcp.supported !== false && (
+									<Button
+										size="sm"
+										variant={mcp.oauth_connected ? 'ghost' : 'default'}
+										className={cn(mcp.oauth_connected && 'text-muted-foreground')}
+										onClick={() => onSignIn(mcp.id)}
+										title="Đăng nhập tài khoản của nhà cung cấp (OAuth)"
+									>
+										<LogIn /> {mcp.oauth_connected ? 'Đăng nhập lại' : 'Đăng nhập'}
+									</Button>
+								)}
 								{mcp.hub_id && mcp.card_id && (
 									<Button
 										size="icon-sm"
@@ -594,6 +628,29 @@ export function MCPHubPage() {
 	const [editingCard, setEditingCard] = useState<MCPCard | null>(null);
 	const [directOpen, setDirectOpen] = useState(false);
 	const [openapiOpen, setOpenapiOpen] = useState(false);
+	const [searchParams, setSearchParams] = useSearchParams();
+	const signIn = async (mcpId: string) => {
+		try {
+			const { authorize_url } = await mcpApi.startOAuth(mcpId);
+			window.location.assign(authorize_url);
+		} catch {
+			// The client already showed the reason.
+		}
+	};
+
+	// Back from the provider: say how the sign-in went, once.
+	useEffect(() => {
+		const outcome = searchParams.get('oauth');
+		if (!outcome) return;
+		const name = searchParams.get('mcp') ?? 'MCP';
+		if (outcome === 'ok') {
+			toast.success(`Đã đăng nhập ${name} · ${searchParams.get('tools') ?? 0} tool sẵn sàng.`);
+		} else {
+			toast.error(`Đăng nhập ${name} chưa xong: ${searchParams.get('message') ?? 'không rõ lý do'}`);
+		}
+		setSearchParams({}, { replace: true });
+		void refetchMcps();
+	}, [searchParams, setSearchParams, refetchMcps]);
 	const syncMcp = async (mcpId: string) => {
 		try {
 			await mcpApi.sync(mcpId);
@@ -751,6 +808,7 @@ export function MCPHubPage() {
 						onRemove={remove}
 						onAddDirect={() => setDirectOpen(true)}
 						onImportOpenAPI={() => setOpenapiOpen(true)}
+						onSignIn={signIn}
 						onSync={syncMcp}
 					/>
 				)}

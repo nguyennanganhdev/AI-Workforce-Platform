@@ -706,6 +706,9 @@ export interface MCPView {
 	transport?: 'http' | 'stdio';
 	/** `false` when this platform will not run it (stdio packages). */
 	supported?: boolean;
+	/** It takes OAuth sign-in instead of (or as well as) an API key. */
+	oauth_available?: boolean;
+	oauth_connected?: boolean;
 	/**
 	 * Snapshotted from the card at install time, so they survive the hub
 	 * going away — and may lag behind it.

@@ -26,6 +26,8 @@ from ..deps import (
 from ..hub import SkillHubBase
 from .._service import WorkspaceService, WorkspaceStatus
 from .._mcp_policy import MCPPolicyError, check_mcp_allowed
+from .._service._openapi import OpenAPIError, ensure_public_url
+from ...mcp import HttpMCPConfig
 from .._service._workspace import SkillUploadError, UploadManifest
 from ..storage import MCPRecord, StorageBase
 from ...mcp import MCPClient
@@ -121,7 +123,9 @@ async def add_mcp(
     )
     try:
         check_mcp_allowed(mcp, workspace.default_mcps)
-    except MCPPolicyError as e:
+        if isinstance(mcp.mcp_config, HttpMCPConfig):
+            await ensure_public_url(mcp.mcp_config.url)
+    except (MCPPolicyError, OpenAPIError) as e:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e),

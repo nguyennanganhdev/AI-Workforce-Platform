@@ -8,6 +8,7 @@ tools, and caller-supplied extras — into one :class:`Toolkit`.
 """
 from typing import Any, Literal
 
+from ..._logging import logger
 from ...middleware import MiddlewareBase
 from ...tool import (
     TaskCreate,
@@ -37,6 +38,40 @@ from ..storage import AgentRecord, SessionRecord, StorageBase
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
 from .._mcp_policy import mcp_allowed
+from . import _mcp_oauth as oauth_flow
+
+
+async def _with_fresh_oauth(
+    storage: StorageBase,
+    user_id: str,
+    clients: list,
+) -> list:
+    """Give each signed-in MCP the user's current token.
+
+    A workspace keeps the copy it was given, so its token goes stale; the
+    library record is refreshed here (and saved) and its token wins.
+    """
+    if not clients:
+        return clients
+    records = {
+        record.client.name: record
+        for record in await storage.list_mcps(user_id)
+        if record.oauth is not None and record.oauth.access_token
+    }
+    fresh = []
+    for client in clients:
+        record = records.get(client.name)
+        url = getattr(client.mcp_config, "url", None)
+        if record is not None and url and url == getattr(record.client.mcp_config, "url", None):
+            try:
+                if await oauth_flow.ensure_fresh(record):
+                    await storage.upsert_mcp(user_id, record)
+            except oauth_flow.OAuthError as exc:
+                logger.warning("OAuth refresh failed for MCP %s: %s", client.name, exc)
+            assert record.oauth is not None
+            client = oauth_flow.with_token(client, record.oauth)
+        fresh.append(client)
+    return fresh
 
 
 async def get_toolkit(
@@ -299,8 +334,9 @@ time or interval"
     workspace_mcps = [
         client
         for client in workspace_mcps
-        if mcp_allowed(client, workspace.default_mcps)
+        if mcp_allowed(client, getattr(workspace, "default_mcps", ()))
     ]
+    workspace_mcps = await _with_fresh_oauth(storage, user_id, workspace_mcps)
     if agent_record.data.execution_mode is not None:
         allowed_by_mcp: dict[str, list[str]] = {}
         for binding in agent_record.data.tool_bindings:

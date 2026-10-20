@@ -714,9 +714,27 @@ class HubRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(again["added"], [])
         self.assertEqual(again["failed"], {})
 
+    def test_private_mcp_url_is_refused(self) -> None:
+        """A user may not point the server at its own network."""
+        response = self._client.post(
+            "/workspace/mcp",
+            params=self._scope,
+            json={
+                "name": "inside",
+                "is_stateful": False,
+                "mcp_config": {"type": "http_mcp", "url": "http://127.0.0.1:9000/mcp"},
+            },
+            headers=HEADERS,
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("nội bộ", response.json()["detail"])
+
+    @patch.dict(os.environ, {"MCP_ALLOW_PRIVATE_URLS": "true"})
     def test_unreachable_mcp_reports_why(self) -> None:
         """A red dot alone is not actionable — the reason has to reach
-        the client, unwrapped out of the transport's task group."""
+        the client, unwrapped out of the transport's task group. (A
+        loopback URL, so private URLs are allowed here.)"""
         self._client.post(
             "/workspace/mcp",
             params=self._scope,

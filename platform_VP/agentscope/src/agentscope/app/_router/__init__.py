@@ -12,6 +12,7 @@ from ._hub import hub_router
 from ._knowledge_base import knowledge_base_router
 from ._mcp import mcp_router
 from ._openapi import bridge_router, openapi_router
+from ._mcp_oauth import oauth_callback_router, oauth_start_router
 from ._schedule import schedule_router
 from ._session import session_router
 from ._skill import skill_router
@@ -37,6 +38,8 @@ __all__ = [
     "mcp_router",
     "bridge_router",
     "openapi_router",
+    "oauth_callback_router",
+    "oauth_start_router",
     "schedule_router",
     "session_router",
     "skill_router",

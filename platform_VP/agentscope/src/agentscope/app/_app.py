@@ -24,6 +24,8 @@ from ._router import (
     knowledge_base_router,
     mcp_router,
     model_router,
+    oauth_callback_router,
+    oauth_start_router,
     openapi_router,
     schedule_router,
     session_router,
@@ -446,8 +448,10 @@ def create_app(
         # Before mcp_router: its "/mcp/{mcp_id}" routes would otherwise
         # claim "/mcp/openapi".
         openapi_router,
+        oauth_start_router,
         mcp_router,
         bridge_router,
+        oauth_callback_router,
         schedule_router,
         session_router,
         skill_router,
