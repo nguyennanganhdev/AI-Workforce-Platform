@@ -7,10 +7,13 @@ import {
 	CircleAlert,
 	Database,
 	Plus,
+	Hammer,
 	Recycle,
+	RotateCcw,
 	Rocket,
 	Sparkles,
 	Trash2,
+	WandSparkles,
 	Wrench,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -20,6 +23,7 @@ import { toast } from 'sonner';
 import { agentApi, workforceApi } from '@/api';
 import type {
 	BuilderConversationSummary,
+	BuilderEval,
 	BuilderMessage,
 	BuilderProposal,
 	ChatModelConfig,
@@ -39,12 +43,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { ClayPortrait, type PortraitKey } from '@/components/ui/clay-portrait';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
+import { BuilderEvalProgress, BuilderEvalReport } from '@/components/workforce/BuilderEval';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
 import { cn } from '@/lib/utils';
 
@@ -84,7 +88,7 @@ function AgentProposalCard({
 					<div className="flex flex-wrap items-center gap-2">
 						<h3 className="text-[15px]/5 font-semibold">{proposal.name}</h3>
 						<Badge variant="secondary">
-							{proposal.execution_mode === 'context_only' ? 'Ngữ cảnh / KB' : 'Có MCP'}
+							{proposal.execution_mode === 'context_only' ? 'Dùng tri thức' : 'Dùng công cụ'}
 						</Badge>
 						<Badge variant={passed ? 'secondary' : 'destructive'}>
 							{passed ? <CheckCircle2 /> : <CircleAlert />}
@@ -94,23 +98,23 @@ function AgentProposalCard({
 					<p className="mt-1 text-sm text-muted-foreground">{proposal.objective}</p>
 				</div>
 			</header>
-			<Progress value={(proposal.evaluation.score ?? 0) * 100} className="mt-3 h-1.5" />
 
 			<div className="mt-3 flex flex-wrap gap-1.5 text-xs">
 				{proposal.selected_tools.map((tool) => (
 					<span
 						key={tool.id}
 						title={tool.description ?? undefined}
-						className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono"
+						className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5"
 					>
-						<Wrench className="size-3" /> {tool.mcp_name} / {tool.tool_name}
+						<Wrench className="size-3" /> {tool.tool_name}
+						<span className="text-muted-foreground">· {tool.mcp_name}</span>
 					</span>
 				))}
 				{proposal.selected_tools.length === 0 && (
 					<span className="text-muted-foreground">
 						{proposal.execution_mode === 'context_only'
-							? 'Agent dùng input, Knowledge Base hoặc kết quả từ agent khác; không cần MCP riêng.'
-							: 'Chưa có tool phù hợp trong MCP đã đăng ký.'}
+							? 'Agent làm việc từ thông tin khách đưa, kho tri thức và kết quả của agent khác; không cần công cụ riêng.'
+							: 'Chưa có công cụ phù hợp trong các kết nối đã đăng ký.'}
 					</span>
 				)}
 			</div>
@@ -127,16 +131,16 @@ function AgentProposalCard({
 
 			<section className="mt-4">
 				<p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-					<Database className="size-3.5" /> Knowledge Base
+					<Database className="size-3.5" /> Kho tri thức
 				</p>
 				{resourcesLocked && (
 					<p className="mb-2 text-xs text-muted-foreground">
-						KB đã chốt theo plan. Muốn thay đổi, hãy nhắn yêu cầu để lập và duyệt lại plan.
+						Kho tri thức đã chốt theo plan. Muốn thay đổi, hãy nhắn Builder để lập và duyệt lại plan.
 					</p>
 				)}
 				{knowledgeBasesLoading ? (
 					<div className="flex items-center gap-2 rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground">
-						<Spinner /> Đang tải Knowledge Base…
+						<Spinner /> Đang tải kho tri thức…
 					</div>
 				) : knowledgeBases.length ? (
 					<div className="max-h-56 space-y-0.5 overflow-y-auto rounded-xl bg-muted/40 p-1.5">
@@ -169,15 +173,14 @@ function AgentProposalCard({
 					</div>
 				) : (
 					<p className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
-						Chưa có Knowledge Base. Hãy tạo KB và mô tả rõ phạm vi sử dụng trước khi publish.
+						Chưa có kho tri thức. Có thể tạo kho tri thức và gắn cho agent sau khi phát hành.
 					</p>
 				)}
 			</section>
 
 			<Collapsible className="mt-3">
 				<CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-					{reused ? 'System prompt của agent có sẵn' : 'System prompt do Builder sinh'} và skill{' '}
-					{proposal.skill_name}
+					{reused ? 'Hướng dẫn của agent có sẵn' : 'Hướng dẫn và kỹ năng do Builder viết'}
 					<ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
 				</CollapsibleTrigger>
 				<CollapsibleContent className="mt-2 space-y-2">
@@ -185,7 +188,8 @@ function AgentProposalCard({
 						{proposal.system_prompt}
 					</pre>
 					<pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/60 p-3 text-xs leading-5 text-muted-foreground">
-						{proposal.skill_markdown}
+						{/* The skill file's YAML header is for the runtime, not for people. */}
+						{proposal.skill_markdown.replace(/^---[\s\S]*?---\s*/, '')}
 					</pre>
 				</CollapsibleContent>
 			</Collapsible>
@@ -204,6 +208,8 @@ export function AgentBuilderPage() {
 	const [conversation, setConversation] = useState<BuilderMessage[]>([]);
 	const [conversations, setConversations] = useState<BuilderConversationSummary[]>([]);
 	const [proposal, setProposal] = useState<BuilderProposal | null>(null);
+	// The behavioural evaluation of the built proposal: live progress or the saved result.
+	const [evalRun, setEvalRun] = useState<BuilderEval | null>(null);
 	const [agents, setAgents] = useState<WorkforceAgent[]>([]);
 	const [working, setWorking] = useState(false);
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
@@ -234,6 +240,11 @@ export function AgentBuilderPage() {
 			setConversationId(nextId);
 			setConversation(stored.messages);
 			setProposal(stored.proposal);
+			setEvalRun(
+				stored.proposal?.agents.length
+					? await workforceApi.getBuilderEval(nextId).catch(() => null)
+					: null,
+			);
 			const model = stored.chat_model_config ?? stored.proposal?.chat_model_config;
 			if (model) setSelectedModel(model);
 			setSearchParams({ conversation_id: nextId }, { replace: true });
@@ -255,10 +266,33 @@ export function AgentBuilderPage() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
+	// Poll a running evaluation every 2 seconds. Each answer (or failed try)
+	// re-arms the timer; an answer for a conversation no longer open is dropped.
+	const [pollTick, setPollTick] = useState(0);
+	useEffect(() => {
+		if (evalRun?.status !== 'running' || !conversationId) return;
+		let current = true;
+		const timer = window.setTimeout(() => {
+			workforceApi
+				.getBuilderEval(conversationId)
+				.then((next) => {
+					if (current) setEvalRun(next);
+				})
+				.catch(() => {
+					if (current) setPollTick((tick) => tick + 1);
+				});
+		}, 2000);
+		return () => {
+			current = false;
+			window.clearTimeout(timer);
+		};
+	}, [evalRun, conversationId, pollTick]);
+
 	const newConversation = () => {
 		setConversationId(null);
 		setConversation([]);
 		setProposal(null);
+		setEvalRun(null);
 		setMessage('');
 		setSearchParams({}, { replace: true });
 	};
@@ -295,25 +329,71 @@ export function AgentBuilderPage() {
 		}
 	};
 
-	const confirmOutline = async () => {
+	const startEval = async (built: BuilderProposal) => {
+		if (!built.proposal_id) return;
+		try {
+			setEvalRun(await workforceApi.evaluate(built.conversation_id, built.proposal_id, built.revision));
+		} catch {
+			// The API client displays the failure; the user can start it again.
+		}
+	};
+
+	/** Build (or rebuild) the approved plan, then evaluate the new configuration. */
+	const buildAgents = async (instruction: string) => {
 		if (!selectedModel || !proposal?.planned_agents.length) return;
-		const lastUserMessage =
-			[...conversation].reverse().find((item) => item.role === 'user')?.text ?? '';
 		setWorking(true);
 		try {
-			const nextProposal = await workforceApi.prepare(
-				prefersVietnamese(lastUserMessage)
-					? 'Tôi xác nhận hướng trên. Hãy tạo và đánh giá cấu hình agent.'
-					: 'I confirm this direction. Please generate and evaluate the agent configuration.',
+			const next = await workforceApi.prepare(
+				instruction,
 				selectedModel,
 				conversationId,
 				true,
 				proposal.revision,
 			);
-			await refreshConversation(nextProposal.conversation_id);
+			await refreshConversation(next.conversation_id);
+			if ('status' in next && next.status === 'ready' && next.agents.some((agent) => !agent.reuse_agent_id)) {
+				await startEval(next);
+			}
 		} finally {
 			setWorking(false);
 		}
+	};
+
+	const confirmOutline = async () => {
+		const lastUserMessage =
+			[...conversation].reverse().find((item) => item.role === 'user')?.text ?? '';
+		await buildAgents(
+			prefersVietnamese(lastUserMessage)
+				? 'Tôi xác nhận hướng trên. Hãy tạo cấu hình agent.'
+				: 'I confirm this direction. Please generate the agent configuration.',
+		);
+	};
+
+	/** Hand the failed cases (or failed checks) back to the Builder and rebuild. */
+	const repairFromEval = async () => {
+		if (!proposal) return;
+		const failures = (evalRun?.agents ?? []).flatMap((agent) =>
+			agent.tests
+				.filter((test) => test.status === 'failed')
+				.map((test) => {
+					const reasons = (test.result?.criteria ?? [])
+						.filter((criterion) => !criterion.passed)
+						.map((criterion) => criterion.reason)
+						.filter(Boolean)
+						.join('; ');
+					return `- ${agent.name}: khi khách nói "${test.scenario}", mong đợi "${test.expected}". ${reasons || test.result?.summary || ''}`.trim();
+				}),
+		);
+		const blocked = proposal.agents
+			.filter((agent) => agent.evaluation.passed !== true)
+			.map((agent) => `- ${agent.name}: cấu hình chưa đạt kiểm tra.`);
+		await buildAgents(
+			[
+				'Sửa hướng dẫn và kỹ năng của các agent theo kết quả kiểm thử, giữ nguyên plan và công cụ đã duyệt:',
+				...failures,
+				...blocked,
+			].join('\n'),
+		);
 	};
 
 	const publish = async () => {
@@ -497,58 +577,8 @@ export function AgentBuilderPage() {
 
 							{proposal && (
 								<section className="flex flex-col gap-4 rounded-3xl border border-border/70 bg-[var(--cue-bg-subtle,var(--muted))]/40 p-4 motion-safe:animate-in motion-safe:fade-in">
-									<ProposalSteps status={proposal.status} />
-									<div className="flex flex-wrap items-start justify-between gap-3">
-										<div className="min-w-0 flex-1">
-											<p className="text-[15px]/6 font-medium">{proposal.assistant_message}</p>
-											{proposal.clarification_question && (
-												<p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
-													{proposal.clarification_question}
-												</p>
-											)}
-											<p className="mt-1 text-xs text-muted-foreground">
-												Model <span className="font-mono">{proposal.chat_model_config.model}</span>
-												{' · '}
-												{proposal.fixed_config.runtime_note}
-											</p>
-											{proposal.resource_selection && (
-												<p className="mt-1 text-xs text-muted-foreground">
-													Chọn tool/KB:{' '}
-													{proposal.resource_selection === 'jev'
-														? 'Jev'
-														: proposal.resource_selection === 'hybrid'
-															? 'Jev + LLM'
-															: 'LLM (fallback)'}
-												</p>
-											)}
-										</div>
-										{proposal.status === 'ready' && (
-											<Button onClick={publish} disabled={working}>
-												<Rocket /> Phát hành
-											</Button>
-										)}
-										{proposal.status === 'needs_input' && proposal.planned_agents.length > 0 && (
-											<Button
-												onClick={() => void confirmOutline()}
-												disabled={
-													working ||
-													proposal.planned_agents.some((agent) =>
-														agent.missing_resources?.some(
-															(missing) => !missing.trim().toLowerCase().startsWith('knowledge:'),
-														),
-													)
-												}
-											>
-												<CheckCircle2 />{' '}
-												{proposal.planned_agents.every((agent) => agent.reuse_agent_id)
-													? 'Chốt định hướng và dùng agent có sẵn'
-													: 'Chốt định hướng và sinh cấu hình'}
-											</Button>
-										)}
-										{proposal.status === 'published' && <Badge>Đã phát hành</Badge>}
-										{proposal.status === 'blocked' && <Badge variant="destructive">Bị chặn</Badge>}
-									</div>
-									{proposal.planned_agents.length > 0 && (
+									<ProposalSteps status={proposal.status} evalStatus={evalRun?.status ?? 'idle'} />
+									{proposal.planned_agents.length > 0 && proposal.agents.length === 0 && (
 										<div className="grid gap-3 md:grid-cols-2">
 											{proposal.planned_agents.map((agent, index) => (
 												<PlannedAgentCard key={agent.name} agent={agent} index={index} />
@@ -592,6 +622,24 @@ export function AgentBuilderPage() {
 											/>
 										</div>
 									))}
+									{evalRun && evalRun.status !== 'idle' && (
+										<div className="flex flex-col gap-3">
+											{evalRun.status === 'running' ? (
+												<BuilderEvalProgress run={evalRun} />
+											) : (
+												evalRun.agents.map((agent) => <BuilderEvalReport key={agent.name} agent={agent} />)
+											)}
+										</div>
+									)}
+									<ProposalActions
+										proposal={proposal}
+										evalRun={evalRun}
+										working={working}
+										onBuild={() => void confirmOutline()}
+										onEvaluate={() => void startEval(proposal)}
+										onRepair={() => void repairFromEval()}
+										onPublish={() => void publish()}
+									/>
 								</section>
 							)}
 						</div>
@@ -810,12 +858,26 @@ function BuilderWelcome({ onPick }: { onPick: (text: string) => void }) {
 const STEPS = [
 	{ key: 'outline', label: 'Định hướng' },
 	{ key: 'config', label: 'Kiểm tra cấu hình' },
+	{ key: 'eval', label: 'Đánh giá' },
 	{ key: 'publish', label: 'Phát hành' },
 ] as const;
 
-/** Where the proposal stands: outline, configured and checked, published. */
-function ProposalSteps({ status }: { status: BuilderProposal['status'] }) {
-	const reached = status === 'published' ? 3 : status === 'ready' || status === 'blocked' ? 2 : 1;
+/** Where the proposal stands: outline, configured and checked, evaluated, published. */
+function ProposalSteps({
+	status,
+	evalStatus,
+}: {
+	status: BuilderProposal['status'];
+	evalStatus: BuilderEval['status'];
+}) {
+	const reached =
+		status === 'published'
+			? 4
+			: status === 'ready' && evalStatus === 'completed'
+				? 3
+				: status === 'ready' || status === 'blocked'
+					? 2
+					: 1;
 	return (
 		<ol className="flex items-center gap-2 text-xs">
 			{STEPS.map((step, index) => {
@@ -841,6 +903,87 @@ function ProposalSteps({ status }: { status: BuilderProposal['status'] }) {
 				);
 			})}
 		</ol>
+	);
+}
+
+/**
+ * The proposal's next step, at the bottom so the user reviews every agent
+ * first: build the plan, then (after the evaluation) repair, re-run or publish.
+ */
+function ProposalActions({
+	proposal,
+	evalRun,
+	working,
+	onBuild,
+	onEvaluate,
+	onRepair,
+	onPublish,
+}: {
+	proposal: BuilderProposal;
+	evalRun: BuilderEval | null;
+	working: boolean;
+	onBuild: () => void;
+	onEvaluate: () => void;
+	onRepair: () => void;
+	onPublish: () => void;
+}) {
+	const evaluating = evalRun?.status === 'running';
+	const failed = (evalRun?.agents ?? []).some((agent) => agent.tests.some((test) => test.status === 'failed'));
+	const newAgents = proposal.agents.filter((agent) => !agent.reuse_agent_id).length;
+	const missingTools = proposal.planned_agents.some((agent) =>
+		agent.missing_resources?.some((missing) => !missing.trim().toLowerCase().startsWith('knowledge:')),
+	);
+	let hint = '';
+	let buttons: React.ReactNode = null;
+	if (proposal.status === 'needs_input' && proposal.planned_agents.length > 0) {
+		const reuseOnly = proposal.planned_agents.every((agent) => agent.reuse_agent_id);
+		hint = missingTools
+			? 'Còn agent thiếu công cụ. Hãy kết nối công cụ hoặc nhắn Builder điều chỉnh plan.'
+			: 'Xem kỹ các agent ở trên, rồi bấm Build để Builder viết cấu hình và chạy đánh giá.';
+		buttons = (
+			<Button onClick={onBuild} disabled={working || missingTools}>
+				<Hammer />
+				{reuseOnly ? 'Dùng agent có sẵn' : `Build ${proposal.planned_agents.length} agent`}
+			</Button>
+		);
+	} else if (proposal.status === 'ready' || proposal.status === 'blocked') {
+		hint =
+			proposal.status === 'blocked'
+				? 'Cấu hình chưa đạt kiểm tra. Để Builder sửa rồi đánh giá lại.'
+				: evaluating
+					? 'Eval đang sinh và chạy test case cho từng agent.'
+					: evalRun?.status === 'completed'
+						? 'Kết quả eval chỉ để tham khảo, không chặn phát hành.'
+						: 'Chạy eval để kiểm thử agent trước khi phát hành.';
+		buttons = (
+			<>
+				{(proposal.status === 'blocked' || failed) && (
+					<Button variant="default" onClick={onRepair} disabled={working || evaluating}>
+						<WandSparkles /> Để Builder sửa theo kết quả eval
+					</Button>
+				)}
+				{proposal.status === 'ready' && newAgents > 0 && (
+					<Button variant="outline" onClick={onEvaluate} disabled={working || evaluating}>
+						<RotateCcw /> {evalRun && evalRun.status !== 'idle' ? 'Chạy lại eval · giữ cấu hình' : 'Chạy eval'}
+					</Button>
+				)}
+				{proposal.status === 'ready' && (
+					<Button variant={failed ? 'outline' : 'default'} onClick={onPublish} disabled={working || evaluating}>
+						<Rocket /> Phát hành {proposal.agents.length} agent
+					</Button>
+				)}
+			</>
+		);
+	} else if (proposal.status === 'published') {
+		hint = 'Các agent đã được phát hành và sẵn sàng trong platform.';
+		buttons = <Badge>Đã phát hành</Badge>;
+	}
+	if (!buttons) return null;
+	return (
+		<div className="flex flex-col gap-3 border-t border-border/70 pt-4">
+			<p className="text-xs text-muted-foreground">{hint}</p>
+			<div className="flex flex-wrap justify-end gap-2">{buttons}</div>
+		</div>
 	);
 }
 
