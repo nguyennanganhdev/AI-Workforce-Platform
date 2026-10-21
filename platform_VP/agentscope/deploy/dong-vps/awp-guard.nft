@@ -1,0 +1,26 @@
+#!/usr/sbin/nft -f
+# Host firewall for the Dong VPS. It owns only its own table: never use
+# /etc/nftables.conf here, its "flush ruleset" would also delete Docker's rules.
+#
+# Published container ports (80, 443, 8443) are DNATed by Docker and pass the
+# forward hook, not input; they are listed only so the intent is in one place.
+
+table inet awp_guard
+delete table inet awp_guard
+
+table inet awp_guard {
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    iif "lo" accept
+    ct state established,related accept
+    ct state invalid drop
+
+    # Containers reach host services, e.g. the egress relay on 172.18.0.1:3128.
+    iifname "docker0" accept
+    iifname "br-*" accept
+
+    meta l4proto { icmp, ipv6-icmp } accept
+    tcp dport { 22, 80, 443, 8443 } accept
+  }
+}
