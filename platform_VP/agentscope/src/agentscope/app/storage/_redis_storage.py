@@ -1463,13 +1463,32 @@ class RedisStorage(StorageBase):
         not the last entry; appending it again showed it twice.
         """
         key = self._message_key(user_id, session_id)
-        recent = await self._client.lrange(key, -self._UPSERT_WINDOW, -1)
-        for offset, raw in enumerate(reversed(recent)):
-            if Msg.model_validate_json(raw).id == msg.id:
-                await self._client.lset(key, -1 - offset, msg.model_dump_json())
-                await self._refresh_key_ttl(key)
-                return
-        await self._client.rpush(key, msg.model_dump_json())
+        data = msg.model_dump_json()
+        # Find-and-replace under WATCH: a reply pushed by another member
+        # between the read and the write would otherwise shift the tail
+        # and make LSET overwrite that newer message.
+        while True:
+            async with self._client.pipeline(transaction=True) as pipe:
+                try:
+                    await pipe.watch(key)
+                    recent = await pipe.lrange(key, -self._UPSERT_WINDOW, -1)
+                    offset = next(
+                        (
+                            offset
+                            for offset, raw in enumerate(reversed(recent))
+                            if Msg.model_validate_json(raw).id == msg.id
+                        ),
+                        None,
+                    )
+                    pipe.multi()
+                    if offset is None:
+                        pipe.rpush(key, data)
+                    else:
+                        pipe.lset(key, -1 - offset, data)
+                    await pipe.execute()
+                    break
+                except _watch_error():
+                    continue
         await self._refresh_key_ttl(key)
 
     # How far back an upsert looks for the message it replaces.
