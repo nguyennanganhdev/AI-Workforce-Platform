@@ -210,6 +210,69 @@ class TestLeaderEvidenceMiddleware(IsolatedAsyncioTestCase):
                 shared.seal_final_answer.assert_not_awaited()
                 self.assertFalse(any(isinstance(e, TextBlockDeltaEvent) for e in output))
 
+    async def test_plain_leader_chat_keeps_answer_with_future_phrase(self):
+        answer = "Tôi sẽ hỗ trợ bạn đặt phòng khách sạn."
+
+        class _NoTeamStorage(_Storage):
+            async def get_session(self, user_id, agent_id, session_id):
+                del user_id, agent_id, session_id
+                return SimpleNamespace(team_id=None, state=AgentState(), id="session-1")
+
+        middleware = LeaderEvidenceMiddleware(
+            _NoTeamStorage(), _SharedContext((0, 0, 0, False)), "u", "leader", "session-1",
+        )
+
+        async def next_handler(**kwargs):
+            for event in _text_round("reply-1", "answer", answer):
+                yield event
+
+        output = [event async for event in middleware.on_reply(
+            self._agent(dispatched=False), {}, next_handler,
+        )]
+        self.assertEqual(
+            "".join(e.delta for e in output if isinstance(e, TextBlockDeltaEvent)), answer,
+        )
+        self.assertEqual(output[-1].finished_reason, ReplyFinishedReason.COMPLETED)
+
+    async def test_plain_chat_still_rejects_empty_or_leaked_instruction(self):
+        for text in ("", "End this run after successful team message."):
+            with self.subTest(text=text):
+                class _NoTeamStorage(_Storage):
+                    async def get_session(self, user_id, agent_id, session_id):
+                        return SimpleNamespace(team_id=None, state=AgentState(), id="session-1")
+
+                middleware = LeaderEvidenceMiddleware(
+                    _NoTeamStorage(), _SharedContext((0, 0, 0, False)), "u", "leader",
+                    "session-1", max_nudges=1,
+                )
+
+                async def next_handler(**kwargs):
+                    for index in range(2):
+                        for event in _text_round("reply-1", f"bad-{index}", text):
+                            yield event
+
+                output = [event async for event in middleware.on_reply(
+                    self._agent(dispatched=False), {}, next_handler,
+                )]
+                self.assertEqual(output[-1].finished_reason, ReplyFinishedReason.ERROR)
+
+    async def test_former_team_session_keeps_a_plain_answer_for_a_new_request(self):
+        answer = "Tôi sẽ hỗ trợ bạn đặt phòng khách sạn."
+        middleware = LeaderEvidenceMiddleware(
+            _Storage(), _SharedContext((0, 0, 0, False)), "u", "leader", "session-1",
+        )
+
+        async def next_handler(**kwargs):
+            for event in _text_round("reply-1", "answer", answer):
+                yield event
+
+        output = [event async for event in middleware.on_reply(
+            self._agent(dispatched=False), {}, next_handler,
+        )]
+        self.assertEqual(
+            "".join(e.delta for e in output if isinstance(e, TextBlockDeltaEvent)), answer,
+        )
+
     async def test_internal_stop_retries_the_real_agent_loop_at_iteration_limit(self):
         bad = "(This is prohibited because after successful team message must end run.)"
         answer = "Kết quả đã xác minh; chưa đặt dịch vụ."
