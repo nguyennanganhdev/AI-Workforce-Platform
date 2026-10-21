@@ -45,6 +45,10 @@ services:
       CLAWHUB_API_TOKEN: ${CLAWHUB_API_TOKEN:-}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Knowledge vectors on the workspaces volume, so they survive restarts.
+      KNOWLEDGE_VECTOR_PATH: ${KNOWLEDGE_VECTOR_PATH:-/app/examples/agent_service/workspaces/qdrant}
+      KNOWLEDGE_VECTOR_URL: ${KNOWLEDGE_VECTOR_URL:-}
+      KNOWLEDGE_VECTOR_API_KEY: ${KNOWLEDGE_VECTOR_API_KEY:-}
     ports:
       - "${AGENTSCOPE_PORT:-8000}:8000"
     volumes:
