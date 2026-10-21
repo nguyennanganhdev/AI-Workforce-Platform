@@ -18,6 +18,7 @@ A thin async client around GitHub's MCP registry
 import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from ._base import MCPHubBase
 from ._card import MCPCard, MCPHubPage
@@ -40,6 +41,83 @@ _RUNTIMES: dict[str, list[str]] = {
     "uv": ["tool", "run"],
     "docker": ["run", "-i", "--rm"],
 }
+
+
+# Registry ids are not stable: the same server can be listed under an id
+# that the detail route answers 404 for, so an installed MCP could no
+# longer find its card. Cards are keyed by the server name instead, with
+# "/" swapped for "~" to fit one path segment. Older installs keep the
+# 32-hex registry id.
+_LEGACY_ID = re.compile(r"[0-9a-f]{32}")
+
+# What runs a package when the official schema names only its registry.
+_RUNTIME_BY_REGISTRY = {"npm": "npx", "pypi": "uvx", "oci": "docker"}
+
+# Listed entries kept for detail/install, so those keep the GitHub block
+# (icon, language, README) that the by-name route does not return.
+_LISTED_LIMIT = 600
+
+
+def _card_id(name: str) -> str:
+    return name.replace("/", "~")
+
+
+def _snake(spec: dict) -> dict:
+    """Rename official-schema input keys to the ``v0`` ones used here."""
+    out = dict(spec)
+    for camel, snake in (("isRequired", "is_required"), ("isSecret", "is_secret")):
+        if camel in out:
+            out[snake] = out.pop(camel)
+    if isinstance(out.get("variables"), dict):
+        out["variables"] = {
+            key: _snake(value)
+            for key, value in out["variables"].items()
+            if isinstance(value, dict)
+        }
+    return out
+
+
+def _from_official(payload: dict) -> dict:
+    """Reshape a ``v0.1`` (official schema) entry into a ``v0`` entry."""
+    server = payload.get("server") or {}
+    official = (payload.get("_meta") or {}).get(
+        "io.modelcontextprotocol.registry/official",
+    ) or {}
+    icons = [icon for icon in server.get("icons") or [] if isinstance(icon, dict)]
+    return {
+        "server": {
+            "id": _card_id(server.get("name") or ""),
+            "name": server.get("name"),
+            "description": server.get("description"),
+            "repository": server.get("repository") or {},
+            "updated_at": official.get("updatedAt"),
+            "version_detail": {"version": server.get("version")},
+            "remotes": [
+                {
+                    "url": remote.get("url"),
+                    "headers": [_snake(h) for h in remote.get("headers") or []],
+                }
+                for remote in server.get("remotes") or []
+            ],
+            "packages": [
+                {
+                    "name": package.get("identifier"),
+                    "version": package.get("version"),
+                    "runtime_hint": package.get("runtimeHint")
+                    or _RUNTIME_BY_REGISTRY.get(package.get("registryType")),
+                    "environment_variables": [
+                        _snake(variable)
+                        for variable in package.get("environmentVariables") or []
+                    ],
+                }
+                for package in server.get("packages") or []
+            ],
+        },
+        "x-github": {
+            "display_name": server.get("title"),
+            "preferred_image": icons[0].get("src") if icons else None,
+        },
+    }
 
 
 def _substitute(value: Any) -> Any:
@@ -143,6 +221,7 @@ class GitHubMCPHub(MCPHubBase):
         self.api_token = api_token
         self.timeout = timeout
         self._client: "httpx.AsyncClient | None" = None
+        self._listed: dict[str, dict] = {}
 
     async def __aenter__(self) -> "GitHubMCPHub":
         """Open the HTTP client shared by every request.
@@ -226,6 +305,18 @@ class GitHubMCPHub(MCPHubBase):
             # The registry omits the header name when the value already
             # spells out the scheme, which in practice means bearer auth.
             key = header.get("name") or "Authorization"
+            if not value:
+                # Most entries give no template at all: the header itself
+                # is the input and the user supplies its whole value.
+                input_name = re.sub(r"[^A-Za-z0-9]+", "_", key).strip("_")
+                input_name = input_name.upper() or "HEADER"
+                headers[key] = f"${{{input_name}}}"
+                inputs[input_name] = {
+                    "description": header.get("description") or "",
+                    "is_required": header.get("is_required", False),
+                    "is_secret": header.get("is_secret", True),
+                }
+                continue
             headers[key] = _substitute(value)
             for match in _PLACEHOLDER.finditer(value):
                 inputs[match.group(1)] = {
@@ -352,7 +443,7 @@ class GitHubMCPHub(MCPHubBase):
 
         return MCPCard(
             hub_id=self.hub_id,
-            id=server["id"],
+            id=_card_id(name) if name else server["id"],
             name=slug.strip("-") or "mcp",
             display_name=github.get("display_name") or name,
             description=server.get("description") or "",
@@ -423,6 +514,9 @@ class GitHubMCPHub(MCPHubBase):
             card = self._to_card(entry)
             if card is None:
                 continue
+            if card.id not in self._listed and len(self._listed) >= _LISTED_LIMIT:
+                self._listed.pop(next(iter(self._listed)))
+            self._listed[card.id] = entry
             haystack = f"{card.name} {card.display_name} {card.description}"
             if needle and needle not in haystack.lower():
                 continue
@@ -441,7 +535,8 @@ class GitHubMCPHub(MCPHubBase):
                 The user identifier. Unused by the public registry, kept
                 for interface compatibility.
             card_id (`str`):
-                The registry id of the server.
+                The card id: the server name with "~" for "/", or the
+                registry id of an older install.
 
         Returns:
             `MCPCard`:
@@ -454,14 +549,24 @@ class GitHubMCPHub(MCPHubBase):
             `HubError`:
                 When the registry returns any other failure.
         """
-        try:
-            response = await self._request(f"/v0/servers/{card_id}")
-        except HubError as e:
-            if e.status_code == 404:
-                raise KeyError(card_id) from e
-            raise
+        legacy = _LEGACY_ID.fullmatch(card_id) is not None
+        entry = None if legacy else self._listed.get(card_id)
+        if entry is None:
+            path = (
+                f"/v0/servers/{card_id}"
+                if legacy
+                else f"/v0.1/servers/{quote(card_id.replace('~', '/'), safe='')}"
+                "/versions/latest"
+            )
+            try:
+                response = await self._request(path)
+            except HubError as e:
+                if e.status_code in (400, 404):
+                    raise KeyError(card_id) from e
+                raise
+            entry = response.json() if legacy else _from_official(response.json())
 
-        card = self._to_card(response.json(), readme=True)
+        card = self._to_card(entry, readme=True)
         if card is None:
             raise KeyError(card_id)
         return card

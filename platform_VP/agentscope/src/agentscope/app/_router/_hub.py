@@ -29,6 +29,8 @@ from ..hub import (
 )
 from .._service import MCPRenderError, render_mcp
 from ..storage import MCPRecord, SkillRecord, StorageBase
+from ...mcp import HttpMCPConfig
+from ._mcp import refresh_catalog
 from ._schema import HubInfo, InstallMCPRequest, MCPView, SkillView
 
 hub_router = APIRouter(prefix="/hub", tags=["hub"])
@@ -151,10 +153,11 @@ async def install_mcp(
     record keeps ``(hub_id, card_id)`` so the library can later answer
     "where did this come from" and "is there a newer version".
 
-    Note that the config is not connection-tested here, so a mistyped
-    API key surfaces on first use rather than now. Testing it would mean
-    connecting from the app process, and a stdio MCP would then spawn
-    its command here instead of in the workspace sandbox.
+    An HTTP MCP's tools are fetched right away, since Agent Builder only
+    sees synced tools; a failure (often a missing key) is stored on the
+    record, not raised. A stdio MCP is not connected here: that would
+    spawn its command in the app process instead of the workspace
+    sandbox.
     """
     hub = _pick_hub(hubs, hub_id)
     try:
@@ -187,6 +190,8 @@ async def install_mcp(
         card_id=card.id,
         version=card.version,
     )
+    if isinstance(client.mcp_config, HttpMCPConfig):
+        await refresh_catalog(record, timeout=20)
     try:
         await storage.upsert_mcp(user_id, record)
     except ValueError as e:

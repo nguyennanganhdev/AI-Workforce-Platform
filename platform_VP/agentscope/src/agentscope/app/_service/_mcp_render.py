@@ -35,23 +35,45 @@ def _omit_unfilled_optional_env(
     declared: set[str],
     required: set[str],
 ) -> None:
-    """Drop env entries whose optional inputs were not supplied.
+    """Drop env entries and headers whose optional inputs were not supplied.
 
     Optional placeholders elsewhere remain errors: omitting a URL or an
-    argument can change the meaning of a config. Environment entries are
-    independent, so leaving one unset means not exporting that variable.
+    argument can change the meaning of a config. Environment entries and
+    headers are independent, so leaving one unset means not sending it.
     """
-    env = config.get("env")
-    if not isinstance(env, dict):
-        return
-
     optional = declared - required
-    for key, value in list(env.items()):
+    for field in ("env", "headers"):
+        entries = config.get(field)
+        if not isinstance(entries, dict):
+            continue
+        for key, value in list(entries.items()):
+            if not isinstance(value, str):
+                continue
+            identifiers = set(Template(value).get_identifiers())
+            if (identifiers & optional) - values.keys():
+                del entries[key]
+
+
+def _tidy_headers(config: dict) -> None:
+    """Drop empty headers and give a bare ``Authorization`` token a scheme.
+
+    Registry entries often take the whole header value as the input and
+    describe it as "Bearer <token>" or the raw token; people paste the
+    raw token, which servers that want a scheme refuse.
+    """
+    headers = config.get("headers")
+    if not isinstance(headers, dict):
+        return
+    for key, value in list(headers.items()):
         if not isinstance(value, str):
             continue
-        identifiers = set(Template(value).get_identifiers())
-        if (identifiers & optional) - values.keys():
-            del env[key]
+        value = value.strip()
+        if not value:
+            del headers[key]
+        elif key.lower() == "authorization" and " " not in value:
+            headers[key] = f"Bearer {value}"
+        else:
+            headers[key] = value
 
 
 def _substitute(
@@ -155,6 +177,7 @@ def render_mcp(
             f"MCP {card.name!r} needs a value for: "
             f"{', '.join(sorted(missing))}",
         )
+    _tidy_headers(config)
 
     try:
         return MCPClient(

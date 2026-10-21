@@ -518,7 +518,11 @@ async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
                     mcp_name=record.client.name,
                     tool_name=tool_name,
                     description=str(tool.get("description") or ""),
-                    input_schema=tool.get("inputSchema") or {},
+                    # Sync stores ``input_schema``; older snapshots used
+                    # the MCP spelling.
+                    input_schema=tool.get("input_schema")
+                    or tool.get("inputSchema")
+                    or {},
                 ),
             )
     return catalog

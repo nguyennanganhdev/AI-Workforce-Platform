@@ -27,6 +27,9 @@ async def _discover_tools(client: MCPClient, timeout: float) -> list[dict]:
     """Return a bounded, JSON-safe MCP catalog snapshot."""
     try:
         async with asyncio.timeout(timeout):
+            # A stdio MCP is stateful: its process is the session.
+            if client.is_stateful and not client.is_connected:
+                await client.connect()
             raw_tools = await client.list_raw_tools()
     finally:
         if client.is_stateful and client.is_connected:
@@ -39,6 +42,67 @@ async def _discover_tools(client: MCPClient, timeout: float) -> list[dict]:
         }
         for tool in raw_tools
     ]
+
+
+def _leaves(error: BaseException) -> list[BaseException]:
+    if isinstance(error, BaseExceptionGroup):
+        return [leaf for sub in error.exceptions for leaf in _leaves(sub)]
+    return [error]
+
+
+def _sync_error(
+    error: BaseException,
+    timeout: float,
+    command: str | None = None,
+) -> str:
+    """Describe a failed discovery in words the user can act on."""
+    for leaf in _leaves(error):
+        if isinstance(leaf, FileNotFoundError) and command:
+            return (
+                f"Server chưa cài `{command}` nên chưa chạy được MCP này."
+            )
+        code = getattr(getattr(leaf, "response", None), "status_code", None)
+        if code in (401, 403):
+            return (
+                f"MCP từ chối xác thực ({code}). Hãy bấm sửa để nhập "
+                "hoặc kiểm tra lại API token."
+            )
+        if isinstance(leaf, TimeoutError):
+            return f"MCP không phản hồi trong {timeout:g} giây."
+    return _describe_exception(error)
+
+
+async def refresh_catalog(
+    record: MCPRecord,
+    timeout: float | None = None,
+) -> bool:
+    """Re-discover ``record``'s tools in place.
+
+    Returns:
+        `bool`:
+            ``False`` when discovery failed; the reason is then in
+            ``record.last_sync_error`` and the old catalog is kept.
+    """
+    config = record.client.mcp_config
+    # Only HTTP configs carry a timeout; a stdio MCP may first download
+    # its package.
+    limit = float(timeout or getattr(config, "timeout", None) or 60.0)
+    try:
+        record.discovered_tools = await _discover_tools(
+            MCPClient.model_validate(record.client.model_dump(mode="json")),
+            limit,
+        )
+    except Exception as exc:
+        record.last_sync_error = _sync_error(
+            exc,
+            limit,
+            getattr(config, "command", None),
+        )
+        return False
+    record.catalog_revision += 1
+    record.last_synced_at = datetime.now(UTC)
+    record.last_sync_error = None
+    return True
 
 
 @mcp_router.post("", status_code=status.HTTP_201_CREATED)
@@ -70,7 +134,7 @@ async def install_direct_mcp(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Không thể kết nối hoặc đọc danh sách tool từ MCP: "
-                f"{_describe_exception(exc)}"
+                f"{_sync_error(exc, body.timeout)}"
             ),
         ) from exc
     if not tools:
@@ -125,21 +189,12 @@ async def sync_mcp_tools(
         raise HTTPException(status_code=404, detail="MCP not found")
     if not record.enabled:
         raise HTTPException(status_code=409, detail="MCP is disabled")
-    try:
-        record.discovered_tools = await _discover_tools(
-            MCPClient.model_validate(record.client.model_dump(mode="json")),
-            float(record.client.mcp_config.timeout or 30.0),
-        )
-        record.catalog_revision += 1
-        record.last_synced_at = datetime.now(UTC)
-        record.last_sync_error = None
-    except Exception as exc:
-        record.last_sync_error = _describe_exception(exc)
+    if not await refresh_catalog(record):
         await storage.upsert_mcp(user_id, record)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Không thể đồng bộ MCP: {record.last_sync_error}",
-        ) from exc
+        )
     await storage.upsert_mcp(user_id, record)
     return MCPView.from_record(record)
 
@@ -209,6 +264,10 @@ async def update_mcp(
             ) from e
         record.values = merged
         record.version = card.version
+        # A new key is what makes a refused MCP usable, so its tools are
+        # fetched now; a failure is stored, not raised.
+        if isinstance(record.client.mcp_config, HttpMCPConfig):
+            await refresh_catalog(record, timeout=20)
     elif body.name is not None:
         # ``MCPClient`` checks its name in ``model_post_init``, which a
         # plain attribute assignment skips; rebuild the client through
