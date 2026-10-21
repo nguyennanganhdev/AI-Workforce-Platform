@@ -35,7 +35,7 @@ from ...classifier import (
 from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
-from .._service import ResourceAccessService, get_model
+from .._service import ResourceAccessService, SessionService, get_model
 from .._mcp_policy import (
     MCPPolicyError,
     check_mcp_allowed,
@@ -50,6 +50,7 @@ from ..access import ResourceKind
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
+    get_session_service,
     get_storage,
     get_workspace_manager,
 )
@@ -3133,6 +3134,140 @@ async def get_builder_eval(
     return _stored_eval(proposal)
 
 
+async def _create_published_agents(
+    proposal: ProposalView,
+    user_id: str,
+    storage: StorageBase,
+    workspace_manager: WorkspaceManagerBase,
+    session_service: SessionService,
+) -> list[PublishedAgent]:
+    """Create the proposal's new agents, all or none.
+
+    Every MCP is checked before the first agent exists, and if anything
+    fails part-way the agents created so far are deleted again, so a
+    retry never meets half-built, already-invitable duplicates.
+    """
+    clients: dict[str, MCPClient] = {}
+    for item in proposal.agents:
+        if item.reuse_agent_id:
+            continue
+        for tool in item.selected_tools:
+            if tool.mcp_id in clients:
+                continue
+            mcp_record = await storage.get_mcp(user_id, tool.mcp_id)
+            if mcp_record is None or not mcp_record.enabled:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"MCP {tool.mcp_id} không còn khả dụng",
+                )
+            client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
+            try:
+                check_mcp_allowed(client)
+            except MCPPolicyError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            clients[tool.mcp_id] = client
+
+    model_config = proposal.chat_model_config
+    result: list[PublishedAgent] = []
+    created: list[str] = []
+    try:
+        for item in proposal.agents:
+            if item.reuse_agent_id:
+                result.append(
+                    PublishedAgent(
+                        agent_id=item.reuse_agent_id,
+                        name=item.reuse_agent_name or item.name,
+                        reused=True,
+                    ),
+                )
+                continue
+            bindings = [tool.model_dump(mode="json") for tool in item.selected_tools]
+            record = AgentRecord(
+                user_id=user_id,
+                data=AgentData(
+                    name=item.name,
+                    system_prompt=governed_system_prompt(
+                        "business",
+                        item.system_prompt,
+                    ),
+                    context_config=_FIXED_CONTEXT.model_copy(deep=True),
+                    react_config=_FIXED_REACT.model_copy(deep=True),
+                    invite_config=InviteConfig(
+                        invitable=True,
+                        invite_description=item.objective,
+                    ),
+                    system_role="business",
+                    lifecycle_state="published",
+                    build_description=item.objective,
+                    tool_bindings=bindings,
+                    knowledge_base_ids=[
+                        knowledge.id for knowledge in item.selected_knowledge_bases
+                    ],
+                    execution_mode=item.execution_mode,
+                    generated_skill=item.skill_markdown,
+                    # The full eval (answers, cases) stays with the proposal.
+                    evaluation={
+                        **{key: value for key, value in item.evaluation.items() if key != "eval"},
+                        **({"eval_report": item.evaluation["eval"].get("report")} if item.evaluation.get("eval") else {}),
+                    },
+                ),
+            )
+            await storage.upsert_agent(user_id, record)
+            created.append(record.id)
+            session = await _primary_session(
+                storage,
+                workspace_manager,
+                user_id,
+                record.id,
+                model_config,
+                "Builder primary session",
+                [knowledge.id for knowledge in item.selected_knowledge_bases],
+            )
+            workspace = await workspace_manager.get_workspace(
+                user_id,
+                record.id,
+                session.id,
+                session.config.workspace_id,
+            )
+            # Builder agents use an explicit effective tool set. Materialise an
+            # empty declaration first so deployment-wide demo MCPs do not leak
+            # into every published business agent.
+            for default_mcp in workspace.default_mcps:
+                await workspace.remove_mcp(
+                    default_mcp.name,
+                    agent_id=record.id,
+                    session_id=session.id,
+                )
+            selected_by_mcp: dict[str, list[str]] = defaultdict(list)
+            for tool in item.selected_tools:
+                selected_by_mcp[tool.mcp_id].append(tool.tool_name)
+            for mcp_id, enabled_tools in selected_by_mcp.items():
+                client = clients[mcp_id].model_copy(deep=True)
+                client.enable_tools = list(dict.fromkeys(enabled_tools))
+                await workspace.add_mcp(client, agent_id=record.id, session_id=session.id)
+            await workspace.add_skill_archive(
+                _archive(item.skill_name, item.skill_markdown),
+                "tar",
+                item.skill_name,
+                agent_id=record.id,
+            )
+            result.append(
+                PublishedAgent(
+                    agent_id=record.id,
+                    session_id=session.id,
+                    name=item.name,
+                ),
+            )
+    except BaseException:
+        for agent_id in created:
+            try:
+                await session_service.delete_agent(user_id, agent_id)
+            except Exception:  # keep the original error
+                logger.exception("Could not roll back published agent %s", agent_id)
+        raise
+    return result
+
+
 @workforce_console_router.post("/builder/publish", response_model=PublishResponse)
 async def publish_builder(
     body: PublishRequest,
@@ -3140,6 +3275,7 @@ async def publish_builder(
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
     access: ResourceAccessService = Depends(get_resource_access_service),
+    session_service: SessionService = Depends(get_session_service),
 ) -> PublishResponse:
     async with _proposal_locks[user_id]:
         session = await storage.get_session(
@@ -3260,131 +3396,42 @@ async def publish_builder(
                     ),
                 )
             item.selected_knowledge_bases = selected_knowledge
+        # The lock is held until the "published" proposal is stored, so a
+        # second publish (double click, another tab) or a rebuild waits and
+        # then sees the stored state instead of a stale "ready" one.
+        result = await _create_published_agents(
+            proposal,
+            user_id,
+            storage,
+            workspace_manager,
+            session_service,
+        )
         proposal.status = "published"
-
-    model_config = proposal.chat_model_config
-    result: list[PublishedAgent] = []
-    for item in proposal.agents:
-        if item.reuse_agent_id:
-            result.append(
-                PublishedAgent(
-                    agent_id=item.reuse_agent_id,
-                    name=item.reuse_agent_name or item.name,
-                    reused=True,
+        await storage.upsert_message(
+            user_id,
+            body.conversation_id,
+            AssistantMsg(
+                name="agent_builder",
+                content=(
+                    "Mình đã phát hành agent lên platform."
+                    if _response_language(
+                        next(
+                            (
+                                message.get_text_content() or ""
+                                for message in reversed(messages)
+                                if message.role == "user"
+                            ),
+                            "",
+                        ),
+                    )
+                    == "vi"
+                    else "Your agent is now published on the platform."
                 ),
-            )
-            continue
-        bindings = [tool.model_dump(mode="json") for tool in item.selected_tools]
-        record = AgentRecord(
-            user_id=user_id,
-            data=AgentData(
-                name=item.name,
-                system_prompt=governed_system_prompt(
-                    "business",
-                    item.system_prompt,
-                ),
-                context_config=_FIXED_CONTEXT.model_copy(deep=True),
-                react_config=_FIXED_REACT.model_copy(deep=True),
-                invite_config=InviteConfig(
-                    invitable=True,
-                    invite_description=item.objective,
-                ),
-                system_role="business",
-                lifecycle_state="published",
-                build_description=item.objective,
-                tool_bindings=bindings,
-                knowledge_base_ids=[
-                    knowledge.id for knowledge in item.selected_knowledge_bases
-                ],
-                execution_mode=item.execution_mode,
-                generated_skill=item.skill_markdown,
-                # The full eval (answers, cases) stays with the proposal.
-                evaluation={
-                    **{key: value for key, value in item.evaluation.items() if key != "eval"},
-                    **({"eval_report": item.evaluation["eval"].get("report")} if item.evaluation.get("eval") else {}),
+                structured_output={
+                    "workforce_builder_proposal": proposal.model_dump(mode="json"),
                 },
             ),
         )
-        await storage.upsert_agent(user_id, record)
-        session = await _primary_session(
-            storage,
-            workspace_manager,
-            user_id,
-            record.id,
-            model_config,
-            "Builder primary session",
-            [knowledge.id for knowledge in item.selected_knowledge_bases],
-        )
-        workspace = await workspace_manager.get_workspace(
-            user_id,
-            record.id,
-            session.id,
-            session.config.workspace_id,
-        )
-        # Builder agents use an explicit effective tool set. Materialise an
-        # empty declaration first so deployment-wide demo MCPs do not leak
-        # into every published business agent.
-        for default_mcp in workspace.default_mcps:
-            await workspace.remove_mcp(
-                default_mcp.name,
-                agent_id=record.id,
-                session_id=session.id,
-            )
-        selected_by_mcp: dict[str, list[str]] = defaultdict(list)
-        for tool in item.selected_tools:
-            selected_by_mcp[tool.mcp_id].append(tool.tool_name)
-        for mcp_id, enabled_tools in selected_by_mcp.items():
-            mcp_record = await storage.get_mcp(user_id, mcp_id)
-            if mcp_record is None or not mcp_record.enabled:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"MCP {mcp_id} không còn khả dụng",
-                )
-            client = MCPClient.model_validate(mcp_record.client.model_dump(mode="json"))
-            try:
-                check_mcp_allowed(client)
-            except MCPPolicyError as exc:
-                raise HTTPException(status_code=409, detail=str(exc)) from exc
-            client.enable_tools = list(dict.fromkeys(enabled_tools))
-            await workspace.add_mcp(client, agent_id=record.id, session_id=session.id)
-        await workspace.add_skill_archive(
-            _archive(item.skill_name, item.skill_markdown),
-            "tar",
-            item.skill_name,
-            agent_id=record.id,
-        )
-        result.append(
-            PublishedAgent(
-                agent_id=record.id,
-                session_id=session.id,
-                name=item.name,
-            ),
-        )
-    await storage.upsert_message(
-        user_id,
-        body.conversation_id,
-        AssistantMsg(
-            name="agent_builder",
-            content=(
-                "Mình đã phát hành agent lên platform."
-                if _response_language(
-                    next(
-                        (
-                            message.get_text_content() or ""
-                            for message in reversed(messages)
-                            if message.role == "user"
-                        ),
-                        "",
-                    ),
-                )
-                == "vi"
-                else "Your agent is now published on the platform."
-            ),
-            structured_output={
-                "workforce_builder_proposal": proposal.model_dump(mode="json"),
-            },
-        ),
-    )
     return PublishResponse(agents=result)
 
 

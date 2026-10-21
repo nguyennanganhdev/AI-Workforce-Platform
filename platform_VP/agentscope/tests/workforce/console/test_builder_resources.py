@@ -1366,3 +1366,123 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
             ListModelsRequest(provider="typesafe_credential")
         )
         self.assertEqual(response.total, 0)
+
+    async def _publishable(self):
+        previous = approved()
+        for agent in previous.planned_agents:
+            agent.suggested_knowledge_bases = []
+            agent.missing_resources = ["knowledge: Hotel policy"]
+        return await self._prepare(previous, _Model(generated()))
+
+    def _publish_env(self, proposal, *, mcp_enabled=True, skill_error_at=None):
+        messages = [
+            AssistantMsg(
+                "builder",
+                "Generated",
+                structured_output={"workforce_builder_proposal": proposal.model_dump()},
+            ),
+        ]
+
+        async def list_messages(*_args, **_kwargs):
+            return list(messages), False
+
+        async def upsert_message(_user, _conversation, message):
+            messages.append(message)
+
+        created: list[str] = []
+
+        async def upsert_agent(_user, record):
+            created.append(record.id)
+
+        storage = SimpleNamespace(
+            get_session=AsyncMock(return_value=object()),
+            list_messages=list_messages,
+            upsert_message=upsert_message,
+            upsert_agent=upsert_agent,
+            get_mcp=AsyncMock(
+                return_value=SimpleNamespace(
+                    enabled=mcp_enabled,
+                    client=MCPClient(
+                        name="travel",
+                        is_stateful=False,
+                        mcp_config=HttpMCPConfig(url="https://example.test/mcp"),
+                    ),
+                ),
+            ),
+        )
+        calls = {"skills": 0}
+
+        async def add_skill_archive(*_args, **_kwargs):
+            calls["skills"] += 1
+            if skill_error_at is not None and calls["skills"] == skill_error_at:
+                raise RuntimeError("disk full")
+
+        workspace = SimpleNamespace(
+            default_mcps=[], add_mcp=AsyncMock(), add_skill_archive=add_skill_archive,
+        )
+        deleted: list[str] = []
+        session_service = SimpleNamespace(
+            delete_agent=AsyncMock(side_effect=lambda _u, agent_id: deleted.append(agent_id)),
+        )
+        primary = SessionRecord(
+            id="primary", user_id="user", agent_id="new-agent",
+            config=SessionConfig(workspace_id="workspace"),
+        )
+        patches = (
+            patch.object(console, "_catalog", AsyncMock(return_value=TOOLS)),
+            patch.object(console, "_knowledge_catalog", AsyncMock(return_value=[])),
+            patch.object(console, "_primary_session", AsyncMock(return_value=primary)),
+        )
+
+        async def publish():
+            with patches[0], patches[1], patches[2]:
+                return await console.publish_builder(
+                    console.PublishRequest(
+                        conversation_id="builder",
+                        proposal_id=proposal.proposal_id,
+                        expected_revision=proposal.revision,
+                    ),
+                    user_id="user",
+                    storage=storage,
+                    access=object(),
+                    workspace_manager=SimpleNamespace(
+                        get_workspace=AsyncMock(return_value=workspace),
+                    ),
+                    session_service=session_service,
+                )
+
+        return publish, created, deleted
+
+    async def test_second_publish_of_the_same_proposal_creates_nothing(self):
+        proposal = await self._publishable()
+        publish, created, _ = self._publish_env(proposal)
+
+        first, second = await asyncio.gather(publish(), publish(), return_exceptions=True)
+
+        outcomes = sorted(
+            [first, second], key=lambda value: isinstance(value, HTTPException),
+        )
+        self.assertNotIsInstance(outcomes[0], Exception)
+        self.assertIsInstance(outcomes[1], HTTPException)
+        self.assertEqual(outcomes[1].status_code, 409)
+        self.assertEqual(len(created), len(outcomes[0].agents))
+
+    async def test_disabled_mcp_stops_publish_before_any_agent_exists(self):
+        proposal = await self._publishable()
+        publish, created, _ = self._publish_env(proposal, mcp_enabled=False)
+
+        with self.assertRaises(HTTPException) as error:
+            await publish()
+
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(created, [])
+
+    async def test_failure_part_way_removes_the_agents_already_created(self):
+        proposal = await self._publishable()
+        publish, created, deleted = self._publish_env(proposal, skill_error_at=2)
+
+        with self.assertRaises(RuntimeError):
+            await publish()
+
+        self.assertEqual(len(created), 2)
+        self.assertEqual(deleted, created)
