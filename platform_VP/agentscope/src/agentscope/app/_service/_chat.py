@@ -2365,12 +2365,20 @@ class ChatService:
                 # payloads are still queued, otherwise they would wait
                 # for an unrelated trigger.
                 if not released:
-                    await abandon_inbox_consumer(
-                        self._message_bus,
-                        user_id=user_id,
-                        session_id=session_id,
-                        agent_id=agent_id,
-                    )
+                    # Best-effort: a Redis error here must not skip saving
+                    # the reply and agent state below.
+                    try:
+                        await abandon_inbox_consumer(
+                            self._message_bus,
+                            user_id=user_id,
+                            session_id=session_id,
+                            agent_id=agent_id,
+                        )
+                    except Exception:  # pylint: disable=broad-except
+                        logger.exception(
+                            "Could not release the inbox of session %s",
+                            session_id,
+                        )
 
                 # The last turn's reply is only in ``reply_msgs`` when the
                 # loop reached its own bookkeeping — an interrupt lands
