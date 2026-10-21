@@ -1,0 +1,10 @@
+# Installed as /etc/logrotate.d/awp-gateway
+/var/log/awp-gateway/access.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

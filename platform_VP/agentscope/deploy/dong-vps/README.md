@@ -5,19 +5,24 @@ Protection in front of https://vinhome-platform.duckdns.org. The stack itself ru
 | Layer | File | On the server |
 |---|---|---|
 | Gateway nginx: rate limits, scanner block, timeouts, headers | `gateway.conf` | `/opt/awp-dong/releases/59dca4cc-20261020/gateway.conf` |
-| Host firewall: drop by default, allow 22/80/443/8443 | `awp-guard.nft`, `awp-guard-firewall.service` | `/etc/awp-guard/awp-guard.nft`, `/etc/systemd/system/awp-guard-firewall.service` |
-| SSH brute-force bans | `fail2ban-awp.conf` | `/etc/fail2ban/jail.d/awp.local` |
+| Host firewall: drop by default, allow 22/80/443 | `awp-guard.nft`, `awp-guard-firewall.service` | `/etc/awp-guard/awp-guard.nft`, `/etc/systemd/system/awp-guard-firewall.service` |
+| SSH: keys only for root (two team IPs keep the password) | `sshd-awp-guard.conf` | `/etc/ssh/sshd_config.d/00-awp-guard.conf` |
+| Bans: SSH failures, web scanners, rate-limit floods | `fail2ban-awp.conf`, `fail2ban-filter-awp-gw-*.conf` | `/etc/fail2ban/jail.d/awp.local`, `/etc/fail2ban/filter.d/awp-gw-*.conf` |
+| Gateway access log for the web jails | `logrotate-awp-gateway` | `/var/log/awp-gateway/access.log`, `/etc/logrotate.d/awp-gateway` |
+
+The release compose file (not in this folder) publishes only `80` and `443` for the gateway and mounts `/var/log/awp-gateway:/var/log/gateway`; port `8443` (the API at its root) was closed on 21/10 because nothing used it.
 
 ## Gateway limits (per client IP; the host and Docker networks are exempt)
 
 | Path | Limit |
 |---|---|
-| `/api/auth/login`, `/api/auth/register` (and `:8443/auth/...`) | 10 per minute, burst 10 |
+| `/api/auth/login`, `/api/auth/register` | 10 per minute, burst 10 |
 | Everything else | 30 per second, burst 100 (the team panel polls every 1.5 s per member) |
 | Open connections | 60 |
-| `/.env`, `/.git`, `*.php`, `wp-*`, `cgi-bin/`, ... | connection closed (444) |
+| `/.env`, `/.git`, `*.php`, `wp-*`, `cgi-bin/`, ... | connection closed (444); 3 in 10 min bans the IP for 24 h |
+| `/api/docs`, `/api/redoc`, `/api/openapi.json` | 404 |
 
-Requests over the limit get `429`.
+Requests over the limit get `429`; 50 of them in 5 min ban the IP for 1 h.
 
 ## Apply
 
@@ -36,10 +41,20 @@ systemctl daemon-reload && systemctl enable --now awp-guard-firewall
 # From a NEW ssh session, confirm login still works, then cancel the undo:
 systemctl stop awp-guard-undo.timer
 
-# fail2ban
+# SSH: schedule an undo, then check from a NEW session with the key before cancelling it.
+systemd-run --on-active=5min --unit=awp-sshd-undo sh -c 'rm -f /etc/ssh/sshd_config.d/00-awp-guard.conf; systemctl reload ssh'
+install -m 600 sshd-awp-guard.conf /etc/ssh/sshd_config.d/00-awp-guard.conf
+sshd -t && systemctl reload ssh
+systemctl stop awp-sshd-undo.timer
+
+# fail2ban (the web jails need the gateway log volume above)
 apt-get install -y fail2ban
+install -d -m 755 /var/log/awp-gateway
+install -m 644 logrotate-awp-gateway /etc/logrotate.d/awp-gateway
 install -m 644 fail2ban-awp.conf /etc/fail2ban/jail.d/awp.local
-systemctl enable --now fail2ban && fail2ban-client reload
+install -m 644 fail2ban-filter-awp-gw-probe.conf /etc/fail2ban/filter.d/awp-gw-probe.conf
+install -m 644 fail2ban-filter-awp-gw-flood.conf /etc/fail2ban/filter.d/awp-gw-flood.conf
+fail2ban-client -t && systemctl enable --now fail2ban && fail2ban-client reload
 ```
 
 Do not enable `nftables.service`: `/etc/nftables.conf` starts with `flush ruleset`.
@@ -52,8 +67,11 @@ curl -s -m 5 https://vinhome-platform.duckdns.org/.env; echo "exit=$?"          
 for i in $(seq 1 15); do curl -s -o /dev/null -w '%{http_code} ' -X POST \
   https://vinhome-platform.duckdns.org/api/auth/login -H 'content-type: application/json' -d '{}'; done
 # the first 11 are 4xx from the app, then 429
+curl -s -o /dev/null -w '%{http_code}
+' https://vinhome-platform.duckdns.org/api/docs      # 404
+sshd -T -C user=root,host=x,addr=203.0.113.9 | grep -E '^(passwordauthentication|permitrootlogin) '   # no / prohibit-password
 nft list table inet awp_guard
-fail2ban-client status sshd
+fail2ban-client status                                  # sshd, awp-gw-probe, awp-gw-flood
 ```
 
 ## Roll back
@@ -61,11 +79,11 @@ fail2ban-client status sshd
 ```bash
 cp -p $R/gateway.conf.before-guard $R/gateway.conf && docker exec awp-dongprod-gateway-1 nginx -s reload
 systemctl disable --now awp-guard-firewall        # deletes table inet awp_guard
+rm /etc/ssh/sshd_config.d/00-awp-guard.conf && systemctl reload ssh
 systemctl disable --now fail2ban
+# Reopen :8443: restore compose.dongprod.yaml.before-8443 and gateway.conf.before-8443, then `up -d gateway`.
 ```
 
-## Not done yet (needs a decision)
+## Still open
 
-- SSH still accepts root passwords; fail2ban only bans repeated failures. Switch to keys only (`PasswordAuthentication no`, `PermitRootLogin prohibit-password`) once everyone who logs in has a key.
-- Port 8443 (the API at its root) and the public `/docs` and `/openapi.json` stay open.
-- Web scanners are blocked but not banned; a fail2ban jail on gateway logs needs the access log on a host volume.
+- Two team addresses (36.50.135.148, 171.225.203.144) can still sign in as root with the password; give them a key, then delete the `Match` block.
