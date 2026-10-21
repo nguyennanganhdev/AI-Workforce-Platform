@@ -7,12 +7,16 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
 from fastapi import HTTPException
+from utils import MockModel
 
 from agentscope.app._router._agent import ToolPolicyRequest, set_tool_policy
 from agentscope.app._service._chat import _current_tool_policies
 from agentscope.app.middleware import ToolPolicyMiddleware
 from agentscope.app.storage import AgentData, AgentRecord
-from agentscope.message import ToolCallBlock, ToolCallState
+from agentscope.agent import Agent, InjectionConfig
+from agentscope.message import TextBlock, ToolCallBlock, ToolCallState, UserMsg
+from agentscope.model import ChatResponse
+from agentscope.tool import ToolBase, ToolChunk, Toolkit
 from agentscope.permission import (
     PermissionBehavior,
     PermissionContext,
@@ -177,3 +181,67 @@ class ToolPolicyRouteTest(IsolatedAsyncioTestCase):
         record = _record({BOOK: "ask"})
         again = AgentRecord.model_validate(record.model_dump(mode="json"))
         self.assertEqual(again.data.tool_policies, {BOOK: "ask"})
+
+
+class _BookRoom(ToolBase):
+    """A sensitive MCP-like tool: the platform asks before it runs."""
+
+    name: str = BOOK
+    description: str = "Book a hotel room"
+    input_schema: dict = {"type": "object", "properties": {"room": {"type": "string"}}}
+    is_concurrency_safe: bool = False
+    is_read_only: bool = False
+    is_external_tool: bool = False
+    is_mcp: bool = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    async def check_permissions(self, tool_input: dict, context: PermissionContext) -> PermissionDecision:
+        return PermissionDecision(
+            behavior=PermissionBehavior.ASK,
+            message="sensitive",
+            decision_reason="Sensitive MCP operation",
+            bypass_immune=True,
+        )
+
+    async def __call__(self, room: str = "", **kwargs: object) -> ToolChunk:
+        self.calls += 1
+        return ToolChunk(content=[TextBlock(text=f"booked {room}")])
+
+
+class ToolPolicyInAgentRunTest(IsolatedAsyncioTestCase):
+    """The middleware in a real agent loop, with a scripted model."""
+
+    async def _run(self, policies: dict) -> tuple[list[str], int]:
+        tool = _BookRoom()
+        call = ToolCallBlock(id="c1", name=BOOK, input='{"room": "101"}')
+        done = [ChatResponse(content=[TextBlock(text="Xong")], is_last=True)]
+        model = MockModel()
+        model.set_responses([[ChatResponse(content=[call], is_last=True)], done])
+        agent = Agent(
+            name="Friday",
+            system_prompt="x",
+            model=model,
+            toolkit=Toolkit(tools=[tool]),
+            injection_config=InjectionConfig(inject_runtime_state=False),
+            middlewares=[ToolPolicyMiddleware(AsyncMock(return_value=policies))],
+        )
+        types = [event.type async for event in agent.reply_stream(UserMsg(name="user", content="Đặt phòng 101"))]
+        return [str(t) for t in types], tool.calls
+
+    async def test_without_a_policy_the_booking_waits_for_approval(self) -> None:
+        types, calls = await self._run({})
+        self.assertIn("REQUIRE_USER_CONFIRM", " ".join(types))
+        self.assertEqual(calls, 0)
+
+    async def test_always_allowed_the_booking_runs_without_a_card(self) -> None:
+        types, calls = await self._run({BOOK: "auto"})
+        self.assertNotIn("REQUIRE_USER_CONFIRM", " ".join(types))
+        self.assertEqual(calls, 1)
+
+    async def test_denied_the_booking_never_runs(self) -> None:
+        types, calls = await self._run({BOOK: "deny"})
+        self.assertNotIn("REQUIRE_USER_CONFIRM", " ".join(types))
+        self.assertEqual(calls, 0)

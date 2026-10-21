@@ -3627,7 +3627,7 @@ async def _agent_tool_settings(
             if kb_id in {knowledge.id for knowledge in knowledge_bases}
         ],
         knowledge_bases=knowledge_bases,
-        tool_policies=dict(record.data.tool_policies),
+        tool_policies=dict(getattr(record.data, "tool_policies", {}) or {}),
     )
 
 
