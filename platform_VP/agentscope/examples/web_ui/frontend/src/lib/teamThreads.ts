@@ -313,11 +313,17 @@ export function groupTeamThreads(items: TeamActivityItem[]): TeamThreadView {
 	return { threads, otherTools, agents: [...agents] };
 }
 
+/** The recipient name of a message sent to the whole team. */
+const BROADCAST_NAME = 'Cả nhóm';
+
 /** Only the threads and lookups that involve `agentName`; all when null. */
 export function filterTeamThreads(view: TeamThreadView, agentName: string | null): TeamThreadView {
 	if (!agentName) return view;
 	return {
-		threads: view.threads.filter((thread) => thread.participants.includes(agentName)),
+		// Messages to the whole team concern every member.
+		threads: view.threads.filter(
+			(thread) => thread.participants.includes(agentName) || thread.targetName === BROADCAST_NAME,
+		),
 		otherTools: view.otherTools.filter((group) => group.agentName === agentName),
 		agents: view.agents,
 	};

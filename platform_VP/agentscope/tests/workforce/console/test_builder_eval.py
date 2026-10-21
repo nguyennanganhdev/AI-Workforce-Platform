@@ -270,7 +270,13 @@ class TestBuilderEvalLimits(TestBuilderEvalRoutes):
             await asyncio.sleep(0)
             agents.append(record)
 
-        storage = SimpleNamespace(list_agents=list_agents, upsert_agent=upsert_agent)
+        async def list_sessions(_user, _agent_id):
+            # Bootstrap no longer creates a session; the chat page does.
+            return []
+
+        storage = SimpleNamespace(
+            list_agents=list_agents, upsert_agent=upsert_agent, list_sessions=list_sessions,
+        )
         session = SimpleNamespace(id="s", config=SimpleNamespace(workspace_id="w", name="Ticket"))
         workspace = SimpleNamespace(default_mcps=[])
         manager = SimpleNamespace(get_workspace=AsyncMock(return_value=workspace))

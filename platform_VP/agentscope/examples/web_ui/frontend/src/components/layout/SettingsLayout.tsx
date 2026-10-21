@@ -6,15 +6,7 @@ import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 
-/**
- * The settings shell: everything that is configured rather than talked to —
- * schedules, channels, credentials, MCP, skills, knowledge — behind its own
- * navigation, with one way back to the chat.
- *
- * Split from {@link ChatLayout} so the chat is not one tab among seven: a
- * conversation gets the whole window, and configuration is somewhere you go
- * on purpose and come back from.
- */
+/** Configuration pages share an icon rail and a way back to the chat. */
 export function SettingsLayout() {
 	useCueTheme();
 	const { t } = useTranslation();

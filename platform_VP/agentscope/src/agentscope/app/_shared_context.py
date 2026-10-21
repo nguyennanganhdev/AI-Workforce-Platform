@@ -982,7 +982,11 @@ class SharedContextService:
             event for event in record.state.events
             if event.task_id == task_id and not event.stale
             and event.source_session_id == sender
-            and event.kind in {"answer", "result", "error"}
+            # A Leader's verification handoff also handles its parent report.
+            and event.kind in (
+                {"handoff", "answer", "result", "error"} if resolving
+                else {"answer", "result", "error"}
+            )
         ]
         answered = {event.in_reply_to for event in replies}
         replay_parents = {
@@ -1004,8 +1008,9 @@ class SharedContextService:
                     and event.id not in pending | carried)
             ):
                 continue
-            if not resolving and event.id not in replay_parents and (
-                event.id in answered or (pending and event.id not in pending)
+            if event.id not in replay_parents and (
+                event.id in answered
+                or (not resolving and pending and event.id not in pending)
             ):
                 continue
             handoff = await self._storage.get_team_handoff(

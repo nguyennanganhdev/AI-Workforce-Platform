@@ -1,6 +1,11 @@
 export * from './types';
 export { agentApi } from './agent';
 export { sessionApi, takeFreshlyCreated } from './session';
+export type { CaseFile, CaseFileAgent, CaseFileEvidence } from './session';
+export { agentEvalApi } from './agentEval';
+export { agentMemoryApi } from './agentMemory';
+export type { AgentMemory } from './agentMemory';
+export type { AgentEvalCase, AgentEvalRun, AgentEvalTest, CreateAgentEvalCase } from './agentEval';
 export { credentialApi } from './credential';
 export { chatApi } from './chat';
 export { workspaceApi } from './workspace';

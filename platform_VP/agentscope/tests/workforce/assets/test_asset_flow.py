@@ -402,6 +402,10 @@ class AssetFlowTests(IsolatedAsyncioTestCase):
         self.assertFalse(any("/workforce/v1/workforce/v1/" in path for path in paths))
 
     async def test_presigned_urls_use_public_not_container_endpoint(self) -> None:
+        import importlib.util
+
+        if importlib.util.find_spec("aioboto3") is None:
+            self.skipTest("aioboto3 is not installed (s3 extra)")
         store = S3BlobStore(
             "private",
             endpoint_url="http://minio:9000",

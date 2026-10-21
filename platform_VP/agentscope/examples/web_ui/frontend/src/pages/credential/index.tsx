@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Plus, Trash2, Pen, LogIn } from 'lucide-react';
+import { Plus, Trash2, Pen, LogIn } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -56,19 +56,10 @@ type ModelRow = ModelCard | TTSModelCard | EmbeddingModelCard;
 // ─── Masked value ─────────────────────────────────────────────────────────────
 
 function MaskedValue({ value }: { value: string }) {
-	const [visible, setVisible] = useState(false);
 	const masked = value.length > 8 ? value.slice(0, 4) + '••••••••' + value.slice(-4) : '••••••••';
 	return (
 		<span className="flex items-center gap-x-1.5 font-mono text-sm">
-			{visible ? value : masked}
-			<Button
-				size={'icon-sm'}
-				className="text-text-tertiary hover:text-foreground"
-				variant={'ghost'}
-				onClick={() => setVisible((v) => !v)}
-			>
-				{visible ? <EyeOff /> : <Eye />}
-			</Button>
+			{masked}
 		</span>
 	);
 }

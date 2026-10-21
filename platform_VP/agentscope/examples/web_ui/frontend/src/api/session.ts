@@ -11,6 +11,46 @@ import type {
 	Msg,
 } from './types';
 
+/** Evidence and token cost of one customer turn (GET /sessions/{id}/case-file). */
+export interface CaseFileAgent {
+	agent_id: string;
+	name: string;
+	model: string | null;
+	replies: number;
+	input_tokens: number;
+	output_tokens: number;
+	cache_input_tokens: number;
+	cost_usd: number | null;
+}
+
+export interface CaseFileEvidence {
+	agent_id: string;
+	agent_name: string;
+	tool: string;
+	arguments: unknown;
+	state: string;
+	result: string;
+	at: string | null;
+}
+
+export interface CaseFile {
+	turn: {
+		customer_message_id: string | null;
+		customer_text: string;
+		started_at: string | null;
+		ended_at: string | null;
+	};
+	agents: CaseFileAgent[];
+	totals: {
+		input_tokens: number;
+		output_tokens: number;
+		cache_input_tokens: number;
+		cost_usd: number | null;
+		priced: boolean;
+	};
+	evidence: CaseFileEvidence[];
+}
+
 export interface MessagesResponse {
 	messages: Msg[];
 	is_running: boolean;
@@ -18,9 +58,9 @@ export interface MessagesResponse {
 }
 
 /**
- * Sessions this tab created and has not opened yet.
+ * Empty sessions this tab created and has not opened yet.
  *
- * A session created here cannot have any history, so asking the server
+ * A session created without an initial message cannot have history, so asking the server
  * for it is a guaranteed-empty round trip — and one that paints a
  * loading state over a conversation the user is about to start.
  *
@@ -46,11 +86,15 @@ export const sessionApi = {
 		client.post<TeamDetailResponse>(`/sessions/${sessionId}/team/members`,
 			{ agent_id: memberId }, { agent_id: agentId }),
 
+	removeTeamMember: (sessionId: string, agentId: string, memberId: string) =>
+		client.delete<TeamDetailResponse>(`/sessions/${sessionId}/team/members/${memberId}`,
+			{ agent_id: agentId }),
+
 	list: (agentId: string) => client.get<SessionListResponse>('/sessions/', { agent_id: agentId }),
 
 	create: async (body: CreateSessionRequest) => {
 		const res = await client.post<CreateSessionResponse>('/sessions/', body);
-		freshlyCreated.add(res.session_id);
+		if (!body.initial_message) freshlyCreated.add(res.session_id);
 		return res;
 	},
 
@@ -102,6 +146,14 @@ export const sessionApi = {
 				...(params?.limit != null && { limit: String(params.limit) }),
 			},
 			{ ...options, timeoutMs: 10_000 },
+		),
+
+	/** Evidence and token cost of the customer turn that contains `messageId`. */
+	caseFile: (sessionId: string, agentId: string, messageId: string) =>
+		client.get<CaseFile>(
+			`/sessions/${sessionId}/case-file`,
+			{ agent_id: agentId, message_id: messageId },
+			{ silent: true },
 		),
 
 	/**

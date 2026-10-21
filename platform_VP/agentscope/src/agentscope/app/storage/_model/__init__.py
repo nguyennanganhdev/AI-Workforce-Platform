@@ -22,6 +22,7 @@ from ._knowledge_document import (
 )
 from ._mcp import MCPRecord
 from ._schedule import ScheduleData, ScheduleRecord, ScheduleSource
+from ._agent_artifact import AgentArtifactKind, AgentArtifactRecord
 from ._session import (
     SessionRecord,
     SessionConfig,
@@ -87,6 +88,8 @@ __all__ = [
     "MCPRecord",
     "ScheduleData",
     "ScheduleRecord",
+    "AgentArtifactKind",
+    "AgentArtifactRecord",
     "ScheduleOrigin",
     "SessionConfig",
     "SessionNaming",

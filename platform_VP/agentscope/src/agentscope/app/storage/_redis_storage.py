@@ -14,6 +14,8 @@ from ...sop import SOPPhase, SOPRunState
 from ...state import AgentState
 from ._base import StorageBase
 from ._model import (
+    AgentArtifactKind,
+    AgentArtifactRecord,
     AgentRecord,
     ChannelOrigin,
     ChannelRecord,
@@ -99,6 +101,13 @@ class RedisStorage(StorageBase):
         # Message list key (Redis List — ordered message history per session)
         messages: str = (
             "agentscope:user:{user_id}:session:{session_id}:messages"
+        )
+
+        agent_artifact: str = (
+            "agentscope:user:{user_id}:artifact:{artifact_id}"
+        )
+        agent_artifact_index: str = (
+            "agentscope:user:{user_id}:agent:{agent_id}:artifacts:{kind}"
         )
 
         schedule: str = "agentscope:user:{user_id}:schedule:{schedule_id}"
@@ -849,6 +858,11 @@ class RedisStorage(StorageBase):
         for session in sessions:
             await self.delete_session(user_id, agent_id, session.id)
 
+        # Cascade: eval cases, eval runs and memories of this agent
+        for kind in ("eval_case", "eval_run", "memory"):
+            for artifact in await self.list_agent_artifacts(user_id, agent_id, kind):
+                await self.delete_agent_artifact(user_id, artifact.id)
+
         # Cascade: schedules owned by this agent
         schedules = await self.list_schedules(user_id)
         for schedule in schedules:
@@ -1290,6 +1304,92 @@ class RedisStorage(StorageBase):
         await self._client.srem(
             self.key_config.schedule_global_index,
             f"{user_id}:{schedule_id}",
+        )
+        return True
+
+    async def upsert_agent_artifact(
+        self,
+        user_id: str,
+        record: AgentArtifactRecord,
+    ) -> str:
+        """Persist an agent artifact and index it by agent and kind."""
+        key = self._key(
+            self.key_config.agent_artifact,
+            user_id=user_id,
+            artifact_id=record.id,
+        )
+        index_key = self._key(
+            self.key_config.agent_artifact_index,
+            user_id=user_id,
+            agent_id=record.agent_id,
+            kind=record.kind,
+        )
+        await self._set_with_ttl(key, record.model_dump_json())
+        await self._client.sadd(index_key, record.id)
+        await self._refresh_key_ttl(index_key)
+        return record.id
+
+    async def get_agent_artifact(
+        self,
+        user_id: str,
+        artifact_id: str,
+    ) -> AgentArtifactRecord | None:
+        """Fetch one agent artifact by id."""
+        raw = await self._client.get(
+            self._key(
+                self.key_config.agent_artifact,
+                user_id=user_id,
+                artifact_id=artifact_id,
+            ),
+        )
+        return AgentArtifactRecord.model_validate_json(raw) if raw else None
+
+    async def list_agent_artifacts(
+        self,
+        user_id: str,
+        agent_id: str,
+        kind: AgentArtifactKind,
+    ) -> list[AgentArtifactRecord]:
+        """An agent's artifacts of one kind, oldest first."""
+        index_key = self._key(
+            self.key_config.agent_artifact_index,
+            user_id=user_id,
+            agent_id=agent_id,
+            kind=kind,
+        )
+        records = []
+        for artifact_id in await self._client.smembers(index_key):
+            record = await self.get_agent_artifact(user_id, artifact_id)
+            if record is None:
+                await self._client.srem(index_key, artifact_id)
+            else:
+                records.append(record)
+        return sorted(records, key=lambda record: record.created_at)
+
+    async def delete_agent_artifact(
+        self,
+        user_id: str,
+        artifact_id: str,
+    ) -> bool:
+        """Delete an agent artifact and drop it from its index."""
+        record = await self.get_agent_artifact(user_id, artifact_id)
+        if record is None:
+            return False
+        await self._client.delete(
+            self._key(
+                self.key_config.agent_artifact,
+                user_id=user_id,
+                artifact_id=artifact_id,
+            ),
+        )
+        await self._client.srem(
+            self._key(
+                self.key_config.agent_artifact_index,
+                user_id=user_id,
+                agent_id=record.agent_id,
+                kind=record.kind,
+            ),
+            artifact_id,
         )
         return True
 

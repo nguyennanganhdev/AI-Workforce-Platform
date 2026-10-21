@@ -3,8 +3,6 @@ import {
 	BookText,
 	Cable,
 	Calendars,
-	Crown,
-	Hammer,
 	KeyRound,
 	LibraryBig,
 	Users,
@@ -46,8 +44,6 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	{
 		label: 'shell.groupWorkforce',
 		items: [
-			{ label: 'shell.leader', icon: Crown, path: '/workforce/leader' },
-			{ label: 'shell.builder', icon: Hammer, path: '/workforce/builder' },
 			{ label: 'shell.agentStudio', icon: Users, path: '/workforce/agents', prefix: true },
 		],
 	},
@@ -131,9 +127,9 @@ export function SettingsSidebar() {
 										<SidebarMenuButton
 											className={ITEM}
 											isActive={
-												item.prefix
+												(item.prefix
 													? location.pathname.startsWith(item.path)
-													: location.pathname === item.path
+													: location.pathname === item.path)
 											}
 											tooltip={t(item.label)}
 											onClick={() => go(item.path)}

@@ -49,6 +49,17 @@ async function builderWith(deleteAgent, builderApi = {}) {
       if (id === '@/hooks/useKnowledgeBases') return {
         useKnowledgeBases: () => ({ knowledgeBases: [], loading: false }),
       };
+      if (id === '@/hooks/useAgents') return {
+        useAgents: () => ({ agents: [] }),
+      };
+      if (id === '@/i18n/useI18n') return {
+        useTranslation: () => ({ t: (key) => key }),
+      };
+      if (id === '@/components/ui/sidebar') return {
+        SidebarProvider: 'SidebarProvider', Sidebar: 'Sidebar', SidebarHeader: 'SidebarHeader',
+        SidebarContent: 'SidebarContent', SidebarFooter: 'SidebarFooter', SidebarTrigger: 'SidebarTrigger',
+        useSidebar: () => ({ isMobile: false, setOpenMobile() {} }),
+      };
       if (id === '@/components/chat/session-row-utils') return { sessionTime: () => '' };
       if (id === 'sonner') return { toast: { success() {} } };
       return new Proxy({}, { get: (_, name) => name });
@@ -60,7 +71,8 @@ async function builderWith(deleteAgent, builderApi = {}) {
       jsx: ts.JsxEmit.ReactJSX,
     },
   }).outputText, context);
-  const render = () => { cursor = 0; return context.exports.AgentBuilderPage(); };
+  const Builder = context.exports.AgentBuilderPage().props.children.type;
+  const render = () => { cursor = 0; return Builder(); };
   render();
   effects.forEach((effect) => effect());
   await new Promise((resolve) => setImmediate(resolve));
@@ -134,4 +146,53 @@ test('a conversation without a proposal restores its model and can continue chat
   assert.equal(requests[0][2], 'builder');
   assert.ok(find(render(), (node) => node.type === 'Markdown' && node.props.children === 'Chào bạn!'));
   assert.equal(find(render(), (node) => node.type === 'ProposalSteps'), undefined);
+});
+
+test('a saved missing tool warning is hidden and does not disable outline confirmation', async () => {
+  const model = { type: 'openai_credential', credential_id: 'chat', model: 'chat', parameters: {} };
+  const stored = {
+    conversation_id: 'builder', title: 'Travel', chat_model_config: model, messages: [],
+    proposal: {
+      conversation_id: 'builder', revision: 1, status: 'needs_input', agents: [],
+      chat_model_config: model, fixed_config: {}, resources_locked: true,
+      planned_agents: [{
+        name: 'Travel', objective: 'Plan a trip', reuse_agent_id: null,
+        suggested_tools: [], suggested_knowledge_bases: [],
+        missing_resources: ['tool: get_service_catalog', 'Need tool', 'knowledge: Travel policy'],
+      }],
+    },
+  };
+  const requests = [];
+  const render = await builderWith(async () => {}, {
+    listBuilderConversations: async () => [{ conversation_id: 'builder', title: 'Travel' }],
+    getBuilderConversation: async () => stored,
+    prepare: async (...args) => { requests.push(args); return stored; },
+  });
+  // The build button sits in the proposal's bottom actions.
+  let actions;
+  find(render(), (node) => {
+    if (node.type?.name !== 'ProposalActions') return false;
+    actions = node;
+    return true;
+  });
+  const confirm = find(actions.type(actions.props), (node) => node.type === 'Button' &&
+    [node.props.children].flat().some((child) => typeof child === 'string' && child.startsWith('Build ')));
+  assert.equal(confirm.disabled, false);
+  let card;
+  find(render(), (node) => {
+    if (node.type?.name !== 'PlannedAgentCard') return false;
+    card = node;
+    return true;
+  });
+  const warnings = [];
+  find(card.type(card.props), (node) => {
+    if (node.type === 'li') warnings.push(node.props.children);
+    return false;
+  });
+  assert.deepEqual(warnings, ['knowledge: Travel policy']);
+  confirm.onClick();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0][3], true);
+  assert.equal(requests[0][4], 1);
 });

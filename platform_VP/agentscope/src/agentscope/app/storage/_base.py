@@ -10,6 +10,8 @@ from ...message import Msg
 from ...sop import SOPPhase, SOPRunState
 from ...state import AgentState
 from ._model import (
+    AgentArtifactKind,
+    AgentArtifactRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -600,6 +602,44 @@ class StorageBase(ABC):
         Returns:
             `bool`: ``True`` if deleted, ``False`` if not found.
         """
+
+    # ------------------------------------------------------------------
+    # Agent artifacts: eval cases, eval runs and memories of one agent.
+    # Not abstract, so storage fakes that do not use them keep working.
+    # ------------------------------------------------------------------
+
+    async def upsert_agent_artifact(
+        self,
+        user_id: str,
+        record: AgentArtifactRecord,
+    ) -> str:
+        """Create or overwrite an agent artifact; returns its id."""
+        raise NotImplementedError
+
+    async def get_agent_artifact(
+        self,
+        user_id: str,
+        artifact_id: str,
+    ) -> AgentArtifactRecord | None:
+        """One artifact owned by ``user_id``, or ``None``."""
+        raise NotImplementedError
+
+    async def list_agent_artifacts(
+        self,
+        user_id: str,
+        agent_id: str,
+        kind: AgentArtifactKind,
+    ) -> list[AgentArtifactRecord]:
+        """An agent's artifacts of one kind, oldest first."""
+        raise NotImplementedError
+
+    async def delete_agent_artifact(
+        self,
+        user_id: str,
+        artifact_id: str,
+    ) -> bool:
+        """Delete one artifact; ``False`` when it does not exist."""
+        raise NotImplementedError
 
     @abstractmethod
     async def list_all_schedules(self) -> list[ScheduleRecord]:

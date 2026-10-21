@@ -58,6 +58,7 @@ from ..storage import (
 from ...message import ToolCallState
 from ...state import ToolContext
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
+from .._service._case_file import build_case_file, load_turn_messages, model_prices
 from ...event import CustomEvent
 from ..workspace_manager import WorkspaceManagerBase
 from .._shared_context import SharedContextService
@@ -223,6 +224,62 @@ async def add_team_member(
             CustomEvent(name="team_updated", value={}).model_dump(mode="json"),
         )
         return await _build_team_detail(storage, access, user_id, team)
+    finally:
+        await message_bus.unlock(lock_key)
+
+
+@session_router.delete(
+    "/{session_id}/team/members/{member_id}",
+    response_model=TeamDetailResponse,
+    summary="Remove a member from this team without deleting the agent",
+)
+async def remove_team_member(
+    session_id: str,
+    member_id: str,
+    agent_id: str = Query(description="Leader agent the session belongs to."),
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    access: ResourceAccessService = Depends(get_resource_access_service),
+    message_bus: MessageBus = Depends(get_message_bus),
+) -> TeamDetailResponse:
+    """Detach membership while preserving the agent and its session history."""
+    session = await storage.get_session(user_id, agent_id, session_id)
+    if session is None or session.agent_id != agent_id:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    lock_key = MessageBusKeys.session_lock(session_id)
+    if not await message_bus.try_lock(lock_key):
+        raise HTTPException(status_code=409, detail="Wait for the current leader operation to finish before removing a member.")
+    try:
+        session = await storage.get_session(user_id, agent_id, session_id)
+        team = await storage.get_team(user_id, session.team_id) if session and session.team_id else None
+        if team is None or team.session_id != session_id:
+            raise HTTPException(status_code=403, detail="Remove members from the leader session.")
+        members = await _ensure_team_members(storage, user_id, team)
+        member = next((m for m in members if m.agent_id == member_id), None)
+        if member is None:
+            raise HTTPException(status_code=404, detail="Team member not found.")
+        member_lock = MessageBusKeys.session_lock(member.session_id)
+        if not await message_bus.try_lock(member_lock):
+            raise HTTPException(status_code=409, detail="Wait for the member to finish before removing it.")
+        try:
+            record = await storage.get_session(member.owner_id, member.agent_id, member.session_id)
+            if record is not None:
+                if record.team_id != team.id:
+                    raise HTTPException(status_code=409, detail="Member no longer belongs to this team.")
+                if SessionService.derive_parked_status(record.state.context) != SessionStatus.IDLE:
+                    raise HTTPException(status_code=409, detail="Finish or interrupt the member's pending operation before removing it.")
+                await storage.set_session_team_id(member.owner_id, member.session_id, None)
+            team.data.members = [m for m in members if m.agent_id != member_id]
+            team.data.member_ids = [mid for mid in team.data.member_ids if mid != member_id]
+            team.data.manual_membership = True
+            await storage.upsert_team(user_id, team)
+            await publish_session_event(
+                message_bus, session_id,
+                CustomEvent(name="team_updated", value={}).model_dump(mode="json"),
+            )
+            return await _build_team_detail(storage, access, user_id, team)
+        finally:
+            await message_bus.unlock(member_lock)
     finally:
         await message_bus.unlock(lock_key)
 
@@ -396,6 +453,15 @@ async def list_sessions(
                         ),
                     },
                 ),
+                preview=next(
+                    (
+                        text[:160]
+                        for msg in session.state.context
+                        if msg.role == "user"
+                        and (text := " ".join((msg.get_text_content() or "").split()))
+                    ),
+                    None,
+                ),
                 is_running=is_running,
                 status=session_status,
                 team=team_detail,
@@ -470,6 +536,8 @@ async def create_session(
 
     # Builder bindings belong to the agent; MCP clients belong to each session.
     mcps: list[MCPClient] | None = None
+    if body.initial_message is not None and getattr(agent_record.data, "system_role", None) == "leader":
+        mcps = []
     if (
         getattr(agent_record.data, "execution_mode", None) is not None
         and agent_record.data.system_role == "business"
@@ -552,6 +620,8 @@ async def create_session(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=_describe_exception(exc),
             ) from exc
+    if body.initial_message is not None:
+        await storage.upsert_message(user_id, session_record.id, body.initial_message)
     return CreateSessionResponse(session_id=session_record.id)
 
 
@@ -780,6 +850,43 @@ async def update_session(
 # ----------------------------------------------------------------------
 # Messages: fetch persisted messages for a session
 # ----------------------------------------------------------------------
+
+
+@session_router.get(
+    "/{session_id}/case-file",
+    summary="Evidence and token cost of the customer turn containing a message",
+)
+async def get_case_file(
+    session_id: str,
+    agent_id: str = Query(description="Agent the session belongs to."),
+    message_id: str = Query(description="Any message of the turn, usually its answer."),
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> dict:
+    """Which lookups backed a turn's answer and what each agent spent on it."""
+    session = await storage.get_session(user_id, agent_id, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    models: dict[str, str | None] = {
+        agent_id: session.config.chat_model_config.model if session.config.chat_model_config else None,
+    }
+    team = await storage.get_team(user_id, session.team_id) if session.team_id else None
+    if team is not None and team.session_id == session_id:
+        for member in await _ensure_team_members(storage, user_id, team):
+            record = await storage.get_session(member.owner_id, member.agent_id, member.session_id)
+            config = record.config.chat_model_config if record is not None else None
+            models[member.agent_id] = config.model if config else None
+    messages = await load_turn_messages(storage, user_id, session_id, message_id)
+    case_file = build_case_file(
+        messages,
+        message_id,
+        leader_agent_id=agent_id,
+        models=models,
+        prices=model_prices(),
+    )
+    if case_file is None:
+        raise HTTPException(status_code=404, detail="Message not found in this session.")
+    return case_file
 
 
 @session_router.get(

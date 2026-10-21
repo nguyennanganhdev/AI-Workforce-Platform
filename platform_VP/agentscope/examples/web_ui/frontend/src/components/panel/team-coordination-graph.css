@@ -1,0 +1,10 @@
+@keyframes team-coordination-flow {
+	to { stroke-dashoffset: -24; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.team-coordination-flow {
+		stroke-dasharray: 5 7;
+		animation: team-coordination-flow 1s linear infinite;
+	}
+}

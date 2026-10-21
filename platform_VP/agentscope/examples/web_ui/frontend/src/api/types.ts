@@ -185,6 +185,8 @@ export interface SessionRecord extends RecordBase {
 
 export interface CreateSessionRequest {
 	agent_id: string;
+	/** Saved with a chat draft's session before its first run starts. */
+	initial_message?: Msg;
 	workspace_id?: string;
 	chat_model_config?: ChatModelConfig | null;
 	sub_agent_chat_model_config?: ChatModelConfig | null;
@@ -373,6 +375,8 @@ export type SessionStatus = 'running' | 'idle' | 'awaiting_permission' | 'awaiti
  * participates in a team — the resolved team detail.
  */
 export interface SessionView {
+	/** Opening user text, bounded by the server for list display. */
+	preview?: string | null;
 	/**
 	 * The record with the bulk of `state` stripped: `context`, `summary`
 	 * and `tool_context` arrive cleared, since they hold the model's

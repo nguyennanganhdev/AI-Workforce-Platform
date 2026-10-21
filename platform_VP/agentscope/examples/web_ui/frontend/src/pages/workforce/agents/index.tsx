@@ -1,12 +1,12 @@
 import {
 	ArrowLeft,
 	BookOpen,
-	ChevronDown,
+	Brain,
 	Crown,
 	Ellipsis,
+	FlaskConical,
 	MessageSquare,
 	PencilRuler,
-	Plus,
 	Power,
 	Search,
 	Settings2,
@@ -35,6 +35,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { AgentEvalDialog } from '@/components/workforce/AgentEvalDialog';
+import { AgentMemoryDialog } from '@/components/workforce/AgentMemoryDialog';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
@@ -60,6 +62,8 @@ export function AgentManagementPage() {
 	const [filter, setFilter] = useState<Filter>('all');
 	const [manualOpen, setManualOpen] = useState(false);
 	const [deleting, setDeleting] = useState<AgentView | null>(null);
+	const [testing, setTesting] = useState<AgentView | null>(null);
+	const [remembering, setRemembering] = useState<AgentView | null>(null);
 	const [pending, setPending] = useState<string | null>(null);
 	const [mutationError, setMutationError] = useState('');
 	const selected = agents.find((agent) => agent.id === agentId);
@@ -102,38 +106,6 @@ export function AgentManagementPage() {
 		}
 	};
 
-	const createMenu = (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button>
-					<Plus />
-					{t('agentManagement.create')}
-					<ChevronDown className="opacity-70" />
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-72">
-				<DropdownMenuItem className="items-start gap-3 py-2" onSelect={() => navigate('/workforce/builder')}>
-					<Sparkles className="mt-0.5" />
-					<span className="grid gap-0.5">
-						<span className="font-medium">{t('agentManagement.createWithBuilder')}</span>
-						<span className="text-xs text-muted-foreground">
-							{t('agentManagement.createWithBuilderHint')}
-						</span>
-					</span>
-				</DropdownMenuItem>
-				<DropdownMenuItem className="items-start gap-3 py-2" onSelect={() => setManualOpen(true)}>
-					<PencilRuler className="mt-0.5" />
-					<span className="grid gap-0.5">
-						<span className="font-medium">{t('agentManagement.createManual')}</span>
-						<span className="text-xs text-muted-foreground">
-							{t('agentManagement.createManualHint')}
-						</span>
-					</span>
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
-
 	return (
 		<div className="h-full overflow-y-auto bg-background">
 			<header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[var(--cue-divider,var(--border))] bg-background/90 px-4 py-3 backdrop-blur md:px-8">
@@ -152,7 +124,6 @@ export function AgentManagementPage() {
 						{selected?.data.name ?? t('agentManagement.title')}
 					</h1>
 				</div>
-				{createMenu}
 			</header>
 
 			<div className="mx-auto max-w-6xl space-y-6 p-4 md:p-8">
@@ -356,6 +327,14 @@ export function AgentManagementPage() {
 													<Power />
 													{t(isPublished(agent) ? 'agentManagement.withdraw' : 'agentManagement.publish')}
 												</DropdownMenuItem>
+												<DropdownMenuItem onSelect={() => setTesting(agent)}>
+													<FlaskConical />
+													{t('agentEval.menu')}
+												</DropdownMenuItem>
+												<DropdownMenuItem onSelect={() => setRemembering(agent)}>
+													<Brain />
+													{t('agentMemory.menu')}
+												</DropdownMenuItem>
 												<DropdownMenuSeparator />
 												<DropdownMenuItem variant="destructive" onSelect={() => setDeleting(agent)}>
 													<Trash2 />
@@ -372,6 +351,24 @@ export function AgentManagementPage() {
 			</div>
 
 			<AgentDialog open={manualOpen} onOpenChange={setManualOpen} onCreated={refetch} />
+			{remembering && (
+				<AgentMemoryDialog
+					key={remembering.id}
+					agentId={remembering.id}
+					agentName={remembering.data.name}
+					open
+					onOpenChange={(open) => !open && setRemembering(null)}
+				/>
+			)}
+			{testing && (
+				<AgentEvalDialog
+					key={testing.id}
+					agentId={testing.id}
+					agentName={testing.data.name}
+					open
+					onOpenChange={(open) => !open && setTesting(null)}
+				/>
+			)}
 			{selected?.editable && (
 				<EditAgentDialog
 					key={selected.id}

@@ -187,6 +187,26 @@ class SessionRow(_JsonRecordMixin):
     }
 
 
+class AgentArtifactRow(_JsonRecordMixin):
+    """One row per :class:`~agentscope.app.storage.AgentArtifactRecord`."""
+
+    __tablename__ = "agent_artifacts"
+
+    user_id: Mapped[str] = mapped_column(
+        String(_ID_LEN),
+        nullable=False,
+        index=True,
+    )
+    agent_id: Mapped[str] = mapped_column(
+        String(_ID_LEN),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+
+    _indexed_fields = ("user_id", "agent_id", "kind")
+
+
 class SOPRow(_JsonRecordMixin):
     """One row per :class:`~agentscope.app.storage.SOPRecord`."""
 

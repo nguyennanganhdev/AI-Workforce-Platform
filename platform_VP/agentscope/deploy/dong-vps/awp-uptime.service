@@ -1,0 +1,7 @@
+[Unit]
+Description=AWP uptime check (alerts on down/up transitions)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/awp-uptime-check

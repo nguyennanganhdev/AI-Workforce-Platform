@@ -119,3 +119,76 @@ test('a reply stored twice (start and final copy) is shown once, with its final 
   assert.equal(bubbleNode.props.message.content[0].text, 'Mình đã kiểm tra lại.');
   assert.doesNotMatch(text(tree), /trace\.working/);
 });
+
+test('a finished answer offers its case file', () => {
+  const opened = [];
+  const { ASMessageBubble } = load('../src/components/chat/ASMessageBubble.tsx', mocks({
+    '@/utils/common': { formatTime: () => '1s', formatNumber: String, copyToClipboard() {} },
+    './tool-renderers/_shared': { getResultText: () => '', countDiffStats: () => null, getResultDiff: () => null, DiffStats: 'DiffStats' },
+  }));
+  const tree = ASMessageBubble({ message: leader([{ type: 'text', id: 't', text: 'Có chuyến QH118' }]), onOpenCaseFile: (id) => opened.push(id) });
+  const [button] = nodes(tree, (node) => node.props?.['aria-label'] === 'caseFile.open');
+  button.props.onClick();
+  assert.deepEqual(opened, ['l1']);
+});
+
+test('the case file shows evidence, per-agent tokens and says when no price is set', () => {
+  const caseFile = {
+    turn: { customer_message_id: 'u', customer_text: 'Đi Đà Nẵng', started_at: null, ended_at: null },
+    agents: [{ agent_id: 'f', name: 'Chuyên viên chuyến bay', model: 'gpt-6-luna', replies: 1, input_tokens: 2000, output_tokens: 200, cache_input_tokens: 0, cost_usd: null }],
+    totals: { input_tokens: 2000, output_tokens: 200, cache_input_tokens: 0, cost_usd: null, priced: false },
+    evidence: [{ agent_id: 'f', agent_name: 'Chuyên viên chuyến bay', tool: 'mcp__Travelling__search_flights', arguments: { destination: 'Đà Nẵng' }, state: 'success', result: '{"count": 1}', at: null }],
+  };
+  let call = 0;
+  const { CaseFileSheet } = load('../src/components/chat/CaseFileSheet.tsx', mocks({
+    react: { __esModule: true, useEffect() {}, useState: () => [call++ === 0 ? caseFile : false, () => {}] },
+    '@/lib/teamThreads': load('../src/lib/teamThreads.ts'),
+  }));
+  const html = text(CaseFileSheet({ sessionId: 's', agentId: 'a', messageId: 'm', onClose() {} }));
+  assert.match(html, /search flights/);
+  assert.match(html, /Đà Nẵng/);
+  assert.match(html, /caseFile\.unpriced/);
+  assert.match(html, /Chuyên viên chuyến bay/);
+});
+
+test('the test-case dialog shows recorded lookups, the pass rate and a regression', () => {
+  const cases = [{ id: 'c1', created_at: '', scenario: 'Bay đi Đà Nẵng', expected: 'Tra chuyến', expect_tool: '',
+    recorded: { search_flights: ['{}'] }, source_session_id: 's', source_message_id: 'm' }];
+  const run = { id: 'r2', created_at: '', version: 'abc123def456', model: 'gpt-6-luna', status: 'completed',
+    started_at: '2026-10-22T08:00:00Z', finished_at: null, error: null,
+    report: { total: 1, passed: 0, errors: 0, pass_rate: 0 },
+    tests: [{ case_id: 'c1', scenario: 'Bay đi Đà Nẵng', expected: 'Tra chuyến', status: 'failed', result: { passed: false, summary: 'Bịa giá' } }],
+    comparison: { run_id: 'r1', version: '000111222333', cases: [{ case_id: 'c1', scenario: '', before: 'passed', after: 'failed', change: 'worse' }] } };
+  const states = [cases, [run], run, false, '', '', false, ''];
+  let index = 0;
+  const { AgentEvalDialog } = load('../src/components/workforce/AgentEvalDialog.tsx', mocks({
+    react: { __esModule: true, useEffect() {}, useCallback: (fn) => fn, useState: () => [states[index++], () => {}] },
+  }));
+  const tree = AgentEvalDialog({ agentId: 'a', agentName: 'Chuyên viên chuyến bay', open: true, onOpenChange() {} });
+  const html = text(tree);
+  assert.match(html, /agentEval\.recorded.*search_flights/);
+  assert.match(html, /agentEval\.passRate.*"passed":0.*"total":1/);
+  assert.match(html, /Bịa giá/);
+  assert.equal(nodes(tree, (node) => node.props?.['aria-label'] === 'agentEval.worse').length, 1);
+});
+
+test('the memory dialog separates proposals from approved memories and marks fading ones', () => {
+  const memories = [
+    { id: 'p', content: 'Khách thích ghế cửa sổ.', reason: 'Khách nói vậy', status: 'proposed', pinned: false, confirmations: 0,
+      proposed_at: '', approved_at: null, last_confirmed_at: null, source_session_id: null, priority: 0, active: false },
+    { id: 'a', content: 'Khách bay từ Hà Nội.', reason: '', status: 'approved', pinned: false, confirmations: 0,
+      proposed_at: '', approved_at: '', last_confirmed_at: null, source_session_id: null, priority: 0.1, active: false },
+  ];
+  const states = [memories, {}, '', ''];
+  let index = 0;
+  const { AgentMemoryDialog } = load('../src/components/workforce/AgentMemoryDialog.tsx', mocks({
+    react: { __esModule: true, useEffect() {}, useCallback: (fn) => fn, useState: () => [states[index++], () => {}] },
+  }));
+  const tree = AgentMemoryDialog({ agentId: 'a', agentName: 'Chuyên viên chuyến bay', open: true, onOpenChange() {} });
+  const html = text(tree);
+  assert.match(html, /agentMemory\.proposals.*"count":1/);
+  assert.match(html, /agentMemory\.approved.*"count":1/);
+  assert.match(html, /Khách bay từ Hà Nội\./);
+  assert.match(html, /agentMemory\.fading/);
+  assert.equal(nodes(tree, (node) => node.props?.['aria-label'] === 'agentMemory.edit').length, 1);
+});

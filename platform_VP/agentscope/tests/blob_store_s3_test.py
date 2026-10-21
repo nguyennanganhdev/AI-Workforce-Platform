@@ -32,7 +32,10 @@ import socket
 from typing import TYPE_CHECKING
 from unittest import IsolatedAsyncioTestCase
 
-import boto3
+import pytest
+
+# The S3 extra (boto3, aioboto3) is optional; skip instead of failing collection.
+boto3 = pytest.importorskip("boto3", reason="boto3 is not installed (s3 extra)")
 from moto.server import ThreadedMotoServer
 
 if TYPE_CHECKING:

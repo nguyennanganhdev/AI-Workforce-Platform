@@ -78,7 +78,8 @@ function mount(path, name, mocks, initialProps) {
 	return {
 		render,
 		async settle(next = props) {
-			render(next);
+			// A session switch keeps the other props, like a parent re-render does.
+			render({ ...props, ...next });
 			await flush();
 			render();
 			await flush();
@@ -87,11 +88,14 @@ function mount(path, name, mocks, initialProps) {
 	};
 }
 
+// Elements passed through other props (e.g. ChatContent's modelControls) count too.
 function nodes(tree, type) {
 	if (!tree || typeof tree !== 'object') return [];
+	if (Array.isArray(tree)) return tree.flatMap((child) => nodes(child, type));
+	if (!('props' in tree)) return [];
 	return [
 		...(tree.type === type ? [tree.props] : []),
-		...[tree.props?.children].flat(Infinity).flatMap((child) => nodes(child, type)),
+		...Object.values(tree.props ?? {}).flatMap((value) => nodes(value, type)),
 	];
 }
 const model = (name) => ({
@@ -148,7 +152,8 @@ function viewport(update) {
 				useKnowledgeBaseMiddlewareSchema: () => ({ schema: null }),
 			},
 		},
-		{ agentId: 'leader', sessionId: 'one' },
+		// Only the Leader shows the members' shared model selector.
+		{ agentId: 'leader', sessionId: 'one', agentData: { system_role: 'leader' } },
 	);
 	const selectors = (tree) => nodes(tree, 'LlmSelect');
 	return { ...mounted, selectors, views };

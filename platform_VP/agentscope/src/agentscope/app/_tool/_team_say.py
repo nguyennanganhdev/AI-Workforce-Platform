@@ -164,9 +164,9 @@ class _TeamSayParams(ParamsBase):
     in_reply_to: str | None = Field(
         default=None, min_length=1, max_length=255,
         description=(
-            "Omit for an unambiguous shared reply or assignment resolution; "
-            "the runtime links the delivered handoff. If multiple requests "
-            "are pending, use an exact incoming handoff_id, never a shortened ID."
+            "When replying or resolving work, use the exact handoff_id of the "
+            "original incoming request/report, even if only one is pending. "
+            "Omit only when no request ID was supplied. Never shorten or invent an ID."
         ),
     )
     artifact_refs: tuple[str, ...] = Field(default=(), max_length=50)
@@ -230,7 +230,9 @@ your top priority is to complete the overall task.
   the recipient needs only those sources. Put relevant facts/decisions and
   superseded item ids in ``context_delta``; never put private reasoning there.
 - Use ``kind="handoff"`` for assignments and ``question``/``answer`` for a
-  linked peer exchange. Preserve ``thread_id`` and ``in_reply_to``; the runtime
+  linked peer exchange. Set ``in_reply_to`` to the exact incoming request/report
+  handoff_id when replying or resolving work; omit ``thread_id`` so runtime
+  derives it. The runtime
   caps one chain at 12 hops.
 - For ``requires_user_input``, you may provide a stable ``question_key``
   describing the missing information. Otherwise the runtime deduplicates from
@@ -240,6 +242,13 @@ your top priority is to complete the overall task.
 _WORKER_DESCRIPTION = """Send an internal message to one team member.
 
 ## When to Use This Tool
+- Coordinate directly with the peer who owns the needed capability, without
+  waiting for Leader's permission. Check Shared Context for shared budget,
+  timing, location or compatibility constraints; ask that peer with kind=question
+  for unresolved inputs before choosing an option or reporting completion.
+  Do not send a dependency to Leader for forwarding. If your output changes a
+  peer's work, use kind=handoff with the concrete check or adjustment needed.
+  Do not copy Leader on routine peer exchanges or contact unrelated peers.
 - When you finish, report to the assignment requester identified by the incoming
   team-message, using its exact roster handle and original handoff_id when provided.
   A peer question needs kind=answer with in_reply_to=that question's handoff_id.
@@ -1173,15 +1182,17 @@ class TeamSay(_TeamToolBase):
                 response_kind = "answer" if kind == "question" else "result"
                 reply_instruction = (
                     f"Respond to {sender_name!r} using kind={response_kind} "
-                    "when this assigned work is finished. For an unambiguous shared "
-                    "reply, omit in_reply_to and thread_id; runtime binds the request. "
-                    f"For multiple requests or caller-only messages, use in_reply_to={handoff_id}."
+                    f"when this assigned work is finished, with in_reply_to={handoff_id}. "
+                    "Use this exact full ID even if this is the only request; omit "
+                    "thread_id so runtime derives it. Keep this request ID while "
+                    "consulting peers; their replies do not replace it."
                 )
             elif kind in {"answer", "result", "error"}:
                 reply_instruction = (
                     "This is a response, not a new request. Resume your original assignment "
                     "using this output/blocker, then report to that assignment's requester "
-                    "with runtime binding, or its exact original request id when ambiguous. "
+                    "with in_reply_to set to its exact original request handoff_id "
+                    "when supplied, and omit thread_id. Do not use this response's ID. "
                     "Do not send acknowledgement-only replies."
                 )
             else:

@@ -16,6 +16,7 @@ import {
 	ChevronRight,
 	CirclePlay,
 	Copy,
+	FileSearch,
 	FileText,
 	FileVideo2,
 	Loader2,
@@ -394,6 +395,8 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 interface MessageBubbleProps {
 	message: Msg;
 	onReplyTo?: (agentId: string, name: string) => void;
+	/** Opens the evidence and cost of this answer's turn. */
+	onOpenCaseFile?: (messageId: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -419,7 +422,7 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
+function ASMessageBubbleComponent({ message, onReplyTo, onOpenCaseFile }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
 
@@ -503,7 +506,9 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 
 	// The working (thinking, hints, tool runs, messages between agents) folds
 	// into one line; the answer and questions to the customer stay in view.
-	const visibleBlocks = blocks.filter((block) => block.type !== 'data');
+	const visibleBlocks = blocks.filter(
+		(block) => block.type !== 'data' && (block.type !== 'thinking' || block.thinking.trim()),
+	);
 	const traceBlocks = isUser ? [] : visibleBlocks.filter(isTraceBlock);
 	const shownBlocks = isUser ? visibleBlocks : visibleBlocks.filter((block) => !isTraceBlock(block));
 	const teamCommunications = communications.filter((communication) => !communication.toCustomer);
@@ -639,6 +644,11 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
+						{onOpenCaseFile && !isRunning && (
+							<Button variant="ghost" size="xs" onClick={() => onOpenCaseFile(message.id)} aria-label={t('caseFile.open')}>
+								<FileSearch className="size-3" /> {t('caseFile.open')}
+							</Button>
+						)}
 						{onReplyTo && typeof teamAgentId === 'string' && (
 							<Button variant="ghost" size="xs" onClick={() => onReplyTo(teamAgentId, message.name)} aria-label={`Trả lời ${message.name}`}>
 								<Reply className="size-3" /> Trả lời
@@ -861,7 +871,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			}
 		}
 		case 'thinking':
-			return <ThinkingBlockView block={block} />;
+			return block.thinking.trim() ? <ThinkingBlockView block={block} /> : null;
 		case 'hint': {
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;
