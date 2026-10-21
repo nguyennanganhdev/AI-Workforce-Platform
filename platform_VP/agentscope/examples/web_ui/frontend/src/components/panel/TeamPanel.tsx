@@ -2,7 +2,6 @@ import {
 	Activity,
 	AlertCircle,
 	ArrowRight,
-	Bot,
 	Check,
 	ChevronRight,
 	Clock3,
@@ -22,6 +21,7 @@ import { sessionApi } from '@/api';
 import { AddTeamMemberDialog } from '@/components/dialog/AddTeamMemberDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
+import { TeamCoordinationGraph } from '@/components/panel/TeamCoordinationGraph';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -48,7 +48,7 @@ const STATUS_STYLE: Record<TeamRuntimeStatus, string> = {
 	idle: 'bg-muted-foreground/45',
 	active: 'bg-blue-500',
 	communicating: 'bg-cyan-500',
-	waiting: 'bg-amber-500',
+	waiting: 'bg-orange-500',
 	completed: 'bg-emerald-500',
 	error: 'bg-destructive',
 };
@@ -83,7 +83,7 @@ const statusLabel = (status: TeamRuntimeStatus): string => {
 		active: 'Đang xử lý',
 		communicating: 'Đang giao tiếp',
 		waiting: 'Đang chờ',
-		completed: 'Đã xong lượt',
+		completed: 'Xong lượt',
 		error: 'Gặp lỗi',
 	};
 	return labels[status];
@@ -151,6 +151,7 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const [memberToRemove, setMemberToRemove] = useState<TeamMemberInfo | null>(null);
+	const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
 	const participants = useMemo<TeamActivityParticipant[]>(() => {
 		if (!team) return [];
 		const rows: TeamActivityParticipant[] = [];
@@ -197,6 +198,11 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 	}
 
 	const communications = activities.filter((item) => item.type === 'communication');
+	const selectedParticipant = participants.find((participant) => participant.agentId === selectedParticipantId);
+	const visibleCommunications = selectedParticipant ? communications.filter((item) =>
+		item.sessionId === selectedParticipant.sessionId || item.sourceName === selectedParticipant.name
+		|| item.targetName === selectedParticipant.name || item.targetName === 'Cả nhóm',
+	) : communications;
 	const tools = activities.filter((item) => item.type === 'tool');
 	const runningTools = tools.filter((item) => item.state === 'running').length;
 	const failedTools = tools.filter((item) => item.state === 'error').length;
@@ -212,6 +218,9 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 		(participant) =>
 			participant.sessionId &&
 			runtimeBySession[participant.sessionId]?.status === 'communicating',
+	).length;
+	const waitingCount = participants.filter(
+		(participant) => participant.sessionId && runtimeBySession[participant.sessionId]?.status === 'waiting',
 	).length;
 	const hasLiveConnection = participants.some(
 		(participant) => participant.sessionId && runtimeBySession[participant.sessionId]?.connected,
@@ -252,20 +261,23 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 					connected: false,
 				};
 		const isActive = currentSessionId === sessionId;
+		const showDetail = ['active', 'communicating', 'waiting', 'error'].includes(runtime.status)
+			&& runtime.detail !== statusLabel(runtime.status) && runtime.detail !== 'Đang xử lý yêu cầu';
 		return (
 			<li key={key} className="flex items-center">
 				<Button
 					variant="ghost"
 					disabled={disabled}
 					onClick={onClick}
+					title={`${label} · ${statusLabel(runtime.status)}${showDetail ? `\n${runtime.detail}` : ''}`}
 					className={cn(
-						'h-auto min-w-0 flex-1 items-start justify-start gap-2 rounded-xl px-2 py-2 text-left font-normal',
+						'h-auto min-h-10 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg px-2 py-1.5 text-left font-normal',
 						isActive && 'bg-accent text-accent-foreground',
 					)}
 				>
-					<span className="mt-0.5 shrink-0"><ClayAvatar id={key} label={label} size={32} /></span>
+					<span className="shrink-0"><ClayAvatar id={key} label={label} size={28} /></span>
 					<span className="min-w-0 flex-1">
-						<span className="flex items-center gap-2">
+						<span className="flex items-center gap-1.5">
 							{icon}<span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
 							<span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
 								<span
@@ -279,9 +291,9 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 								{statusLabel(runtime.status)}
 							</span>
 						</span>
-						<span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+						{showDetail && <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
 							{runtime.detail}
-						</span>
+						</span>}
 					</span>
 				</Button>
 				{canManage && member && <Button variant="ghost" size="icon-sm"
@@ -307,7 +319,7 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 	const renderMember = (member: TeamMemberInfo) =>
 		renderRow(
 			member.agent.id,
-			<Bot className="size-3.5" />,
+			null,
 			member.agent.data.name,
 			member.session_id,
 			member.session_id === null,
@@ -349,29 +361,34 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 					</span>
 				</div>
 				<div
-					className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground"
+					className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px] text-muted-foreground"
 					aria-live="polite"
 				>
 					<span className="inline-flex items-center gap-1.5">
 						<Activity className="size-3.5" />
-						{activeCount} agent đang chạy
+						{activeCount} đang chạy
 					</span>
 					<span className="inline-flex items-center gap-1.5">
 						<MessageSquareMore className="size-3.5" />
-						{communicatingCount} đang giao tiếp
+						{communicatingCount} giao tiếp
+					</span>
+					<span className="inline-flex items-center gap-1.5">
+						{waitingCount} đang chờ
 					</span>
 				</div>
 			</header>
 
-			<section className="shrink-0 border-b py-3">
-				<div className="mb-1 flex items-center justify-between px-2">
-					<span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-						Agent trong team
-					</span>
-					<div className="flex items-center gap-1">
-						<span className="text-[10px] text-muted-foreground">{participants.length} agent</span>
-						{addMember}
+			<section className="shrink-0 border-b py-2">
+				<div className="mb-1 flex min-h-7 items-center justify-between gap-2 px-2">
+					<div className="flex min-w-0 items-center gap-2">
+						<span className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+							Agent trong team
+						</span>
+						<span aria-label={`${participants.length} agent`} className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+							{participants.length}
+						</span>
 					</div>
+					{addMember}
 				</div>
 				{team.team.data.manual_membership && <p className="px-2 pb-2 text-[11px] text-muted-foreground">{t('panel.team.manualMembership')}</p>}
 				<ul className="flex flex-col">
@@ -388,13 +405,34 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 					<h2 className="text-xs font-semibold">Nhật ký phối hợp</h2>
 					<Clock3 className="size-3.5 text-muted-foreground" />
 				</div>
-				{communications.length > 0 ? (
-					<ol className="divide-y divide-border/50">
-						{communications.map((item) => <ActivityEntry key={item.id} item={item} />)}
-					</ol>
+				{participants.length > 0 && <TeamCoordinationGraph key={team.team.id}
+					participants={participants} communications={communications} runtimeBySession={runtimeBySession}
+					selectedId={selectedParticipant?.agentId ?? null} onSelect={setSelectedParticipantId} />}
+				{selectedParticipant && <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2">
+					<p className="text-xs font-medium">{selectedParticipant.name}</p>
+					<p className="mt-1 text-[11px] text-muted-foreground">{selectedParticipant.sessionId
+						? runtimeBySession[selectedParticipant.sessionId]?.detail ?? 'Đang kết nối'
+						: 'Chưa có phiên làm việc'}</p>
+				</div>}
+				{visibleCommunications.length > 0 ? (
+					<Collapsible key={`${team.team.id}:communications`} defaultOpen={false} className="group/exchanges rounded-xl border border-border/60 bg-muted/20">
+						<CollapsibleTrigger asChild>
+							<button type="button" className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+								<MessageSquareMore className="size-3.5 shrink-0" />
+								<span className="min-w-0 flex-1 font-medium">Nội dung trao đổi <span className="ml-1 tabular-nums">({visibleCommunications.length})</span></span>
+								<ChevronRight className="size-3.5 shrink-0 transition-transform motion-reduce:transition-none group-data-[state=open]/exchanges:rotate-90" />
+							</button>
+						</CollapsibleTrigger>
+						<CollapsibleContent>
+							<ol className="max-h-80 overflow-y-auto overscroll-contain border-t border-border/60 px-3 divide-y divide-border/50">
+								{visibleCommunications.map((item) => <ActivityEntry key={item.id} item={item} />)}
+							</ol>
+						</CollapsibleContent>
+					</Collapsible>
 				) : (
 					<p className="py-4 text-center text-xs leading-5 text-muted-foreground">
-						{tools.length > 0 ? 'Chưa có trao đổi giữa các agent.' : 'Chưa có hoạt động phối hợp.'}
+						{selectedParticipant ? 'Agent này chưa có trao đổi phối hợp.'
+							: tools.length > 0 ? 'Chưa có trao đổi giữa các agent.' : 'Chưa có hoạt động phối hợp.'}
 					</p>
 				)}
 				{tools.length > 0 && (

@@ -21,6 +21,7 @@ export function ChatRow({
 	avatarLabel,
 	avatar,
 	title,
+	description,
 	time,
 	status = 'idle',
 	active = false,
@@ -35,6 +36,7 @@ export function ChatRow({
 	/** Replaces the agent avatar, e.g. a group's stacked one. */
 	avatar?: ReactNode;
 	title: string;
+	description?: string;
 	time?: string;
 	/** A dot on the avatar: green while running, blue while waiting on you. */
 	status?: SessionStatus;
@@ -49,11 +51,12 @@ export function ChatRow({
 			<button
 				type="button"
 				onClick={onSelect}
-				title={title}
+				title={description ? `${title}\n${description}` : title}
 				data-active={active || undefined}
 				className={cn(
 					'flex w-full items-center rounded-xl text-left outline-none transition-colors',
 					compact ? 'h-11 gap-2.5 px-2.5' : 'h-11 gap-3 px-3',
+					description && 'h-14',
 					'hover:bg-[var(--cue-bg-hover,var(--accent))] focus-visible:bg-[var(--cue-bg-hover,var(--accent))]',
 					'data-active:bg-[var(--cue-bg-subtle,var(--accent))] data-active:hover:bg-[var(--cue-bg-subtle,var(--accent))]',
 					className,
@@ -75,7 +78,7 @@ export function ChatRow({
 						/>
 					)}
 				</span>
-				<span className="flex min-w-0 flex-1">
+				<span className="flex min-w-0 flex-1 flex-col">
 					<span className="flex min-w-0 items-baseline gap-2">
 						<span
 							className={cn(
@@ -97,6 +100,11 @@ export function ChatRow({
 							</span>
 						)}
 					</span>
+					{description && (
+						<span className="truncate text-xs/4 text-muted-foreground">
+							{description}
+						</span>
+					)}
 				</span>
 			</button>
 			{actions && (

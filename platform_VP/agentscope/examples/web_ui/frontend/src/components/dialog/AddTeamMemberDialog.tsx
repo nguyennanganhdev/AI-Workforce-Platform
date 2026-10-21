@@ -73,10 +73,10 @@ export function AddTeamMemberDialog({ agentId, sessionId, present, disabled, onA
 	return (
 		<Dialog open={open} onOpenChange={changeOpen}>
 			<DialogTrigger asChild>
-				<Button variant="outline" size="sm" disabled={disabled}
-					className="gap-1.5 rounded-full border-primary/15 bg-primary/5 px-3 text-xs text-primary hover:bg-primary/10"
+				<Button variant="outline" size="xs" disabled={disabled}
+					className="shrink-0 gap-1 rounded-lg border-border bg-background px-2 text-[11px] text-foreground shadow-none hover:bg-muted"
 					aria-label={t('panel.team.addMember')}>
-					<Plus className="size-3.5" />{t('panel.team.addAgents')}
+					<Plus className="size-3" />{t('panel.team.addAgents')}
 				</Button>
 			</DialogTrigger>
 			<DialogContent className="flex max-h-[85dvh] flex-col sm:max-w-lg" showCloseButton={!busy}>

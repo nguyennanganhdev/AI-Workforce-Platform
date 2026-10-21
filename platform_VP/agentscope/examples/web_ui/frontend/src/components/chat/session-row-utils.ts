@@ -1,4 +1,5 @@
 import { format, isToday } from 'date-fns';
+
 import type { SessionView } from '@/api';
 
 /** Today's timestamps show the time; older ones the day. */
@@ -17,10 +18,10 @@ export function sessionTitle(name: string | null | undefined): string | null {
 	return name.trim();
 }
 
-/** Keep stored titles; use existing conversation/team data for unnamed sessions. */
+/** Match group labels to the team panel; keep conversation titles for other sessions. */
 export function sessionDisplayTitle(view: SessionView, fallback: string): string {
-	return sessionTitle(view.session.config.name)
+	return sessionTitle(view.team?.team.data.name)
+		|| sessionTitle(view.session.config.name)
 		|| view.preview?.trim()
-		|| sessionTitle(view.team?.team.data.name)
 		|| `${fallback} · ${format(new Date(view.session.created_at), 'dd/MM HH:mm')}`;
 }

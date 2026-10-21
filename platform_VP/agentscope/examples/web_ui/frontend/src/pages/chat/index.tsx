@@ -305,6 +305,7 @@ const ChatPageInner = () => {
 									/>
 								) : undefined}
 								title={sessionDisplayTitle(view, t('chat.newSession'))}
+								description={view.team?.team.data.description.trim()}
 								time={sessionTime(view.session.updated_at)}
 								status={view.status}
 								active={urlSessionId === view.session.id}

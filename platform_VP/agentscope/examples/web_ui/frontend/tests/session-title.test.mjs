@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 import vm from 'node:vm';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 
 const require = createRequire(import.meta.url);
@@ -35,11 +37,44 @@ const view = (name, extra = {}) => ({
 });
 const team = { team: { data: { name: 'Đội du lịch' } }, members: [{ agent: { data: { name: 'Lập lịch' } } }] };
 
-test('session labels prefer real titles, then opening text, then team names', () => {
+test('group labels prefer team names over session titles and opening text', () => {
 	const title = context.exports.sessionDisplayTitle;
-	assert.equal(title(view('Tên đã đặt', { preview: 'Tin nhắn', team }), 'Hội thoại'), 'Tên đã đặt');
-	assert.equal(title(view('Mới', { preview: 'Đi Hà Nội', team }), 'Hội thoại'), 'Đi Hà Nội');
+	assert.equal(title(view('Tên đã đặt', { preview: 'Tin nhắn', team }), 'Hội thoại'), 'Đội du lịch');
+	assert.equal(title(view('Mới', { preview: 'Đi Hà Nội', team }), 'Hội thoại'), 'Đội du lịch');
 	assert.equal(title(view('team:abc123', { team }), 'Hội thoại'), 'Đội du lịch');
+	assert.equal(title(view('Tên đã đặt', { preview: 'Tin nhắn' }), 'Hội thoại'), 'Tên đã đặt');
+	assert.equal(title(view('Mới', { preview: 'Đi Hà Nội' }), 'Hội thoại'), 'Đi Hà Nội');
+	assert.equal(title(view('Tên đã đặt', { team: { team: { data: { name: '  ' } } } }), 'Hội thoại'), 'Tên đã đặt');
 	assert.equal(title(view('', { preview: '  ' }), 'Hội thoại'), 'Hội thoại · 20/10 08:30');
 	assert.equal(context.exports.sessionTitle('Team: kế hoạch'), 'Team: kế hoạch');
+});
+
+const rowContext = { exports: {}, require: (id) => {
+	if (id === '@/components/ui/clay-avatar') return { ClayAvatar: () => null };
+	if (id === '@/lib/utils') return { cn: (...values) => values.filter(Boolean).join(' ') };
+	return require(id);
+} };
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL(
+	'../src/components/chat/SessionRow.tsx', import.meta.url,
+), 'utf8'), {
+	compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+}).outputText, rowContext);
+
+test('group rows show a truncated description and a full hover label', () => {
+	const html = renderToStaticMarkup(React.createElement(rowContext.exports.ChatRow, {
+		avatarId: 'leader', title: 'Đội du lịch', description: 'Tìm chuyến đi Hà Nội',
+		time: '06:50', onSelect() {},
+	}));
+	assert.match(html, /title="Đội du lịch\nTìm chuyến đi Hà Nội"/);
+	assert.match(html, /class="truncate text-xs\/4 text-muted-foreground">Tìm chuyến đi Hà Nội/);
+	assert.match(html, /h-14/);
+	assert.match(html, /06:50/);
+});
+
+test('rows without a description retain their compact single-line layout', () => {
+	const html = renderToStaticMarkup(React.createElement(rowContext.exports.ChatRow, {
+		avatarId: 'agent', title: 'Hội thoại', onSelect() {},
+	}));
+	assert.match(html, /title="Hội thoại"/);
+	assert.doesNotMatch(html, /h-14|truncate text-xs\/4/);
 });
