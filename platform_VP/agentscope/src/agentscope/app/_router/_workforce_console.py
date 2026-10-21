@@ -382,6 +382,10 @@ _EVAL_STARTS_PER_DAY = 20
 _eval_starts: dict[str, list[float]] = defaultdict(list)
 _eval_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _leader_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+_agent_tool_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+# Reuse matching sends candidates to one classifier call; keep it bounded.
+_REUSE_CANDIDATES_MAX = 20
+_REUSE_TEXT_MAX = 1_500
 
 
 def _fixed_config() -> dict:
@@ -891,14 +895,20 @@ async def _reuse_builder_agents(
         agent.reuse_agent_name = None
         agent.reuse_agent_fingerprint = None
         agent.reuse_probability = None
-    candidates = sorted(
+    # Bounded: the classifier gets every candidate's prompt and skill in
+    # one call, so a user with many agents hit the timeout, and the
+    # fallback ("keep new agents") then duplicated agents that existed.
+    recent = sorted(
         (
             record
             for record in existing
             if _reusable_agent(record, user_id, tools, knowledge_bases)
         ),
-        key=lambda record: record.id,
-    )
+        key=lambda record: record.updated_at,
+        reverse=True,
+    )[:_REUSE_CANDIDATES_MAX]
+    # Id order keeps equal-score ties stable.
+    candidates = sorted(recent, key=lambda record: record.id)
     if not candidates:
         logger.info("Builder Jev reuse skipped: no eligible existing agents")
         return selected
@@ -924,8 +934,8 @@ async def _reuse_builder_agents(
                 "name": record.data.name,
                 "description": record.data.invite_config.invite_description,
                 "objective": record.data.build_description,
-                "system_prompt": record.data.system_prompt,
-                "skill_markdown": record.data.generated_skill,
+                "system_prompt": (record.data.system_prompt or "")[:_REUSE_TEXT_MAX],
+                "skill_markdown": (record.data.generated_skill or "")[:_REUSE_TEXT_MAX],
                 "tools": [
                     by_id[tool_id].model_dump() for tool_id in candidate_tools[index]
                 ],
@@ -3665,6 +3675,23 @@ async def update_agent_tool_settings(
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
     access: ResourceAccessService = Depends(get_resource_access_service),
+) -> AgentToolSettingsView:
+    # Serialised per user: two concurrent edits interleaved their workspace
+    # rewrites and record writes, leaving sessions on one selection and the
+    # record on the other.
+    async with _agent_tool_locks[user_id]:
+        return await _apply_agent_tool_settings(
+            agent_id, body, user_id, storage, workspace_manager, access,
+        )
+
+
+async def _apply_agent_tool_settings(
+    agent_id: str,
+    body: UpdateAgentToolsRequest,
+    user_id: str,
+    storage: StorageBase,
+    workspace_manager: WorkspaceManagerBase,
+    access: ResourceAccessService,
 ) -> AgentToolSettingsView:
     record = await _builder_managed_agent(storage, user_id, agent_id)
     selected, invalid = _resolve_selected_tools(
