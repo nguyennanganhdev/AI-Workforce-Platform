@@ -156,20 +156,17 @@ class CollectionPerKbManager(KnowledgeBaseManagerBase):
         """Drop one document's vectors without building the embedding model.
 
         Deleting must work even when the embedding credential is gone or
-        the document never got indexed: missing collections and vector
-        store errors are logged, not raised.
+        the document never got indexed, so a missing collection is fine.
+        A vector store error is raised: the caller would otherwise remove
+        the record and blob while the chunks stay searchable, with no
+        record left to retry the delete from.
         """
         record = await self._storage.get_knowledge_base(user_id, knowledge_base_id)
         if record is None:
             return
         name = record.data.collection_name
-        try:
-            if await self._vector_store.has_collection(name):
-                await self._vector_store.delete(name, document_id)
-        except Exception:  # noqa: BLE001 - the record and blob are removed anyway
-            logger.exception(
-                "Could not delete vectors of document %s from %s", document_id, name,
-            )
+        if await self._vector_store.has_collection(name):
+            await self._vector_store.delete(name, document_id)
 
     async def get_knowledge(
         self,

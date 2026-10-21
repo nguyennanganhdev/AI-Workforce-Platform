@@ -799,7 +799,19 @@ class KnowledgeBaseService:
 
         # No embedding model needed: a document must stay deletable when the
         # KB's credential is gone or indexing failed.
-        await self._manager.delete_document_vectors(owner_id, knowledge_base_id, document_id)
+        try:
+            await self._manager.delete_document_vectors(
+                owner_id,
+                knowledge_base_id,
+                document_id,
+            )
+        except Exception as exc:
+            # Keep the record: it is what a retry deletes the vectors from.
+            logger.exception("Vector delete failed for document %s", document_id)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Chưa xoá được tài liệu khỏi kho tìm kiếm. Hãy thử lại sau.",
+            ) from exc
         await self._storage.delete_knowledge_document(
             owner_id,
             knowledge_base_id,

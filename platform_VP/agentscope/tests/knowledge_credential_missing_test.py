@@ -50,10 +50,19 @@ class KnowledgeCredentialMissingTest(IsolatedAsyncioTestCase):
         vectors.delete.assert_awaited_once_with("kb_1", "doc-1")
         storage.get_credential.assert_not_awaited()
 
-    async def test_vector_store_failures_do_not_block_deleting(self) -> None:
-        vectors = SimpleNamespace(has_collection=AsyncMock(side_effect=RuntimeError("down")))
+    async def test_a_missing_collection_does_not_block_deleting(self) -> None:
+        vectors = SimpleNamespace(has_collection=AsyncMock(return_value=False), delete=AsyncMock())
         storage = SimpleNamespace(get_knowledge_base=AsyncMock(return_value=_kb()))
         await CollectionPerKbManager(storage, vectors).delete_document_vectors("u", "kb-1", "doc-1")
+        vectors.delete.assert_not_awaited()
+
+    async def test_a_vector_store_failure_is_raised_so_the_record_stays(self) -> None:
+        """Swallowed, the record and blob would go while the chunks stay
+        searchable with nothing left to retry the delete from."""
+        vectors = SimpleNamespace(has_collection=AsyncMock(side_effect=RuntimeError("down")))
+        storage = SimpleNamespace(get_knowledge_base=AsyncMock(return_value=_kb()))
+        with self.assertRaises(RuntimeError):
+            await CollectionPerKbManager(storage, vectors).delete_document_vectors("u", "kb-1", "doc-1")
 
     def test_index_errors_shown_to_users_carry_no_internals(self) -> None:
         self.assertEqual(
