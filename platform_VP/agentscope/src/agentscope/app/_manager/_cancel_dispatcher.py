@@ -17,6 +17,7 @@ import asyncio
 from typing import TYPE_CHECKING, Self
 
 from ..._logging import logger
+from .._bus_ops import follow_channel
 from ..message_bus import MessageBusKeys
 
 if TYPE_CHECKING:
@@ -120,22 +121,18 @@ class CancelDispatcher:
             ready (`asyncio.Event`):
                 Signalled after the underlying SUBSCRIBE completes.
         """
-        try:
-            async for payload in self._bus.subscribe(
-                MessageBusKeys.session_cancel_channel(),
-                on_ready=ready.set,
-            ):
-                sid = payload.get("session_id")
-                if isinstance(sid, str):
-                    self._cancel_session(sid)
-        except Exception:
-            logger.exception(
-                "CancelDispatcher session-cancel loop crashed.",
-            )
-        finally:
-            # Unblock ``__aenter__`` even if subscribe failed before
-            # ``on_ready`` ran, so startup cannot deadlock.
-            ready.set()
+        async def on_cancel(payload: dict) -> None:
+            sid = payload.get("session_id")
+            if isinstance(sid, str):
+                self._cancel_session(sid)
+
+        await follow_channel(
+            self._bus,
+            MessageBusKeys.session_cancel_channel(),
+            on_cancel,
+            ready=ready,
+            name="CancelDispatcher session-cancel",
+        )
 
     def _cancel_session(self, session_id: str) -> None:
         """Cancel every locally-tracked task for a session.
@@ -173,29 +170,24 @@ class CancelDispatcher:
             ready (`asyncio.Event`):
                 Signalled after the underlying SUBSCRIBE completes.
         """
-        try:
-            async for payload in self._bus.subscribe(
-                MessageBusKeys.task_cancel_channel(),
-                on_ready=ready.set,
-            ):
-                task_id = payload.get("task_id")
-                if not isinstance(task_id, str):
-                    continue
-                cancelled = self._bg_manager.cancel_task(task_id)
-                if cancelled:
-                    logger.info(
-                        "CancelDispatcher: cancelled local BG task %s "
-                        "via task-level broadcast.",
-                        task_id,
-                    )
-        except Exception:  # pylint: disable=broad-except
-            logger.exception(
-                "CancelDispatcher task-cancel loop crashed.",
-            )
-        finally:
-            # Unblock ``__aenter__`` even if subscribe failed before
-            # ``on_ready`` ran, so startup cannot deadlock.
-            ready.set()
+        async def on_cancel(payload: dict) -> None:
+            task_id = payload.get("task_id")
+            if not isinstance(task_id, str):
+                return
+            if self._bg_manager.cancel_task(task_id):
+                logger.info(
+                    "CancelDispatcher: cancelled local BG task %s "
+                    "via task-level broadcast.",
+                    task_id,
+                )
+
+        await follow_channel(
+            self._bus,
+            MessageBusKeys.task_cancel_channel(),
+            on_cancel,
+            ready=ready,
+            name="CancelDispatcher task-cancel",
+        )
 
     # ------------------------------------------------------------------
     # Session-level interrupt loop
@@ -209,20 +201,18 @@ class CancelDispatcher:
             ready (`asyncio.Event`):
                 Signalled after the underlying SUBSCRIBE completes.
         """
-        try:
-            async for payload in self._bus.subscribe(
-                MessageBusKeys.session_interrupt_channel(),
-                on_ready=ready.set,
-            ):
-                sid = payload.get("session_id")
-                if isinstance(sid, str):
-                    self._interrupt_session(sid)
-        except Exception:  # pylint: disable=broad-except
-            logger.exception(
-                "CancelDispatcher interrupt loop crashed.",
-            )
-        finally:
-            ready.set()
+        async def on_interrupt(payload: dict) -> None:
+            sid = payload.get("session_id")
+            if isinstance(sid, str):
+                self._interrupt_session(sid)
+
+        await follow_channel(
+            self._bus,
+            MessageBusKeys.session_interrupt_channel(),
+            on_interrupt,
+            ready=ready,
+            name="CancelDispatcher interrupt",
+        )
 
     def _interrupt_session(self, session_id: str) -> None:
         """Cancel the local chat-run task for a session.

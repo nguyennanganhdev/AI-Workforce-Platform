@@ -19,8 +19,10 @@ other's internals.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+import asyncio
+from typing import TYPE_CHECKING, Awaitable, Callable, Literal
 
+from .._logging import logger
 from .message_bus._keys import MessageBusKeys
 
 if TYPE_CHECKING:
@@ -368,3 +370,60 @@ async def enqueue_index_task(
         },
     )
     await bus.publish(MessageBusKeys.index_tasks_signal(), {})
+
+
+async def follow_channel(
+    bus: MessageBus,
+    channel: str,
+    handle: Callable[[dict], Awaitable[None]],
+    *,
+    ready: asyncio.Event,
+    name: str,
+    resync: Callable[[], Awaitable[None]] | None = None,
+) -> None:
+    """Consume a pub/sub channel for the life of the process.
+
+    A failing handler is logged and the next message is still read; a
+    dropped subscription (Redis restart, connection reset) is retried
+    with backoff instead of ending the consumer for good. After a
+    reconnect ``resync`` runs once, since signals published while
+    disconnected are lost while their queued work is not.
+
+    Args:
+        bus (`MessageBus`): The bus to subscribe on.
+        channel (`str`): The pub/sub channel.
+        handle (`Callable[[dict], Awaitable[None]]`): Per-message work.
+        ready (`asyncio.Event`): Set once subscribed (or on failure, so
+            a caller waiting on it cannot deadlock).
+        name (`str`): Used in log lines.
+        resync (`Callable[[], Awaitable[None]] | None`, optional): Work
+            to redo after a reconnect, e.g. draining a queue.
+    """
+    backoff = 1.0
+    reconnecting = False
+    while True:
+        try:
+            if reconnecting and resync is not None:
+                await resync()
+            async for payload in bus.subscribe(channel, on_ready=ready.set):
+                backoff = 1.0
+                try:
+                    await handle(payload)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # pylint: disable=broad-except
+                    logger.exception("%s: handling a message failed", name)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # pylint: disable=broad-except
+            logger.warning(
+                "%s: subscription lost; retrying in %.0fs",
+                name,
+                backoff,
+                exc_info=True,
+            )
+        finally:
+            ready.set()
+        reconnecting = True
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, 30.0)

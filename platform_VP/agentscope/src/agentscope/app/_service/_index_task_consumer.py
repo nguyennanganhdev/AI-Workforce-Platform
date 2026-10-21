@@ -27,6 +27,7 @@ ceremony without gain.
 import asyncio
 from typing import TYPE_CHECKING, Any, Self
 
+from .._bus_ops import follow_channel
 from ..message_bus import MessageBusKeys
 from ..._logging import logger
 
@@ -131,22 +132,19 @@ class IndexTaskConsumer:
                 can publish a signal immediately after start-up
                 without racing.
         """
-        try:
-            async for _signal in self._bus.subscribe(
-                MessageBusKeys.index_tasks_signal(),
-                on_ready=ready.set,
-            ):
-                await self._drain_and_dispatch()
-        except Exception:  # pylint: disable=broad-except
-            logger.exception(
-                "IndexTaskConsumer loop crashed; subscription ended.",
-            )
-        finally:
-            # If ``subscribe`` raises before ``on_ready`` fires, the
-            # ``__aenter__`` coroutine would deadlock on ``ready.wait()``.
-            # Set the event unconditionally on the way out so startup
-            # cannot stall on a transient bus failure.
-            ready.set()
+        async def on_signal(_signal: dict) -> None:
+            await self._drain_and_dispatch()
+
+        # ``follow_channel`` sets ``ready`` even when subscribing fails,
+        # so ``__aenter__`` cannot stall on a transient bus failure.
+        await follow_channel(
+            self._bus,
+            MessageBusKeys.index_tasks_signal(),
+            on_signal,
+            ready=ready,
+            name="IndexTaskConsumer",
+            resync=self._drain_and_dispatch,
+        )
 
     async def _drain_and_dispatch(self) -> None:
         """Read up to a batch of task entries and dispatch each one."""

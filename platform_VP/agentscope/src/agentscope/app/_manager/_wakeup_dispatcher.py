@@ -43,7 +43,7 @@ from ...event import (
 from ...message import Msg
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from ..message_bus import MessageBusKeys
-from .._bus_ops import enqueue_run_trigger, publish_session_event
+from .._bus_ops import enqueue_run_trigger, follow_channel, publish_session_event
 from .._team_turn import team_is_paused
 
 if TYPE_CHECKING:
@@ -166,16 +166,17 @@ class WakeupDispatcher:
                 :meth:`start` blocks on this so callers can publish a
                 trigger immediately after start without racing.
         """
-        try:
-            async for _signal in self._bus.subscribe(
-                MessageBusKeys.wakeup_signal(),
-                on_ready=ready.set,
-            ):
-                await self._drain_and_dispatch()
-        except Exception:  # pylint: disable=broad-except
-            logger.exception(
-                "WakeupDispatcher loop crashed; subscription ended.",
-            )
+        async def on_signal(_signal: dict) -> None:
+            await self._drain_and_dispatch()
+
+        await follow_channel(
+            self._bus,
+            MessageBusKeys.wakeup_signal(),
+            on_signal,
+            ready=ready,
+            name="WakeupDispatcher",
+            resync=self._drain_and_dispatch,
+        )
 
     async def _drain_and_dispatch(self) -> None:
         """Read up to a batch of trigger entries and dispatch each."""
@@ -202,13 +203,20 @@ class WakeupDispatcher:
                 continue
             # Entries from older producers omit ``kind`` — treat as wake.
             kind = payload.get("kind", MessageBusKeys.WAKEUP_KIND_WAKE)
-            await self._dispatch_one(
-                user_id=user_id,
-                session_id=session_id,
-                agent_id=agent_id,
-                kind=kind,
-                raw_input=payload.get("input"),
-            )
+            # One bad entry must not drop the rest of the drained batch.
+            try:
+                await self._dispatch_one(
+                    user_id=user_id,
+                    session_id=session_id,
+                    agent_id=agent_id,
+                    kind=kind,
+                    raw_input=payload.get("input"),
+                )
+            except Exception:  # pylint: disable=broad-except
+                logger.exception(
+                    "WakeupDispatcher: dispatch failed for session %s",
+                    session_id,
+                )
 
     async def _dispatch_one(
         self,
