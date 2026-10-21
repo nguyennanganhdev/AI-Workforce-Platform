@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
+from ..._logging import logger
 from ..._utils._common import _describe_exception, _generate_id
 from ...mcp import MCPClient
 from ..access import ResourceKind
@@ -183,21 +184,35 @@ async def add_team_member(
         session = await storage.get_session(user_id, agent_id, session_id)
         if session is None or session.agent_id != agent_id:
             raise HTTPException(status_code=404, detail="Session not found.")
-        if session.team_id is None:
+        created_team = session.team_id is None
+        if created_team:
             result = await TeamCreate(**kwargs)(
                 name=session.config.name or "Team", description="",
             )
             if result.state == ToolResultState.ERROR:
                 raise HTTPException(status_code=400, detail=result.content[0].text)
-        result = await AgentInvite(
-            **kwargs, invitable_pool=[invited], resource_access_service=access,
-        ).invite_member(
-            _display_name(invited.data.name, invited.id),
-            invited.data.invite_config.invite_description or "",
-            wake=False, start_task=False,
-        )
-        if result.state == ToolResultState.ERROR:
-            raise HTTPException(status_code=400, detail=result.content[0].text)
+        try:
+            result = await AgentInvite(
+                **kwargs, invitable_pool=[invited], resource_access_service=access,
+            ).invite_member(
+                _display_name(invited.data.name, invited.id),
+                invited.data.invite_config.invite_description or "",
+                wake=False, start_task=False,
+            )
+            if result.state == ToolResultState.ERROR:
+                raise HTTPException(status_code=400, detail=result.content[0].text)
+        except BaseException:
+            if created_team:
+                # Do not leave an empty team that the leader could still manage.
+                # delete_team also detaches the leader session. A cleanup error
+                # must not hide the original failure.
+                try:
+                    created = await storage.get_session(user_id, agent_id, session_id)
+                    if created is not None and created.team_id is not None:
+                        await storage.delete_team(user_id, created.team_id)
+                except Exception:  # pylint: disable=broad-except
+                    logger.exception("Could not remove the team created for session %s", session_id)
+            raise
         session = await storage.get_session(user_id, agent_id, session_id)
         team = await storage.get_team(user_id, session.team_id)
         team.data.manual_membership = True

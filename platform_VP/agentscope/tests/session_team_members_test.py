@@ -299,3 +299,31 @@ class TestManualTeamMembers(_AgentInviteTestBase):
         )
         team = await self.storage.get_team(self.user_id, session.team_id)
         self.assertFalse(team.data.manual_membership)
+
+    async def test_failed_first_invite_does_not_leave_an_empty_team(self):
+        session = await self.storage.upsert_session(
+            user_id=self.user_id, agent_id=self.leader_agent.id,
+            config=self.leader_session.config,
+        )
+        with patch.object(AgentInvite, "invite_member", side_effect=RuntimeError("workspace unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "workspace unavailable"):
+                await self._add(session_id=session.id)
+        session = await self.storage.get_session(self.user_id, self.leader_agent.id, session.id)
+        self.assertIsNone(session.team_id)
+        teams = await self.storage.list_teams(self.user_id)
+        self.assertFalse([team for team in teams if team.session_id == session.id])
+
+    async def test_rejected_first_invite_returns_400_and_removes_the_team(self):
+        session = await self.storage.upsert_session(
+            user_id=self.user_id, agent_id=self.leader_agent.id,
+            config=self.leader_session.config,
+        )
+        from agentscope.message import TextBlock
+        from agentscope.tool import ToolChunk
+        rejected = ToolChunk(content=[TextBlock(text="Agent is busy.")], state=ToolResultState.ERROR)
+        with patch.object(AgentInvite, "invite_member", AsyncMock(return_value=rejected)):
+            with self.assertRaises(HTTPException) as error:
+                await self._add(session_id=session.id)
+        self.assertEqual(error.exception.status_code, 400)
+        session = await self.storage.get_session(self.user_id, self.leader_agent.id, session.id)
+        self.assertIsNone(session.team_id)
