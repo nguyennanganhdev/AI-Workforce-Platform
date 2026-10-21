@@ -223,6 +223,68 @@ class TestBuilderEvalLimits(TestBuilderEvalRoutes):
             await asyncio.gather(*tasks)
             self.console._eval_tasks.clear()
 
+    async def test_eval_starts_per_day_are_bounded(self):
+        import time
+
+        from fastapi import HTTPException
+
+        self.console._eval_starts["user"] = [time.time()] * self.console._EVAL_STARTS_PER_DAY
+        try:
+            with self.assertRaises(HTTPException) as error:
+                await self.console.evaluate_builder(
+                    self.console.EvaluateRequest(conversation_id="builder", proposal_id="p1", expected_revision=3),
+                    "user", self.storage, access=None,
+                )
+            self.assertEqual(error.exception.status_code, 429)
+        finally:
+            self.console._eval_starts.clear()
+
+    async def test_deleting_a_conversation_cancels_its_running_eval(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        task = asyncio.create_task(asyncio.Event().wait())
+        self.console._eval_tasks[("user", "builder")] = task
+        self.console._eval_runs[("user", "builder")] = {"status": "running"}
+        self.storage.delete_session = AsyncMock()
+
+        await self.console.delete_builder_conversation("builder", "user", self.storage)
+        await asyncio.sleep(0)
+
+        self.assertTrue(task.cancelled())
+        self.assertNotIn(("user", "builder"), self.console._eval_tasks)
+        self.assertNotIn(("user", "builder"), self.console._eval_runs)
+
+    async def test_concurrent_leader_bootstraps_create_one_leader(self):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        agents: list = []
+
+        async def list_agents(_user):
+            await asyncio.sleep(0)
+            return list(agents)
+
+        async def upsert_agent(_user, record):
+            await asyncio.sleep(0)
+            agents.append(record)
+
+        storage = SimpleNamespace(list_agents=list_agents, upsert_agent=upsert_agent)
+        session = SimpleNamespace(id="s", config=SimpleNamespace(workspace_id="w", name="Ticket"))
+        workspace = SimpleNamespace(default_mcps=[])
+        manager = SimpleNamespace(get_workspace=AsyncMock(return_value=workspace))
+        with (
+            patch.object(self.console, "_primary_session", AsyncMock(return_value=session)),
+            patch.object(self.console, "_model_config", AsyncMock(return_value=None)),
+        ):
+            await asyncio.gather(
+                self.console._leader("user", storage, manager),
+                self.console._leader("user", storage, manager),
+            )
+
+        self.assertEqual(len(agents), 1)
+
     async def test_tool_calls_per_step_are_capped(self):
         calls = [ToolCallBlock(id=f"c{i}", name="search_hotels", input="{}") for i in range(10)]
         model = _ScriptedModel(chat=[ChatResponse(content=calls, is_last=True), _text("Xong.")])

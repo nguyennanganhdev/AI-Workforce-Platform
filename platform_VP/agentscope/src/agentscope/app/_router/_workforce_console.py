@@ -6,6 +6,7 @@ silently weaken runtime limits while generating an agent.
 """
 
 import asyncio
+import time
 import hashlib
 import io
 import json
@@ -375,6 +376,12 @@ _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _eval_runs: dict[tuple[str, str], dict] = {}
 _eval_tasks: dict[tuple[str, str], asyncio.Task] = {}
 _EVAL_RUNS_PER_USER = 2
+# One eval of a 12-agent proposal is hundreds of model calls; re-runs are
+# allowed ("Chạy lại eval") but bounded per user per day.
+_EVAL_STARTS_PER_DAY = 20
+_eval_starts: dict[str, list[float]] = defaultdict(list)
+_eval_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+_leader_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 def _fixed_config() -> dict:
@@ -2557,6 +2564,11 @@ async def delete_builder_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Không tìm thấy hội thoại Agent Builder.",
         )
+    # A running eval of a deleted conversation would keep spending.
+    task = _eval_tasks.pop((user_id, conversation_id), None)
+    if task is not None and not task.done():
+        task.cancel()
+    _eval_runs.pop((user_id, conversation_id), None)
     await storage.delete_session(
         user_id,
         _BUILDER_AGENT_ID,
@@ -3062,6 +3074,19 @@ async def evaluate_builder(
     access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> dict:
     """Start behavioural tests for a built proposal; poll the conversation's eval for progress."""
+    # Serialised per user: the checks below and the registration of the run
+    # are separated by awaits, and two concurrent starts would otherwise
+    # both pass and the second would cancel the first mid-spend.
+    async with _eval_locks[user_id]:
+        return await _start_eval(body, user_id, storage, access)
+
+
+async def _start_eval(
+    body: EvaluateRequest,
+    user_id: str,
+    storage: StorageBase,
+    access: ResourceAccessService,
+) -> dict:
     key = (user_id, body.conversation_id)
     running = _eval_runs.get(key)
     if (
@@ -3092,24 +3117,42 @@ async def evaluate_builder(
             status_code=429,
             detail="Bạn đang chạy eval ở hội thoại khác. Hãy chờ lượt đó xong rồi thử lại.",
         )
+    now = time.time()
+    starts = [stamp for stamp in _eval_starts[user_id] if now - stamp < 86_400]
+    if len(starts) >= _EVAL_STARTS_PER_DAY:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Bạn đã chạy {_EVAL_STARTS_PER_DAY} lượt eval trong 24 giờ qua. "
+                "Hãy thử lại sau."
+            ),
+        )
     model = await get_model(user_id, proposal.chat_model_config, access)
     previous = _eval_tasks.pop(key, None)
     if previous is not None and not previous.done():
         previous.cancel()
     progress = builder_eval.new_progress(body.proposal_id, body.expected_revision, agents)
     _eval_runs[key] = progress
+    _eval_starts[user_id] = [*starts, now]
 
     async def run() -> None:
         try:
             await builder_eval.evaluate_proposal(model, agents, progress)
             await _save_eval(storage, user_id, body.conversation_id, progress)
+            # Saved with the proposal now; the poll reads it from there.
+            if _eval_runs.get(key) is progress:
+                del _eval_runs[key]
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - surfaced through the progress status
             logger.exception("Builder eval run failed")
             progress["status"] = "error"
 
-    _eval_tasks[key] = asyncio.create_task(run())
+    task = asyncio.create_task(run())
+    _eval_tasks[key] = task
+    task.add_done_callback(
+        lambda done: _eval_tasks.pop(key, None) if _eval_tasks.get(key) is done else None,
+    )
     return progress
 
 
@@ -3722,6 +3765,17 @@ async def change_agent_lifecycle(
 
 
 async def _leader(
+    user_id: str,
+    storage: StorageBase,
+    workspace_manager: WorkspaceManagerBase,
+) -> tuple[AgentRecord, SessionRecord]:
+    # Find-or-create: two bootstraps at once (the UI mounting twice, or a
+    # ticket created meanwhile) must not each create a Leader.
+    async with _leader_locks[user_id]:
+        return await _find_or_create_leader(user_id, storage, workspace_manager)
+
+
+async def _find_or_create_leader(
     user_id: str,
     storage: StorageBase,
     workspace_manager: WorkspaceManagerBase,
