@@ -1,0 +1,13 @@
+[Unit]
+Description=AWP host firewall (nftables table inet awp_guard)
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/awp-guard/awp-guard.nft
+ExecStop=/usr/sbin/nft delete table inet awp_guard
+
+[Install]
+WantedBy=multi-user.target
