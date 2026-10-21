@@ -22,3 +22,15 @@ examples/agent_service/workspaces
 .env
 .env.*
 *.log
+
+# The patterns above only match at the context root; these catch nested
+# copies, and leave out what the API image never runs.
+**/__pycache__
+**/*.py[cod]
+**/node_modules
+**/.env
+**/.env.*
+tests
+assets
+# The web app has its own image (examples/web_ui/frontend/Dockerfile).
+examples/web_ui
