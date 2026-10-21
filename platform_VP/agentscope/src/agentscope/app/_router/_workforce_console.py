@@ -3377,10 +3377,22 @@ async def change_agent_lifecycle(
     record = await storage.get_agent(user_id, agent_id)
     if record is None or record.data.system_role != "business":
         raise HTTPException(status_code=404, detail="Business agent not found")
+    # Agents made outside the Builder have no build description; fall back to
+    # the invite description they already carry instead of failing validation.
+    description = (
+        record.data.build_description
+        or record.data.invite_config.invite_description
+        or ""
+    ).strip()
+    if body.state == "published" and not description:
+        raise HTTPException(
+            status_code=422,
+            detail="Hãy thêm mô tả công việc cho agent trước khi phát hành.",
+        )
     record.data.lifecycle_state = body.state
     record.data.invite_config = InviteConfig(
         invitable=body.state == "published",
-        invite_description=record.data.build_description,
+        invite_description=description,
     )
     await storage.upsert_agent(user_id, record)
     return WorkforceAgentView(
