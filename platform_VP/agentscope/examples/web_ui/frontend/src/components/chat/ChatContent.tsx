@@ -414,6 +414,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				agentId={agentId}
 				messageId={caseFileMessageId}
 				onClose={() => setCaseFileMessageId(null)}
+				leaderAgentId={teamChat ? agentId : null}
 			/>
 		</div>
 	);

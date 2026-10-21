@@ -150,3 +150,24 @@ test('the case file shows evidence, per-agent tokens and says when no price is s
   assert.match(html, /caseFile\.unpriced/);
   assert.match(html, /Chuyên viên chuyến bay/);
 });
+
+test('the test-case dialog shows recorded lookups, the pass rate and a regression', () => {
+  const cases = [{ id: 'c1', created_at: '', scenario: 'Bay đi Đà Nẵng', expected: 'Tra chuyến', expect_tool: '',
+    recorded: { search_flights: ['{}'] }, source_session_id: 's', source_message_id: 'm' }];
+  const run = { id: 'r2', created_at: '', version: 'abc123def456', model: 'gpt-6-luna', status: 'completed',
+    started_at: '2026-10-22T08:00:00Z', finished_at: null, error: null,
+    report: { total: 1, passed: 0, errors: 0, pass_rate: 0 },
+    tests: [{ case_id: 'c1', scenario: 'Bay đi Đà Nẵng', expected: 'Tra chuyến', status: 'failed', result: { passed: false, summary: 'Bịa giá' } }],
+    comparison: { run_id: 'r1', version: '000111222333', cases: [{ case_id: 'c1', scenario: '', before: 'passed', after: 'failed', change: 'worse' }] } };
+  const states = [cases, [run], run, false, '', '', false, ''];
+  let index = 0;
+  const { AgentEvalDialog } = load('../src/components/workforce/AgentEvalDialog.tsx', mocks({
+    react: { __esModule: true, useEffect() {}, useCallback: (fn) => fn, useState: () => [states[index++], () => {}] },
+  }));
+  const tree = AgentEvalDialog({ agentId: 'a', agentName: 'Chuyên viên chuyến bay', open: true, onOpenChange() {} });
+  const html = text(tree);
+  assert.match(html, /agentEval\.recorded.*search_flights/);
+  assert.match(html, /agentEval\.passRate.*"passed":0.*"total":1/);
+  assert.match(html, /Bịa giá/);
+  assert.equal(nodes(tree, (node) => node.props?.['aria-label'] === 'agentEval.worse').length, 1);
+});

@@ -1,9 +1,11 @@
-import { CheckCircle2, LoaderCircle, TriangleAlert, Wrench } from 'lucide-react';
+import { CheckCircle2, FlaskConical, LoaderCircle, TriangleAlert, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { sessionApi, type CaseFile } from '@/api';
+import { agentEvalApi, sessionApi, type CaseFile } from '@/api';
+import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
 import { useTranslation } from '@/i18n/useI18n';
 import { readableToolName, summarizeToolArgs } from '@/lib/teamThreads';
 
@@ -13,13 +15,68 @@ interface Props {
 	/** The answer whose turn to show; null closes the sheet. */
 	messageId: string | null;
 	onClose: () => void;
+	/** The team's Leader: it coordinates, so it gets no test case. */
+	leaderAgentId?: string | null;
+}
+
+/** Saves this turn as a test case of one agent, with its real lookups. */
+function SaveAsCase({ agentId, sessionId, sessionAgentId, messageId }: {
+	agentId: string;
+	sessionId: string;
+	sessionAgentId: string;
+	messageId: string;
+}) {
+	const { t } = useTranslation();
+	const [open, setOpen] = useState(false);
+	const [expected, setExpected] = useState('');
+	const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
+	if (state === 'saved') {
+		return <p className="px-3 pb-2 text-[11px] text-emerald-700 dark:text-emerald-400">{t('agentEval.saved')}</p>;
+	}
+	if (!open) {
+		return (
+			<div className="px-3 pb-2">
+				<Button variant="ghost" size="xs" onClick={() => setOpen(true)}>
+					<FlaskConical className="size-3" /> {t('agentEval.saveFromTurn')}
+				</Button>
+			</div>
+		);
+	}
+	const save = async () => {
+		setState('saving');
+		try {
+			await agentEvalApi.createCase(agentId, {
+				expected: expected.trim(),
+				session_id: sessionId,
+				session_agent_id: sessionAgentId,
+				message_id: messageId,
+			});
+			setState('saved');
+		} catch {
+			setState('failed');
+		}
+	};
+	return (
+		<div className="flex flex-col gap-1.5 px-3 pb-2">
+			<Textarea
+				rows={2}
+				value={expected}
+				onChange={(event) => setExpected(event.target.value)}
+				placeholder={t('agentEval.expectedPlaceholder')}
+			/>
+			{state === 'failed' && <p className="text-[11px] text-destructive">{t('agentEval.saveFailed')}</p>}
+			<Button size="xs" className="self-end" disabled={!expected.trim() || state === 'saving'} onClick={() => void save()}>
+				{t('agentEval.save')}
+			</Button>
+		</div>
+	);
 }
 
 const tokens = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
 const usd = (value: number) => `$${value < 0.01 ? value.toFixed(4) : value.toFixed(2)}`;
 
 /** Which lookups backed one answer, and what each agent spent on the turn. */
-export function CaseFileSheet({ sessionId, agentId, messageId, onClose }: Props) {
+export function CaseFileSheet({ sessionId, agentId, messageId, onClose, leaderAgentId = null }: Props) {
 	const { t } = useTranslation();
 	const [caseFile, setCaseFile] = useState<CaseFile | null>(null);
 	const [error, setError] = useState(false);
@@ -95,7 +152,8 @@ export function CaseFileSheet({ sessionId, agentId, messageId, onClose }: Props)
 								)}
 								<ul className="mt-3 divide-y rounded-xl border">
 									{caseFile.agents.map((agent) => (
-										<li key={agent.agent_id} className="flex items-center gap-2 px-3 py-2 text-xs">
+										<li key={agent.agent_id}>
+										<div className="flex items-center gap-2 px-3 py-2 text-xs">
 											<ClayAvatar id={agent.agent_id} label={agent.name} size={22} />
 											<span className="min-w-0 flex-1">
 												<span className="block truncate font-medium">{agent.name}</span>
@@ -107,6 +165,15 @@ export function CaseFileSheet({ sessionId, agentId, messageId, onClose }: Props)
 												↑{tokens(agent.input_tokens)} ↓{tokens(agent.output_tokens)}
 												{agent.cost_usd !== null && <span className="block text-foreground">{usd(agent.cost_usd)}</span>}
 											</span>
+										</div>
+										{agent.agent_id !== leaderAgentId && sessionId && agentId && messageId && (
+											<SaveAsCase
+												agentId={agent.agent_id}
+												sessionId={sessionId}
+												sessionAgentId={agentId}
+												messageId={messageId}
+											/>
+										)}
 										</li>
 									))}
 								</ul>

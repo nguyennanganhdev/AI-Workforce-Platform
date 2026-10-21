@@ -1252,5 +1252,40 @@
 		"noEvidence": "本轮未使用任何查询：回答基于客户提供的信息或一般建议。",
 		"failed": "失败",
 		"result": "查看结果"
+	},
+	"agentEval": {
+		"menu": "测试用例",
+		"title": "测试用例 · {{name}}",
+		"description": "从真实对话保存用例，修改智能体后重新运行，并比较各版本。结果仅供参考，不阻止发布。",
+		"cases": "已保存的用例（{{count}}）",
+		"addCase": "添加用例",
+		"runAll": "全部重新运行",
+		"scenarioPlaceholder": "客户说了什么？",
+		"expectedPlaceholder": "智能体应该怎么做？例如：查询航班并给出选项，不编造价格。",
+		"save": "保存测试用例",
+		"saveFromTurn": "保存为测试用例",
+		"saved": "已为该智能体保存测试用例。",
+		"saveFailed": "无法保存测试用例。",
+		"noCases": "还没有用例。在聊天中打开某个回答的“档案”，将真实的一轮保存为测试用例。",
+		"recorded": "复用真实结果：{{tools}}",
+		"deleteCase": "删除用例",
+		"runs": "运行记录",
+		"passRate": "{{passed}}/{{total}} 个用例通过",
+		"comparedWith": "与版本 {{version}} 比较",
+		"better": "比上次更好",
+		"worse": "比上次更差",
+		"answer": "智能体的回答",
+		"loadFailed": "无法加载测试用例。",
+		"runFailed": "无法开始运行。",
+		"status": {
+			"pending": "等待",
+			"running": "运行中",
+			"checking": "检查中",
+			"judging": "评分中",
+			"passed": "通过",
+			"failed": "未通过",
+			"error": "错误",
+			"completed": "完成"
+		}
 	}
 }

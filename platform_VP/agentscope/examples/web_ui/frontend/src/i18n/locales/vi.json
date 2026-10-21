@@ -1251,5 +1251,40 @@
 		"noEvidence": "Lượt này không dùng tra cứu nào: câu trả lời dựa trên thông tin khách cung cấp hoặc gợi ý chung.",
 		"failed": "lỗi",
 		"result": "Xem kết quả"
+	},
+	"agentEval": {
+		"menu": "Ca kiểm thử",
+		"title": "Ca kiểm thử · {{name}}",
+		"description": "Lưu ca từ hội thoại thật, chạy lại khi sửa agent và so sánh giữa các phiên bản. Kết quả chỉ để tham khảo, không chặn phát hành.",
+		"cases": "Ca đã lưu ({{count}})",
+		"addCase": "Thêm ca",
+		"runAll": "Chạy lại tất cả",
+		"scenarioPlaceholder": "Khách nói gì?",
+		"expectedPlaceholder": "Agent nên làm gì? Ví dụ: tra chuyến bay và đưa lựa chọn, không bịa giá.",
+		"save": "Lưu ca kiểm thử",
+		"saveFromTurn": "Lưu làm ca kiểm thử",
+		"saved": "Đã lưu ca kiểm thử cho agent này.",
+		"saveFailed": "Không lưu được ca kiểm thử.",
+		"noCases": "Chưa có ca nào. Mở “Hồ sơ” của một câu trả lời trong chat để lưu một lượt thật làm ca kiểm thử.",
+		"recorded": "Dùng lại kết quả thật của: {{tools}}",
+		"deleteCase": "Xóa ca",
+		"runs": "Các lần chạy",
+		"passRate": "{{passed}}/{{total}} ca đạt",
+		"comparedWith": "so với phiên bản {{version}}",
+		"better": "Tốt hơn lần trước",
+		"worse": "Kém hơn lần trước",
+		"answer": "Câu trả lời của agent",
+		"loadFailed": "Không tải được ca kiểm thử.",
+		"runFailed": "Không bắt đầu chạy được.",
+		"status": {
+			"pending": "Chờ",
+			"running": "Đang chạy",
+			"checking": "Đang kiểm tra",
+			"judging": "Đang chấm",
+			"passed": "Đạt",
+			"failed": "Chưa đạt",
+			"error": "Lỗi",
+			"completed": "Xong"
+		}
 	}
 }

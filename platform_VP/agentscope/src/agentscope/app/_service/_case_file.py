@@ -98,6 +98,28 @@ def _latest_copies(messages: list[Msg]) -> list[Msg]:
     return unique
 
 
+def turn_messages(messages: list[Msg], message_id: str) -> list[Msg] | None:
+    """The customer turn containing ``message_id``: from its customer message
+    to the next one. ``None`` when the message is not in ``messages``."""
+    messages = _latest_copies(messages)
+    index = next((i for i, m in enumerate(messages) if m.id == message_id), None)
+    if index is None:
+        return None
+    start = next((i for i in range(index, -1, -1) if messages[i].role == "user"), 0)
+    end = next(
+        (i for i in range(start + 1, len(messages)) if messages[i].role == "user"),
+        len(messages),
+    )
+    return messages[start:end]
+
+
+def customer_text(message: Msg) -> str:
+    """The text a customer typed."""
+    return "\n".join(
+        getattr(block, "text", "") for block in message.content if getattr(block, "type", "") == "text"
+    )
+
+
 def build_case_file(
     messages: list[Msg],
     message_id: str,
@@ -118,16 +140,9 @@ def build_case_file(
     Returns:
         ``None`` when ``message_id`` is not in ``messages``.
     """
-    messages = _latest_copies(messages)
-    index = next((i for i, m in enumerate(messages) if m.id == message_id), None)
-    if index is None:
+    turn = turn_messages(messages, message_id)
+    if turn is None:
         return None
-    start = next((i for i in range(index, -1, -1) if messages[i].role == "user"), 0)
-    end = next(
-        (i for i in range(start + 1, len(messages)) if messages[i].role == "user"),
-        len(messages),
-    )
-    turn = messages[start:end]
     customer = turn[0] if turn and turn[0].role == "user" else None
 
     agents: dict[str, dict] = {}
@@ -182,16 +197,11 @@ def build_case_file(
             priced = False
         else:
             total_cost += row["cost_usd"]
-    customer_text = ""
-    if customer is not None:
-        customer_text = "\n".join(
-            getattr(block, "text", "") for block in customer.content if getattr(block, "type", "") == "text"
-        )
     last = turn[-1] if turn else None
     return {
         "turn": {
             "customer_message_id": customer.id if customer else None,
-            "customer_text": customer_text,
+            "customer_text": customer_text(customer) if customer else "",
             "started_at": turn[0].created_at if turn else None,
             "ended_at": (last.finished_at or last.created_at) if last else None,
         },

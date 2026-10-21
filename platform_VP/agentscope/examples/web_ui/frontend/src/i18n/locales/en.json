@@ -1255,5 +1255,40 @@
 		"noEvidence": "No lookup was used in this turn: the answer relies on what the customer said or on general suggestions.",
 		"failed": "failed",
 		"result": "Show result"
+	},
+	"agentEval": {
+		"menu": "Test cases",
+		"title": "Test cases · {{name}}",
+		"description": "Save cases from real conversations, re-run them after changing the agent and compare versions. Results are advisory and never block publishing.",
+		"cases": "Saved cases ({{count}})",
+		"addCase": "Add case",
+		"runAll": "Run all again",
+		"scenarioPlaceholder": "What does the customer say?",
+		"expectedPlaceholder": "What should the agent do? E.g. look up flights and offer options, no invented prices.",
+		"save": "Save test case",
+		"saveFromTurn": "Save as test case",
+		"saved": "Saved as a test case for this agent.",
+		"saveFailed": "Could not save the test case.",
+		"noCases": "No cases yet. Open an answer's “Case file” in the chat to save a real turn as a test case.",
+		"recorded": "Replays real results of: {{tools}}",
+		"deleteCase": "Delete case",
+		"runs": "Runs",
+		"passRate": "{{passed}}/{{total}} cases passed",
+		"comparedWith": "compared with version {{version}}",
+		"better": "Better than last run",
+		"worse": "Worse than last run",
+		"answer": "Agent's answer",
+		"loadFailed": "Could not load the test cases.",
+		"runFailed": "Could not start the run.",
+		"status": {
+			"pending": "Pending",
+			"running": "Running",
+			"checking": "Checking",
+			"judging": "Judging",
+			"passed": "Passed",
+			"failed": "Failed",
+			"error": "Error",
+			"completed": "Done"
+		}
 	}
 }

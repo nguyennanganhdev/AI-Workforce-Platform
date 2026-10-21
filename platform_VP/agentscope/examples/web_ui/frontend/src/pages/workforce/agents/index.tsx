@@ -3,6 +3,7 @@ import {
 	BookOpen,
 	Crown,
 	Ellipsis,
+	FlaskConical,
 	MessageSquare,
 	PencilRuler,
 	Power,
@@ -33,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { AgentEvalDialog } from '@/components/workforce/AgentEvalDialog';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
@@ -58,6 +60,7 @@ export function AgentManagementPage() {
 	const [filter, setFilter] = useState<Filter>('all');
 	const [manualOpen, setManualOpen] = useState(false);
 	const [deleting, setDeleting] = useState<AgentView | null>(null);
+	const [testing, setTesting] = useState<AgentView | null>(null);
 	const [pending, setPending] = useState<string | null>(null);
 	const [mutationError, setMutationError] = useState('');
 	const selected = agents.find((agent) => agent.id === agentId);
@@ -321,6 +324,10 @@ export function AgentManagementPage() {
 													<Power />
 													{t(isPublished(agent) ? 'agentManagement.withdraw' : 'agentManagement.publish')}
 												</DropdownMenuItem>
+												<DropdownMenuItem onSelect={() => setTesting(agent)}>
+													<FlaskConical />
+													{t('agentEval.menu')}
+												</DropdownMenuItem>
 												<DropdownMenuSeparator />
 												<DropdownMenuItem variant="destructive" onSelect={() => setDeleting(agent)}>
 													<Trash2 />
@@ -337,6 +344,15 @@ export function AgentManagementPage() {
 			</div>
 
 			<AgentDialog open={manualOpen} onOpenChange={setManualOpen} onCreated={refetch} />
+			{testing && (
+				<AgentEvalDialog
+					key={testing.id}
+					agentId={testing.id}
+					agentName={testing.data.name}
+					open
+					onOpenChange={(open) => !open && setTesting(null)}
+				/>
+			)}
 			{selected?.editable && (
 				<EditAgentDialog
 					key={selected.id}
