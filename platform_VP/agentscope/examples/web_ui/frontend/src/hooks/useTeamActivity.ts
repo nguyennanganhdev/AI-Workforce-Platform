@@ -417,7 +417,8 @@ export function useTeamActivity(participants: TeamActivityParticipant[]) {
 		};
 
 		const poll = async () => {
-			await refresh();
+			// A hidden tab does not need live team activity.
+			if (typeof document === 'undefined' || !document.hidden) await refresh();
 			if (!controller.signal.aborted) {
 				pollTimer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
 			}

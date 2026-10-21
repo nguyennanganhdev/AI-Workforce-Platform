@@ -132,3 +132,18 @@ test('requests go under a relative /api base instead of throwing', async () => {
   await context.exports.client.get('/auth/me', undefined, { silent: true });
   assert.deepEqual(seen, ['https://app.example.test/api/auth/me']);
 });
+
+test('a proxy HTML error page becomes a short status, not the page', async () => {
+  const html = '<html><head><title>502 Bad Gateway</title></head><body><center>nginx</center></body></html>';
+  const api = clientWith(async () => new Response(html, { status: 502, statusText: 'Bad Gateway' }));
+  await assert.rejects(api.client.get('/sessions'), (error) => {
+    assert.equal(error.detail, '502 Bad Gateway');
+    return true;
+  });
+  assert.deepEqual(api.notifications, ['502 Bad Gateway']);
+});
+
+test('a short plain-text error is still shown as sent', async () => {
+  const api = clientWith(async () => new Response('Quota exceeded', { status: 429, statusText: 'Too Many Requests' }));
+  await assert.rejects(api.client.get('/x'), (error) => error.detail === 'Quota exceeded');
+});

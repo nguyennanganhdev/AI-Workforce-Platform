@@ -125,10 +125,13 @@ export const sessionApi = {
 		agentId: string,
 		signal?: AbortSignal,
 	): AsyncGenerator<AgentEvent> {
+		// Silent: the caller retries with backoff and shows one error state;
+		// a toast per failed reconnect would pile up during an outage.
 		const res = await client.stream(`/sessions/${sessionId}/stream`, {
 			method: 'GET',
 			params: { agent_id: agentId },
 			signal,
+			silent: true,
 		});
 
 		const reader = res.body!.getReader();

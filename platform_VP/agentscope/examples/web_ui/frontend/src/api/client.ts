@@ -68,7 +68,11 @@ async function extractErrorDetail(res: Response): Promise<string> {
 	} catch {
 		// The backend may return a plain-text error.
 	}
-	return responseText || res.statusText;
+	// A proxy error page (e.g. nginx's HTML 502) is not a message for people.
+	if (!responseText || responseText.trimStart().startsWith('<') || responseText.length > 300) {
+		return `${res.status} ${res.statusText || 'Server error'}`.trim();
+	}
+	return responseText;
 }
 
 function canRefresh(path: string): boolean {

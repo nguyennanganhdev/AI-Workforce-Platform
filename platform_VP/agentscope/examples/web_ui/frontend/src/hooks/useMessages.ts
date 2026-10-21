@@ -106,6 +106,41 @@ const INTERRUPT_TIMEOUT_MS = 10_000;
  *   until the history for the *current* ``(agentId, sessionId)`` has
  *   landed, so ``msgs`` must not be rendered while it is set.
  */
+
+/** Whether the page is in a background tab (always false outside a browser). */
+function pageHidden(): boolean {
+	return typeof document !== 'undefined' && document.hidden;
+}
+
+/** Delay before reconnect attempt number ``failures`` (0 = right after a live stream). */
+function reconnectDelay(failures: number): number {
+	if (failures === 0) return 1_500;
+	const capped = Math.min(30_000, 1_500 * 2 ** failures);
+	return capped / 2 + Math.random() * (capped / 2);
+}
+
+/** Wait ``ms``, then also until the tab is visible; abort ends the wait. */
+function waitToReconnect(ms: number, signal: AbortSignal): Promise<void> {
+	return new Promise<void>((resolve) => {
+		const finish = () => {
+			clearTimeout(timer);
+			signal.removeEventListener('abort', finish);
+			if (typeof document !== 'undefined') {
+				document.removeEventListener('visibilitychange', onVisible);
+			}
+			resolve();
+		};
+		const onVisible = () => {
+			if (!pageHidden()) finish();
+		};
+		const timer = setTimeout(() => {
+			if (!pageHidden()) finish();
+			else document.addEventListener('visibilitychange', onVisible);
+		}, ms);
+		signal.addEventListener('abort', finish, { once: true });
+	});
+}
+
 export function useMessages(
 	agentId: string | null,
 	sessionId: string | null,
@@ -398,7 +433,8 @@ export function useMessages(
 			// spinner after every member has already finished.
 			if (!stream || optionsRef.current?.teamChat) {
 				const poll = async () => {
-					await loadHistory(true, stream);
+					// A hidden tab does not need a live transcript.
+					if (!pageHidden()) await loadHistory(true, stream);
 					if (!cancelled) pollTimer = setTimeout(() => void poll(), 1_500);
 				};
 				if (!cancelled) pollTimer = setTimeout(() => void poll(), 1_500);
@@ -407,9 +443,14 @@ export function useMessages(
 				return;
 			}
 
-			// 2. Keep the live stream connected. Every reconnect first reconciles
-			// persisted history, which closes replies whose REPLY_END was missed.
+			// 2. Keep the live stream connected. A reconnect after a live stream
+			// first reconciles persisted history, which closes replies whose
+			// REPLY_END was missed. While the server is down, retries back off
+			// (1.5 s doubling to 30 s, with jitter) and pause in a hidden tab,
+			// so every open tab does not hammer a restarting backend.
+			let failures = 0;
 			while (!cancelled) {
+				let received = false;
 				try {
 					for await (const event of sessionApi.streamEvents(
 						sessionId,
@@ -417,24 +458,21 @@ export function useMessages(
 						controller.signal,
 					)) {
 						if (cancelled) break;
+						received = true;
 						processEvent(event);
 					}
 				} catch (e) {
 					if ((e as Error).name !== 'AbortError' && !cancelled) {
 						setError(e as Error);
+						// Gone, or no longer ours: retrying cannot help.
+						const status = (e as { status?: number }).status;
+						if (status === 401 || status === 403 || status === 404) break;
 					}
 				}
 				if (cancelled) break;
-				await loadHistory(true, true);
-				await new Promise<void>((resolve) => {
-					const finishWait = () => {
-						clearTimeout(reconnectTimer);
-						controller.signal.removeEventListener('abort', finishWait);
-						resolve();
-					};
-					const reconnectTimer = setTimeout(finishWait, 1_500);
-					controller.signal.addEventListener('abort', finishWait, { once: true });
-				});
+				if (received || failures === 0) await loadHistory(true, true);
+				failures = received ? 0 : failures + 1;
+				await waitToReconnect(reconnectDelay(failures), controller.signal);
 			}
 		})();
 
