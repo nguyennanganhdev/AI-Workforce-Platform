@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """The health router."""
 
+import asyncio
+
 from fastapi import APIRouter, Request, Response, status
 
 from ._schema import ComponentStatus, HealthResponse
@@ -85,3 +87,45 @@ async def get_health(
         version=request.app.version,
         components=components,
     )
+
+
+@health_router.get(
+    "/ready",
+    summary="Report whether the data stores answer",
+)
+async def get_ready(request: Request, response: Response) -> dict:
+    """Make one real round trip to each data store.
+
+    ``/health`` stays I/O-free on purpose; this is the probe that tells a
+    load balancer or monitor that Redis (primary storage) or the SQL
+    store behind shared context is down, which ``/health`` cannot.
+
+    Args:
+        request (`Request`): The incoming FastAPI request.
+        response (`Response`): Set to ``503`` when a store fails.
+
+    Returns:
+        `dict`: ``status`` plus ``ok`` / ``error`` per store.
+    """
+    state = request.app.state
+    storage = getattr(state, "storage", None)
+    shared = getattr(state, "shared_context_storage", None)
+    probes = {}
+    if storage is not None:
+        probes["storage"] = storage.list_agents("__ready__")
+    if shared is not None and shared is not storage:
+        probes["shared_context_storage"] = shared.get_team_shared_context(
+            "__ready__",
+            "__ready__",
+        )
+    stores: dict[str, str] = {}
+    for name, probe in probes.items():
+        try:
+            await asyncio.wait_for(probe, timeout=3)
+            stores[name] = "ok"
+        except Exception as exc:  # pylint: disable=broad-except
+            stores[name] = f"error: {type(exc).__name__}"
+    ready = bool(stores) and all(value == "ok" for value in stores.values())
+    if not ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {"status": "ready" if ready else "not_ready", "stores": stores}

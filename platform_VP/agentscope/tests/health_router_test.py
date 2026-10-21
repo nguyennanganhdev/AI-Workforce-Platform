@@ -129,3 +129,20 @@ class HealthRouterTest(IsolatedAsyncioTestCase):
                     workspace_manager=LocalWorkspaceManager(workdir),
                     workforce_bootstrap=bootstrap,
                 )
+
+    def test_ready_answers_when_the_stores_do(self) -> None:
+        response = self._client.get("/ready")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ready")
+        self.assertEqual(response.json()["stores"]["storage"], "ok")
+
+    def test_ready_is_503_when_storage_is_down(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        storage = self._app.state.storage
+        with patch.object(storage, "list_agents", AsyncMock(side_effect=ConnectionError("down"))):
+            response = self._client.get("/ready")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["stores"]["storage"], "error: ConnectionError")
