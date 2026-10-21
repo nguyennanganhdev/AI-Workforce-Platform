@@ -13,6 +13,7 @@ import { Button } from '../ui/button';
 import { DiffStats } from './tool-renderers/_shared';
 import type { GitStatus } from '@/api';
 import { ASMessageBubble } from '@/components/chat/ASMessageBubble.tsx';
+import { CaseFileSheet } from '@/components/chat/CaseFileSheet';
 import { ConfirmCard } from '@/components/chat/ConfirmCard.tsx';
 import { FlipCard } from '@/components/chat/FlipCard.tsx';
 import { TextInput } from '@/components/chat/TextInput.tsx';
@@ -101,6 +102,8 @@ interface ChatContentProps {
 	fileProcessor: (file: File) => Promise<ContentBlock | null>;
 	/** The open session. */
 	sessionId: string | null;
+	/** Agent owning the open session; enables each answer's case file. */
+	agentId?: string | null;
 	/** Git state of the working directory; `null` hides the branch badge entirely. */
 	git?: GitStatus | null;
 	/** Re-reads the git state, since nothing polls for it. */
@@ -154,10 +157,13 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	allowedInputTypes,
 	fileProcessor,
 	sessionId,
+	agentId = null,
 	git,
 	onRefreshGit,
 }) => {
 	const { t, i18n } = useTranslation();
+	const [caseFileMessageId, setCaseFileMessageId] = useState<string | null>(null);
+	useEffect(() => setCaseFileMessageId(null), [sessionId]);
 	const { visibleMsgs, workingMembers } = useMemo(() => {
 		const unique = latestCopies(msgs);
 		if (!teamChat) return { visibleMsgs: unique, workingMembers: [] as string[] };
@@ -268,6 +274,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 												message={message}
 												onUserConfirm={onUserConfirm}
 												onReplyTo={teamChat ? (targetAgentId, name) => setReplyTarget({ agentId: targetAgentId, name }) : undefined}
+												onOpenCaseFile={agentId && sessionId ? setCaseFileMessageId : undefined}
 											/>
 										</MessageScrollerItem>
 									);
@@ -402,6 +409,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					/>
 				</div>
 			)}
+			<CaseFileSheet
+				sessionId={sessionId}
+				agentId={agentId}
+				messageId={caseFileMessageId}
+				onClose={() => setCaseFileMessageId(null)}
+			/>
 		</div>
 	);
 };

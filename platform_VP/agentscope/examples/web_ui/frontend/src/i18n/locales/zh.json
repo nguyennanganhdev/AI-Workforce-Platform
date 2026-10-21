@@ -1233,5 +1233,24 @@
 			"draft": "草稿"
 		},
 		"leaderDescription": "协调整个团队：接收你的请求，把工作交给合适的智能体并为你汇总结果。"
+	},
+	"caseFile": {
+		"open": "档案",
+		"title": "本次回答的档案",
+		"description": "本次回答使用的查询，以及本轮各智能体的 token 成本。",
+		"loading": "正在加载档案…",
+		"loadFailed": "无法加载本轮档案。",
+		"question": "客户的问题",
+		"cost": "成本",
+		"input": "输入 token",
+		"output": "输出 token",
+		"money": "估算",
+		"cached": "{{count}} 来自缓存",
+		"unpriced": "该模型尚未设置价格。在服务器上设置 WORKFORCE_MODEL_PRICES 以显示费用。",
+		"replies": "{{count}} 次回复",
+		"evidence": "证据（{{count}}）",
+		"noEvidence": "本轮未使用任何查询：回答基于客户提供的信息或一般建议。",
+		"failed": "失败",
+		"result": "查看结果"
 	}
 }

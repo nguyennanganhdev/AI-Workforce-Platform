@@ -1232,5 +1232,24 @@
 			"draft": "Bản nháp"
 		},
 		"leaderDescription": "Điều phối cả đội: nhận yêu cầu, giao việc cho agent phù hợp và tổng hợp kết quả cho bạn."
+	},
+	"caseFile": {
+		"open": "Hồ sơ",
+		"title": "Hồ sơ lượt trả lời",
+		"description": "Các tra cứu đã dùng cho câu trả lời này và chi phí token của từng agent trong lượt.",
+		"loading": "Đang tải hồ sơ…",
+		"loadFailed": "Không tải được hồ sơ của lượt này.",
+		"question": "Câu hỏi của khách",
+		"cost": "Chi phí",
+		"input": "Token vào",
+		"output": "Token ra",
+		"money": "Ước tính",
+		"cached": "{{count}} từ cache",
+		"unpriced": "Chưa có bảng giá cho model này. Đặt WORKFORCE_MODEL_PRICES trên server để tính chi phí tiền.",
+		"replies": "{{count}} lượt",
+		"evidence": "Bằng chứng ({{count}})",
+		"noEvidence": "Lượt này không dùng tra cứu nào: câu trả lời dựa trên thông tin khách cung cấp hoặc gợi ý chung.",
+		"failed": "lỗi",
+		"result": "Xem kết quả"
 	}
 }

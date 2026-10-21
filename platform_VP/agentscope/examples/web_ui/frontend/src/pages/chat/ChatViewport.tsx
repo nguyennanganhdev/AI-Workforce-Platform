@@ -935,6 +935,7 @@ export function ChatViewport({
 									teamChat={isTeamChat}
 									loading={messagesLoading}
 									sessionId={sessionId}
+									agentId={agentId}
 									git={workspaceStatus?.git ?? null}
 									onRefreshGit={refetchWorkspaceStatus}
 									phase={phase}

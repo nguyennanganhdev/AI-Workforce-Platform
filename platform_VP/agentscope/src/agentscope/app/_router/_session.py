@@ -58,6 +58,7 @@ from ..storage import (
 from ...message import ToolCallState
 from ...state import ToolContext
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
+from .._service._case_file import build_case_file, load_turn_messages, model_prices
 from ...event import CustomEvent
 from ..workspace_manager import WorkspaceManagerBase
 from .._shared_context import SharedContextService
@@ -849,6 +850,43 @@ async def update_session(
 # ----------------------------------------------------------------------
 # Messages: fetch persisted messages for a session
 # ----------------------------------------------------------------------
+
+
+@session_router.get(
+    "/{session_id}/case-file",
+    summary="Evidence and token cost of the customer turn containing a message",
+)
+async def get_case_file(
+    session_id: str,
+    agent_id: str = Query(description="Agent the session belongs to."),
+    message_id: str = Query(description="Any message of the turn, usually its answer."),
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> dict:
+    """Which lookups backed a turn's answer and what each agent spent on it."""
+    session = await storage.get_session(user_id, agent_id, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    models: dict[str, str | None] = {
+        agent_id: session.config.chat_model_config.model if session.config.chat_model_config else None,
+    }
+    team = await storage.get_team(user_id, session.team_id) if session.team_id else None
+    if team is not None and team.session_id == session_id:
+        for member in await _ensure_team_members(storage, user_id, team):
+            record = await storage.get_session(member.owner_id, member.agent_id, member.session_id)
+            config = record.config.chat_model_config if record is not None else None
+            models[member.agent_id] = config.model if config else None
+    messages = await load_turn_messages(storage, user_id, session_id, message_id)
+    case_file = build_case_file(
+        messages,
+        message_id,
+        leader_agent_id=agent_id,
+        models=models,
+        prices=model_prices(),
+    )
+    if case_file is None:
+        raise HTTPException(status_code=404, detail="Message not found in this session.")
+    return case_file
 
 
 @session_router.get(

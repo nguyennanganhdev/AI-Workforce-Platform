@@ -119,3 +119,34 @@ test('a reply stored twice (start and final copy) is shown once, with its final 
   assert.equal(bubbleNode.props.message.content[0].text, 'Mình đã kiểm tra lại.');
   assert.doesNotMatch(text(tree), /trace\.working/);
 });
+
+test('a finished answer offers its case file', () => {
+  const opened = [];
+  const { ASMessageBubble } = load('../src/components/chat/ASMessageBubble.tsx', mocks({
+    '@/utils/common': { formatTime: () => '1s', formatNumber: String, copyToClipboard() {} },
+    './tool-renderers/_shared': { getResultText: () => '', countDiffStats: () => null, getResultDiff: () => null, DiffStats: 'DiffStats' },
+  }));
+  const tree = ASMessageBubble({ message: leader([{ type: 'text', id: 't', text: 'Có chuyến QH118' }]), onOpenCaseFile: (id) => opened.push(id) });
+  const [button] = nodes(tree, (node) => node.props?.['aria-label'] === 'caseFile.open');
+  button.props.onClick();
+  assert.deepEqual(opened, ['l1']);
+});
+
+test('the case file shows evidence, per-agent tokens and says when no price is set', () => {
+  const caseFile = {
+    turn: { customer_message_id: 'u', customer_text: 'Đi Đà Nẵng', started_at: null, ended_at: null },
+    agents: [{ agent_id: 'f', name: 'Chuyên viên chuyến bay', model: 'gpt-6-luna', replies: 1, input_tokens: 2000, output_tokens: 200, cache_input_tokens: 0, cost_usd: null }],
+    totals: { input_tokens: 2000, output_tokens: 200, cache_input_tokens: 0, cost_usd: null, priced: false },
+    evidence: [{ agent_id: 'f', agent_name: 'Chuyên viên chuyến bay', tool: 'mcp__Travelling__search_flights', arguments: { destination: 'Đà Nẵng' }, state: 'success', result: '{"count": 1}', at: null }],
+  };
+  let call = 0;
+  const { CaseFileSheet } = load('../src/components/chat/CaseFileSheet.tsx', mocks({
+    react: { __esModule: true, useEffect() {}, useState: () => [call++ === 0 ? caseFile : false, () => {}] },
+    '@/lib/teamThreads': load('../src/lib/teamThreads.ts'),
+  }));
+  const html = text(CaseFileSheet({ sessionId: 's', agentId: 'a', messageId: 'm', onClose() {} }));
+  assert.match(html, /search flights/);
+  assert.match(html, /Đà Nẵng/);
+  assert.match(html, /caseFile\.unpriced/);
+  assert.match(html, /Chuyên viên chuyến bay/);
+});

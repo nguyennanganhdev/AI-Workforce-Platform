@@ -11,6 +11,46 @@ import type {
 	Msg,
 } from './types';
 
+/** Evidence and token cost of one customer turn (GET /sessions/{id}/case-file). */
+export interface CaseFileAgent {
+	agent_id: string;
+	name: string;
+	model: string | null;
+	replies: number;
+	input_tokens: number;
+	output_tokens: number;
+	cache_input_tokens: number;
+	cost_usd: number | null;
+}
+
+export interface CaseFileEvidence {
+	agent_id: string;
+	agent_name: string;
+	tool: string;
+	arguments: unknown;
+	state: string;
+	result: string;
+	at: string | null;
+}
+
+export interface CaseFile {
+	turn: {
+		customer_message_id: string | null;
+		customer_text: string;
+		started_at: string | null;
+		ended_at: string | null;
+	};
+	agents: CaseFileAgent[];
+	totals: {
+		input_tokens: number;
+		output_tokens: number;
+		cache_input_tokens: number;
+		cost_usd: number | null;
+		priced: boolean;
+	};
+	evidence: CaseFileEvidence[];
+}
+
 export interface MessagesResponse {
 	messages: Msg[];
 	is_running: boolean;
@@ -106,6 +146,14 @@ export const sessionApi = {
 				...(params?.limit != null && { limit: String(params.limit) }),
 			},
 			{ ...options, timeoutMs: 10_000 },
+		),
+
+	/** Evidence and token cost of the customer turn that contains `messageId`. */
+	caseFile: (sessionId: string, agentId: string, messageId: string) =>
+		client.get<CaseFile>(
+			`/sessions/${sessionId}/case-file`,
+			{ agent_id: agentId, message_id: messageId },
+			{ silent: true },
 		),
 
 	/**
