@@ -42,6 +42,9 @@ from ..._logging import logger
 # Sentinel object used to signal end-of-stream in the drain queue.
 _QUEUE_SENTINEL = object()
 
+# Result-delivery tasks of offloaded tools, held until they finish.
+_DELIVERIES: set[asyncio.Task] = set()
+
 
 class ToolOffloadMiddleware(MiddlewareBase):  # pylint: disable=abstract-method
     """Middleware that offloads timed-out tool calls to background tasks.
@@ -153,9 +156,14 @@ class ToolOffloadMiddleware(MiddlewareBase):  # pylint: disable=abstract-method
         # - is_external_tool: external tools wait for a human/external system
         #   to push a result back; offloading them makes no sense because the
         #   agent would lose track of the pending confirmation.
+        # - MCP tools (``mcp__…``): partner calls whose result is recorded
+        #   as evidence (and cached) the moment it returns; a placeholder
+        #   would be recorded as the result. Their client has its own
+        #   timeout, so they run to completion here.
         tool = await agent.toolkit.get_tool(tool_call.name)
-        if tool is not None and (
-            tool.is_state_injected or tool.is_external_tool
+        if tool_call.name.startswith("mcp__") or (
+            tool is not None
+            and (tool.is_state_injected or tool.is_external_tool)
         ):
             async for item in next_handler(**input_kwargs):
                 yield item
@@ -265,9 +273,14 @@ class ToolOffloadMiddleware(MiddlewareBase):  # pylint: disable=abstract-method
                 return
 
             remaining_items: list = []
+            failure: BaseException | None = None
             while not queue.empty():
                 try:
                     item = queue.get_nowait()
+                    if isinstance(item, BaseException):
+                        # _drain_to_queue hands tool errors over as items.
+                        failure = item
+                        break
                     if isinstance(item, ToolResponse):
                         remaining_items.append(item)
                         break
@@ -290,7 +303,18 @@ class ToolOffloadMiddleware(MiddlewareBase):  # pylint: disable=abstract-method
                 ensure_ascii=False,
             )
 
-            if response is None or len(response.content) == 0:
+            if failure is not None:
+                hint = HintBlock(
+                    hint=(
+                        f"<system-notification>"
+                        f"Tool '{tool_name}' running in background "
+                        f"(id={tool_call_id}) failed: {failure}"
+                        f"</system-notification>"
+                    ),
+                    source=hint_source,
+                )
+
+            elif response is None or len(response.content) == 0:
                 hint = HintBlock(
                     hint=(
                         f"<system-notification>"
@@ -353,7 +377,10 @@ class ToolOffloadMiddleware(MiddlewareBase):  # pylint: disable=abstract-method
                 payload=hint.model_dump(mode="json"),
             )
 
-        asyncio.create_task(_deliver_when_done())
+        # Kept referenced until done: the loop holds tasks only weakly.
+        delivery = asyncio.create_task(_deliver_when_done())
+        _DELIVERIES.add(delivery)
+        delivery.add_done_callback(_DELIVERIES.discard)
         task_id = await self._bg_manager.register_task(
             asyncio_task=drain_task,
             session_id=session_id,

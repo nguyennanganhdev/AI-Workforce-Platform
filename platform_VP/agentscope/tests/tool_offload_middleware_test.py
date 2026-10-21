@@ -410,3 +410,58 @@ class ToolOffloadMiddlewareTest(IsolatedAsyncioTestCase):
         self.assertTrue(asyncio_task.cancelled() or asyncio_task.cancelling())
         # Removed from manager
         self.assertEqual(len(self.bg_manager.tasks), 0)
+
+
+class _McpSlowTool(SlowTool):
+    """A slow tool named like an MCP tool."""
+
+    name: str = "mcp__travel__search_hotels"
+
+
+class _BrokenSlowTool(SlowTool):
+    """A slow tool that fails after its delay."""
+
+    name: str = "broken_slow_tool"
+
+    async def __call__(self, delay: float) -> ToolChunk:  # type: ignore[override]
+        await asyncio.sleep(delay)
+        raise RuntimeError("partner API exploded")
+
+
+class ToolOffloadMcpAndFailureTest(IsolatedAsyncioTestCase):
+    """MCP results are never replaced by a placeholder; a failed
+    background tool is reported as failed."""
+
+    asyncSetUp = ToolOffloadMiddlewareTest.asyncSetUp
+    _make_agent = ToolOffloadMiddlewareTest._make_agent
+
+    async def test_slow_mcp_tool_runs_to_completion(self) -> None:
+        agent, _ = self._make_agent(Toolkit(tools=[_McpSlowTool()]), timeout_secs=0.05)
+        call = ToolCallBlock(
+            id="call_mcp", name="mcp__travel__search_hotels", input=json.dumps({"delay": 0.2}),
+        )
+
+        results = [item async for item in agent._acting(call)]  # pylint: disable=protected-access
+
+        [response] = [r for r in results if isinstance(r, ToolResponse)]
+        self.assertIn("SlowTool finished", response.content[0].text)  # type: ignore[union-attr]
+        self.assertEqual(len(self.bg_manager.tasks), 0)
+
+    async def test_failed_background_tool_is_reported_with_its_error(self) -> None:
+        agent, middleware = self._make_agent(Toolkit(tools=[_BrokenSlowTool()]), timeout_secs=0.05)
+        call = ToolCallBlock(id="call_broken", name="broken_slow_tool", input=json.dumps({"delay": 0.2}))
+
+        async for _ in agent._acting(call):  # pylint: disable=protected-access
+            pass
+        await asyncio.sleep(0.4)
+
+        pushed = [
+            c.args[1]
+            for c in middleware._message_bus.queue_push.call_args_list  # pylint: disable=protected-access
+            if c.args[0] == MessageBusKeys.inbox(agent.state.session_id)
+        ]
+        self.assertEqual(len(pushed), 1)
+        hint = pushed[0]["hint"]
+        text = hint if isinstance(hint, str) else " ".join(block["text"] for block in hint)
+        self.assertIn("partner API exploded", text)
+        self.assertNotIn("no output", text)
