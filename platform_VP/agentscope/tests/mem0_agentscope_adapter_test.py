@@ -12,6 +12,11 @@ import json
 import unittest
 from typing import Any
 
+import pytest
+
+# mem0 is an optional extra; skip instead of failing collection.
+pytest.importorskip("mem0", reason="mem0ai is not installed (memory-mem0 extra)")
+
 from agentscope.credential import DashScopeCredential
 from agentscope.embedding import EmbeddingModelBase, EmbeddingResponse
 from agentscope.message import (

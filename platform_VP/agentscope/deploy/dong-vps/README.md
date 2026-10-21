@@ -84,6 +84,17 @@ systemctl disable --now fail2ban
 # Reopen :8443: restore compose.dongprod.yaml.before-8443 and gateway.conf.before-8443, then `up -d gateway`.
 ```
 
+## Uptime alerts (not installed yet)
+
+`uptime-check.sh` checks the site and `/api/health` every 2 minutes (`awp-uptime.timer`) and alerts after two failures in a row, then once more when the site is back. Alerts go to the journal (`journalctl -t awp-uptime`) and, if `/etc/awp-guard/uptime.env` sets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, to Telegram.
+
+```bash
+install -m 755 uptime-check.sh /usr/local/sbin/awp-uptime-check
+install -m 644 awp-uptime.service awp-uptime.timer /etc/systemd/system/
+install -m 600 /dev/null /etc/awp-guard/uptime.env   # then add the Telegram token and chat id
+systemctl daemon-reload && systemctl enable --now awp-uptime.timer
+```
+
 ## Still open
 
 - Two team addresses (36.50.135.148, 171.225.203.144) can still sign in as root with the password; give them a key, then delete the `Match` block.

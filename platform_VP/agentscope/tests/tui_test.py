@@ -15,6 +15,11 @@ import unittest
 from unittest.mock import patch
 from weakref import WeakKeyDictionary
 
+import pytest
+
+# The TUI needs the optional textual package; skip instead of failing collection.
+pytest.importorskip("textual", reason="textual is not installed")
+
 from textual.app import App, ComposeResult
 from textual.message import Message as TextualMessage
 from textual.widgets import Collapsible, Input, OptionList, Static
