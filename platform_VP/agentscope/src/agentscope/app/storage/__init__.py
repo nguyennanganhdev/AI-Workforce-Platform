@@ -22,6 +22,8 @@ from ._model import (
     MCPRecord,
     ScheduleData,
     ScheduleRecord,
+    AgentArtifactKind,
+    AgentArtifactRecord,
     ScheduleOrigin,
     SessionConfig,
     SessionNaming,
@@ -160,5 +162,7 @@ __all__ = [
     "UserRecord",
     "ScheduleData",
     "ScheduleRecord",
+    "AgentArtifactKind",
+    "AgentArtifactRecord",
     "ScheduleSource",
 ]

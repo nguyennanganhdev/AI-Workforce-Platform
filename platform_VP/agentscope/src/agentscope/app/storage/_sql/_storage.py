@@ -25,6 +25,8 @@ from ....sop import SOPPhase, SOPRunState
 from ....state import AgentState
 from .._base import StorageBase
 from .._model import (
+    AgentArtifactKind,
+    AgentArtifactRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -48,6 +50,7 @@ from .._model._session import _origin_kwargs
 from .._utils import _dump_with_secrets
 from ._mappers import _from_record, _to_record
 from ._tables import (
+    AgentArtifactRow,
     AgentRow,
     ChannelRow,
     CredentialRow,
@@ -537,6 +540,14 @@ class AsyncSQLAlchemyStorage(StorageBase):
         )
         for s in sessions:
             await self._delete_session_impl(sess, user_id, agent_id, s.id)
+
+        # Cascade: eval cases, eval runs and memories of this agent.
+        await sess.execute(
+            delete(AgentArtifactRow).where(
+                AgentArtifactRow.user_id == user_id,
+                AgentArtifactRow.agent_id == agent_id,
+            ),
+        )
 
         # Cascade: schedules owned by this agent.
         schedules = (
@@ -1519,6 +1530,69 @@ class AsyncSQLAlchemyStorage(StorageBase):
             ok = await self._delete_schedule_impl(sess, user_id, schedule_id)
             await sess.commit()
         return ok
+
+    async def upsert_agent_artifact(
+        self,
+        user_id: str,
+        record: AgentArtifactRecord,
+    ) -> str:
+        """Persist an agent artifact (create or overwrite)."""
+        _ = user_id
+        await self._write_row(AgentArtifactRow, record)
+        return record.id
+
+    async def get_agent_artifact(
+        self,
+        user_id: str,
+        artifact_id: str,
+    ) -> AgentArtifactRecord | None:
+        """One agent artifact; owner-scoped."""
+        async with self._session() as sess:
+            row = await sess.get(AgentArtifactRow, artifact_id)
+        if row is None or row.user_id != user_id:
+            return None
+        return _to_record(row, AgentArtifactRecord)
+
+    async def list_agent_artifacts(
+        self,
+        user_id: str,
+        agent_id: str,
+        kind: AgentArtifactKind,
+    ) -> list[AgentArtifactRecord]:
+        """An agent's artifacts of one kind, oldest first."""
+        from sqlalchemy import select
+
+        async with self._session() as sess:
+            rows = (
+                (
+                    await sess.execute(
+                        select(AgentArtifactRow)
+                        .where(
+                            AgentArtifactRow.user_id == user_id,
+                            AgentArtifactRow.agent_id == agent_id,
+                            AgentArtifactRow.kind == kind,
+                        )
+                        .order_by(AgentArtifactRow.created_at),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        return [_to_record(row, AgentArtifactRecord) for row in rows]
+
+    async def delete_agent_artifact(
+        self,
+        user_id: str,
+        artifact_id: str,
+    ) -> bool:
+        """Delete one agent artifact; owner-scoped."""
+        async with self._session() as sess:
+            row = await sess.get(AgentArtifactRow, artifact_id)
+            if row is None or row.user_id != user_id:
+                return False
+            await sess.delete(row)
+            await sess.commit()
+        return True
 
     async def list_all_schedules(self) -> list[ScheduleRecord]:
         """Every schedule across every user (used on startup)."""
