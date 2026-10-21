@@ -508,7 +508,8 @@
 			"previewTooLargeTitle": "文件过大,无法预览",
 			"previewTooLargeDescription": "该文件超出在线预览大小限制,请下载后查看源文件。",
 			"downloadButton": "下载源文件"
-		}
+		},
+		"credentialMissing": "API 密钥已被删除"
 	},
 	"llm-select": {
 		"placeholder": "选择模型",

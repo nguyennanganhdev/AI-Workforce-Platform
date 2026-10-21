@@ -745,7 +745,8 @@
 			"previewTooLargeTitle": "Tệp quá lớn để xem trước",
 			"previewTooLargeDescription": "Tệp vượt giới hạn xem trước. Hãy tải về để xem bản gốc.",
 			"downloadButton": "Tải tệp gốc"
-		}
+		},
+		"credentialMissing": "Khóa API đã bị xoá"
 	},
 	"llm-select": {
 		"placeholder": "Chọn mô hình",

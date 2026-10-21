@@ -31,6 +31,7 @@ from pydantic import ValidationError
 
 from ..._logging import logger
 from ...rag import ApproxTokenChunker
+from ..rag.knowledge_base_manager import KnowledgeCredentialMissingError
 
 if TYPE_CHECKING:
     from ..rag.blob_store import BlobStoreBase
@@ -374,6 +375,8 @@ class IndexWorker:
             )
             return
         chunker = self._resolve_chunker_from_record(kb_record)
+        # Fail fast on a missing credential, before parsing and chunking.
+        knowledge = await self._manager.get_knowledge(user_id, knowledge_base_id)
 
         data = record.data
         media_type = (
@@ -416,10 +419,6 @@ class IndexWorker:
             knowledge_base_id,
             document_id,
             "indexing",
-        )
-        knowledge = await self._manager.get_knowledge(
-            user_id,
-            knowledge_base_id,
         )
         # A retry re-runs the whole pipeline. Records are keyed by
         # (document_id, chunk_index), so re-inserting overwrites in
@@ -620,15 +619,24 @@ def _run_parser_sync(
 
 
 def _sanitise_error(exc: BaseException) -> str:
-    """Reduce an exception to a single user-facing line.
+    """Reduce an exception to one line a user can act on.
 
-    Only the exception class name + first line of its message are
-    kept — stack traces and filesystem paths stay inside the worker
-    log and out of the user-visible record.
+    Known failures keep their user-safe message; anything else becomes a
+    generic retry hint. Class names, ids, stack traces and paths stay in
+    the worker log.
     """
-    raw = str(exc) or exc.__class__.__name__
-    first_line = raw.splitlines()[0].strip()
-    cls = exc.__class__.__name__
-    if not first_line:
-        return cls
-    return f"{cls}: {first_line[:240]}"
+    if isinstance(exc, KnowledgeCredentialMissingError):
+        return str(exc)
+    if isinstance(exc, ValueError) and "media type" in str(exc):
+        return "Định dạng tệp này chưa được hỗ trợ."
+    # Provider errors keep their meaning without their (possibly key-bearing) text.
+    provider = {
+        "AuthenticationError": "Khóa API của mô hình embedding không hợp lệ hoặc đã bị thu hồi.",
+        "PermissionDeniedError": "Khóa API không có quyền dùng mô hình embedding này.",
+        "RateLimitError": "Mô hình embedding đang hết hạn mức. Hãy thử lại sau.",
+        "APIConnectionError": "Không kết nối được tới nhà cung cấp mô hình embedding.",
+        "NotFoundError": "Không tìm thấy mô hình embedding đã chọn.",
+    }.get(type(exc).__name__)
+    if provider:
+        return provider
+    return "Lập chỉ mục thất bại. Hãy thử tải lại tài liệu."

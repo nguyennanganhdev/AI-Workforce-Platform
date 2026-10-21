@@ -173,7 +173,9 @@ class IndexWorkerLeaseTest(IsolatedAsyncioTestCase):
         # _mark_error must have recorded the lost-lease reason.
         errors = [u for u in storage.status_updates if u["status"] == "error"]
         self.assertEqual(len(errors), 1)
-        self.assertIn("Lost lease", errors[0]["error"])
+        # The user sees a retry hint; the lease details stay in the log.
+        self.assertNotIn("doc-1", errors[0]["error"])
+        self.assertNotIn("RuntimeError", errors[0]["error"])
 
         # Release is still called (and is a safe no-op server-side).
         self.assertEqual(len(storage.released), 1)

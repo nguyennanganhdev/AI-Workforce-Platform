@@ -275,6 +275,31 @@ class KnowledgeBaseManagerBase(ABC):
     # KnowledgeBase runtime
     # ------------------------------------------------------------------
 
+    async def delete_document_vectors(
+        self,
+        user_id: str,
+        knowledge_base_id: str,
+        document_id: str,
+    ) -> None:
+        """Drop one document's vectors; never raises.
+
+        A document must stay deletable even when its knowledge base can no
+        longer embed (credential deleted) or it was never indexed. This
+        default goes through :meth:`get_knowledge`; strategies that can
+        reach the vector store directly should override it.
+        """
+        from ...._logging import logger
+
+        try:
+            knowledge = await self.get_knowledge(user_id, knowledge_base_id)
+            await knowledge.delete_document(document_id)
+        except Exception:  # noqa: BLE001 - the record and blob are removed anyway
+            logger.exception(
+                "Could not delete vectors of document %s in knowledge base %s",
+                document_id,
+                knowledge_base_id,
+            )
+
     @abstractmethod
     async def get_knowledge(
         self,
