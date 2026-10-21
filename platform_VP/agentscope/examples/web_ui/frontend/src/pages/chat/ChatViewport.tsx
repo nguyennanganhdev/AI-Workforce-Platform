@@ -27,7 +27,6 @@ import type {
 import { chatApi, sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
-import { sessionDisplayTitle } from '@/components/chat/session-row-utils';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { AgentToolsPanel } from '@/components/panel/AgentToolsPanel';
@@ -285,7 +284,6 @@ export function ChatViewport({
 		[sessionId],
 	);
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
-	const title = view ? sessionDisplayTitle(view, t('chat.newSession')) : null;
 	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 	const inspectingMember = readOnly || (!!view?.team && !isTeamChat);
 
@@ -778,20 +776,10 @@ export function ChatViewport({
 									{agentName && <span className="text-sm font-medium">{agentName}</span>}
 									{agentId && <Button variant="ghost" size="icon-sm" aria-label={t('agentManagement.configure')} onClick={() => navigate(`/workforce/agents/${agentId}?edit=1`)}><Settings2 className="size-4" /></Button>}
 									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Nhóm</Badge>}
-									{msgs.length > 0 && title && (
-										<span
-											className="truncate px-2 text-sm text-muted-foreground"
-											title={title}
-										>
-											{title}
-										</span>
-									)}
 									{readOnly ? (
 										<Badge variant="secondary">{t('common.readOnly')}</Badge>
 									) : null}
 								</div>
-								{/* Never squeezed by a long session name: the
-								    name truncates instead. */}
 								<div className="flex min-w-0 max-w-full flex-row flex-wrap items-center gap-x-1">
 									<PermissionModeSelect
 										id="tour-permission-mode"

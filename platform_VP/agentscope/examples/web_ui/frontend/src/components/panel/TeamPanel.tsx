@@ -347,11 +347,6 @@ export function TeamPanel({ team, currentSessionId, agentId, canManage, onMember
 				<div className="flex items-start justify-between gap-3">
 					<div className="min-w-0">
 						<p className="truncate text-sm font-semibold">{team.team.data.name}</p>
-						{team.team.data.description ? (
-							<p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-								{team.team.data.description}
-							</p>
-						) : null}
 					</div>
 					<span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] text-muted-foreground">
 						<Radio

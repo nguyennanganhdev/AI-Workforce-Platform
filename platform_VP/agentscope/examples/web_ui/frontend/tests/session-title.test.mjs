@@ -32,7 +32,7 @@ test('real conversation titles remain intact', () => {
 });
 
 const view = (name, extra = {}) => ({
-	session: { config: { name }, created_at: '2026-10-20T08:30:00', origin: { type: 'user' } },
+	session: { config: { name }, created_at: new Date(2026, 9, 20, 8, 30).toISOString(), origin: { type: 'user' } },
 	status: 'idle', team: null, ...extra,
 });
 const team = { team: { data: { name: 'Đội du lịch' } }, members: [{ agent: { data: { name: 'Lập lịch' } } }] };
@@ -77,4 +77,38 @@ test('rows without a description retain their compact single-line layout', () =>
 	}));
 	assert.match(html, /title="Hội thoại"/);
 	assert.doesNotMatch(html, /h-14|truncate text-xs\/4/);
+});
+
+test('session times read timezone-less timestamps as UTC and display browser-local time', () => {
+	const previousTimezone = process.env.TZ;
+	try {
+		for (const timezone of ['Asia/Bangkok', 'UTC', 'America/Los_Angeles']) {
+			process.env.TZ = timezone;
+			const today = new Date();
+			today.setHours(15, 30, 0, 0);
+			const utc = today.toISOString();
+			for (const timestamp of [utc, utc.replace('Z', ''), utc.replace('Z', '+00:00')]) {
+				assert.equal(context.exports.sessionTime(timestamp), '15:30', `${timezone}: ${timestamp}`);
+			}
+		}
+	} finally {
+		if (previousTimezone === undefined) delete process.env.TZ;
+		else process.env.TZ = previousTimezone;
+	}
+});
+
+test('UTC session dates cross midnight correctly and explicit offsets are preserved', () => {
+	const previousTimezone = process.env.TZ;
+	process.env.TZ = 'Asia/Bangkok';
+	try {
+		assert.equal(context.exports.sessionTime('2025-12-31T18:30:00'), '01/01');
+		assert.equal(context.exports.sessionTime('2025-12-31T18:30:00Z'), '01/01');
+		assert.equal(context.exports.sessionTime('2025-12-31T18:30:00+07:00'), '31/12');
+		assert.equal(context.exports.sessionDisplayTitle({
+			...view(''), session: { config: { name: '' }, created_at: '2025-12-31T18:30:00' },
+		}, 'Hội thoại'), 'Hội thoại · 01/01 01:30');
+	} finally {
+		if (previousTimezone === undefined) delete process.env.TZ;
+		else process.env.TZ = previousTimezone;
+	}
 });

@@ -2,9 +2,14 @@ import { format, isToday } from 'date-fns';
 
 import type { SessionView } from '@/api';
 
+/** Session storage returns UTC timestamps, sometimes without a timezone suffix. */
+function sessionDate(at: string): Date {
+	return new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(at) ? at : `${at}Z`);
+}
+
 /** Today's timestamps show the time; older ones the day. */
 export function sessionTime(at: string): string {
-	const date = new Date(at);
+	const date = sessionDate(at);
 	return format(date, isToday(date) ? 'HH:mm' : 'dd/MM');
 }
 
@@ -23,5 +28,5 @@ export function sessionDisplayTitle(view: SessionView, fallback: string): string
 	return sessionTitle(view.team?.team.data.name)
 		|| sessionTitle(view.session.config.name)
 		|| view.preview?.trim()
-		|| `${fallback} · ${format(new Date(view.session.created_at), 'dd/MM HH:mm')}`;
+		|| `${fallback} · ${format(sessionDate(view.session.created_at), 'dd/MM HH:mm')}`;
 }
