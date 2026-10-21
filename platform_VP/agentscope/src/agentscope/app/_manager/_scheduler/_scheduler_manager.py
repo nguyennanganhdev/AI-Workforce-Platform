@@ -30,6 +30,50 @@ if TYPE_CHECKING:
     from apscheduler.triggers.cron import CronTrigger
 
 
+# A non-stateful schedule opens a fresh session on every fire; a */5 cron
+# would otherwise leave ~288 full sessions a day that nothing removes.
+_SCHEDULE_SESSIONS_KEPT = 20
+
+
+async def _prune_schedule_sessions(
+    storage: StorageBase,
+    message_bus: MessageBus,
+    workspace_manager: WorkspaceManagerBase,
+    record: ScheduleRecord,
+    current_session_id: str,
+) -> None:
+    """Delete this schedule's sessions beyond the newest ones kept."""
+    from ..._service._session import SessionService  # avoid an import cycle
+
+    sessions = sorted(
+        (
+            session
+            for session in await storage.list_sessions(record.user_id, record.agent_id)
+            if isinstance(session.origin, ScheduleOrigin)
+            and session.origin.schedule_id == record.id
+        ),
+        key=lambda session: session.created_at,
+        reverse=True,
+    )
+    stale = [
+        session
+        for session in sessions[_SCHEDULE_SESSIONS_KEPT:]
+        if session.id != current_session_id
+    ]
+    if not stale:
+        return
+    service = SessionService(storage, message_bus, workspace_manager)
+    for session in stale:
+        try:
+            await service.delete_session(record.user_id, record.agent_id, session.id)
+        except Exception:  # pylint: disable=broad-except
+            logger.warning(
+                "[Schedule:%s] could not delete old session %s",
+                record.id,
+                session.id,
+                exc_info=True,
+            )
+
 class SchedulerManager:
     """The cron scheduler manager, responsible for managing scheduled-task
     lifecycle within the agent service.
@@ -272,6 +316,13 @@ class SchedulerManager:
                         ),
                         state=state,
                         origin=ScheduleOrigin(schedule_id=record.id),
+                    )
+                    await _prune_schedule_sessions(
+                        storage,
+                        message_bus,
+                        workspace_manager,
+                        record,
+                        session.id,
                     )
 
                 logger.info(
