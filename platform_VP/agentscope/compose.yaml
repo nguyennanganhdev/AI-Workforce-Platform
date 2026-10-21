@@ -72,6 +72,19 @@ services:
       retries: 10
       start_period: 30s
 
+  # The web app on one origin with the API (nginx proxies /api to app).
+  web:
+    build:
+      context: ./examples/web_ui
+      dockerfile: frontend/Dockerfile
+    image: agentscope-web-local:latest
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
