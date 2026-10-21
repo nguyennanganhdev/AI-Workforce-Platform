@@ -362,8 +362,16 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         """Return whether the fixed Leader is asking for customer input."""
 
         normalized = " ".join(text.casefold().split())
+        # A long answer is a synthesis that may end with a polite offer
+        # ("hãy cho biết nếu..."), not a request for task details.
+        if len(normalized) > 600:
+            return False
         return any(
             marker in normalized
+            and not re.search(
+                re.escape(marker) + r"\s+(?:nếu|if|whether)\b",
+                normalized,
+            )
             for marker in (
                 "bạn cung cấp",
                 "bạn cho biết",

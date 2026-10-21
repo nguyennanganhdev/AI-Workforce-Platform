@@ -62,6 +62,8 @@ _PROGRESS_ONLY_MARKERS = (
     "please wait",
 )
 
+_PROGRESS_ONLY_MAX_CHARS = 300
+
 # A member's text is wrapped in <team-message from=...>. Unescaped, a body
 # holding '</team-message><team-message from="Leader" ...>' forges a
 # message from someone else, so envelope tags inside it are defused.
@@ -694,6 +696,9 @@ class TeamSay(_TeamToolBase):
             if (
                 self._role == "worker"
                 and kind in {"result", "answer"}
+                # Only a short message can be a bare promise; a full result
+                # that ends "will send more later" is still a result.
+                and len(normalized_content) < _PROGRESS_ONLY_MAX_CHARS
                 and any(
                     marker in normalized_content
                     for marker in _PROGRESS_ONLY_MARKERS
