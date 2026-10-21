@@ -3,7 +3,7 @@
 import asyncio
 from typing import AsyncIterator
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 from pydantic import ValidationError
@@ -180,6 +180,8 @@ class TelegramChannelTest(IsolatedAsyncioTestCase):
             calls.append((method, payload))
             if method == "getMe":
                 return {"id": 123, "username": "demo_bot"}
+            if payload.get("timeout") == 0:
+                return []
             if len(calls) == 2:
                 return [{"update_id": 42, "message": _message()}]
             polled.set()
@@ -201,7 +203,58 @@ class TelegramChannelTest(IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await task
         self.assertEqual(self.channel.status.state, "stopped")
+        # Stopping confirms the handled update so a restart does not replay it.
+        self.assertEqual(calls[-1], ("getUpdates", {"offset": 43, "timeout": 0, "limit": 1}))
         self.channel.aclose.assert_awaited_once()
+
+    async def test_failing_message_is_skipped_not_replayed(self) -> None:
+        offsets = []
+        done = asyncio.Event()
+
+        async def request(method: str, **payload: object) -> object:
+            if payload.get("timeout") == 0:
+                return []
+            offsets.append(payload["offset"])
+            if len(offsets) == 1:
+                return [{"update_id": 5, "message": _message()}]
+            done.set()
+            await asyncio.Future()
+
+        self.channel._request = request
+        self.channel._emit = AsyncMock(side_effect=RuntimeError("boom"))
+        with patch("agentscope.app.channel._telegram._channel.asyncio.sleep", AsyncMock()):
+            task = asyncio.create_task(self.channel.start_listening(self.channel._emit))
+            try:
+                await asyncio.wait_for(done.wait(), timeout=1)
+            finally:
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+        self.assertEqual(offsets, [0, 6])
+
+    async def test_conflict_is_retried_and_recovers(self) -> None:
+        attempts = []
+        recovered = asyncio.Event()
+
+        async def request(method: str, **payload: object) -> object:
+            if payload.get("timeout") == 0:
+                return []
+            attempts.append(method)
+            if len(attempts) == 1:
+                raise ChannelError("Telegram getUpdates failed (409).", 409)
+            recovered.set()
+            await asyncio.Future()
+
+        self.channel._request = request
+        with patch("agentscope.app.channel._telegram._channel._BLOCKED_RETRY_SECONDS", 0):
+            task = asyncio.create_task(self.channel.start_listening(self.channel._emit))
+            try:
+                await asyncio.wait_for(recovered.wait(), timeout=1)
+                self.assertEqual(len(attempts), 2)
+            finally:
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
 
     async def test_invalid_token_stays_failed_until_cancelled(self) -> None:
         attempted = asyncio.Event()
@@ -225,3 +278,29 @@ class TelegramChannelTest(IsolatedAsyncioTestCase):
             task.cancel()
             with self.assertRaises(asyncio.CancelledError):
                 await task
+
+    async def test_stop_while_handling_keeps_the_message_unconfirmed(self) -> None:
+        offsets = []
+        handling = asyncio.Event()
+
+        async def request(method: str, **payload: object) -> object:
+            if payload.get("timeout") == 0:
+                offsets.append(("confirm", payload["offset"]))
+                return []
+            offsets.append(("poll", payload["offset"]))
+            return [{"update_id": 9, "message": _message()}]
+
+        async def slow_emit(event) -> None:
+            handling.set()
+            await asyncio.Future()
+
+        self.channel._request = request
+        self.channel._emit = slow_emit
+        self.channel.aclose = AsyncMock()
+        task = asyncio.create_task(self.channel.start_listening(slow_emit))
+        await asyncio.wait_for(handling.wait(), timeout=1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual(offsets, [("poll", 0)])
+        self.channel.aclose.assert_awaited_once()
