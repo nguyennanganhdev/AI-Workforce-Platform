@@ -733,15 +733,27 @@ class RedisMessageBus(MessageBus):  # pylint: disable=too-many-public-methods
 
         # Heartbeat: renew TTL every ttl/2 seconds.
         async def _heartbeat() -> None:
+            delay = max(1.0, ttl_secs / 2)
             while True:
-                await asyncio.sleep(max(1.0, ttl_secs / 2))
-                renewed = await self._client.eval(
-                    _LOCK_RENEW_LUA,
-                    1,
-                    key,
-                    token,
-                    ttl_secs,
-                )
+                await asyncio.sleep(delay)
+                delay = max(1.0, ttl_secs / 2)
+                try:
+                    renewed = await self._client.eval(
+                        _LOCK_RENEW_LUA,
+                        1,
+                        key,
+                        token,
+                        ttl_secs,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # pylint: disable=broad-except
+                    # One failed renewal must not end the heartbeat: the
+                    # lease would then lapse mid-run and let a second turn
+                    # start. Retry soon, well inside the remaining lease.
+                    logger.warning("Lock renewal failed for %s; retrying", key)
+                    delay = min(1.0, ttl_secs / 4)
+                    continue
                 if not renewed:
                     return
 

@@ -1,12 +1,31 @@
 # -*- coding: utf-8 -*-
 """Model service: builds a ChatModelBase from stored credential + config."""
+import inspect
+import os
+
 from fastapi import HTTPException
 
 from ._access import ResourceAccessService
 from ..storage import ChatModelConfig
 from ...credential import CredentialFactory, OpenAICredential
-from ...model import ChatModelBase, OpenAIResponseModel
+from ...model import ChatModelBase, GeminiChatModel, OpenAIResponseModel
 from ..._logging import logger
+
+
+def _timeout_kwargs(model_cls: type) -> dict:
+    """A per-call deadline for the provider SDK client.
+
+    SDK defaults are about ten minutes per read plus retries, while the
+    run's heartbeat keeps the session lock alive the whole time; one hung
+    provider then blocks the session. Gemini's client takes its timeout
+    another way and keeps its default.
+    """
+    if issubclass(model_cls, GeminiChatModel) or (
+        "client_kwargs" not in inspect.signature(model_cls.__init__).parameters
+    ):
+        return {}
+    seconds = float(os.getenv("MODEL_CALL_TIMEOUT_SECONDS", "300"))
+    return {"client_kwargs": {"timeout": seconds}}
 
 
 async def get_model(
@@ -80,6 +99,7 @@ async def get_model(
         credential=credential,
         model=config.model,
         parameters=parameters,
+        **_timeout_kwargs(model_cls),
     )
 
     # Override the context size and the formatter's input types with the

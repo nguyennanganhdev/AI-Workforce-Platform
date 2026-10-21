@@ -2477,13 +2477,21 @@ class ChatService:
                 # cannot race the next turn's snapshot of it. Skipped on
                 # the cancellation path above — a run being torn down
                 # has no business renaming anything.
-                await self._auto_name_session(
-                    user_id,
-                    agent_id,
-                    session_record,
-                    model,
-                    trigger_text,
-                )
+                # Bounded: it runs under the session lock, so a slow
+                # provider must not hold up the next turn.
+                try:
+                    await asyncio.wait_for(
+                        self._auto_name_session(
+                            user_id,
+                            agent_id,
+                            session_record,
+                            model,
+                            trigger_text,
+                        ),
+                        timeout=30,
+                    )
+                except asyncio.TimeoutError:
+                    logger.info("Session auto-naming timed out: %s", session_record.id)
 
         # Detached, since the rest of the run can be many turns; an
         # interrupted turn leaves the run where it is.
