@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import unicodedata
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ValidationError
 
 from ..._utils._common import _generate_id
+from ..._logging import logger
 from ...mcp import MCPClient
 from .._mcp_policy import check_mcp_allowed, mcp_allowed
 from ...message import HintBlock, TextBlock, ToolResultState
@@ -77,30 +79,20 @@ def _fold_text(value: str) -> str:
     )
 
 
+# Whole words only: accent folding makes "để du lịch" read "de du", and a
+# substring match on it (or on "reserve", usually a booking) forced a
+# calculation specialist onto ordinary travel requests.
+_CALCULATION_REQUEST = re.compile(
+    r"\b(?:tinh chi phi|tinh toan|tong chi phi|can doi chi phi|ngan sach"
+    r"|chua lai|du phong|calculate|calculation|total cost|cost breakdown"
+    r"|budget)\b",
+)
+
+
 def _requests_calculation(value: str) -> bool:
     """Detect an explicit cross-item calculation/reserve deliverable."""
 
-    folded = _fold_text(value)
-    return any(
-        marker in folded
-        for marker in (
-            "tinh chi phi",
-            "tinh toan",
-            "tong chi phi",
-            "can doi chi phi",
-            "ngan sach",
-            "chua lai",
-            "de du",
-            "du phong",
-            "calculate",
-            "calculation",
-            "total cost",
-            "cost breakdown",
-            "budget",
-            "budget remaining",
-            "reserve",
-        )
-    )
+    return bool(_CALCULATION_REQUEST.search(_fold_text(value)))
 
 
 def _has_calculation_capability(agent: AgentRecord) -> bool:
@@ -702,69 +694,86 @@ class AgentInvite(_TeamToolBase):
                 origin=TeamOrigin(),
             )
 
-            # MCP declarations are session-scoped. Builder agents rebuild
-            # their saved allowlist; legacy agents copy an existing session.
-            if invited.data.execution_mode is not None or invited_sessions:
-                workspace = await self._workspace_manager.get_workspace(
-                    self._user_id,
-                    invited.id,
-                    borrowed.id,
-                    borrowed_workspace_id,
-                )
-                # Both saved allowlists and legacy session copies replace defaults.
-                for default_mcp in workspace.default_mcps:
-                    await workspace.remove_mcp(
-                        default_mcp.name,
-                        agent_id=invited.id,
-                        session_id=borrowed.id,
+            # Anything below can fail (an MCP disabled or blocked since the
+            # agent was built); the borrowed session must not be left behind
+            # as an orphan that every retry adds another of.
+            try:
+                # MCP declarations are session-scoped. Builder agents rebuild
+                # their saved allowlist; legacy agents copy an existing session.
+                if invited.data.execution_mode is not None or invited_sessions:
+                    workspace = await self._workspace_manager.get_workspace(
+                        self._user_id,
+                        invited.id,
+                        borrowed.id,
+                        borrowed_workspace_id,
                     )
-                mcp_specs: list[MCPClient] = []
-                if invited.data.execution_mode is not None:
-                    selected: dict[str, list[str]] = {}
-                    for binding in invited.data.tool_bindings:
-                        mcp_id = str(binding.get("mcp_id") or "")
-                        tool_name = str(binding.get("tool_name") or "")
-                        if mcp_id and tool_name:
-                            selected.setdefault(mcp_id, []).append(tool_name)
-                    for mcp_id, enabled_tools in selected.items():
-                        record = await self._storage.get_mcp(
-                            self._user_id,
-                            mcp_id,
-                        )
-                        if record is None or not record.enabled:
-                            raise ValueError(
-                                f"Registered MCP {mcp_id!r} is unavailable",
-                            )
-                        spec = MCPClient.model_validate(
-                            record.client.model_dump(mode="json"),
-                        )
-                        check_mcp_allowed(spec)
-                        spec.enable_tools = list(dict.fromkeys(enabled_tools))
-                        mcp_specs.append(spec)
-                else:
-                    # Compatibility for manually-authored invitable agents
-                    # created before Builder persisted exact tool bindings.
-                    mcp_specs = [
-                        spec
-                        for spec in await workspace.list_mcps(
+                    # Both saved allowlists and legacy session copies replace defaults.
+                    for default_mcp in workspace.default_mcps:
+                        await workspace.remove_mcp(
+                            default_mcp.name,
                             agent_id=invited.id,
-                            session_id=primary.id,
+                            session_id=borrowed.id,
                         )
-                        if mcp_allowed(spec, getattr(workspace, "default_mcps", ()))
-                    ]
-                for source_mcp in mcp_specs:
-                    await workspace.add_mcp(
-                        MCPClient.model_validate(
-                            source_mcp.model_dump(mode="json"),
-                        ),
-                        agent_id=invited.id,
-                        session_id=borrowed.id,
+                    mcp_specs: list[MCPClient] = []
+                    if invited.data.execution_mode is not None:
+                        selected: dict[str, list[str]] = {}
+                        for binding in invited.data.tool_bindings:
+                            mcp_id = str(binding.get("mcp_id") or "")
+                            tool_name = str(binding.get("tool_name") or "")
+                            if mcp_id and tool_name:
+                                selected.setdefault(mcp_id, []).append(tool_name)
+                        for mcp_id, enabled_tools in selected.items():
+                            record = await self._storage.get_mcp(
+                                self._user_id,
+                                mcp_id,
+                            )
+                            if record is None or not record.enabled:
+                                raise ValueError(
+                                    f"Registered MCP {mcp_id!r} is unavailable",
+                                )
+                            spec = MCPClient.model_validate(
+                                record.client.model_dump(mode="json"),
+                            )
+                            check_mcp_allowed(spec)
+                            spec.enable_tools = list(dict.fromkeys(enabled_tools))
+                            mcp_specs.append(spec)
+                    else:
+                        # Compatibility for manually-authored invitable agents
+                        # created before Builder persisted exact tool bindings.
+                        mcp_specs = [
+                            spec
+                            for spec in await workspace.list_mcps(
+                                agent_id=invited.id,
+                                session_id=primary.id,
+                            )
+                            if mcp_allowed(spec, getattr(workspace, "default_mcps", ()))
+                        ]
+                    for source_mcp in mcp_specs:
+                        await workspace.add_mcp(
+                            MCPClient.model_validate(
+                                source_mcp.model_dump(mode="json"),
+                            ),
+                            agent_id=invited.id,
+                            session_id=borrowed.id,
+                        )
+                await self._storage.set_session_team_id(
+                    self._user_id,
+                    borrowed.id,
+                    team.id,
+                )
+            except BaseException:
+                try:
+                    await self._storage.delete_session(
+                        self._user_id,
+                        invited.id,
+                        borrowed.id,
                     )
-            await self._storage.set_session_team_id(
-                self._user_id,
-                borrowed.id,
-                team.id,
-            )
+                except Exception:  # keep the original error
+                    logger.exception(
+                        "Could not remove borrowed session %s",
+                        borrowed.id,
+                    )
+                raise
 
             team.data.members = [
                 *existing_members,

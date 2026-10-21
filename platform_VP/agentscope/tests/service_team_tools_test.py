@@ -1718,6 +1718,53 @@ class TestAgentInviteSuccess(_AgentInviteTestBase):
         self.assertEqual(call.kwargs["agent_id"], self.monday_agent.id)
         self.assertEqual(call.kwargs["session_id"], borrowed.session_id)
 
+    async def test_failed_invite_leaves_no_borrowed_session(self):
+        """An MCP disabled since the build fails the invite without leaving
+        an orphan team session behind for every retry."""
+        await self.storage.delete_session(
+            self.user_id,
+            self.monday_agent.id,
+            self.monday_session.id,
+        )
+        mcp = MCPRecord(
+            user_id=self.user_id,
+            enabled=False,
+            client=MCPClient(
+                name="travel",
+                is_stateful=False,
+                mcp_config=HttpMCPConfig(url="https://example.test/mcp"),
+            ),
+        )
+        await self.storage.upsert_mcp(self.user_id, mcp)
+        self.monday_agent.data.execution_mode = "tool_backed"
+        self.monday_agent.data.tool_bindings = [
+            {"mcp_id": mcp.id, "tool_name": "search_flights"},
+        ]
+        await self.storage.upsert_agent(self.user_id, self.monday_agent)
+        tool = AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )
+
+        try:
+            result = await tool(
+                target=f"Monday@{self.monday_agent.id[:8]}",
+                prompt="Find an available flight.",
+            )
+        except ValueError:
+            result = None
+
+        self.assertNotEqual(getattr(result, "state", None), ToolResultState.RUNNING)
+        self.assertEqual(
+            await self.storage.list_sessions(self.user_id, self.monday_agent.id),
+            [],
+        )
+
     async def test_invited_session_inherits_agent_knowledge_bases(self) -> None:
         self.monday_agent.data.knowledge_base_ids = ["kb-monday"]
         await self.storage.upsert_agent(self.user_id, self.monday_agent)
