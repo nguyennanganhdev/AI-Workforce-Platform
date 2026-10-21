@@ -147,3 +147,13 @@ test('a short plain-text error is still shown as sent', async () => {
   const api = clientWith(async () => new Response('Quota exceeded', { status: 429, statusText: 'Too Many Requests' }));
   await assert.rejects(api.client.get('/x'), (error) => error.detail === 'Quota exceeded');
 });
+
+test('a refresh that hits a restarting server keeps the user signed in', async () => {
+  const api = clientWith(async (url) =>
+    String(url).endsWith('/auth/refresh')
+      ? new Response('<html>502</html>', { status: 502, statusText: 'Bad Gateway' })
+      : unauthorized());
+  api.setAccessToken('current');
+  await assert.rejects(api.client.get('/sessions', undefined, { silent: true }));
+  assert.deepEqual(api.events, []);
+});

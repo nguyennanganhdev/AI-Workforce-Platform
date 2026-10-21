@@ -20,7 +20,9 @@ export function apiUrl(path: string, baseUrl: string = getBaseUrl()): URL {
 }
 
 let accessToken: string | null = null;
-let refreshPromise: Promise<boolean> | null = null;
+/** ``unavailable`` means the server could not answer, not that the session ended. */
+type RefreshOutcome = 'refreshed' | 'expired' | 'unavailable';
+let refreshPromise: Promise<RefreshOutcome> | null = null;
 
 export const getAccessToken = () => accessToken;
 export const setAccessToken = (token: string | null) => {
@@ -80,28 +82,29 @@ function canRefresh(path: string): boolean {
 }
 
 /** Rotate the HttpOnly refresh cookie once, even for concurrent 401 responses. */
-async function refreshAccessToken(baseUrl: string): Promise<boolean> {
+async function refreshAccessToken(baseUrl: string): Promise<RefreshOutcome> {
 	if (!refreshPromise) {
-		refreshPromise = (async () => {
+		refreshPromise = (async (): Promise<RefreshOutcome> => {
 			try {
 				const response = await fetch(apiUrl('/auth/refresh', baseUrl), {
 					method: 'POST',
 					credentials: 'include',
 				});
-				if (!response.ok) {
+				if (response.status === 401 || response.status === 403) {
 					setAccessToken(null);
-					return false;
+					return 'expired';
 				}
+				// A 5xx (e.g. during a deploy) says nothing about the session.
+				if (!response.ok) return 'unavailable';
 				const body = (await response.json()) as { access_token?: unknown };
 				if (typeof body.access_token !== 'string') {
 					setAccessToken(null);
-					return false;
+					return 'expired';
 				}
 				setAccessToken(body.access_token);
-				return true;
+				return 'refreshed';
 			} catch {
-				setAccessToken(null);
-				return false;
+				return 'unavailable';
 			} finally {
 				refreshPromise = null;
 			}
@@ -139,10 +142,20 @@ async function streamRequest(path: string, options: RequestOptions = {}): Promis
 		if (response.status === 401 && canRefresh(path)) {
 			// A delayed 401 may belong to the token another request already
 			// replaced. Reuse the new token rather than rotate the cookie again.
-			if ((accessToken && accessToken !== sentToken) || await refreshAccessToken(requestBaseUrl)) {
+			const outcome =
+				accessToken && accessToken !== sentToken
+					? 'refreshed'
+					: await refreshAccessToken(requestBaseUrl);
+			if (outcome === 'refreshed') {
 				response = await send();
 			}
-			if (response.status === 401 && (!accessToken || accessToken === sentToken)) {
+			// Only a refused refresh ends the session; an unreachable server
+			// fails this request but keeps the user signed in.
+			if (
+				outcome !== 'unavailable' &&
+				response.status === 401 &&
+				(!accessToken || accessToken === sentToken)
+			) {
 				setAccessToken(null);
 				window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 			}

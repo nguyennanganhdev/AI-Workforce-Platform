@@ -57,18 +57,27 @@ export const authApi = {
 	restoreSession: () => {
 		if (!restorePromise) {
 			restorePromise = (async () => {
-				try {
-					const tokens = await client.post<TokenResponse>(
-						'/auth/refresh',
-						undefined,
-						undefined,
-						{ silent: true },
-					);
-					return await acceptTokens(tokens);
-				} catch (error) {
-					setAccessToken(null);
-					if (error instanceof ApiError && [401, 503].includes(error.status)) return null;
-					return null;
+				// A server that is restarting (5xx, network error) does not mean
+				// the refresh cookie is invalid: retry a few times before showing
+				// the signed-out screen. Only 401/403 sign the user out at once.
+				for (let attempt = 0; ; attempt++) {
+					try {
+						const tokens = await client.post<TokenResponse>(
+							'/auth/refresh',
+							undefined,
+							undefined,
+							{ silent: true },
+						);
+						return await acceptTokens(tokens);
+					} catch (error) {
+						const refused =
+							error instanceof ApiError && [401, 403].includes(error.status);
+						if (refused || attempt >= 3) {
+							setAccessToken(null);
+							return null;
+						}
+						await new Promise((resolve) => setTimeout(resolve, 1_000 * 2 ** attempt));
+					}
 				}
 			})();
 		}
