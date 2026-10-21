@@ -42,8 +42,10 @@ def main() -> int:
     )
     scripts = ScriptDirectory.from_config(config)
     heads = scripts.get_heads()
-    if heads != ["0012_workforce_assets"]:
-        failures.append(f"unexpected Alembic heads: {heads!r}")
+    # One linear chain, whatever its latest revision is; a literal here
+    # turned every run red as soon as migration 0013 landed.
+    if len(heads) != 1:
+        failures.append(f"expected exactly one Alembic head, got {heads!r}")
 
     postgres = os.getenv("WORKFORCE_TEST_POSTGRES_URL")
     if postgres and not postgres.startswith(
