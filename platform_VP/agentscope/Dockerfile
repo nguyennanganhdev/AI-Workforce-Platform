@@ -21,6 +21,14 @@ COPY . .
 RUN python -m pip install --no-cache-dir \
     -e ".[service,storage-redis,storage-s3,storage-postgres,auth,channel,vdb-qdrant,classifier-jev,model-ollama]"
 
+RUN groupadd --gid 10001 agentscope \
+    && useradd --uid 10001 --gid 10001 --create-home agentscope \
+    && mkdir -p /app/examples/agent_service/workspaces \
+    && chown -R 10001:10001 /app/examples/agent_service/workspaces
+
+ENV HOME=/home/agentscope
+USER 10001:10001
+
 WORKDIR /app/examples/agent_service
 
 EXPOSE 8000

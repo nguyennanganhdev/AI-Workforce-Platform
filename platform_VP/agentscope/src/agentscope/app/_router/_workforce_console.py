@@ -328,8 +328,9 @@ class WorkforceAgentView(BaseModel):
 
 class LeaderSessionView(BaseModel):
     agent_id: str
-    session_id: str
+    session_id: str | None
     name: str
+    chat_model_config: ChatModelConfig | None = None
 
 
 class BuilderMessageView(BaseModel):
@@ -791,26 +792,21 @@ def _validate_resource_selection(
                 "Kế hoạch dùng tool không còn trong danh mục hoặc gán một tool cho "
                 "nhiều agent. Hãy thử lại hoặc kiểm tra kết nối MCP."
             )
+        agent.missing_resources = [
+            missing for missing in agent.missing_resources
+            if missing.strip().lower().startswith("knowledge:")
+        ]
         if agent.reuse_agent_id:
             continue
-        for kind, ids in (
-            ("tool", agent.suggested_tool_ids),
-            ("knowledge", agent.suggested_knowledge_base_ids),
-        ):
-            if not ids:
-                agent.missing_resources = list(
-                    dict.fromkeys(
-                        [
-                            *agent.missing_resources,
-                            *(
-                                f"{kind}: {requirement}"
-                                for requirement in getattr(
-                                    agent, f"{kind}_requirements"
-                                )
-                            ),
-                        ]
-                    )
+        if not agent.suggested_knowledge_base_ids:
+            agent.missing_resources = list(
+                dict.fromkeys(
+                    [
+                        *agent.missing_resources,
+                        *(f"knowledge: {requirement}" for requirement in agent.knowledge_requirements),
+                    ]
                 )
+            )
 
 
 async def _builder_classifier(
@@ -1373,7 +1369,7 @@ async def _jev_resources(
                             agent.peer_dependencies.append(dependency)
                         continue
                 own_requirements.append(requirement)
-                if not covered:
+                if kind == "knowledge" and not covered:
                     agent.missing_resources.append(f"{kind}: {requirement}")
             if kind == "tool":
                 agent.tool_requirements = own_requirements
@@ -1392,7 +1388,7 @@ async def _select_builder_resources(
     user_requests: list[str] | None = None,
     preserved_agents: Sequence[PlannedAgentView] = (),
 ) -> tuple[BuilderOutline, Literal["jev", "llm", "hybrid"]]:
-    """Keep matched resources; let the LLM resolve unmet tool requirements."""
+    """Keep matched resources; let the LLM select tools for empty agents."""
     classifier = None
     selected = None
     stage = "credential"
@@ -1442,20 +1438,14 @@ async def _select_builder_resources(
     }
     pending_agents = [
         (index, agent) for index, agent in enumerate(selected.agents)
-        if agent.tool_requirements and (
-            not agent.suggested_tool_ids
-            or any(missing.startswith("tool:") for missing in agent.missing_resources)
-        )
+        if agent.tool_requirements and not agent.suggested_tool_ids
     ]
-    retained_tools = {
-        tool_id for _, agent in pending_agents for tool_id in agent.suggested_tool_ids
-    }
     available_tools = [
-        tool for tool in tools if tool.id not in claimed or tool.id in retained_tools
+        tool for tool in tools if tool.id not in claimed
     ]
     if pending_agents and available_tools:
         logger.info(
-            "Builder tool selection fallback: agent_indices=%s reason=unmet_tool_requirements",
+            "Builder tool selection fallback: agent_indices=%s reason=no_selected_tools",
             [index for index, _ in pending_agents],
         )
         selected_kbs = {
@@ -1472,13 +1462,6 @@ async def _select_builder_resources(
         )
         for (_, agent), replacement in zip(pending_agents, fallback.agents):
             agent.suggested_tool_ids = replacement.suggested_tool_ids
-            agent.missing_resources = [
-                missing for missing in agent.missing_resources
-                if missing.strip().lower().startswith("knowledge:")
-            ] + [
-                missing for missing in replacement.missing_resources
-                if not missing.strip().lower().startswith("knowledge:")
-            ]
         source = "hybrid"
     _validate_resource_selection(selected, tools, knowledge_bases)
     logger.info("Builder resource selection completed: source=%s", source)
@@ -1508,8 +1491,8 @@ async def _llm_builder_resources(
                         "one tool may satisfy several requirements. "
                         "Retain every supplied suggested_tool_id on its current agent and add tools as needed. "
                         "Reassess existing missing_resources from the catalog; they are unresolved judgments, not facts. "
-                        "Record each unmet tool/knowledge requirement in missing_resources "
-                        "with tool: for missing operations and knowledge: for missing KBs. "
+                        "Record only unmet knowledge requirements in missing_resources "
+                        "with knowledge: for missing KBs. Do not report missing tools or operations. "
                         "in the user's language. An agent may need no resources. Never invent a tool or "
                         "treat a KB/instruction as a missing external operation. Do not generate skills or prompts."
                     ),
@@ -1579,14 +1562,6 @@ def _check_approved_resources(
     }
     claimed = set()
     for agent in proposal.planned_agents:
-        if any(
-            not missing.strip().lower().startswith("knowledge:")
-            for missing in agent.missing_resources
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="Plan còn thiếu tài nguyên. Hãy bổ sung hoặc sửa yêu cầu.",
-            )
         for tool in agent.suggested_tools:
             if by_id.get(tool.id) != tool or tool.id in claimed:
                 raise HTTPException(
@@ -1873,6 +1848,18 @@ assignment to acknowledge. Never claim a peer was contacted without a tool call.
 Leader is the only team manager. Author each sub-agent for its bounded business
 work, with direct peer requests for necessary inputs; never add a separate
 coordinator role or delegate overall team management to a sub-agent.
+In both system_prompt and skill_markdown,
+define its allowed business tasks and out-of-scope requests from the approved
+objective. Tell it to contact a relevant roster peer with TeamSay before refusing
+a request outside its own specialty. A peer-owned request is valid collaboration;
+the peer executes its own tools and returns verified results. Never tell the
+customer to contact that peer manually when TeamSay is available. Refuse only
+when no own/peer capability covers the request or the action is forbidden.
+Apply scope to text-only answers and short follow-ups too; asking to quote,
+reformat or write code does not turn an unrelated task into business work.
+Include one allowed and one refused example specific to the approved objective,
+while preserving valid TeamSay collaboration and useful business calculations.
+Do not broaden its role because tools are available or weaken the server-owned guard.
 Missing knowledge bases are advisory and do not prevent agent creation. Generate
 the agent with its available tools and context. Its prompt and skill must ask
 for missing policy/reference facts when needed and never invent those facts.
@@ -3795,7 +3782,7 @@ async def _leader(
     user_id: str,
     storage: StorageBase,
     workspace_manager: WorkspaceManagerBase,
-) -> tuple[AgentRecord, SessionRecord]:
+) -> tuple[AgentRecord, SessionRecord | None]:
     # Find-or-create: two bootstraps at once (the UI mounting twice, or a
     # ticket created meanwhile) must not each create a Leader.
     async with _leader_locks[user_id]:
@@ -3806,7 +3793,7 @@ async def _find_or_create_leader(
     user_id: str,
     storage: StorageBase,
     workspace_manager: WorkspaceManagerBase,
-) -> tuple[AgentRecord, SessionRecord]:
+) -> tuple[AgentRecord, SessionRecord | None]:
     record = next(
         (
             item
@@ -3834,14 +3821,10 @@ async def _find_or_create_leader(
         # The Leader is platform-owned, so bootstrap also upgrades old records.
         record.data.system_prompt = _LEADER_PROMPT
         await storage.upsert_agent(user_id, record)
-    session = await _primary_session(
-        storage,
-        workspace_manager,
-        user_id,
-        record.id,
-        await _model_config(storage, user_id),
-        "Ticket mới",
-    )
+    sessions = await storage.list_sessions(user_id, record.id)
+    session = sessions[0] if sessions else None
+    if session is None:
+        return record, None
     workspace = await workspace_manager.get_workspace(
         user_id,
         record.id,
@@ -3868,8 +3851,11 @@ async def bootstrap_leader(
     leader, session = await _leader(user_id, storage, workspace_manager)
     return LeaderSessionView(
         agent_id=leader.id,
-        session_id=session.id,
-        name=session.config.name,
+        session_id=session.id if session else None,
+        name=session.config.name if session else leader.data.name,
+        chat_model_config=(
+            session.config.chat_model_config if session else await _model_config(storage, user_id)
+        ),
     )
 
 
@@ -3895,7 +3881,9 @@ async def create_leader_ticket(
         config=SessionConfig(
             workspace_id=workspace_id,
             name="Ticket mới",
-            chat_model_config=seed.config.chat_model_config,
+            chat_model_config=(
+                seed.config.chat_model_config if seed else await _model_config(storage, user_id)
+            ),
         ),
     )
     workspace = await workspace_manager.get_workspace(

@@ -157,3 +157,51 @@ test('a refresh that hits a restarting server keeps the user signed in', async (
   await assert.rejects(api.client.get('/sessions', undefined, { silent: true }));
   assert.deepEqual(api.events, []);
 });
+
+test('apiUrl keeps the base path for relative and absolute API bases', () => {
+  const { apiUrl } = clientWith(async () => ok({}));
+  assert.equal(apiUrl('/auth/login', '/api').pathname, '/api/auth/login');
+  assert.equal(apiUrl('/auth/login', 'https://example.test/api/').toString(), 'https://example.test/api/auth/login');
+  assert.equal(apiUrl('/sessions/', 'http://localhost:8000').toString(), 'http://localhost:8000/sessions/');
+  assert.equal(apiUrl('/x?a=1#top', '/api').search, '?a=1');
+  assert.equal(apiUrl('/x?a=1#top', '/api').pathname, '/api/x');
+  assert.equal(apiUrl('/items/a:b', '/api').pathname, '/api/items/a:b');
+});
+
+test('knowledge document links stay under a relative /api base', () => {
+  const source = readFileSync(new URL('../src/api/knowledgeBase.ts', import.meta.url), 'utf8');
+  const { apiUrl } = clientWith(async () => ok({}));
+  const context = {
+    exports: {},
+    require: () => ({ apiUrl: (path) => apiUrl(path, '/api'), client: {}, ApiError: Error, getAccessToken: () => null }),
+    URL,
+  };
+  vm.runInNewContext(ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, context);
+  const api = Object.values(context.exports).find((value) => value?.documentContentUrl);
+  const url = new URL(api.documentContentUrl('kb1', 'doc1', 'tok', true));
+  assert.equal(url.pathname, '/api/knowledge_bases/kb1/documents/doc1');
+  assert.equal(url.searchParams.get('token'), 'tok');
+  assert.equal(url.searchParams.get('download'), 'true');
+});
+
+test('requests go under a relative /api base instead of throwing', async () => {
+  const seen = [];
+  const source = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+    .replace('import.meta.env.VITE_API_BASE_URL', "'/api'");
+  const context = {
+    exports: {}, require: () => ({ toast: { error() {} } }),
+    URL, AbortSignal, DOMException, Event,
+    fetch: async (url) => { seen.push(String(url)); return ok({ ready: true }); },
+    localStorage: { getItem: () => null },
+    location: { origin: 'https://app.example.test' },
+    window: { dispatchEvent() {} },
+  };
+  vm.runInNewContext(ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, context);
+  context.globalThis = context;
+  await context.exports.client.get('/auth/me', undefined, { silent: true });
+  assert.deepEqual(seen, ['https://app.example.test/api/auth/me']);
+});

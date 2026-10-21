@@ -198,6 +198,52 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual(before, len(self.storage.handoffs))
         self.assertEqual("review", self.branch("worker").status)
 
+    async def test_resolution_excludes_reports_already_sent_for_verification(self):
+        report = await self.say(
+            "worker", to="Leader", kind="result", content="Initial finding",
+        )
+        verification = await self.say(
+            "leader", to="Worker", kind="handoff", content="Verify this finding",
+            resolution="verify",
+        )
+        self.assertEqual(report.metadata["handoff_id"], next(
+            e.in_reply_to for e in self.storage.context.state.events
+            if e.id == verification.metadata["handoff_id"]
+        ))
+        repeated = await self.say(
+            "leader", to="Worker", kind="handoff", content="Verify this finding",
+            resolution="verify",
+        )
+        self.assertEqual(verification.metadata["handoff_id"], repeated.metadata["handoff_id"])
+        self.assertEqual(1, self.branch("worker").verifications)
+
+        updated = await self.say(
+            "worker", to="Leader", kind="result", content="Verified finding",
+            in_reply_to=verification.metadata["handoff_id"],
+        )
+        completed = await self.say(
+            "leader", to="Worker", kind="handoff", content="Accept verified finding",
+            resolution="complete",
+        )
+        self.assertEqual(updated.metadata["handoff_id"], next(
+            e.in_reply_to for e in self.storage.context.state.events
+            if e.id == completed.metadata["handoff_id"]
+        ))
+        self.assertEqual("completed", self.branch("worker").status)
+
+    async def test_multiple_unresolved_reports_still_require_an_explicit_id(self):
+        reports = [await self.say(
+            "worker", to="Leader", kind="result", content=content,
+        ) for content in ("First finding", "Second finding")]
+        result = await self.tool("leader")(
+            to="Worker", kind="handoff", content="Accept finding", resolution="complete",
+        )
+        self.assertEqual("ambiguous_handoff_link", result.metadata["reason"])
+        self.assertEqual(
+            {r.metadata["handoff_id"] for r in reports},
+            set(result.metadata["candidate_handoff_ids"]),
+        )
+
     async def test_ambiguous_reply_requires_an_explicit_id(self):
         requests = []
         for content in ("Find options", "Check availability"):
@@ -219,6 +265,33 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             "peer", to="Worker", kind="answer", content="Option A is available",
             in_reply_to=requests[0].metadata["handoff_id"],
         )
+
+    async def test_each_request_instructs_an_exact_reply_link(self):
+        requests = []
+        for content in ("Find options", "Check availability"):
+            request = await self.say(
+                "worker", to="Peer", kind="question", content=content,
+            )
+            requests.append(request)
+            hint = next(
+                h.payload["hint"] for h in self.storage.handoffs.values()
+                if h.handoff_id == request.metadata["handoff_id"]
+                and h.recipient_session_id == "peer-session"
+            )
+            self.assertIn(f"with in_reply_to={request.metadata['handoff_id']}", hint)
+            self.assertIn("even if this is the only request", hint)
+            self.assertIn("omit thread_id", hint.replace("\n", " "))
+            self.assertNotIn("omit in_reply_to", hint)
+
+        for request, content in zip(requests, ("Option A", "Option A is available")):
+            reply = await self.say(
+                "peer", to="Worker", kind="answer", content=content,
+                in_reply_to=request.metadata["handoff_id"],
+            )
+            event = next(e for e in self.storage.context.state.events
+                         if e.id == reply.metadata["handoff_id"])
+            self.assertEqual(request.metadata["handoff_id"], event.in_reply_to)
+            self.assertEqual(request.metadata["handoff_id"], event.thread_id)
 
     async def test_automatic_reply_does_not_reset_the_hop_limit(self):
         request = await self.say(
@@ -1156,14 +1229,18 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             "requires_user_input", self.storage.context.state.events[-1].kind
         )
 
-    async def test_real_agent_sleeps_immediately_after_peer_question(self):
+    async def test_real_agent_finishes_mcp_batch_then_sleeps_after_peer_question(self):
         from agentscope.agent import Agent, InjectionConfig, ReActConfig
         from agentscope.app.middleware import TeamMemberLoopMiddleware
         from agentscope.message import ToolCallBlock, UserMsg
         from agentscope.model import ChatResponse
         from agentscope.tool import Toolkit
+        from tests.team_member_middleware_test import _OtherTool
         from tests.utils import MockModel
 
+        lookup = _OtherTool()
+        lookup.name = "mcp__travel__check_hotel_availability"
+        lookup.is_concurrency_safe = False
         model = MockModel()
         model.set_responses(
             [
@@ -1179,7 +1256,14 @@ class TestCollaboration(IsolatedAsyncioTestCase):
                                     "content": "Find verified options",
                                 }
                             ),
-                        )
+                        ),
+                        *[
+                            ToolCallBlock(
+                                id=f"hotel-{index}", name=lookup.name,
+                                input=json.dumps({"content": f"hotel-{index}"}),
+                            )
+                            for index in range(3)
+                        ],
                     ],
                     is_last=True,
                 )
@@ -1189,7 +1273,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             name="Worker",
             system_prompt="Coordinate",
             model=model,
-            toolkit=Toolkit(tools=[self.tool("worker")]),
+            toolkit=Toolkit(tools=[self.tool("worker"), lookup]),
             react_config=ReActConfig(max_iters=4),
             middlewares=[
                 TeamMemberLoopMiddleware(
@@ -1208,6 +1292,8 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             )
         ]
         self.assertEqual(1, model.cnt)
+        self.assertEqual([call["content"] for call in lookup.calls],
+                         [f"hotel-{index}" for index in range(3)])
         self.assertEqual("waiting_peer", self.branch("worker").status)
         self.assertTrue(events)
 

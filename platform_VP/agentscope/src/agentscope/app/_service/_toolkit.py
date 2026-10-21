@@ -11,6 +11,12 @@ from typing import Any, Literal
 from ..._logging import logger
 from ...middleware import MiddlewareBase
 from ...tool import (
+    Bash,
+    Edit,
+    Glob,
+    Grep,
+    PowerShell,
+    Read,
     TaskCreate,
     TaskGet,
     TaskList,
@@ -18,6 +24,7 @@ from ...tool import (
     ToolBase,
     ToolGroup,
     Toolkit,
+    Write,
 )
 from ...workspace import WorkspaceBase
 from .._manager import BackgroundTaskManager, SchedulerManager
@@ -182,11 +189,12 @@ optional):
     # Builder agents operate through their validated MCP bindings. Coding,
     # shell/task/cron tools add schemas and encourage unrelated planning loops.
     is_leader = agent_record.data.system_role == "leader"
-    # The Builder execution contract identifies authored business agents even
-    # when their intentional effective MCP set is empty (for example a planner
-    # or a knowledge-base answerer). Keep them inside the restricted runtime.
+    # Legacy published agents and team workers may lack Builder metadata;
+    # they must not fall back to host coding, shell, task or cron tools.
     business_runtime = (
         is_leader
+        or team_role == "worker"
+        or agent_record.data.lifecycle_state == "published"
         or bool(agent_record.data.tool_bindings)
         or agent_record.data.execution_mode is not None
     )
@@ -362,8 +370,13 @@ time or interval"
             if client.name in allowed_by_mcp
         ]
 
+    # Never expose host shell/filesystem tools, including those supplied by
+    # factories, middleware or channels. Stored confirmations cannot restore them.
     return Toolkit(
-        tools=tools,
+        tools=[
+            tool for tool in tools
+            if not isinstance(tool, (Bash, PowerShell, Read, Write, Edit, Glob, Grep))
+        ],
         skills_or_loaders=[] if is_leader else await workspace.list_skills(
             agent_id=agent_record.id,
         ),

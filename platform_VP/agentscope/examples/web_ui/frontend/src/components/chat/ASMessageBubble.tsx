@@ -503,7 +503,9 @@ function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 
 	// The working (thinking, hints, tool runs, messages between agents) folds
 	// into one line; the answer and questions to the customer stay in view.
-	const visibleBlocks = blocks.filter((block) => block.type !== 'data');
+	const visibleBlocks = blocks.filter(
+		(block) => block.type !== 'data' && (block.type !== 'thinking' || block.thinking.trim()),
+	);
 	const traceBlocks = isUser ? [] : visibleBlocks.filter(isTraceBlock);
 	const shownBlocks = isUser ? visibleBlocks : visibleBlocks.filter((block) => !isTraceBlock(block));
 	const teamCommunications = communications.filter((communication) => !communication.toCustomer);
@@ -861,7 +863,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 			}
 		}
 		case 'thinking':
-			return <ThinkingBlockView block={block} />;
+			return block.thinking.trim() ? <ThinkingBlockView block={block} /> : null;
 		case 'hint': {
 			// Parse source: try JSON, fall back to plain string, default to t('common.message').
 			let hintLabel: string;

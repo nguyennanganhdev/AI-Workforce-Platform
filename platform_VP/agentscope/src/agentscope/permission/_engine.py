@@ -6,6 +6,7 @@ from ._context import PermissionContext
 from ._rule import PermissionRule
 from ._decision import PermissionDecision, PermissionBehavior
 from ._types import PermissionMode
+from ._mcp import mcp_tool_executes_code, mcp_tool_permission
 from .._utils._common import _execute_async_or_sync_func
 
 if TYPE_CHECKING:
@@ -101,6 +102,9 @@ class PermissionEngine:
             `PermissionDecision`:
                 Decision indicating whether to allow, deny, or ask.
         """
+        # Server bans precede read-only hints, saved allow rules and BYPASS.
+        if tool.is_mcp and mcp_tool_executes_code(tool.name, tool.input_schema):
+            return mcp_tool_permission(tool.name, None, tool.input_schema)
         mode = self.context.mode
         if mode == PermissionMode.DEFAULT:
             return await self._check_default(tool, tool_input)

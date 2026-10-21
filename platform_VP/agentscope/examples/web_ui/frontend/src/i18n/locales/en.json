@@ -197,6 +197,8 @@
 			"recent": "Recent chats",
 			"results": "Results",
 			"noResults": "No chats match “{{query}}”.",
+			"previewExternal": "Waiting for results",
+			"previewTeam": "Team",
 			"previewAgent": "Agent: {{name}}",
 			"previewRunning": "Working on it…",
 			"previewAwaiting": "Waiting for you",
@@ -661,18 +663,27 @@
 		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it.",
 		"showcase": {
 			"live": "Live",
-			"caption": "Illustration: a customer's request is handed by the Leader to the right agent and handled",
+			"caption": "Illustration: user sends a request to the Leader; agent1 gathers information and exchanges feedback with agent2; agent2 and agent3 agree on an approach, then report to the Leader who replies to user.",
 			"statusIdle": "Waiting",
-			"statusBusy": "In progress",
+			"statusBusy": "Collaborating",
 			"statusDone": "Done",
-			"customer": "Customer",
-			"routed": "Assigned to: Hotel agent",
-			"request": "Find me a beachfront hotel in Da Nang for 2 people this weekend.",
-			"reply": "I found 3 beachfront hotels from 1.2M VND per night. Want the details?",
-			"agents": {
-				"planner": "Itinerary",
-				"hotel": "Hotel",
-				"flight": "Flights"
+			"user": "user",
+			"request": "Please summarize the information and suggest an approach.",
+			"reply": "Leader: The team has gathered and checked the information. Here is our proposed approach.",
+			"stages": {
+				"route": "Leader assigns the work",
+				"handoff": "Leader → agent1 · Gather information",
+				"share": "agent1 ↔ agent2 · Share and check",
+				"review": "agent2 ↔ agent3 · Agree on an approach",
+				"report": "agent3 → Leader · Report results",
+				"done": "Leader → user · Deliver results"
+			},
+			"messages": {
+				"handoff": "agent1: I will gather the information and share it with the team.",
+				"share": "agent1 → agent2: Could you check this summary?\nagent2 → agent1: Checked and added the missing details.",
+				"review": "agent2 → agent3: Could you suggest an approach from this information?\nagent3 → agent2: Proposal ready. Let’s agree on the result.",
+				"report": "agent3 → Leader: The team agreed on an approach. Here are the results.",
+				"done": "agent1 ↔ agent2 ↔ agent3: Feedback exchanged and results agreed."
 			}
 		},
 		"brand": "VAgents Platform",

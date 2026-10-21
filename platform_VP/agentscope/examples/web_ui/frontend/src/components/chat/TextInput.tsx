@@ -50,7 +50,7 @@ interface ProcessedFile {
 }
 
 interface TextInputProps {
-	onSend: (blocks: ContentBlock[]) => void;
+	onSend: (blocks: ContentBlock[]) => void | Promise<void>;
 	placeholder?: string;
 	autoComplete?: (input: string) => string | null;
 	disabled?: boolean;
@@ -85,18 +85,10 @@ interface TextInputProps {
 	 */
 	phase?: ReplyPhase;
 	onInterrupt?: () => void;
-	/**
-	 * Content rendered directly above the input pill, inside the outer
-	 * wrapper that {@link className} styles (e.g. the working directory
-	 * and git status).
-	 *
-	 * The pill keeps all four of its corners, so the two only read as one
-	 * surface if the caller gives that wrapper a background and a radius
-	 * concentric with the pill's — outer radius = 28px + the wrapper's
-	 * padding. Anything less and the pill's top corners cut into the
-	 * header's edges.
-	 */
+	/** Workspace context above the input. */
 	headerSlot?: React.ReactNode;
+	/** Model controls next to the send button. */
+	toolbarSlot?: React.ReactNode;
 }
 
 export interface TextInputRef {
@@ -134,13 +126,14 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			onSend,
 			placeholder,
 			autoComplete,
-			disabled = false,
+			disabled: disabledProp = false,
 			className,
 			allowedInputTypes,
 			fileProcessor,
 			phase = 'idle',
 			onInterrupt,
 			headerSlot,
+			toolbarSlot,
 		},
 		ref,
 	) => {
@@ -149,9 +142,14 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		const [value, setValue] = useState('');
 		const [files, setFiles] = useState<ProcessedFile[]>([]);
 		const [isFocused, setIsFocused] = useState(false);
+		const [sending, setSending] = useState(false);
+		const sendingRef = useRef(false);
+		const disabled = disabledProp || sending;
 		const textareaRef = useRef<HTMLTextAreaElement>(null);
 		const fileInputRef = useRef<HTMLInputElement>(null);
 		const measureRef = useRef<HTMLSpanElement>(null);
+		const actionsRef = useRef<HTMLDivElement>(null);
+		const ghostActionsRef = useRef<HTMLDivElement>(null);
 		/** ``true`` — textarea takes the full width, buttons drop to their own row. */
 		const [isStacked, setIsStacked] = useState(false);
 
@@ -182,12 +180,21 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			// Stacking widens the textarea, so the line count has to be redone.
 		}, [value, isStacked]);
 
-		// Measured on the ghost, not the textarea: stacking widens the textarea, so
-		// measuring it would flip-flop (wraps → stack → fits → unstack → wraps).
+		// Measure the single-row layout so expanding the textarea cannot cause a loop.
 		useLayoutEffect(() => {
 			const ghost = measureRef.current;
-			if (!ghost) return;
-			setIsStacked(ghost.scrollHeight > LINE_HEIGHT_PX);
+			const actions = actionsRef.current;
+			const ghostActions = ghostActionsRef.current;
+			if (!ghost || !actions || !ghostActions) return;
+			const measure = () => {
+				ghostActions.style.width = `${actions.offsetWidth}px`;
+				setIsStacked(ghost.scrollHeight > LINE_HEIGHT_PX);
+			};
+			measure();
+			const observer = new ResizeObserver(measure);
+			observer.observe(ghost);
+			observer.observe(actions);
+			return () => observer.disconnect();
 		}, [value]);
 
 		// Calculate autocomplete suggestion using useMemo
@@ -218,10 +225,10 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			}
 		};
 
-		const handleSend = () => {
+		const handleSend = async () => {
 			// ``phase`` is guarded here rather than only on the button, since Enter
 			// calls this directly and would otherwise send during a running reply.
-			if (phase !== 'idle' || !value.trim() || disabled || hasProcessing) return;
+			if (phase !== 'idle' || !value.trim() || disabled || sendingRef.current || hasProcessing) return;
 
 			const blocks: ContentBlock[] = [];
 
@@ -244,9 +251,18 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 				}
 			});
 
-			onSend?.(blocks);
-			setValue('');
-			setFiles([]);
+			sendingRef.current = true;
+			setSending(true);
+			try {
+				await onSend(blocks);
+				setValue('');
+				setFiles([]);
+			} catch {
+				// The API shows the error; keep the draft and attachments for retry.
+			} finally {
+				sendingRef.current = false;
+				setSending(false);
+			}
 		};
 
 		/**
@@ -332,7 +348,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 				{headerSlot}
 				<div
 					id="tour-chat-input"
-					className="flex w-full flex-col rounded-[28px] border bg-background px-2"
+					className="flex w-full flex-col rounded-[24px] bg-background px-2"
 					data-tour="chat-input"
 				>
 					{files.length > 0 && (
@@ -415,18 +431,12 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 									{value}
 								</span>
 							</div>
-							{/* Stands in for the button cluster below — keep the count, the
-							    gap and the ``size-9`` footprint in step with it. */}
-							<div className="flex shrink-0 gap-2">
-								<div className="size-9" />
-								<div className="size-9" />
-							</div>
+							<div ref={ghostActionsRef} className="shrink-0" />
 						</div>
 
-						{/* ``min-w-0`` lets the textarea shrink instead of pushing the
-						    buttons out of the row once the text gets long. */}
+						{/* Keep room for typing; controls wrap below on narrow screens. */}
 						<div
-							className={cn('relative min-w-0', isStacked ? 'basis-full' : 'flex-1')}
+							className={cn('relative min-w-[min(100%,12rem)]', isStacked ? 'basis-full' : 'flex-1')}
 						>
 							{/* ``block`` — inline-block would sit on the text baseline and
 							    leave a descender gap that makes the wrapper taller. */}
@@ -480,9 +490,11 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 						{/* Collapsed-height box centring the buttons, so a single line still
 						    reads as centred while the row bottom-aligns them. */}
 						<div
-							className="flex shrink-0 items-center gap-2"
-							style={{ height: `${COLLAPSED_HEIGHT_PX}px` }}
+							ref={actionsRef}
+							className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 py-2"
+							style={{ minHeight: `${COLLAPSED_HEIGHT_PX}px` }}
 						>
+							{toolbarSlot}
 							{/* Attachment button */}
 							<Tooltip>
 								<TooltipTrigger asChild>

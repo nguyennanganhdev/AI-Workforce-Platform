@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Request / response schemas for the session router."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from ....message import Msg
 from ....permission import PermissionMode
 from ...storage import (
     ChatModelConfig,
@@ -63,6 +64,25 @@ class CreateSessionRequest(BaseModel):
     """Request body for creating a new session."""
 
     agent_id: str = Field(description="Agent this session belongs to.")
+    initial_message: Msg | None = Field(
+        default=None,
+        description="First user message, saved when the chat draft is submitted.",
+    )
+
+    @field_validator("initial_message")
+    @classmethod
+    def validate_initial_message(cls, message: Msg | None) -> Msg | None:
+        if message is not None and (
+            message.role != "user"
+            or not any(
+                block.type == "data"
+                or (block.type == "text" and block.text.strip())
+                for block in message.content
+            )
+        ):
+            raise ValueError("Initial message must contain user text or an attachment")
+        return message
+
     workspace_id: str | None = Field(
         default=None,
         description=(
@@ -192,6 +212,10 @@ class SessionView(BaseModel):
             "seeds its panels from them. Read a session's messages via "
             "``GET /sessions/{id}/messages``."
         ),
+    )
+    preview: str | None = Field(
+        default=None,
+        description="Opening user text, capped at 160 characters for the sidebar.",
     )
     is_running: bool = Field(
         description=(

@@ -58,6 +58,8 @@ export function AuthPage({ onAuthenticated }: Props) {
 		} catch (error) {
 			if (error instanceof ApiError && error.status === 503) {
 				setErrorMessage(t('auth.authenticationDisabled'));
+			} else if (mode === 'login' && error instanceof ApiError && error.status === 401) {
+				setErrorMessage(t('auth.errors.invalidCredentials'));
 			} else {
 				setErrorMessage(formatApiErrorForAlert(error));
 			}

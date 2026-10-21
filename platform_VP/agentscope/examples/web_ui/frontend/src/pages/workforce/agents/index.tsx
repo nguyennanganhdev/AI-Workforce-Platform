@@ -1,12 +1,10 @@
 import {
 	ArrowLeft,
 	BookOpen,
-	ChevronDown,
 	Crown,
 	Ellipsis,
 	MessageSquare,
 	PencilRuler,
-	Plus,
 	Power,
 	Search,
 	Settings2,
@@ -102,38 +100,6 @@ export function AgentManagementPage() {
 		}
 	};
 
-	const createMenu = (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button>
-					<Plus />
-					{t('agentManagement.create')}
-					<ChevronDown className="opacity-70" />
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-72">
-				<DropdownMenuItem className="items-start gap-3 py-2" onSelect={() => navigate('/workforce/builder')}>
-					<Sparkles className="mt-0.5" />
-					<span className="grid gap-0.5">
-						<span className="font-medium">{t('agentManagement.createWithBuilder')}</span>
-						<span className="text-xs text-muted-foreground">
-							{t('agentManagement.createWithBuilderHint')}
-						</span>
-					</span>
-				</DropdownMenuItem>
-				<DropdownMenuItem className="items-start gap-3 py-2" onSelect={() => setManualOpen(true)}>
-					<PencilRuler className="mt-0.5" />
-					<span className="grid gap-0.5">
-						<span className="font-medium">{t('agentManagement.createManual')}</span>
-						<span className="text-xs text-muted-foreground">
-							{t('agentManagement.createManualHint')}
-						</span>
-					</span>
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
-
 	return (
 		<div className="h-full overflow-y-auto bg-background">
 			<header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[var(--cue-divider,var(--border))] bg-background/90 px-4 py-3 backdrop-blur md:px-8">
@@ -152,7 +118,6 @@ export function AgentManagementPage() {
 						{selected?.data.name ?? t('agentManagement.title')}
 					</h1>
 				</div>
-				{createMenu}
 			</header>
 
 			<div className="mx-auto max-w-6xl space-y-6 p-4 md:p-8">

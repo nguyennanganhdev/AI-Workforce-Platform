@@ -167,6 +167,9 @@ class _AgentInviteParams(ParamsBase):
             "peer handle and tell this agent to call TeamSay(kind='question') "
             "directly with the inputs, bounded task and required output. The "
             "peer may consult another roster specialist before answering. "
+            "Shared budget, timing, location or compatibility are dependencies "
+            "even across different specialties; do not label such work "
+            "independent or tell the agent to send every exchange to Leader. "
             "Do not appoint this agent as manager of the whole team. It starts "
             "on joining and reads shared context; do not copy the full chat."
         ),
@@ -209,8 +212,9 @@ same large file or complex project directory, first use ``TeamSay`` to \
 check whether the invited agent can actually see the same files (e.g. \
 by asking it to list or stat a specific path). Skip this handshake for \
 tasks where only message content matters.
-- ``TeamSay`` is the primary communication channel between you and the \
-invited agent.
+- ``TeamSay`` is the primary communication channel among all team members. \
+Encourage direct peer questions and bounded handoffs for shared constraints; \
+Leader receives completed assignments and escalations, not routine relays.
 - ``TeamDelete`` does NOT delete the invited agent — only the \
 team-scoped session is cleaned up. If you invite the same agent into \
 multiple teams over time, it may retain long-term memory or files from \
@@ -348,7 +352,7 @@ class AgentInvite(_TeamToolBase):
         assignments: list[tuple[str, str]],
         selected_agents: list[AgentRecord],
     ) -> str | None:
-        """Require an available calculator for an explicit calculation task."""
+        """Require calculation coverage from the batch or existing team."""
 
         request_text = "\n".join(prompt for _target, prompt in assignments)
         if self._shared_context is not None:
@@ -377,6 +381,13 @@ class AgentInvite(_TeamToolBase):
             _has_calculation_capability(agent) for agent in selected_agents
         ):
             return None
+        team = await self._require_leader_team("invite members")
+        for member in await _ensure_team_members(
+            self._storage, self._user_id, team,
+        ):
+            agent = await self._storage.get_agent(member.owner_id, member.agent_id)
+            if agent is not None and _has_calculation_capability(agent):
+                return None
         candidates = [
             _display_name(agent.data.name, agent.id)
             for agent in self._pool_by_id.values()
@@ -795,7 +806,10 @@ class AgentInvite(_TeamToolBase):
                 f"'{leader_name}' in this session. All team members "
                 "can **ONLY** communicate through the `TeamSay` tool. "
                 "Read the current team roster and Shared Context before "
-                "choosing a collaborator.</system-reminder>\n"
+                "choosing a collaborator. Once working, contact relevant peers "
+                "directly without waiting for Leader's permission; resolve "
+                "peer-owned dependencies before reporting completion."
+                "</system-reminder>\n"
             )
             if start_task:
                 message = (

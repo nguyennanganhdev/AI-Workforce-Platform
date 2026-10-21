@@ -1,3 +1,5 @@
+import type { ContentBlock } from '@agentscope-ai/agentscope/message';
+import { UserMsg } from '@agentscope-ai/agentscope/message';
 import type { PermissionContext } from '@agentscope-ai/agentscope/permission';
 import type { TaskContext } from '@agentscope-ai/agentscope/state';
 import {
@@ -17,15 +19,15 @@ import type {
 	AgentData,
 	ChatModelConfig,
 	ModelCard,
+	CreateSessionRequest,
 	PermissionMode,
 	SessionKnowledgeConfig,
 	TTSModelConfig,
 	UpdateSessionRequest,
 } from '@/api';
-import { sessionApi } from '@/api';
+import { chatApi, sessionApi } from '@/api';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { ChatContent } from '@/components/chat/ChatContent.tsx';
-import { sessionTitle } from '@/components/chat/session-row-utils';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { AgentToolsPanel } from '@/components/panel/AgentToolsPanel';
@@ -81,6 +83,10 @@ interface ChatViewportProps {
 	 * workspace drive every control rendered here.
 	 */
 	sessionId: string | null;
+	/** Drafts stay local until their first message is submitted. */
+	draft?: boolean;
+	draftConfig?: CreateSessionRequest;
+	onSessionCreated?: (sessionId: string) => void;
 	/** Read-only team-member inspection: poll history and never open an SSE stream. */
 	readOnly?: boolean;
 	/**
@@ -123,8 +129,7 @@ function findModelCard(
 }
 
 /**
- * Restore the persisted dock layout, dropping anything that is no
- * longer a known panel (keys get renamed/removed across releases).
+ * Restore saved panels, keeping the team panel closed for each conversation.
  *
  * @returns The stored layout, or an empty one when absent or corrupt.
  */
@@ -135,7 +140,7 @@ function loadPanelLayout(): PanelKey[][] {
 		return parsed
 			.map((column: unknown) =>
 				Array.isArray(column)
-					? column.filter((key): key is PanelKey => key in KNOWN_PANELS)
+					? column.filter((key): key is PanelKey => key in KNOWN_PANELS && key !== 'team')
 					: [],
 			)
 			.filter((column) => column.length > 0);
@@ -201,6 +206,9 @@ export function ChatViewport({
 	agentRole = agentData?.system_role,
 	agentId,
 	sessionId,
+	draft = false,
+	draftConfig,
+	onSessionCreated,
 	readOnly = false,
 	onSessionsChanged,
 }: ChatViewportProps) {
@@ -212,7 +220,7 @@ export function ChatViewport({
 		activeSession.current = `${agentId}:${sessionId}`;
 		return () => { activeSession.current = null; };
 	}, [agentId, sessionId]);
-	const { sessions, refetch: refetchSessions } = useSessions(agentId);
+	const { sessions, refetch: refetchSessions, create: createSession } = useSessions(agentId);
 	const { groups } = useAvailableModels();
 
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
@@ -231,7 +239,7 @@ export function ChatViewport({
 	const [configPending, setConfigPending] = useState(false);
 	// Dock layout: columns laid out left→right, each holding up to 2
 	// panels stacked top→bottom. Open order determines placement.
-	// Persisted so leaving and returning to /chat keeps the same panels.
+	// Other panels persist; the team panel starts closed in each conversation.
 	const [panelLayout, setPanelLayout] = useState<PanelKey[][]>(loadPanelLayout);
 
 	useEffect(() => {
@@ -250,13 +258,13 @@ export function ChatViewport({
 	// hence checking the refetched list rather than opening blindly.
 	const handleTeamUpdated = useCallback(async () => {
 		const next = await refetchSessions();
-		if (next.some((v) => v.session.id === sessionId && v.team)) {
+		if (!readOnly && next.some((v) => v.session.id === sessionId && v.team?.team.session_id === sessionId)) {
 			// `openPanelInLayout`, not `togglePanel` — the latter would
 			// close a panel the user already has open.
 			setPanelLayout((layout) => openPanelInLayout(layout, 'team'));
 		}
 		onSessionsChanged?.();
-	}, [refetchSessions, sessionId, onSessionsChanged]);
+	}, [refetchSessions, sessionId, readOnly, onSessionsChanged]);
 
 	// Auto-naming replaced the session's placeholder name. The outer
 	// page shares this cached list whenever both are looking at the same
@@ -290,9 +298,16 @@ export function ChatViewport({
 		[sessionId],
 	);
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
-	const title = sessionTitle(view?.session.config.name);
 	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 	const inspectingMember = readOnly || (!!view?.team && !isTeamChat);
+
+	// Open the group's own conversation automatically; keep member chats and drafts closed.
+	useEffect(() => {
+		setPanelLayout((layout) => isTeamChat && !readOnly
+			? openPanelInLayout(layout, 'team')
+			: closePanelInLayout(layout, 'team'));
+	}, [agentId, sessionId, isTeamChat, readOnly]);
+
 	const showAssignedTools = agentData?.execution_mode != null
 		&& agentData.system_role === 'business'
 		&& view?.session.origin.type === 'user'
@@ -314,6 +329,32 @@ export function ChatViewport({
 		onStateUpdated: handleStateUpdated,
 		onSessionUpdated: handleSessionUpdated,
 	});
+	const handleSend = async (content: ContentBlock[], targetAgentId?: string) => {
+		if (sessionId) return send(content, targetAgentId);
+		if (!draft || !agentId || !selectedModel || content.length === 0) return;
+		const target = activeSession.current;
+		const input = UserMsg({ name: 'user', content });
+		const { session_id } = await createSession({
+			agent_id: agentId,
+			workspace_id: crypto.randomUUID(),
+			initial_message: input,
+			chat_model_config: selectedModel,
+			sub_agent_chat_model_config: selectedSubAgentModel,
+			fallback_chat_model_config: selectedFallbackModel,
+			tts_model_config: selectedTTSModel,
+			...(selectedKnowledgeConfig ? { knowledge_config: selectedKnowledgeConfig } : {}),
+		});
+		try {
+			await chatApi.trigger({ agent_id: agentId, session_id, input });
+		} finally {
+			// The first message is already saved, even if starting the run fails.
+			if (activeSession.current === target) {
+				if (onSessionCreated) onSessionCreated(session_id);
+				else navigate(`/chat/${agentId}/${session_id}`, { replace: true });
+			}
+			void refetchSessions();
+		}
+	};
 	const {
 		mcps,
 		loading: mcpsLoading,
@@ -379,6 +420,10 @@ export function ChatViewport({
 	 */
 	const patchConfig = useCallback(
 		async (body: UpdateSessionRequest, apply: () => void) => {
+			if (!readOnly && draft && !sessionId && agentId) {
+				apply();
+				return;
+			}
 			if (readOnly || configPending || !view || view.status === 'running' || !sessionId || !agentId) return;
 			const target = `${agentId}:${sessionId}`;
 			setConfigPending(true);
@@ -393,7 +438,7 @@ export function ChatViewport({
 				if (activeSession.current === target) setConfigPending(false);
 			}
 		},
-		[readOnly, configPending, view, sessionId, agentId, refetchSessions],
+		[readOnly, draft, configPending, view, sessionId, agentId, refetchSessions],
 	);
 
 	const handleKnowledgeConfigChange = useCallback(
@@ -603,12 +648,12 @@ export function ChatViewport({
 	// a session whose backend config doesn't actually have that model.
 	useEffect(() => {
 		setConfigPending(false);
-		setSelectedModel(null);
-		setSelectedSubAgentModel(null);
-		setSelectedFallbackModel(null);
-		setSelectedTTSModel(null);
-		setSelectedKnowledgeConfig(null);
-	}, [agentId, sessionId]);
+		setSelectedModel(draftConfig?.chat_model_config ?? null);
+		setSelectedSubAgentModel(draftConfig?.sub_agent_chat_model_config ?? null);
+		setSelectedFallbackModel(draftConfig?.fallback_chat_model_config ?? null);
+		setSelectedTTSModel(draftConfig?.tts_model_config ?? null);
+		setSelectedKnowledgeConfig(draftConfig?.knowledge_config ?? null);
+	}, [agentId, sessionId, draftConfig]);
 
 	const selectedModelCard = useMemo(() => findModelCard(groups, selectedModel), [groups, selectedModel]);
 	const selectedSubAgentModelCard = useMemo(
@@ -727,28 +772,6 @@ export function ChatViewport({
 	 *
 	 * @param mode - New permission mode (e.g. `default`, `explore`).
 	 */
-	/**
-	 * Persist a new working directory.
-	 *
-	 * Nothing local mirrors it — the value is read straight off the
-	 * session view, which `patchConfig` refetches on success.
-	 *
-	 * @param next - Directory relative to the workspace root, or `null`
-	 *   for the root itself.
-	 */
-	const handleCwdChange = async (next: string | null) => {
-		// Bypasses `patchConfig`: the dialog shows the failure inline and
-		// stays open on it, so the toast would be a duplicate and the
-		// swallowed rejection would let the dialog close as if it worked.
-		if (readOnly || !sessionId || !agentId) return;
-		setConfigPending(true);
-		try {
-			await sessionApi.update(sessionId, agentId, { cwd: next }, { silent: true });
-			await refetchSessions();
-		} finally {
-			setConfigPending(false);
-		}
-	};
 
 	const handlePermissionModeChange = async (mode: string) => {
 		await patchConfig({ permission_mode: mode as PermissionMode }, () =>
@@ -772,72 +795,11 @@ export function ChatViewport({
 									{agentName && <span className="text-sm font-medium">{agentName}</span>}
 									{agentId && <Button variant="ghost" size="icon-sm" aria-label={t('agentManagement.configure')} onClick={() => navigate(`/workforce/agents/${agentId}?edit=1`)}><Settings2 className="size-4" /></Button>}
 									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Nhóm</Badge>}
-									{msgs.length > 0 && title && (
-										<span
-											className="truncate px-2 text-sm text-muted-foreground"
-											title={title}
-										>
-											{title}
-										</span>
-									)}
 									{readOnly ? (
 										<Badge variant="secondary">{t('common.readOnly')}</Badge>
 									) : null}
 								</div>
-								{/* Never squeezed by a long session name: the
-								    name truncates instead. */}
 								<div className="flex min-w-0 max-w-full flex-row flex-wrap items-center gap-x-1">
-									{!inspectingMember && (
-										<div className="flex items-center gap-1">
-											<span className="text-xs text-muted-foreground">{t('agentManagement.subagentModel')}</span>
-											<LlmSelect
-												id="tour-llm-select"
-												aria-label={t('agentManagement.subagentModel')}
-												variant="ghost"
-												className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
-												value={selectedSubAgentModel}
-												allowClear
-												placeholder={t('agentManagement.inheritModel')}
-												clearLabel={t('agentManagement.inheritModel')}
-												onChange={handleSubAgentLlmChange}
-												onAddCredential={() => setCredentialOpen(true)}
-												refetchTrigger={credentialRefetchTrigger}
-												disabled={configPending || !view || view.status === 'running'}
-											/>
-											<ModelParametersPopover
-												label={t('agentManagement.subagentModel')}
-												selectedModel={selectedSubAgentModel}
-												modelCard={selectedSubAgentModelCard}
-												onChange={handleSubAgentParametersChange}
-												disabled={configPending || !view || view.status === 'running'}
-											/>
-										</div>
-									)}
-									<div className="flex items-center gap-1">
-										<span className="text-xs text-muted-foreground">{inspectingMember ? 'Model' : t('agentManagement.coordinatorModel')}</span>
-										<LlmSelect
-											id="coordinator-llm-select"
-											aria-label={inspectingMember ? 'Model của sub-agent' : t('agentManagement.coordinatorModel')}
-											variant="ghost"
-											className="max-w-48 font-mono text-muted-foreground hover:text-foreground"
-											value={selectedModel}
-											onChange={handleLlmChange}
-											onAddCredential={() => setCredentialOpen(true)}
-											refetchTrigger={credentialRefetchTrigger}
-											disabled={inspectingMember || configPending || !view || view.status === 'running'}
-										/>
-									</div>
-									<ModelParametersPopover
-										label={t('agentManagement.coordinatorModel')}
-										selectedModel={selectedModel}
-										modelCard={selectedModelCard}
-										onChange={handleParametersChange}
-										selectedFallbackModel={selectedFallbackModel}
-										onFallbackChange={handleFallbackChange}
-										selectedTTSModel={selectedTTSModel}
-										onTTSChange={handleTTSChange}
-										disabled={inspectingMember || configPending || !view || view.status === 'running'}
-									/>
 									<PermissionModeSelect
 										id="tour-permission-mode"
 										variant={'ghost'}
@@ -913,19 +875,71 @@ export function ChatViewport({
 							</div>
 							<div className="flex flex-1 justify-center min-h-0 overflow-hidden relative [--chat-content-w:100%]">
 								<ChatContent
+									modelControls={
+										<div className="flex max-w-full flex-wrap items-center justify-end gap-1">
+											{agentRole === 'leader' && !inspectingMember && (
+												<div className="flex min-w-0 items-center gap-1">
+													<span className="text-xs text-muted-foreground">{t('agentManagement.subagentModel')}</span>
+													<LlmSelect
+														id="tour-llm-select"
+														aria-label={t('agentManagement.subagentModel')}
+														variant="ghost"
+														className="h-8 min-w-0 max-w-36 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+														value={selectedSubAgentModel}
+														allowClear
+														placeholder={t('agentManagement.inheritModel')}
+														clearLabel={t('agentManagement.inheritModel')}
+														onChange={handleSubAgentLlmChange}
+														onAddCredential={() => setCredentialOpen(true)}
+														refetchTrigger={credentialRefetchTrigger}
+														disabled={configPending || (!view && !draft) || view?.status === 'running'}
+													/>
+													<ModelParametersPopover
+														label={t('agentManagement.subagentModel')}
+														selectedModel={selectedSubAgentModel}
+														modelCard={selectedSubAgentModelCard}
+														onChange={handleSubAgentParametersChange}
+														disabled={configPending || (!view && !draft) || view?.status === 'running'}
+													/>
+												</div>
+											)}
+											<div className="flex min-w-0 items-center gap-1">
+												{agentRole === 'leader' && <span className="text-xs text-muted-foreground">{t('agentManagement.coordinatorModel')}</span>}
+												<LlmSelect
+													id="coordinator-llm-select"
+													aria-label={agentRole === 'leader' ? t('agentManagement.coordinatorModel') : 'Model'}
+													variant="ghost"
+													className="h-8 min-w-0 max-w-36 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+													value={selectedModel}
+													onChange={handleLlmChange}
+													onAddCredential={() => setCredentialOpen(true)}
+													refetchTrigger={credentialRefetchTrigger}
+													disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
+												/>
+											</div>
+											<ModelParametersPopover
+												label={agentRole === 'leader' ? t('agentManagement.coordinatorModel') : 'Model'}
+												selectedModel={selectedModel}
+												modelCard={selectedModelCard}
+												onChange={handleParametersChange}
+												selectedFallbackModel={selectedFallbackModel}
+												onFallbackChange={handleFallbackChange}
+												selectedTTSModel={selectedTTSModel}
+												onTTSChange={handleTTSChange}
+												disabled={inspectingMember || configPending || (!view && !draft) || view?.status === 'running'}
+											/>
+										</div>
+									}
 									className={'max-w-[var(--chat-content-w)] w-full'}
 									msgs={msgs}
 									teamChat={isTeamChat}
 									loading={messagesLoading}
-									agentId={agentId}
 									sessionId={sessionId}
-									cwd={view?.session.config.cwd ?? null}
-									onCwdChange={handleCwdChange}
 									git={workspaceStatus?.git ?? null}
 									onRefreshGit={refetchWorkspaceStatus}
 									phase={phase}
-									disabled={readOnly || selectedModel === null}
-									onSend={send}
+									disabled={readOnly || !agentId || selectedModel === null}
+									onSend={handleSend}
 									autoComplete={completeTeamMention}
 									onUserConfirm={onUserConfirm}
 									onInterrupt={interrupt}

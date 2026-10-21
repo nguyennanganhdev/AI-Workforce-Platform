@@ -6,27 +6,25 @@ import { cn } from '@/lib/utils';
 
 /**
  * One row of Cue's conversation list, shared by the sidebar (one row per
- * agent) and the search palette (agents and chats): 60px tall, a 36px
- * avatar, the title and time on the first line and a one-line preview under
- * it.
+ * agent) and the search palette (agents and chats): a 36px avatar, title and
+ * time on one line.
  *
  * Hover is a lighter grey than selection, and selection changes nothing but
  * the fill. `actions` sits over the time at the top right and only shows on
  * hover or keyboard focus, so the time stays readable at rest.
  *
- * `compact` is the short form for long lists (Leader, Agent Builder): one
- * 44px line with a 28px avatar, the title and the time, no preview.
+ * `compact` is the short form for long lists (Leader, Agent Builder), with a
+ * 28px avatar and tighter padding.
  */
 export function ChatRow({
 	avatarId,
 	avatarLabel,
 	avatar,
 	title,
+	description,
 	time,
-	preview,
 	status = 'idle',
 	active = false,
-	icon,
 	actions,
 	onSelect,
 	compact = false,
@@ -38,13 +36,11 @@ export function ChatRow({
 	/** Replaces the agent avatar, e.g. a group's stacked one. */
 	avatar?: ReactNode;
 	title: string;
+	description?: string;
 	time?: string;
-	preview?: ReactNode;
 	/** A dot on the avatar: green while running, blue while waiting on you. */
 	status?: SessionStatus;
 	active?: boolean;
-	/** A small icon before the preview. */
-	icon?: ReactNode;
 	actions?: ReactNode;
 	onSelect: () => void;
 	compact?: boolean;
@@ -55,17 +51,19 @@ export function ChatRow({
 			<button
 				type="button"
 				onClick={onSelect}
+				title={description ? `${title}\n${description}` : title}
 				data-active={active || undefined}
 				className={cn(
 					'flex w-full items-center rounded-xl text-left outline-none transition-colors',
-					compact ? 'h-11 gap-2.5 px-2.5' : 'h-[60px] gap-3 px-3',
+					compact ? 'h-11 gap-2.5 px-2.5' : 'h-11 gap-3 px-3',
+					description && 'h-14',
 					'hover:bg-[var(--cue-bg-hover,var(--accent))] focus-visible:bg-[var(--cue-bg-hover,var(--accent))]',
 					'data-active:bg-[var(--cue-bg-subtle,var(--accent))] data-active:hover:bg-[var(--cue-bg-subtle,var(--accent))]',
 					className,
 				)}
 				{...rest}
 			>
-				<span className="relative">
+				<span className="relative shrink-0">
 					{avatar ?? (
 						<ClayAvatar id={avatarId} label={avatarLabel} size={compact ? 28 : 36} />
 					)}
@@ -102,10 +100,9 @@ export function ChatRow({
 							</span>
 						)}
 					</span>
-					{!compact && (
-						<span className="flex min-w-0 items-center gap-1 text-[13px]/[18px] text-[var(--cue-text-secondary,var(--muted-foreground))]">
-							{icon}
-							<span className="truncate">{preview}</span>
+					{description && (
+						<span className="truncate text-xs/4 text-muted-foreground">
+							{description}
 						</span>
 					)}
 				</span>

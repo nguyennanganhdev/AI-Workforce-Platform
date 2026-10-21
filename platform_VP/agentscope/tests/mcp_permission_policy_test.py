@@ -1,14 +1,58 @@
 """Risk-based consent policy shared by direct and gateway MCP tools."""
 
 from types import SimpleNamespace
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock
 
 import pytest
 
-from agentscope.permission import PermissionBehavior
+from agentscope.permission import (
+    PermissionBehavior, PermissionContext, PermissionEngine, PermissionMode, PermissionRule,
+)
 from agentscope.permission._mcp import (
     mcp_tool_permission,
     mcp_tool_requires_confirmation,
 )
+
+
+@pytest.mark.parametrize("tool_name,schema", [
+    ("run_shell", {}), ("Bash", {}), ("sudo", {}), ("executeCode", {}),
+    ("execute_script", {}), ("browser_evaluate", {"properties": {"function": {}}}),
+    ("helper", {"properties": {"command": {"type": "string"}}}),
+    ("helper", {"$defs": {"Input": {"properties": {"sourceCode": {}}}}}),
+])
+def test_code_execution_mcp_tools_are_denied_even_with_read_only_hint(tool_name, schema):
+    hint = SimpleNamespace(readOnlyHint=True)
+    assert mcp_tool_permission(tool_name, hint, schema).behavior == PermissionBehavior.DENY
+    assert mcp_tool_requires_confirmation(tool_name, hint, schema)
+
+
+def test_booking_confirmation_codes_are_not_execution_inputs():
+    decision = mcp_tool_permission(
+        "lookup_booking_code", None,
+        {"properties": {"confirmation_code": {"type": "string"}}},
+    )
+    assert decision.behavior == PermissionBehavior.ASK
+
+
+class TestExecutionBan(IsolatedAsyncioTestCase):
+    async def test_all_modes_deny_before_read_only_and_saved_allow_rules(self):
+        tool = SimpleNamespace(
+            name="mcp__server__helper", is_mcp=True, is_read_only=True,
+            input_schema={"properties": {"command": {"type": "string"}}},
+            check_permissions=AsyncMock(), check_read_only=AsyncMock(return_value=True),
+        )
+        for mode in PermissionMode:
+            with self.subTest(mode=mode):
+                engine = PermissionEngine(PermissionContext(mode=mode))
+                engine.add_rule(PermissionRule(
+                    tool_name=tool.name, rule_content="*", behavior=PermissionBehavior.ALLOW,
+                    source="userSettings",
+                ))
+                decision = await engine.check_permission(tool, {"command": "sudo id"})
+                self.assertEqual(decision.behavior, PermissionBehavior.DENY)
+        tool.check_permissions.assert_not_awaited()
+        tool.check_read_only.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

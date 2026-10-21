@@ -32,7 +32,12 @@ const router = createBrowserRouter([
 	{
 		element: <ChatLayout />,
 		errorElement: <RouteError />,
-		children: [{ path: '/chat/:agentId?/:sessionId?/:memberId?', element: <ChatPage /> }],
+		children: [
+			{ path: '/', element: <Navigate to="/chat" replace /> },
+			{ path: '/chat/:agentId?/:sessionId?/:memberId?', element: <ChatPage /> },
+			{ path: '/workforce/leader', element: <LeaderPage /> },
+			{ path: '/workforce/builder', element: <AgentBuilderPage /> },
+		],
 	},
 	{
 		element: <SettingsLayout />,
@@ -45,10 +50,6 @@ const router = createBrowserRouter([
 				// last-resort catch-all for SettingsLayout/SettingsSidebar crashes.
 				errorElement: <RouteError />,
 				children: [
-					// Signing in or registering lands on the chat page.
-					{ path: '/', element: <Navigate to="/chat" replace /> },
-					{ path: '/workforce/leader', element: <LeaderPage /> },
-					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
 					{ path: '/workforce/agents/:agentId?', element: <AgentManagementPage /> },
 					{ path: '/settings', element: <Navigate to="/workforce/agents" replace /> },
 					{ path: '/schedule', element: <SchedulePage /> },

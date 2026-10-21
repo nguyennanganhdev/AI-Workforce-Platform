@@ -194,6 +194,8 @@
 			"recent": "最近对话",
 			"results": "结果",
 			"noResults": "没有匹配“{{query}}”的对话。",
+			"previewExternal": "等待结果",
+			"previewTeam": "团队",
 			"previewAgent": "智能体：{{name}}",
 			"previewRunning": "处理中…",
 			"previewAwaiting": "等待你的操作",
@@ -658,18 +660,27 @@
 		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。",
 		"showcase": {
 			"live": "实时",
-			"caption": "示意：客户的请求由 Leader 交给合适的智能体并完成处理",
+			"caption": "示意：user 向 Leader 发送请求；agent1 汇总信息并与 agent2 双向交流核对；agent2 与 agent3 共同确定方案，再向 Leader 汇报，由 Leader 回复 user。",
 			"statusIdle": "等待请求",
-			"statusBusy": "处理中",
+			"statusBusy": "协作中",
 			"statusDone": "已完成",
-			"customer": "客户",
-			"routed": "已分配：酒店智能体",
-			"request": "帮我找本周末岘港海边适合 2 人的酒店。",
-			"reply": "找到 3 家海边酒店，每晚 120 万越南盾起。要看详情吗？",
-			"agents": {
-				"planner": "行程",
-				"hotel": "酒店",
-				"flight": "机票"
+			"user": "user",
+			"request": "请帮我汇总信息并提出一个方案。",
+			"reply": "Leader：团队已汇总并核对信息，这是我们建议的方案。",
+			"stages": {
+				"route": "Leader 分配任务",
+				"handoff": "Leader → agent1 · 汇总信息",
+				"share": "agent1 ↔ agent2 · 交流与核对",
+				"review": "agent2 ↔ agent3 · 共同确定方案",
+				"report": "agent3 → Leader · 汇报结果",
+				"done": "Leader → user · 返回结果"
+			},
+			"messages": {
+				"handoff": "agent1：我会汇总信息，再发给团队核对。",
+				"share": "agent1 → agent2：请帮我核对这份汇总。\nagent2 → agent1：已核对并补充缺失的信息。",
+				"review": "agent2 → agent3：请根据这些信息提出方案。\nagent3 → agent2：方案已准备好，我们一起确认结果。",
+				"report": "agent3 → Leader：团队已确定方案，这是汇总结果。",
+				"done": "agent1 ↔ agent2 ↔ agent3：已交流反馈并确定结果。"
 			}
 		},
 		"brand": "VAgents Platform",

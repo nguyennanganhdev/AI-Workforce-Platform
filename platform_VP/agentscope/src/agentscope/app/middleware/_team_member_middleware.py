@@ -229,9 +229,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         call = input_kwargs["tool_call"]
         pause_reason = await self._pending_question() if self._pending_question else None
         # Finish the independent requests already generated in this batch.
-        paused = bool(pause_reason) and not (
-            pause_reason == "waiting_peer" and call.name == "TeamSay"
-        )
+        paused = bool(pause_reason) and pause_reason != "waiting_peer"
         try:
             args = json.dumps(
                 json.loads(call.input), sort_keys=True, ensure_ascii=False
@@ -239,11 +237,16 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         except (ValueError, TypeError):
             args = call.input
         if paused or (call.name, args) in self._repeated_calls(agent):
+            pause_message = (
+                f"Execution paused: internal assignment status is {pause_reason}. No tool was executed."
+                if pause_reason in {"review", "completed", "stopped"}
+                else "Execution paused: waiting for customer input. No tool was executed."
+            )
             result = ToolChunk(
                 content=[
                     TextBlock(
                         text=(
-                            "Execution paused: waiting for customer input. No tool was executed."
+                            pause_message
                             if paused
                             else "Repeated unchanged result: stop retrying and report the blocker via TeamSay. No tool was executed."
                         )
@@ -590,8 +593,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     "<system-reminder>You have reached the maximum number "
                     f"of ReAct iterations ({agent.react_config.max_iters}). "
                     "Call `TeamSay` now to report the incomplete work/blocker to "
-                    "its assignment requester, then stop. Omit reply IDs for one "
-                    "unambiguous shared request; otherwise use its exact original id. "
+                    "its assignment requester, then stop. Set in_reply_to to the "
+                    "exact original request handoff_id when supplied, even for one "
+                    "request; omit thread_id. Never use a peer response's ID. "
                     f"Use {self._leader_name!r} only for work assigned by that owner."
                     "</system-reminder>"
                 )
@@ -600,8 +604,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     "<system-reminder>You MUST call the tool `TeamSay` "
                     "to report to the original assignment requester: kind=answer "
                     "for a peer question, or kind=result/error for a handoff. "
-                    "Omit in_reply_to and thread_id for one unambiguous shared request; "
-                    "otherwise use in_reply_to=the exact incoming request id. "
+                    "Set in_reply_to to the exact original request handoff_id when "
+                    "supplied, even for one request; omit thread_id. Keep the original "
+                    "request ID while consulting peers; do not use their response IDs. "
                     f"Use {self._leader_name!r} only for work assigned by that owner. "
                     "If missing another agent's output, use TeamSay(to=that peer, kind=question, content=a specific task) and wait. "
                     "Progress alone is not a completed assignment. For genuinely customer-owned missing information, "

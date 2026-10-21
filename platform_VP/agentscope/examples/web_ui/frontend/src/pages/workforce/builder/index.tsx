@@ -14,9 +14,10 @@ import {
 	Sparkles,
 	Trash2,
 	WandSparkles,
+	Users,
 	Wrench,
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -34,8 +35,12 @@ import robotStill from '@/assets/images/stickers/robot-still.webp';
 import { sessionTime } from '@/components/chat/session-row-utils';
 import { ChatRow } from '@/components/chat/SessionRow';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
+import { CreateGroupDialog } from '@/components/dialog/CreateGroupDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
+import { AccountMenu } from '@/components/layout/AccountMenu';
+import { Brand } from '@/components/layout/Brand';
 import { Markdown } from '@/components/markdown';
+import { AgentSelect } from '@/components/select/AgentSelect';
 import { LlmSelect } from '@/components/select/LlmSelect';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,12 +49,23 @@ import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { ClayPortrait, type PortraitKey } from '@/components/ui/clay-portrait';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+	Sidebar,
+	SidebarContent,
+	SidebarFooter,
+	SidebarHeader,
+	SidebarProvider,
+	SidebarTrigger,
+	useSidebar,
+} from '@/components/ui/sidebar';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { TaskProgress } from '@/components/ui/task-progress';
 import { Textarea } from '@/components/ui/textarea';
 import { BuilderEvalProgress, BuilderEvalReport } from '@/components/workforce/BuilderEval';
+import { useAgents } from '@/hooks/useAgents';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
+import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 
 function prefersVietnamese(text: string) {
@@ -197,8 +213,11 @@ function AgentProposalCard({
 	);
 }
 
-export function AgentBuilderPage() {
+function AgentBuilderPageInner() {
 	const navigate = useNavigate();
+	const { t } = useTranslation();
+	const { isMobile, setOpenMobile } = useSidebar();
+	const { agents: chatAgents, refetch: refetchChatAgents } = useAgents();
 	const { knowledgeBases, loading: knowledgeBasesLoading } = useKnowledgeBases();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [message, setMessage] = useState('');
@@ -214,6 +233,7 @@ export function AgentBuilderPage() {
 	const [working, setWorking] = useState(false);
 	const [selectedModel, setSelectedModel] = useState<ChatModelConfig | null>(null);
 	const [credentialOpen, setCredentialOpen] = useState(false);
+	const [groupOpen, setGroupOpen] = useState(false);
 	const [credentialRefetchTrigger, setCredentialRefetchTrigger] = useState(0);
 	const [deleteConversationOpen, setDeleteConversationOpen] = useState(false);
 	const [conversationToDelete, setConversationToDelete] =
@@ -289,6 +309,7 @@ export function AgentBuilderPage() {
 	}, [evalRun, conversationId, pollTick]);
 
 	const newConversation = () => {
+		setOpenMobile(false);
 		setConversationId(null);
 		setConversation([]);
 		setProposal(null);
@@ -432,24 +453,50 @@ export function AgentBuilderPage() {
 		onDelete: setAgentToDelete,
 	});
 
+	const agentPicker = (
+		<AgentSelect
+			agents={chatAgents}
+			builderSelected
+			onSelectBuilder={() => setOpenMobile(false)}
+			onChange={(id) => {
+				navigate(`/chat/${id}`);
+				setOpenMobile(false);
+			}}
+			variant="ghost"
+			size="default"
+			className="min-w-0 flex-1"
+		/>
+	);
+
 	return (
 		<>
 			<div className="flex size-full min-h-0">
-				<aside className="cue-column flex w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar max-md:hidden">
-					<header className="flex h-12 shrink-0 items-center justify-between gap-2 pr-2 pl-4">
-						<h1 className="truncate text-[15px]/5 font-semibold">Agent Builder</h1>
-						<Button
-							variant="ghost"
-							size="icon"
-							aria-label="Hội thoại mới"
-							title="Hội thoại mới"
-							onClick={newConversation}
-							disabled={working}
-						>
-							<Plus className="size-5" />
-						</Button>
-					</header>
-					<div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+				<Sidebar
+					collapsible={isMobile ? 'offcanvas' : 'none'}
+					className="cue-column w-80 shrink-0 border-r border-sidebar-border bg-sidebar"
+				>
+					<SidebarHeader className="gap-3 px-3 py-4">
+						<Brand />
+						<div className="flex items-center gap-1">{agentPicker}</div>
+						<div className="grid grid-cols-2 gap-2">
+							<Button
+								variant="outline"
+								className="rounded-full"
+								onClick={newConversation}
+								disabled={working}
+							>
+								<Plus /> {t('chat.newSession')}
+							</Button>
+							<Button
+								variant="outline"
+								className="rounded-full"
+								onClick={() => setGroupOpen(true)}
+							>
+								<Users /> {t('groupChat.create')}
+							</Button>
+						</div>
+					</SidebarHeader>
+					<SidebarContent className="no-scrollbar px-2">
 						{conversations.length === 0 ? (
 							<p className="px-3 py-6 text-center text-[13px]/[18px] text-muted-foreground">
 								Chưa có hội thoại
@@ -458,7 +505,7 @@ export function AgentBuilderPage() {
 							conversations.map((item, index) => (
 								<ChatRow
 									key={item.conversation_id}
-									className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left-1 motion-safe:fill-mode-both"
+									className="rounded-2xl motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left-1 motion-safe:fill-mode-both"
 									style={{ animationDelay: `${Math.min(index, 10) * 30}ms` }}
 									avatarId={BUILDER_ID}
 									avatarLabel="Agent Builder"
@@ -468,7 +515,10 @@ export function AgentBuilderPage() {
 									status={working && item.conversation_id === conversationId ? 'running' : 'idle'}
 									active={item.conversation_id === conversationId}
 									disabled={working}
-									onSelect={() => void openConversation(item.conversation_id)}
+									onSelect={() => {
+										void openConversation(item.conversation_id);
+										setOpenMobile(false);
+									}}
 									actions={
 										<Button
 											variant="ghost"
@@ -487,11 +537,15 @@ export function AgentBuilderPage() {
 								/>
 							))
 						)}
-					</div>
-				</aside>
+					</SidebarContent>
+					<SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+						<AccountMenu showSettings />
+					</SidebarFooter>
+				</Sidebar>
 
 				<main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
 					<header className="flex h-12 shrink-0 items-center gap-2 px-4">
+						<SidebarTrigger className="md:hidden" />
 						<Button
 							variant="ghost"
 							size="icon-sm"
@@ -503,38 +557,9 @@ export function AgentBuilderPage() {
 							<Plus />
 						</Button>
 						<ClayAvatar id={BUILDER_ID} label="Agent Builder" size={28} working={working} />
-						<h2 className="min-w-0 flex-1 truncate text-[15px]/5 font-semibold max-md:hidden">
+						<h2 className="min-w-0 flex-1 truncate text-[15px]/5 font-semibold">
 							{current?.title ?? 'Hội thoại mới'}
 						</h2>
-						{/* The conversation list is hidden on small screens; pick one here instead. */}
-						<select
-							aria-label="Hội thoại Builder"
-							className="min-w-0 flex-1 truncate rounded-lg border bg-background p-1.5 text-sm md:hidden"
-							value={conversationId ?? ''}
-							disabled={working}
-							onChange={(event) =>
-								event.target.value
-									? void openConversation(event.target.value)
-									: newConversation()
-							}
-						>
-							<option value="">Hội thoại mới</option>
-							{conversations.map((item) => (
-								<option key={item.conversation_id} value={item.conversation_id}>
-									{item.title}
-								</option>
-							))}
-						</select>
-						<LlmSelect
-							value={selectedModel}
-							onChange={setSelectedModel}
-							onAddCredential={() => setCredentialOpen(true)}
-							refetchTrigger={credentialRefetchTrigger}
-							placeholder="Chọn model"
-							variant="ghost"
-							className="w-44 font-mono text-[13px] text-muted-foreground hover:text-foreground"
-							disabled={working}
-						/>
 						<Button variant="ghost" size="sm" className="xl:hidden" onClick={() => setAgentsOpen(true)}>
 							<Bot /> Agent
 							<Badge variant="secondary" className="ml-0.5">
@@ -646,7 +671,7 @@ export function AgentBuilderPage() {
 					</div>
 
 					<div className="shrink-0 px-4 pb-4">
-						<div className="mx-auto max-w-3xl rounded-[24px] border border-[var(--cue-border,var(--border))] bg-background p-1.5 shadow-[var(--cue-shadow-composer,none)] focus-within:border-ring/60">
+						<div className="mx-auto flex max-w-3xl flex-wrap items-end rounded-[28px] border border-[var(--cue-border,var(--border))] bg-background p-1.5 shadow-[var(--cue-shadow-composer,none)] focus-within:border-ring/60">
 							<Textarea
 								value={message}
 								onChange={(event) => setMessage(event.target.value)}
@@ -657,13 +682,21 @@ export function AgentBuilderPage() {
 									}
 								}}
 								placeholder="Nhắn cho Builder hoặc mô tả agent cần tạo…"
-								className="min-h-12 resize-none border-none bg-transparent px-3 text-[15px] shadow-none focus-visible:ring-0"
+								className="min-h-12 max-h-40 min-w-[min(100%,12rem)] flex-1 resize-none overflow-y-auto border-none bg-transparent px-3 text-[15px] shadow-none focus-visible:ring-0"
 								disabled={working}
 							/>
-							<div className="flex items-center justify-between gap-2 pr-1 pl-3">
-								<p className="text-xs text-amber-700 dark:text-amber-400">
-									{!selectedModel && 'Chọn model để bắt đầu'}
-								</p>
+							<div className="ml-auto flex max-w-full shrink-0 items-center justify-end gap-1 px-1 py-1.5">
+								<LlmSelect
+									value={selectedModel}
+									onChange={setSelectedModel}
+									onAddCredential={() => setCredentialOpen(true)}
+									refetchTrigger={credentialRefetchTrigger}
+									placeholder="Chọn model"
+									variant="ghost"
+									aria-label="Model của Builder"
+									className="h-8 min-w-0 max-w-36 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+									disabled={working}
+								/>
 								<Button
 									size="icon"
 									aria-label="Gửi cho Builder"
@@ -684,6 +717,15 @@ export function AgentBuilderPage() {
 				</aside>
 			</div>
 
+			<CreateGroupDialog
+				open={groupOpen}
+				onOpenChange={setGroupOpen}
+				onCreated={async (leaderId, sessionId) => {
+					await refetchChatAgents();
+					setOpenMobile(false);
+					navigate(`/chat/${leaderId}/${sessionId}`);
+				}}
+			/>
 			<Sheet open={agentsOpen} onOpenChange={setAgentsOpen}>
 				<SheetContent className="w-[340px] gap-0 p-0 sm:max-w-[340px]">
 					<SheetHeader className="sr-only">
@@ -729,6 +771,16 @@ export function AgentBuilderPage() {
 	);
 }
 
+export const AgentBuilderPage = () => (
+	<SidebarProvider
+		className="h-full min-h-0"
+		defaultOpen
+		style={{ '--sidebar-width': '20rem' } as CSSProperties}
+	>
+		<AgentBuilderPageInner />
+	</SidebarProvider>
+);
+
 /** One agent of the outline: what it does, what it reuses, needs and gets from teammates. */
 function PlannedAgentCard({
 	agent,
@@ -737,6 +789,10 @@ function PlannedAgentCard({
 	agent: BuilderProposal['planned_agents'][number];
 	index: number;
 }) {
+	const missingKnowledge = agent.missing_resources?.filter((missing) =>
+		missing.trim().toLowerCase().startsWith('knowledge:'),
+	) ?? [];
+
 	return (
 		<article
 			className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background p-3.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both"
@@ -764,13 +820,13 @@ function PlannedAgentCard({
 					</ul>
 				</div>
 			)}
-			{!!agent.missing_resources?.length && (
+			{!!missingKnowledge.length && (
 				<div className="rounded-xl bg-destructive/5 p-2.5 text-[13px]/[18px] text-destructive">
 					<p className="flex items-center gap-1.5 font-medium">
-						<CircleAlert className="size-3.5 shrink-0" /> Thiếu tài nguyên:
+						<CircleAlert className="size-3.5 shrink-0" /> Thiếu Knowledge Base:
 					</p>
 					<ul className="mt-1 list-disc pl-4">
-						{agent.missing_resources.map((missing) => (
+						{missingKnowledge.map((missing) => (
 							<li key={missing}>{missing}</li>
 						))}
 					</ul>
@@ -930,18 +986,14 @@ function ProposalActions({
 	const evaluating = evalRun?.status === 'running';
 	const failed = (evalRun?.agents ?? []).some((agent) => agent.tests.some((test) => test.status === 'failed'));
 	const newAgents = proposal.agents.filter((agent) => !agent.reuse_agent_id).length;
-	const missingTools = proposal.planned_agents.some((agent) =>
-		agent.missing_resources?.some((missing) => !missing.trim().toLowerCase().startsWith('knowledge:')),
-	);
 	let hint = '';
 	let buttons: React.ReactNode = null;
 	if (proposal.status === 'needs_input' && proposal.planned_agents.length > 0) {
 		const reuseOnly = proposal.planned_agents.every((agent) => agent.reuse_agent_id);
-		hint = missingTools
-			? 'Còn agent thiếu công cụ. Hãy kết nối công cụ hoặc nhắn Builder điều chỉnh plan.'
-			: 'Xem kỹ các agent ở trên, rồi bấm Build để Builder viết cấu hình và chạy đánh giá.';
+		// Only missing knowledge is reported now, and it never blocks a build.
+		hint = 'Xem kỹ các agent ở trên, rồi bấm Build để Builder viết cấu hình và chạy đánh giá.';
 		buttons = (
-			<Button onClick={onBuild} disabled={working || missingTools}>
+			<Button onClick={onBuild} disabled={working}>
 				<Hammer />
 				{reuseOnly ? 'Dùng agent có sẵn' : `Build ${proposal.planned_agents.length} agent`}
 			</Button>
