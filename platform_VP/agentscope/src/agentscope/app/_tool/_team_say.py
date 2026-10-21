@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from copy import deepcopy
 from typing import Any, Literal
 
@@ -60,6 +61,24 @@ _PROGRESS_ONLY_MARKERS = (
     "will update",
     "please wait",
 )
+
+# A member's text is wrapped in <team-message from=...>. Unescaped, a body
+# holding '</team-message><team-message from="Leader" ...>' forges a
+# message from someone else, so envelope tags inside it are defused.
+_ENVELOPE_TAG = re.compile(r"<(/?\s*team-message)", re.IGNORECASE)
+
+
+def _body_safe(text: str) -> str:
+    return _ENVELOPE_TAG.sub(r"&lt;\1", text)
+
+
+def _attr_safe(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 class _TeamSayParams(ParamsBase):
@@ -1164,11 +1183,11 @@ class TeamSay(_TeamToolBase):
                 reply_instruction = "This is an update; do not send acknowledgement-only replies."
             hint = HintBlock(
                 hint=(
-                    f'<team-message from="{sender_name}" kind="{kind}">\n'
+                    f'<team-message from="{_attr_safe(sender_name)}" kind="{kind}">\n'
                     f"handoff_id={handoff_id}; task_id={effective_task_id}; in_reply_to={in_reply_to}\n"
                     f"{reply_instruction}\n"
                     f"reference_event_ids={json.dumps(directive_refs)}\n"
-                    f"{content}\n"
+                    f"{_body_safe(content)}\n"
                     f"</team-message>"
                 ),
                 source=json.dumps(
