@@ -164,7 +164,12 @@ async def start_team_turn(
     storage: StorageBase | None = None,
     user_id: str | None = None,
 ) -> TeamTurnState:
-    """Start a user turn and clear every pending question from the prior one."""
+    """Start a user turn and clear every pending question from the prior one.
+
+    Under the same lock as every other turn mutator: a concurrent
+    register/finish holding the old state would otherwise write it back
+    after this, resurrecting the previous owner or pending question.
+    """
     state = TeamTurnState(
         mode=mode,
         reply_owner_session_id=reply_owner_session_id,
@@ -172,13 +177,17 @@ async def start_team_turn(
         customer_session_id=customer_session_id,
         task_id=task_id,
     )
-    await _put_team_turn(
-        bus,
-        team_id,
-        state,
-        storage=storage,
-        user_id=user_id,
-    )
+    async with bus.acquire_lock(
+        MessageBusKeys.team_turn_lock(team_id),
+        ttl_secs=MessageBusKeys.TEAM_TURN_LOCK_TTL_SECS,
+    ):
+        await _put_team_turn(
+            bus,
+            team_id,
+            state,
+            storage=storage,
+            user_id=user_id,
+        )
     return state
 
 
