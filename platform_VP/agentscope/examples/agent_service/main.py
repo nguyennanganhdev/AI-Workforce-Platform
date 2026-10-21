@@ -245,7 +245,10 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        # Hot reload forces a SelectorEventLoop on Windows, which cannot
-        # spawn the subprocesses that the builtin tools rely on
-        reload=sys.platform != "win32",
+        # Development only: the reloader watches *.py under this folder,
+        # which includes user workspaces, so an uploaded skill with a .py
+        # file would restart the server. (On Windows it also forces a
+        # SelectorEventLoop, which cannot spawn subprocesses.)
+        reload=os.getenv("DEV_RELOAD", "").strip().lower() in {"1", "true", "yes"}
+        and sys.platform != "win32",
     )

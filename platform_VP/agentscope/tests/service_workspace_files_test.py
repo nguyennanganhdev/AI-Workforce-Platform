@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import posixpath
 import time
+from types import SimpleNamespace
 from typing import AsyncIterator
 from unittest import IsolatedAsyncioTestCase
 
@@ -419,6 +420,8 @@ class WorkspaceFileEndpointTests(IsolatedAsyncioTestCase):
         return await read_workspace_file(
             agent_id="a",
             session_id="s",
+            # Demo mode (no auth service): the bare header names the user.
+            request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace())),
             workspace_service=self._service,
             **kwargs,
         )

@@ -714,6 +714,33 @@ class HubRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(again["added"], [])
         self.assertEqual(again["failed"], {})
 
+    def test_workspace_needs_the_sessions_own_agent(self) -> None:
+        """The agent id names the workspace directory, so a session may
+        only be opened with its own agent: not another agent's id, and
+        not a path."""
+        for agent_id in ("0" * 32, "../..", "..%2F..", "/"):
+            with self.subTest(agent_id=agent_id):
+                listed = self._client.get(
+                    "/workspace/directories",
+                    params={**self._scope, "agent_id": agent_id},
+                    headers=HEADERS,
+                )
+                self.assertEqual(listed.status_code, 404)
+
+    def test_download_ignores_a_bare_user_header_when_auth_is_on(self) -> None:
+        """With auth on, X-User-ID proves nothing; only a signed token does."""
+        state = self._client.app.state
+        state.auth_service = object()
+        try:
+            response = self._client.get(
+                "/workspace/files",
+                params={**self._scope, "path": "a.txt"},
+                headers=HEADERS,
+            )
+        finally:
+            state.auth_service = None
+        self.assertEqual(response.status_code, 401)
+
     def test_workspace_browser_stays_inside_the_workspace(self) -> None:
         """Outside the workspace is the app's own host: its files, its
         environment, other users' workspaces."""

@@ -12,6 +12,7 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -579,6 +580,8 @@ async def read_workspace_file(
         ),
     ),
     x_user_id: str | None = Header(default=None),
+    *,
+    request: Request,
     workspace_service: WorkspaceService = Depends(get_workspace_service),
 ) -> StreamingResponse:
     """Stream one file out of a session's workspace.
@@ -595,7 +598,9 @@ async def read_workspace_file(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=str(e),
             ) from e
-    elif x_user_id:
+    elif x_user_id and getattr(request.app.state, "auth_service", None) is None:
+        # The bare header names a user only in demo mode (no auth);
+        # with auth on it proves nothing, so only the token counts.
         user_id = x_user_id
     else:
         raise HTTPException(

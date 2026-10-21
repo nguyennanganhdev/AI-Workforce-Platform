@@ -285,14 +285,18 @@ class WorkspaceService:
             agent_id,
             session_id,
         )
-        if session_record is None:
+        # Session keys carry no agent id, so the caller's ``agent_id``
+        # must be checked against the record: it names the workspace
+        # directory, and a foreign or crafted id would open another
+        # agent's files (or a path outside the workspaces root).
+        if session_record is None or session_record.agent_id != agent_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Session {session_id!r} not found.",
             )
         workspace = await self._workspace_manager.get_workspace(
             user_id,
-            agent_id,
+            session_record.agent_id,
             session_id,
             session_record.config.workspace_id,
         )

@@ -3,6 +3,7 @@
 
 import asyncio
 import os
+import re
 import time
 
 from typing_extensions import deprecated
@@ -10,6 +11,9 @@ from typing_extensions import deprecated
 from ..._logging import logger
 from ...workspace import LocalWorkspace
 from ._base import WorkspaceManagerBase, IsolationPolicy
+
+# Agent ids are server-minted names; anything else must not reach a path.
+_AGENT_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 
 
 class LocalWorkspaceManager(WorkspaceManagerBase):
@@ -125,7 +129,10 @@ class LocalWorkspaceManager(WorkspaceManagerBase):
                 self._cache[workspace_id] = (ws, time.monotonic())
                 return ws
 
-            # Workdir is deterministic for local workspaces — no storage needed
+            # Workdir is deterministic for local workspaces — no storage
+            # needed. The id becomes a path, so it must be a plain name.
+            if not _AGENT_ID.fullmatch(agent_id or ""):
+                raise ValueError(f"Invalid agent id {agent_id!r}.")
             workdir = os.path.join(self._basedir, agent_id)
             ws = LocalWorkspace(
                 workspace_id=workspace_id,

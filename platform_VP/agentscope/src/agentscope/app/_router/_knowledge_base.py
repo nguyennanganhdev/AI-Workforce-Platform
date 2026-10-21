@@ -18,6 +18,7 @@ from fastapi import (
     HTTPException,
     Path,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -875,6 +876,8 @@ async def read_knowledge_document(
         ),
     ),
     x_user_id: str | None = Header(default=None),
+    *,
+    request: Request,
     service: "KnowledgeBaseService" = Depends(get_knowledge_base_service),
     download_secret: str = Depends(get_download_secret),
 ) -> StreamingResponse:
@@ -919,7 +922,9 @@ async def read_knowledge_document(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=str(e),
             ) from e
-    elif x_user_id:
+    elif x_user_id and getattr(request.app.state, "auth_service", None) is None:
+        # The bare header names a user only in demo mode (no auth);
+        # with auth on it proves nothing, so only the token counts.
         user_id = x_user_id
     else:
         raise HTTPException(
