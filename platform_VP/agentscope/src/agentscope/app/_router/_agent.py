@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 """Agent router — CRUD endpoints for agent configurations."""
+import asyncio
+from collections import defaultdict
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from ..._utils._common import _flatten_json_schema
 from ...agent import ContextConfig, ReActConfig
 from .._service import AgentView, ResourceAccessService, SessionService
 from .._workforce_policy import governed_system_prompt
 from ..access import ResourceKind
+from ..middleware._tool_policy_middleware import is_policy_tool
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
@@ -286,6 +290,57 @@ async def update_agent(
     return AgentView.model_validate(
         {**updated_agent.model_dump(), "editable": True},
     )
+
+
+class ToolPolicyRequest(BaseModel):
+    """One tool's policy; ``null`` returns it to the platform's default."""
+
+    tool_name: str = Field(min_length=1, max_length=300)
+    policy: Literal["auto", "ask", "deny"] | None = None
+
+
+_tool_policy_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+
+
+@agent_router.post(
+    "/{agent_id}/tool-policies",
+    summary="Set how one MCP tool of an agent runs: auto, ask first, or never",
+)
+async def set_tool_policy(
+    agent_id: str,
+    body: ToolPolicyRequest,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    access: ResourceAccessService = Depends(get_resource_access_service),
+) -> dict[str, dict[str, str]]:
+    """Set or clear the owner's policy for ``body.tool_name``.
+
+    Only an editor of the agent can change it, so a person chatting with
+    the agent through a channel cannot allow its sensitive tools.
+
+    Returns:
+        `dict`: ``{"tool_policies": {...}}`` after the change.
+    """
+    if not is_policy_tool(body.tool_name):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Chỉ đặt chính sách cho tool MCP (mcp__…).",
+        )
+    async with _tool_policy_locks[agent_id]:
+        owner_id, existing = await access.resolve_for_edit(
+            user_id,
+            ResourceKind.AGENT,
+            agent_id,
+        )
+        policies = dict(existing.data.tool_policies)
+        if body.policy is None:
+            policies.pop(body.tool_name, None)
+        else:
+            policies[body.tool_name] = body.policy
+        existing.data.tool_policies = policies
+        existing.updated_at = datetime.now()
+        await storage.upsert_agent(owner_id, existing)
+    return {"tool_policies": policies}
 
 
 @agent_router.delete(

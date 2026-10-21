@@ -9,6 +9,7 @@ from ._state_change_middleware import StateChangeMiddleware
 from ._team_member_middleware import TeamMemberLoopMiddleware
 from ._shared_context_middleware import SharedContextIsolationMiddleware
 from ._tool_offload_middleware import ToolOffloadMiddleware
+from ._tool_policy_middleware import ToolPolicyMiddleware
 
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "SOPStepSubmitMiddleware",
     "StateChangeMiddleware",
     "ToolOffloadMiddleware",
+    "ToolPolicyMiddleware",
     "TeamMemberLoopMiddleware",
     "SharedContextIsolationMiddleware",
 ]

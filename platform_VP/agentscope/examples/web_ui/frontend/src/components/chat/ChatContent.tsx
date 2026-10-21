@@ -347,6 +347,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 							<ConfirmCard
 								key={`${toConfirmedToolCalls[0].replyId}:${toConfirmedToolCalls[0].toolCall.id}`}
 								toolCall={toConfirmedToolCalls[0].toolCall}
+								agentId={agentId}
 								onUserConfirm={(confirm, rules) =>
 									onUserConfirm(
 										toConfirmedToolCalls[0].toolCall,

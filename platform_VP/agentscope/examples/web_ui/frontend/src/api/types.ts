@@ -62,6 +62,8 @@ export interface AgentData {
 	}>;
 	generated_skill?: string;
 	evaluation?: Record<string, unknown>;
+	/** The owner's per-tool override, keyed by runtime name `mcp__<mcp>__<tool>`. */
+	tool_policies?: Record<string, 'auto' | 'ask' | 'deny'>;
 }
 
 export interface AgentView extends RecordBase {

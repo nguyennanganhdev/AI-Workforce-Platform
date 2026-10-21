@@ -47,6 +47,7 @@ export function SubagentHitlCard({
 					<ConfirmCard
 						key={toolCall.id}
 						toolCall={toolCall}
+						agentId={entry.worker_agent_id}
 						onUserConfirm={(confirm, rules) => onConfirm(toolCall, confirm, rules)}
 					/>
 				))}

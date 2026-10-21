@@ -102,6 +102,8 @@ export interface AgentToolSettings {
 	selected_tool_ids: string[];
 	selected_knowledge_base_ids: string[];
 	knowledge_bases: BuilderKnowledgeBase[];
+	/** How each tool runs, keyed by runtime name; absent = platform default. */
+	tool_policies?: Record<string, 'auto' | 'ask' | 'deny'>;
 	mcps: Array<{
 		mcp_id: string;
 		mcp_name: string;

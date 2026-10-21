@@ -122,6 +122,14 @@ class AgentData(BaseModel):
     tool_bindings: SkipJsonSchema[list[dict]] = Field(default_factory=list)
     """Builder-selected, server-validated MCP tool references."""
 
+    tool_policies: SkipJsonSchema[dict[str, Literal["auto", "ask", "deny"]]] = Field(
+        default_factory=dict,
+    )
+    """The owner's per-tool override, keyed by runtime tool name
+    (``mcp__<mcp>__<tool>``): ``auto`` runs without asking, ``ask`` always
+    asks first, ``deny`` never runs. Absent tools follow the platform's
+    check (sensitive MCP actions ask)."""
+
     knowledge_base_ids: SkipJsonSchema[list[str]] = Field(default_factory=list)
     """Builder-selected default knowledge bases inherited by new sessions."""
 
