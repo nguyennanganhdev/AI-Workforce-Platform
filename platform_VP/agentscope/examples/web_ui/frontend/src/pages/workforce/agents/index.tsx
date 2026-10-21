@@ -1,6 +1,7 @@
 import {
 	ArrowLeft,
 	BookOpen,
+	Brain,
 	Crown,
 	Ellipsis,
 	FlaskConical,
@@ -35,6 +36,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { AgentEvalDialog } from '@/components/workforce/AgentEvalDialog';
+import { AgentMemoryDialog } from '@/components/workforce/AgentMemoryDialog';
 import { useAgents } from '@/hooks/useAgents';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
@@ -61,6 +63,7 @@ export function AgentManagementPage() {
 	const [manualOpen, setManualOpen] = useState(false);
 	const [deleting, setDeleting] = useState<AgentView | null>(null);
 	const [testing, setTesting] = useState<AgentView | null>(null);
+	const [remembering, setRemembering] = useState<AgentView | null>(null);
 	const [pending, setPending] = useState<string | null>(null);
 	const [mutationError, setMutationError] = useState('');
 	const selected = agents.find((agent) => agent.id === agentId);
@@ -328,6 +331,10 @@ export function AgentManagementPage() {
 													<FlaskConical />
 													{t('agentEval.menu')}
 												</DropdownMenuItem>
+												<DropdownMenuItem onSelect={() => setRemembering(agent)}>
+													<Brain />
+													{t('agentMemory.menu')}
+												</DropdownMenuItem>
 												<DropdownMenuSeparator />
 												<DropdownMenuItem variant="destructive" onSelect={() => setDeleting(agent)}>
 													<Trash2 />
@@ -344,6 +351,15 @@ export function AgentManagementPage() {
 			</div>
 
 			<AgentDialog open={manualOpen} onOpenChange={setManualOpen} onCreated={refetch} />
+			{remembering && (
+				<AgentMemoryDialog
+					key={remembering.id}
+					agentId={remembering.id}
+					agentName={remembering.data.name}
+					open
+					onOpenChange={(open) => !open && setRemembering(null)}
+				/>
+			)}
 			{testing && (
 				<AgentEvalDialog
 					key={testing.id}

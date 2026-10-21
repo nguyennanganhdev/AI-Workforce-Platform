@@ -1290,5 +1290,29 @@
 			"error": "Error",
 			"completed": "Done"
 		}
+	},
+	"agentMemory": {
+		"menu": "Memory",
+		"title": "Memory · {{name}}",
+		"description": "The agent proposes what to remember from conversations; only memories you approve reach it. Memories not confirmed again fade after about two months.",
+		"proposals": "Waiting for review ({{count}})",
+		"noProposals": "No proposals yet.",
+		"edit": "Edit before approving",
+		"reason": "Why: {{reason}}",
+		"approve": "Approve",
+		"reject": "Dismiss",
+		"approved": "Approved ({{count}})",
+		"addPlaceholder": "Add a fact for the agent to remember, e.g. The customer prefers window seats.",
+		"add": "Add",
+		"noApproved": "No memories yet.",
+		"pinned": "Pinned",
+		"active": "In use",
+		"fading": "Fading · no longer given to the agent",
+		"confirm": "Still true",
+		"pin": "Pin",
+		"unpin": "Unpin",
+		"delete": "Delete memory",
+		"loadFailed": "Could not load the memory.",
+		"actionFailed": "The action failed."
 	}
 }

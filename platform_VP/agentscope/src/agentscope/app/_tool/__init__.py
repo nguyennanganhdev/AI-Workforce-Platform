@@ -37,6 +37,7 @@ from ._agent_invite import AgentInvite
 from ._team_create import TeamCreate
 from ._team_delete import TeamDelete
 from ._sop_submit import SubmitHandover, SubmitVerdict
+from ._memory_propose import MemoryPropose
 from ._team_say import TeamSay
 from ._shared_context_read import SharedContextRead
 
@@ -48,6 +49,7 @@ __all__ = [
     "SubmitVerdict",
     "TeamCreate",
     "TeamDelete",
+    "MemoryPropose",
     "TeamSay",
     "SharedContextRead",
 ]

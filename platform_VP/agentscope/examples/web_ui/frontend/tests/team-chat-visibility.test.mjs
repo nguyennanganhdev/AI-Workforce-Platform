@@ -171,3 +171,24 @@ test('the test-case dialog shows recorded lookups, the pass rate and a regressio
   assert.match(html, /Bịa giá/);
   assert.equal(nodes(tree, (node) => node.props?.['aria-label'] === 'agentEval.worse').length, 1);
 });
+
+test('the memory dialog separates proposals from approved memories and marks fading ones', () => {
+  const memories = [
+    { id: 'p', content: 'Khách thích ghế cửa sổ.', reason: 'Khách nói vậy', status: 'proposed', pinned: false, confirmations: 0,
+      proposed_at: '', approved_at: null, last_confirmed_at: null, source_session_id: null, priority: 0, active: false },
+    { id: 'a', content: 'Khách bay từ Hà Nội.', reason: '', status: 'approved', pinned: false, confirmations: 0,
+      proposed_at: '', approved_at: '', last_confirmed_at: null, source_session_id: null, priority: 0.1, active: false },
+  ];
+  const states = [memories, {}, '', ''];
+  let index = 0;
+  const { AgentMemoryDialog } = load('../src/components/workforce/AgentMemoryDialog.tsx', mocks({
+    react: { __esModule: true, useEffect() {}, useCallback: (fn) => fn, useState: () => [states[index++], () => {}] },
+  }));
+  const tree = AgentMemoryDialog({ agentId: 'a', agentName: 'Chuyên viên chuyến bay', open: true, onOpenChange() {} });
+  const html = text(tree);
+  assert.match(html, /agentMemory\.proposals.*"count":1/);
+  assert.match(html, /agentMemory\.approved.*"count":1/);
+  assert.match(html, /Khách bay từ Hà Nội\./);
+  assert.match(html, /agentMemory\.fading/);
+  assert.equal(nodes(tree, (node) => node.props?.['aria-label'] === 'agentMemory.edit').length, 1);
+});

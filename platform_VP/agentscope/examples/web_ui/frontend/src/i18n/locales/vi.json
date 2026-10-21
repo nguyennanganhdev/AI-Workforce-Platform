@@ -1286,5 +1286,29 @@
 			"error": "Lỗi",
 			"completed": "Xong"
 		}
+	},
+	"agentMemory": {
+		"menu": "Bộ nhớ",
+		"title": "Bộ nhớ · {{name}}",
+		"description": "Agent đề xuất điều nên nhớ từ hội thoại; chỉ những ghi nhớ bạn duyệt mới được đưa vào agent. Ghi nhớ không được xác nhận lại sẽ mờ dần sau khoảng hai tháng.",
+		"proposals": "Chờ duyệt ({{count}})",
+		"noProposals": "Chưa có đề xuất nào.",
+		"edit": "Sửa nội dung trước khi duyệt",
+		"reason": "Lý do: {{reason}}",
+		"approve": "Duyệt",
+		"reject": "Bỏ",
+		"approved": "Đã duyệt ({{count}})",
+		"addPlaceholder": "Thêm một sự thật để agent nhớ, ví dụ: Khách thích ghế cạnh cửa sổ.",
+		"add": "Thêm",
+		"noApproved": "Chưa có ghi nhớ nào.",
+		"pinned": "Đã ghim",
+		"active": "Đang dùng",
+		"fading": "Mờ dần · không còn đưa vào agent",
+		"confirm": "Vẫn còn đúng",
+		"pin": "Ghim",
+		"unpin": "Bỏ ghim",
+		"delete": "Xóa ghi nhớ",
+		"loadFailed": "Không tải được bộ nhớ.",
+		"actionFailed": "Không thực hiện được thao tác."
 	}
 }

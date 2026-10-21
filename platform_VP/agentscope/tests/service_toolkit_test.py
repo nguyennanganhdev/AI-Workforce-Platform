@@ -299,6 +299,7 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
             )
             self.assertIn("TeamSay", names)
             self.assertIn("SharedContextRead", names)
+            self.assertEqual("MemoryPropose" in names, not leader)
             manager_tools = {"TeamCreate", "TeamDelete", "AgentInvite"}
             if leader:
                 self.assertTrue({"TeamCreate", "TeamDelete"} <= names)

@@ -1287,5 +1287,29 @@
 			"error": "错误",
 			"completed": "完成"
 		}
+	},
+	"agentMemory": {
+		"menu": "记忆",
+		"title": "记忆 · {{name}}",
+		"description": "智能体会从对话中提出值得记住的内容；只有你批准的记忆才会提供给它。未再次确认的记忆约两个月后会淡出。",
+		"proposals": "待审核（{{count}}）",
+		"noProposals": "暂无提议。",
+		"edit": "批准前编辑内容",
+		"reason": "原因：{{reason}}",
+		"approve": "批准",
+		"reject": "忽略",
+		"approved": "已批准（{{count}}）",
+		"addPlaceholder": "添加一条让智能体记住的事实，例如：客户喜欢靠窗座位。",
+		"add": "添加",
+		"noApproved": "暂无记忆。",
+		"pinned": "已置顶",
+		"active": "使用中",
+		"fading": "正在淡出 · 不再提供给智能体",
+		"confirm": "仍然有效",
+		"pin": "置顶",
+		"unpin": "取消置顶",
+		"delete": "删除记忆",
+		"loadFailed": "无法加载记忆。",
+		"actionFailed": "操作失败。"
 	}
 }

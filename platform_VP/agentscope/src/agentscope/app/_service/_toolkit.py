@@ -31,6 +31,7 @@ from .._manager import BackgroundTaskManager, SchedulerManager
 from .._shared_context import SharedContextService
 from .._tool import (
     AgentInvite,
+    MemoryPropose,
     SubmitHandover,
     SubmitVerdict,
     TeamCreate,
@@ -299,6 +300,18 @@ time or interval"
 
     if shared_context_service is not None and (is_leader or team_role is not None):
         tools.append(SharedContextRead(**team_tool_kwargs))
+
+    # Business agents propose memories; the user approves them on the agent
+    # page before they reach any prompt. The Leader only coordinates.
+    if not is_leader:
+        tools.append(
+            MemoryPropose(
+                storage=storage,
+                user_id=user_id,
+                agent_id=agent_record.id,
+                session_id=session_record.id,
+            ),
+        )
 
     # A step's turn gets one submit tool: handover until something has
     # been handed over, verdict after.

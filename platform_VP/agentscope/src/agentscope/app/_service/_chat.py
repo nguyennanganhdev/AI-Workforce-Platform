@@ -107,6 +107,7 @@ from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
 from ._errors import _classify_error, _classify_setup_error
+from ._agent_memory import MEMORY_POLICY, memory_prompt
 from ._model import get_model
 from ._projectors import SubagentHitlProjector
 from ._session_projection import SessionProjection
@@ -1720,7 +1721,13 @@ class ChatService:
                         )
 
                 attachment = f"<system-notification>{attachment}</system-notification>"
-                system_prompt = runtime_system_prompt + "\n\n" + attachment
+                # Approved memories change rarely, so they sit after the
+                # stable prompt and keep its cached prefix.
+                memory = await memory_prompt(self._storage, user_id, agent_record.id)
+                system_prompt = (
+                    runtime_system_prompt + "\n\n" + attachment + "\n\n" + MEMORY_POLICY
+                    + ("\n\n" + memory if memory else "")
+                )
 
                 agent_state = session_record.state
                 agent_state.session_id = session_id
