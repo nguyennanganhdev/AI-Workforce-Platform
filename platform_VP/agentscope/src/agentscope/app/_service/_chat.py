@@ -62,7 +62,11 @@ from .._bus_ops import (
 )
 from .._chat_consent import confirmation_still_pending
 from .._manager import BackgroundTaskManager, SchedulerManager
-from .._shared_context import SharedContextService
+from .._shared_context import (
+    CollaborationStoppedError,
+    SharedContextConcurrencyError,
+    SharedContextService,
+)
 from .._team_turn import (
     finish_team_turn,
     get_team_turn,
@@ -1823,28 +1827,42 @@ class ChatService:
                             event.state == ToolResultState.SUCCESS
                             and result is not None
                         )
-                        await self._shared_context.append_event(
-                            user_id=user_id,
-                            team_id=team.id,
-                            kind=("external_event" if succeeded else "error"),
-                            content=exact,
-                            event_id=event.id,
-                            source_agent_id=agent_id,
-                            source_session_id=session_id,
-                            task_id=context_task_id,
-                            based_on_revision=(
-                                await self._shared_context.session_revision(
-                                    session_id,
-                                    team_id=team.id,
-                                    task_id=context_task_id,
-                                )
-                            ),
-                            delta=(
-                                ContextDelta(add_confirmed_facts=(exact,))
-                                if succeeded
-                                else None
-                            ),
-                        )
+                        # The tool already ran. Failing to record it (task
+                        # closed meanwhile, revision race) must not turn this
+                        # live reply into an error: the Leader would then
+                        # re-dispatch a write that already happened.
+                        try:
+                            await self._shared_context.append_event(
+                                user_id=user_id,
+                                team_id=team.id,
+                                kind=("external_event" if succeeded else "error"),
+                                content=exact,
+                                event_id=event.id,
+                                source_agent_id=agent_id,
+                                source_session_id=session_id,
+                                task_id=context_task_id,
+                                based_on_revision=(
+                                    await self._shared_context.session_revision(
+                                        session_id,
+                                        team_id=team.id,
+                                        task_id=context_task_id,
+                                    )
+                                ),
+                                delta=(
+                                    ContextDelta(add_confirmed_facts=(exact,))
+                                    if succeeded
+                                    else None
+                                ),
+                            )
+                        except (
+                            CollaborationStoppedError,
+                            SharedContextConcurrencyError,
+                        ) as exc:
+                            logger.warning(
+                                "Tool evidence for %s not recorded: %s",
+                                call.name,
+                                exc,
+                            )
                 # Pending/confirmed operations are authoritative state, not
                 # narrative summary. Record their exact ids and payloads so
                 # another agent cannot infer an approval from prose. This
