@@ -1,7 +1,0 @@
-services:
-  app:
-    image: agentscope-ollama-local:latest
-  minio:
-    image: agentscope-minio-local:2025-10-15
-  minio-init:
-    image: agentscope-minio-local:2025-10-15

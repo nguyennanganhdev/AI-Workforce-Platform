@@ -132,7 +132,9 @@ else:
 
 auth_service = None
 business_service = None
-if os.getenv("AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
+# On unless explicitly turned off: without auth the X-User-ID header is
+# trusted, so anyone who can reach the port can act as any user.
+if os.getenv("AUTH_ENABLED", "true").lower() in {"1", "true", "yes"}:
     auth_service = AuthService(
         database_url=os.environ["AGENTSCOPE_SQL_URL"],
         jwt_secret=os.environ["AUTH_JWT_SECRET"],

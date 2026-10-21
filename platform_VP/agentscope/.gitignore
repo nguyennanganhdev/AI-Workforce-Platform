@@ -169,3 +169,6 @@ lerna-debug.log*
 **/workspaces/
 # Runtime workspace of the console example
 examples/console/workspace/
+
+# Per-developer compose override (see compose.local.example.yaml)
+compose.override.yaml
