@@ -971,7 +971,9 @@ class TestBuilderResources(IsolatedAsyncioTestCase):
                 previous, _Model({}), confirm_outline=False, outline=additions,
                 selection=(selected, "jev"), message="Thêm agent ngân sách",
             )
-        self.assertEqual(error.exception.status_code, 502)
+        # A tool already owned by another agent is a plan problem, not a model failure.
+        self.assertEqual(error.exception.status_code, 422)
+        self.assertIn("nhiều agent", error.exception.detail)
 
     async def test_another_addition_keeps_the_accumulated_roster(self):
         previous = approved()

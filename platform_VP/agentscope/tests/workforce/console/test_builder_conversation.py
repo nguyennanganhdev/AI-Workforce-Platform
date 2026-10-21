@@ -145,6 +145,17 @@ class TestBuilderConversation(IsolatedAsyncioTestCase):
         self.assertEqual(len(reply.messages), 200)
         self.assertEqual(self.storage.list_messages.await_args.kwargs["before"], recent[0].id)
 
+    async def test_reload_stops_paging_once_the_proposal_and_visible_page_are_loaded(self):
+        proposal = approved()
+        latest = AssistantMsg("builder", "Review plan", structured_output={
+            "workforce_builder_proposal": proposal.model_dump(),
+        })
+        recent = [AssistantMsg("builder", "Conversation") for _ in range(199)] + [latest]
+        self.storage.list_messages.side_effect = [(recent, True)]
+        reply = await console.get_builder_conversation("builder", "user", self.storage)
+        self.assertEqual(reply.proposal, proposal)
+        self.assertEqual(self.storage.list_messages.await_count, 1)
+
     def test_conversation_output_requires_text_and_cannot_mutate_agents(self):
         for payload in [
             {"intent": "chat"},
@@ -154,3 +165,21 @@ class TestBuilderConversation(IsolatedAsyncioTestCase):
         ]:
             with self.subTest(payload=payload), self.assertRaises(ValidationError):
                 console._BuilderOutlineUpdate.model_validate(payload)
+
+
+class TestRecentUserRequests(IsolatedAsyncioTestCase):
+    def test_selection_requests_are_bounded_and_keep_the_latest(self):
+        from agentscope.message import UserMsg
+
+        history = [UserMsg("user", f"yêu cầu {index} " + "x" * 2000) for index in range(20)]
+        history.insert(3, AssistantMsg(name="agent_builder", content="trả lời"))
+        requests = console._recent_user_requests(history, "yêu cầu mới nhất")
+        self.assertEqual(requests[-1], "yêu cầu mới nhất")
+        self.assertLessEqual(len(requests), console._SELECTION_REQUEST_LIMIT)
+        self.assertLessEqual(sum(map(len, requests)), console._SELECTION_REQUEST_MAX_CHARS)
+        self.assertNotIn("trả lời", requests)
+
+    def test_one_long_latest_request_is_truncated_not_dropped(self):
+        requests = console._recent_user_requests([], "y" * 9000)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(len(requests[0]), console._SELECTION_REQUEST_MAX_CHARS)
