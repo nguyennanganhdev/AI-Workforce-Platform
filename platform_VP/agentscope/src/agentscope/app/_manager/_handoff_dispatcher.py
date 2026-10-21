@@ -11,6 +11,9 @@ from .._tool._team_say import TeamSay
 from ..message_bus import MessageBus, MessageBusKeys
 from ..storage import StorageBase, TeamHandoffRecord
 
+# A failed hand-off is retried every pass until this many attempts.
+_MAX_DELIVERY_ATTEMPTS = 10
+
 
 class HandoffDispatcher:
     """Recover pending handoffs and retry failed deliveries at least once."""
@@ -60,9 +63,24 @@ class HandoffDispatcher:
                 logger.exception("HandoffDispatcher recovery pass failed")
 
     async def _recover(self, *, include_delivered: bool) -> None:
-        rows = await self._storage.list_outstanding_team_handoffs(limit=500)
+        rows = await self._storage.list_outstanding_team_handoffs(
+            limit=500,
+            statuses=(
+                ("pending", "delivered", "failed")
+                if include_delivered
+                else ("pending", "failed")
+            ),
+        )
         for record in rows:
-            if record.delivery_status == "delivered" and not include_delivered:
+            if (
+                record.delivery_status == "failed"
+                and record.delivery_attempts >= _MAX_DELIVERY_ATTEMPTS
+            ):
+                await self._context.mark_handoff(
+                    record,
+                    "cancelled",
+                    error=f"gave up after {record.delivery_attempts} attempts",
+                )
                 continue
             await self._deliver(record)
 
@@ -102,7 +120,11 @@ class HandoffDispatcher:
         snapshot = await self._storage.get_team_shared_context(
             record.user_id, record.team_id
         )
-        task = snapshot.state.tasks.get(record.task_id) if snapshot else None
+        if snapshot is None:
+            # The team is gone; there is nobody left to deliver to.
+            await self._context.mark_handoff(record, "cancelled")
+            return
+        task = snapshot.state.tasks.get(record.task_id)
         if task is not None and record.context_revision < task.latest_customer_revision:
             await self._context.mark_handoff(record, "cancelled")
             return

@@ -1125,8 +1125,23 @@ class StorageBase(ABC):
         *,
         recipient_session_id: str | None = None,
         limit: int = 100,
+        statuses: tuple[str, ...] = ("pending", "delivered", "failed"),
     ) -> list[TeamHandoffRecord]:
-        """List pending/delivered-but-unconsumed handoffs for recovery."""
+        """List pending/delivered-but-unconsumed handoffs for recovery.
+
+        ``statuses`` narrows the scan: the periodic retry asks only for
+        ``pending``/``failed`` so old ``delivered`` rows cannot fill the
+        page and starve newer ones.
+        """
+
+    async def delete_team_collaboration(self, user_id: str, team_id: str) -> None:
+        """Drop a dissolved team's collaboration state.
+
+        That is its shared context and, where a backend keeps them, the
+        snapshots, turn state and hand-offs. The default covers the
+        shared context only.
+        """
+        await self.delete_team_shared_context(user_id, team_id)
 
     # ------------------------------------------------------------------
     # Knowledge base persistence

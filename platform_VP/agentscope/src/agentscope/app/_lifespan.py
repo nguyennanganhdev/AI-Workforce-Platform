@@ -200,6 +200,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             storage=storage,
             message_bus=message_bus,
             workspace_manager=workspace_manager,
+            shared_context_storage=shared_context_storage,
         )
 
         # On the stack so its detached advances stop before storage closes.

@@ -2072,11 +2072,12 @@ class AsyncSQLAlchemyStorage(StorageBase):
         *,
         recipient_session_id: str | None = None,
         limit: int = 100,
+        statuses: tuple[str, ...] = ("pending", "delivered", "failed"),
     ) -> list[TeamHandoffRecord]:
         from sqlalchemy import select
 
         query = select(TeamHandoffRow).where(
-            TeamHandoffRow.delivery_status.in_(("pending", "delivered", "failed")),
+            TeamHandoffRow.delivery_status.in_(statuses),
         )
         if recipient_session_id is not None:
             query = query.where(
@@ -2086,6 +2087,23 @@ class AsyncSQLAlchemyStorage(StorageBase):
         async with self._session() as sess:
             rows = (await sess.execute(query)).scalars().all()
         return [_to_record(row, TeamHandoffRecord) for row in rows]
+
+    async def delete_team_collaboration(self, user_id: str, team_id: str) -> None:
+        """Drop a team's shared context, snapshots, turn state and hand-offs
+        in one transaction (teams themselves may live in another store)."""
+        from sqlalchemy import delete
+
+        async with self._session() as sess:
+            for row in (
+                TeamSharedContextRow,
+                TeamSharedContextSnapshotRow,
+                TeamTurnRow,
+                TeamHandoffRow,
+            ):
+                await sess.execute(
+                    delete(row).where(row.user_id == user_id, row.team_id == team_id),
+                )
+            await sess.commit()
 
     async def delete_team(self, user_id: str, team_id: str) -> bool:
         """Delete a team + role-aware member cleanup.

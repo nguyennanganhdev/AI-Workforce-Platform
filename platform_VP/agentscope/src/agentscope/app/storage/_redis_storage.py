@@ -1956,6 +1956,29 @@ class RedisStorage(StorageBase):
         )
         return bool(deleted)
 
+    async def delete_team_collaboration(self, user_id: str, team_id: str) -> None:
+        """Drop a team's shared context, turn state and hand-offs."""
+        await self.delete_team_shared_context(user_id, team_id)
+        await self._client.delete(
+            self._key(self.key_config.team_turn, user_id=user_id, team_id=team_id),
+        )
+        index = self.key_config.team_handoff_index
+        for value in await self._client.smembers(index):
+            owner, separator, record_id = value.partition("\0")
+            if not separator or owner != user_id:
+                continue
+            record = await self.get_team_handoff(user_id, record_id)
+            if record is not None and record.team_id != team_id:
+                continue
+            await self._client.delete(
+                self._key(
+                    self.key_config.team_handoff,
+                    user_id=user_id,
+                    handoff_id=record_id,
+                ),
+            )
+            await self._client.srem(index, value)
+
     async def upsert_team_turn(
         self,
         user_id: str,
@@ -2027,6 +2050,7 @@ class RedisStorage(StorageBase):
         *,
         recipient_session_id: str | None = None,
         limit: int = 100,
+        statuses: tuple[str, ...] = ("pending", "delivered", "failed"),
     ) -> list[TeamHandoffRecord]:
         values = await self._client.smembers(self.key_config.team_handoff_index)
         records: list[TeamHandoffRecord] = []
@@ -2037,7 +2061,7 @@ class RedisStorage(StorageBase):
             record = await self.get_team_handoff(user_id, record_id)
             if record is None:
                 continue
-            if record.delivery_status not in {"pending", "delivered", "failed"}:
+            if record.delivery_status not in statuses:
                 continue
             if (
                 recipient_session_id is not None

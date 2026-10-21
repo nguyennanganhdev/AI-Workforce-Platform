@@ -123,6 +123,7 @@ class SessionService:
         storage: StorageBase,
         message_bus: MessageBus,
         workspace_manager: WorkspaceManagerBase | None = None,
+        shared_context_storage: StorageBase | None = None,
     ) -> None:
         """Bind dependencies.
 
@@ -133,8 +134,13 @@ class SessionService:
                 Used by :meth:`delete_session` to drop the deleted
                 session's workspace state. ``None`` skips that step —
                 callers without a manager keep the previous behaviour.
+            shared_context_storage (`StorageBase | None`, optional):
+                Where team collaboration state lives when it is not the
+                primary storage (e.g. Postgres beside Redis), so deleting
+                a team clears it too.
         """
         self._storage = storage
+        self._shared_context_storage = shared_context_storage or storage
         self._bus = message_bus
         self._workspace_manager = workspace_manager
         self._projection = SessionProjection(message_bus)
@@ -453,12 +459,14 @@ class SessionService:
                 ``True`` if the team record existed and was deleted.
         """
         team = await self._storage.get_team(user_id, team_id)
-        if team is None:
-            # Still call storage.delete_team so it can clean any index
-            # residue, but the return value will be False.
-            return await self._storage.delete_team(user_id, team_id)
-
-        members = await _ensure_team_members(self._storage, user_id, team)
+        # With no team record, storage.delete_team still cleans any index
+        # residue (returning False), and the collaboration state below is
+        # exactly the residue that must not outlive the team.
+        members = (
+            await _ensure_team_members(self._storage, user_id, team)
+            if team is not None
+            else []
+        )
         for member in members:
             if member.role == "created":
                 await self.delete_agent(member.owner_id, member.agent_id)
@@ -473,7 +481,15 @@ class SessionService:
         # own role-aware cascade — those calls are now idempotent
         # no-ops (records already removed above). What remains for
         # storage is leader-detach + team-record + index cleanup.
-        return await self._storage.delete_team(user_id, team_id)
+        deleted = await self._storage.delete_team(user_id, team_id)
+        # Shared context, snapshots, turn state and hand-offs may live in
+        # another store; left there they grow forever and the hand-off
+        # dispatcher keeps retrying deliveries to the dead team.
+        await self._shared_context_storage.delete_team_collaboration(
+            user_id,
+            team_id,
+        )
+        return deleted
 
     async def delete_agent(self, user_id: str, agent_id: str) -> bool:
         """Cancel, delete and bus-purge every session and schedule
