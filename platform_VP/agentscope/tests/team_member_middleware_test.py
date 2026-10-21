@@ -302,6 +302,40 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(tool.calls), 2)
 
+    async def test_a_write_in_between_makes_the_read_run_again(self):
+        """get, book, get-to-verify: the second read must see the booking."""
+        read, write = _OtherTool(), _OtherTool()
+        read.name = "mcp__test__get_availability"
+        write.name = "mcp__test__book_room"
+        await self._run(
+            [
+                _call(read.name, content="room 1"),
+                _call(write.name, content="room 1"),
+                _call(read.name, content="room 1"),
+                _call("TeamSay", to="Leader", content="done"),
+                _text("reported"),
+            ],
+            extra_tools=[read, write],
+            max_iters=10,
+        )
+        self.assertEqual(len(read.calls), 2)
+        self.assertEqual(len(write.calls), 1)
+
+    async def test_check_in_is_a_write_not_a_cached_read(self):
+        tool = _OtherTool()
+        tool.name = "mcp__test__check_in_guest"
+        await self._run(
+            [
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),
+                _call("TeamSay", to="Leader", content="done"),
+                _text("reported"),
+            ],
+            extra_tools=[tool],
+            max_iters=10,
+        )
+        self.assertEqual(len(tool.calls), 2)
+
     @staticmethod
     def _end_events(items: list) -> list[ReplyEndEvent]:
         """The reply-end events that escaped the middleware."""

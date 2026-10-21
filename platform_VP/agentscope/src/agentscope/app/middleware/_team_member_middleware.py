@@ -76,7 +76,8 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         r"^mcp__[^_].*?__(search|get|check|list|find|lookup|query|fetch|read)_",
     )
     _WRITE_WORD = re.compile(
-        r"book|cancel|pay|create|update|delete|reserve|order|submit|send",
+        r"book|cancel|pay|create|update|delete|reserve|order|submit|send"
+        r"|check_?in|check_?out|confirm|modify|assign|register|hold|release",
     )
     _CACHE_SECONDS = 15 * 60
 
@@ -94,9 +95,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         hiding new information. Writes are never served from cache.
         """
 
-        if not cls._READ_TOOL.match(call.name) or cls._WRITE_WORD.search(
-            call.name.rsplit("__", 1)[-1],
-        ):
+        if not cls._is_read(call.name):
             return None
         for message in reversed(agent.state.context):
             if message.role != "assistant":
@@ -104,11 +103,13 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             blocks = message.get_content_blocks()
             results = {b.id: b for b in blocks if isinstance(b, ToolResultBlock)}
             for earlier in reversed(blocks):
-                if (
-                    not isinstance(earlier, ToolCallBlock)
-                    or earlier.id == call.id
-                    or earlier.name != call.name
-                ):
+                if not isinstance(earlier, ToolCallBlock) or earlier.id == call.id:
+                    continue
+                # Anything else since then may have changed what a read
+                # would return (a booking, a cancellation…): stop here.
+                if not cls._is_read(earlier.name):
+                    return None
+                if earlier.name != call.name:
                     continue
                 result = results.get(earlier.id)
                 if result is None or result.state != ToolResultState.SUCCESS:
@@ -124,6 +125,13 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 if earlier_args == args and 0 <= age <= cls._CACHE_SECONDS:
                     return result
         return None
+
+    @classmethod
+    def _is_read(cls, name: str) -> bool:
+        """Whether a tool is a read lookup that may be served from cache."""
+        return bool(cls._READ_TOOL.match(name)) and not cls._WRITE_WORD.search(
+            name.rsplit("__", 1)[-1],
+        )
 
     @staticmethod
     def _repeated_calls(agent: "Agent") -> set[tuple[str, str]]:
