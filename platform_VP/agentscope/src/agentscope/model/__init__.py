@@ -12,6 +12,7 @@ from ._gemini import GeminiChatModel
 from ._minimax import MiniMaxChatModel
 from ._ollama import OllamaChatModel
 from ._openai_chat import OpenAIChatModel
+from ._openrouter import OpenRouterChatModel
 from ._xai import XAIChatModel
 from ._moonshot import MoonshotChatModel
 from ._openai_response import OpenAIResponseModel
@@ -31,6 +32,7 @@ __all__ = [
     "MiniMaxChatModel",
     "OllamaChatModel",
     "OpenAIChatModel",
+    "OpenRouterChatModel",
     "XAIChatModel",
     "MoonshotChatModel",
     "OpenAIResponseModel",

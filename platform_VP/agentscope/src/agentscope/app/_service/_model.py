@@ -8,7 +8,12 @@ from fastapi import HTTPException
 from ._access import ResourceAccessService
 from ..storage import ChatModelConfig
 from ...credential import CredentialFactory, OpenAICredential
-from ...model import ChatModelBase, GeminiChatModel, OpenAIResponseModel
+from ...model import (
+    ChatModelBase,
+    GeminiChatModel,
+    OpenAIResponseModel,
+    OpenRouterChatModel,
+)
 from ..._logging import logger
 
 
@@ -105,6 +110,8 @@ async def get_model(
     # Override the context size and the formatter's input types with the
     # built-in model card's when one matches; custom models have no card,
     # so keep the defaults.
+    if issubclass(model_cls, OpenRouterChatModel):
+        await model_cls.refresh_models()
     try:
         for card in model_cls.list_models():
             if card.name == config.model:

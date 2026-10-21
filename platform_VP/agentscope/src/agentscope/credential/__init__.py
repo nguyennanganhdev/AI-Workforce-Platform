@@ -10,6 +10,7 @@ from ._minimax import MiniMaxCredential
 from ._moonshot import MoonshotCredential
 from ._ollama import OllamaCredential
 from ._openai import OpenAICredential
+from ._openrouter import OpenRouterCredential
 from ._typesafe import TypeSafeCredential
 from ._xai import XAICredential
 from ._volcengine import VolcengineCredential
@@ -26,6 +27,7 @@ __all__ = [
     "MoonshotCredential",
     "OllamaCredential",
     "OpenAICredential",
+    "OpenRouterCredential",
     "TypeSafeCredential",
     "XAICredential",
     "VolcengineCredential",

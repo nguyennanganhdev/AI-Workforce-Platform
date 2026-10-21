@@ -70,5 +70,5 @@ export function useCredentials() {
 		[refresh],
 	);
 
-	return { credentials, loading, error, refetch, create, update, remove };
+	return { credentials, loading, error, refetch, refresh, create, update, remove };
 }
