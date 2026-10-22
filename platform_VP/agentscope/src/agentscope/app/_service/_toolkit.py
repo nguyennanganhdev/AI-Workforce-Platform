@@ -370,6 +370,9 @@ time or interval"
             tool_name = str(binding.get("tool_name") or "")
             if mcp_name and tool_name:
                 allowed_by_mcp.setdefault(mcp_name, []).append(tool_name)
+        # Shallow: a stateful client is kept connected between turns, and
+        # the copy must share that connection — a deep copy fails on its
+        # HTTP client's locks and would not be connected anyway.
         workspace_mcps = [
             client.model_copy(
                 update={
@@ -377,7 +380,6 @@ time or interval"
                         dict.fromkeys(allowed_by_mcp[client.name]),
                     ),
                 },
-                deep=True,
             )
             for client in workspace_mcps
             if client.name in allowed_by_mcp
