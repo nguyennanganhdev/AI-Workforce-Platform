@@ -355,6 +355,48 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
         self.assertIn("TeamSay", names)
         self.assertEqual(toolkit.tool_groups[0].mcps, [])
 
+    async def test_a_connected_mcp_is_narrowed_without_copying_its_connection(self):
+        """A stateful MCP stays connected between turns; narrowing it to the
+        agent's bound tools used to deep-copy the live HTTP client (locks
+        cannot be copied) and every turn of a Builder agent failed."""
+        import threading
+
+        agent = _make_agent()
+        agent.data.execution_mode = "tool_backed"
+        agent.data.tool_bindings = [{"mcp_name": "booking", "tool_name": "book_room"}]
+        storage = _NoOpStorage()
+        live = MCPClient(
+            name="booking",
+            is_stateful=True,
+            mcp_config=HttpMCPConfig(url="https://example.test/mcp"),
+        )
+        live._is_connected = True  # pylint: disable=protected-access
+        connection = SimpleNamespace(lock=threading.RLock())
+        live._http_client = connection  # pylint: disable=protected-access
+        toolkit = await get_toolkit(
+            storage=storage,
+            workspace=_FakeWorkspace(tools=[], mcps=[live]),
+            workspace_manager=FakeWorkspaceManager(),
+            scheduler_manager=SchedulerManager(
+                storage=storage,
+                message_bus=_NullBus(),
+                workspace_manager=FakeWorkspaceManager(),
+            ),
+            background_task_manager=BackgroundTaskManager(message_bus=_NullBus()),
+            message_bus=_NullBus(),
+            user_id="u",
+            agent_record=agent,
+            session_record=_make_session(user_id="u", agent_id=agent.id, with_model=True),
+            middlewares=[],
+            resource_access_service=_make_access(storage),
+            team_role="worker",
+        )
+        [narrowed] = toolkit.tool_groups[0].mcps
+        self.assertEqual(narrowed.enable_tools, ["book_room"])
+        self.assertTrue(narrowed.is_connected)
+        self.assertIs(narrowed._http_client, connection)  # pylint: disable=protected-access
+        self.assertIsNone(live.enable_tools)
+
     async def _user_agent_tool_names(self) -> set:
         """Tool names a standalone user agent gets from a workspace whose
         only tool is a stub shell."""
