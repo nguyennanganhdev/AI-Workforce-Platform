@@ -35,12 +35,17 @@ from ..storage import (
 from ..workspace_manager import WorkspaceManagerBase
 from ._base import ChannelEvent, ChannelConfirmationResultEvent
 from ._decision import resume_after_decision
-from ._routing import resolve
+from ._routing import reachable_session_ids, resolve
 
 # How long a media-only message waits for its accompanying text message.
 _MEDIA_BUFFER_TTL_SECS = 300
 # Max buffered attachments carried into one text message.
 _MEDIA_BUFFER_MAX = 9
+
+
+# Platforms whose card clicks carry the same user id as that user's
+# messages, so a click can be matched to the conversation it answers.
+_STABLE_USER_ID_CHANNELS = frozenset({"discord"})
 
 
 class ChannelGateway:
@@ -118,7 +123,7 @@ class ChannelGateway:
             )
             guess = (agent_id, session_id)
 
-        if await self._resume(record.user_id, guess, event):
+        if await self._resume(record, guess, event):
             return
 
         # A card that reports nothing but the click cannot name its run,
@@ -139,7 +144,7 @@ class ChannelGateway:
             )
             if target == guess or chat_id != event.chat_id:
                 continue
-            if await self._resume(record.user_id, target, event):
+            if await self._resume(record, target, event):
                 return
 
         logger.warning(
@@ -153,14 +158,16 @@ class ChannelGateway:
 
     async def _resume(
         self,
-        user_id: str,
+        record: ChannelRecord,
         target: tuple[str, str],
         event: ChannelConfirmationResultEvent,
     ) -> bool:
-        """Answer the decision in one session, if it is waiting for it.
+        """Answer the decision in one session, if it is waiting for it
+        and the clicker is part of that conversation.
 
         Args:
-            user_id (`str`): Owner of the session.
+            record (`ChannelRecord`): The channel; its owner owns the
+                session.
             target (`tuple[str, str]`): The ``(agent_id, session_id)`` to
                 try.
             event (`ChannelConfirmationResultEvent`): The click decision.
@@ -169,10 +176,27 @@ class ChannelGateway:
             `bool`: Whether the run was resumed.
         """
         agent_id, session_id = target
+        if (
+            record.channel_type in _STABLE_USER_ID_CHANNELS
+            and session_id not in reachable_session_ids(
+                record, agent_id, event.chat_id, event.channel_user_id,
+            )
+        ):
+            # Another member's own session: in a group every member sees
+            # the card, but only the person in that conversation decides.
+            # Only where the platform names the clicker as it named the
+            # sender — DingTalk does not, and relies on the search below.
+            logger.warning(
+                "channel '%s': '%s' cannot decide on session '%s'",
+                event.channel_id,
+                event.channel_user_id,
+                session_id,
+            )
+            return False
         return await resume_after_decision(
             self._bus,
             self._storage,
-            user_id=user_id,
+            user_id=record.user_id,
             agent_id=agent_id,
             session_id=session_id,
             tool_call_id=event.tool_call_id,

@@ -764,3 +764,41 @@ class DecisionRoutingTest(IsolatedAsyncioTestCase):
         # The routing guess was tried first, then the parked session.
         self.assertNotEqual(storage.asked[0], "the-parked-session")
         self.assertIn("the-parked-session", storage.asked)
+
+
+class DiscordDecisionOwnerTest(IsolatedAsyncioTestCase):
+    """On Discord every member of a group sees an approval card; only a
+    member of the conversation it belongs to can answer it."""
+
+    async def _click(self, scope: SessionScope, opener: str, clicker: str) -> int:
+        record = _channel_record("user-1").model_copy(update={"channel_type": "discord"})
+        record.routing.bindings[0].session_scope = scope
+        _, session_id, _ = resolve(
+            ChannelEvent(channel_id="chan-1", channel_user_id=opener, chat_id="group:cid-1"),
+            record,
+        )
+        bus = InMemoryMessageBus()
+        gw = ChannelGateway(
+            storage=_AwaitingStorage(record, session_id),
+            message_bus=bus,
+            workspace_manager=_WM(isolation=IsolationPolicy.PER_AGENT),
+        )
+        await gw.process(
+            ChannelConfirmationResultEvent(
+                channel_id="chan-1",
+                chat_id="group:cid-1",
+                channel_user_id=clicker,
+                agent_id="agent-x",
+                session_id=session_id,
+                tool_call_id="call_abc",
+                approved=True,
+            ),
+        )
+        return len(await bus.queue_drain(MessageBusKeys.wakeup_queue()))
+
+    async def test_another_members_own_session_cannot_be_answered(self) -> None:
+        self.assertEqual(await self._click(SessionScope.PER_CHAT_USER, "alice", "mallory"), 0)
+        self.assertEqual(await self._click(SessionScope.PER_CHAT_USER, "alice", "alice"), 1)
+
+    async def test_a_shared_group_session_is_answered_by_its_members(self) -> None:
+        self.assertEqual(await self._click(SessionScope.PER_CHAT, "alice", "bob"), 1)

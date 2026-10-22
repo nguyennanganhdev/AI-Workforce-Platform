@@ -364,6 +364,7 @@ class AgentToolSettingsView(BaseModel):
     mcps: list[MCPToolGroupView]
     selected_knowledge_base_ids: list[str] = Field(default_factory=list)
     knowledge_bases: list[BuilderKnowledgeBase] = Field(default_factory=list)
+    tool_policies: dict[str, str] = Field(default_factory=dict)
 
 
 class UpdateAgentToolsRequest(BaseModel):
@@ -3613,6 +3614,7 @@ async def _agent_tool_settings(
             if kb_id in {knowledge.id for knowledge in knowledge_bases}
         ],
         knowledge_bases=knowledge_bases,
+        tool_policies=dict(getattr(record.data, "tool_policies", {}) or {}),
     )
 
 

@@ -1,5 +1,7 @@
-import { Plus, Trash2, Pen } from 'lucide-react';
+import { Plus, Trash2, Pen, LogIn } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import { credentialApi, embeddingModelApi, modelApi, ttsModelApi } from '@/api';
 import type {
@@ -41,6 +43,9 @@ import { useCredentials } from '@/hooks/useCredentials';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/utils/common.ts';
+
+/** Connected by signing in to OpenRouter rather than through the key form. */
+const OPENROUTER_TYPE = 'openrouter_credential';
 
 /** Which model list the detail panel is showing. */
 type ModelTab = 'llm' | 'tts' | 'embedding';
@@ -450,7 +455,9 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 
 export const CredentialPage = () => {
 	const { t } = useTranslation();
-	const { credentials, loading, remove, refetch } = useCredentials();
+	const { credentials, loading, remove, refetch, refresh } = useCredentials();
+	const [searchParams, setSearchParams] = useSearchParams();
+	const [selectOpenRouter, setSelectOpenRouter] = useState(false);
 	const [schemas, setSchemas] = useState<CredentialSchema[]>([]);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [createOpen, setCreateOpen] = useState(false);
@@ -495,9 +502,45 @@ export const CredentialPage = () => {
 	const totalConfigured = configuredGroups.reduce((n, g) => n + g.records.length, 0);
 
 	const handleOpenCreate = useCallback((type?: string) => {
+		// OpenRouter is connected by signing in, not by pasting a key.
+		if (type === OPENROUTER_TYPE) {
+			credentialApi
+				.startOpenRouterOAuth()
+				.then(({ authorize_url }) => window.location.assign(authorize_url))
+				.catch(() => {
+					// The client already showed the reason.
+				});
+			return;
+		}
 		setCreateDefaultType(type);
 		setCreateOpen(true);
 	}, []);
+
+	// Back from OpenRouter: say how it went, once, and show the credential.
+	useEffect(() => {
+		const outcome = searchParams.get('oauth');
+		if (!outcome) return;
+		if (outcome === 'ok') {
+			setSelectOpenRouter(true);
+			toast.success('Đã kết nối OpenRouter. Chọn model OpenRouter trong ô chọn model của agent.');
+		} else {
+			toast.error(
+				`Kết nối OpenRouter chưa xong: ${searchParams.get('message') ?? 'không rõ lý do'}`,
+			);
+		}
+		setSearchParams({}, { replace: true });
+		void refresh();
+	}, [searchParams, setSearchParams, refresh]);
+
+	// Select the OpenRouter credential once the list has it after connecting.
+	useEffect(() => {
+		if (!selectOpenRouter) return;
+		const connected = credentials.find((c) => c.data.type === OPENROUTER_TYPE);
+		if (connected) {
+			setSelectedId(connected.id);
+			setSelectOpenRouter(false);
+		}
+	}, [selectOpenRouter, credentials]);
 
 	const handleDelete = useCallback(async () => {
 		if (!selectedCredential) return;
@@ -600,9 +643,11 @@ export const CredentialPage = () => {
 												<SidebarMenuButton
 													onClick={() => handleOpenCreate(type)}
 												>
-													<Plus />
+													{type === OPENROUTER_TYPE ? <LogIn /> : <Plus />}
 													<span className="min-w-0 flex-1 truncate">
-														{title}
+														{type === OPENROUTER_TYPE
+															? 'Kết nối OpenRouter'
+															: title}
 													</span>
 												</SidebarMenuButton>
 											</SidebarMenuItem>

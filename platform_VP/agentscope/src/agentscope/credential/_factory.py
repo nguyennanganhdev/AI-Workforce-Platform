@@ -12,6 +12,7 @@ from ._minimax import MiniMaxCredential
 from ._moonshot import MoonshotCredential
 from ._ollama import OllamaCredential
 from ._openai import OpenAICredential
+from ._openrouter import OpenRouterCredential
 from ._xai import XAICredential
 from ._volcengine import VolcengineCredential
 from ._typesafe import TypeSafeCredential
@@ -45,6 +46,7 @@ class CredentialFactory:
         MoonshotCredential,
         OllamaCredential,
         OpenAICredential,
+        OpenRouterCredential,
         XAICredential,
         VolcengineCredential,
         TypeSafeCredential,

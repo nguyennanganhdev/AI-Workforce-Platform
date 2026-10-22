@@ -10,8 +10,9 @@ import {
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { workforceApi } from '@/api';
+import { agentApi, workforceApi } from '@/api';
 import type { AgentToolSettings, AgentView, ContextConfig, InviteConfig, ReActConfig } from '@/api';
+import type { ToolPolicy } from '@/api/agent';
 import { defaultAgentFormValues } from '@/components/form/agent-form-utils';
 import {
 	AgentFormFields,
@@ -43,6 +44,11 @@ interface Props {
 	onUpdated?: () => void;
 }
 
+/** The name the agent calls the tool by, which policies are keyed on. */
+function runtimeToolName(tool: { mcp_name: string; tool_name: string }): string {
+	return `mcp__${tool.mcp_name}__${tool.tool_name.replace(/[^a-zA-Z0-9_-]/g, 'x')}`;
+}
+
 export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props) {
 	const { update } = useAgents();
 	const { t } = useTranslation();
@@ -56,6 +62,19 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 		new Set(),
 	);
 	const [openMcps, setOpenMcps] = useState<Set<string>>(new Set());
+	const [policies, setPolicies] = useState<Record<string, ToolPolicy>>(
+		agent.data.tool_policies ?? {},
+	);
+	// Saved at once, apart from the dialog's Save: it only changes how a
+	// tool runs, and an approval card's "Luôn cho phép" writes the same.
+	const changePolicy = async (toolName: string, policy: ToolPolicy | null) => {
+		try {
+			const { tool_policies } = await agentApi.setToolPolicy(agent.id, toolName, policy);
+			setPolicies(tool_policies);
+		} catch {
+			// The client already showed the reason.
+		}
+	};
 	const [toolsLoading, setToolsLoading] = useState(false);
 	const builderManaged = agent.data.execution_mode != null;
 	const governedPrompt = agent.data.system_role === 'leader';
@@ -102,6 +121,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 				if (!active) return;
 				setToolSettings(settings);
 				setSelectedToolIds(new Set(settings.selected_tool_ids));
+				setPolicies(settings.tool_policies ?? {});
 				setSelectedKnowledgeBaseIds(new Set(settings.selected_knowledge_base_ids));
 				setErrorMsg('');
 			})
@@ -237,48 +257,71 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 												<CollapsibleContent className="border-t bg-muted/15 p-2">
 													<div className="space-y-1">
 														{mcp.tools.map((tool) => (
-															<label
+															<div
 																key={tool.id}
-																className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-background"
+																className="flex items-start gap-2 rounded-md hover:bg-background"
 															>
-																<Checkbox
-																	checked={selectedToolIds.has(
-																		tool.id,
-																	)}
-																	onCheckedChange={(checked) =>
-																		setSelectedToolIds(
-																			(current) => {
-																				const copy =
-																					new Set(
-																						current,
-																					);
-																				if (
-																					checked === true
-																				)
-																					copy.add(
-																						tool.id,
-																					);
-																				else
-																					copy.delete(
-																						tool.id,
-																					);
-																				return copy;
-																			},
-																		)
-																	}
-																	className="mt-0.5"
-																/>
-																<span className="min-w-0">
-																	<span className="block font-mono text-xs font-medium">
-																		{tool.tool_name}
-																	</span>
-																	{tool.description && (
-																		<span className="mt-0.5 block text-xs text-muted-foreground">
-																			{tool.description}
+																<label
+																	className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 px-2 py-2"
+																>
+																	<Checkbox
+																		checked={selectedToolIds.has(
+																			tool.id,
+																		)}
+																		onCheckedChange={(checked) =>
+																			setSelectedToolIds(
+																				(current) => {
+																					const copy =
+																						new Set(
+																							current,
+																						);
+																					if (
+																						checked === true
+																					)
+																						copy.add(
+																							tool.id,
+																						);
+																					else
+																						copy.delete(
+																							tool.id,
+																						);
+																					return copy;
+																				},
+																			)
+																		}
+																		className="mt-0.5"
+																	/>
+																	<span className="min-w-0">
+																		<span className="block font-mono text-xs font-medium">
+																			{tool.tool_name}
 																		</span>
-																	)}
-																</span>
-															</label>
+																		{tool.description && (
+																			<span className="mt-0.5 block text-xs text-muted-foreground">
+																				{tool.description}
+																			</span>
+																		)}
+																	</span>
+																</label>
+																{agent.editable && selectedToolIds.has(tool.id) && (
+																	<select
+																		aria-label={`Cách chạy ${tool.tool_name}`}
+																		title="Mặc định: tool nhạy cảm (đặt, huỷ, thanh toán, gửi, xoá…) hỏi trước, tool khác tự chạy."
+																		className="mt-1.5 mr-2 h-7 shrink-0 rounded-md border bg-background px-1.5 text-xs"
+																		value={policies[runtimeToolName(tool)] ?? ''}
+																		onChange={(event) =>
+																			void changePolicy(
+																				runtimeToolName(tool),
+																				(event.target.value || null) as ToolPolicy | null,
+																			)
+																		}
+																	>
+																		<option value="">Mặc định</option>
+																		<option value="auto">Tự chạy</option>
+																		<option value="ask">Hỏi trước</option>
+																		<option value="deny">Cấm</option>
+																	</select>
+																)}
+															</div>
 														))}
 													</div>
 												</CollapsibleContent>

@@ -38,6 +38,25 @@ def _binding_matches(event: ChannelEvent, binding: ChannelBinding) -> bool:
     return value == binding.match_value
 
 
+def reachable_session_ids(
+    record: ChannelRecord,
+    agent_id: str,
+    chat_id: str,
+    channel_user_id: str,
+) -> set[str]:
+    """The sessions of ``agent_id`` a user's messages in ``chat_id`` can
+    land in: the chat's shared session, or that user's own one.
+
+    A decision on a tool approval must come from someone in the
+    conversation, not from another member of the same group whose
+    session is separate.
+    """
+    return {
+        str(uuid5(_SESSION_NAMESPACE, f"{record.id}:{agent_id}:{scope_key}"))
+        for scope_key in (chat_id, f"{chat_id}:{channel_user_id}")
+    }
+
+
 def resolve(
     event: ChannelEvent,
     record: ChannelRecord,

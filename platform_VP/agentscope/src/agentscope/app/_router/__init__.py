@@ -13,6 +13,7 @@ from ._knowledge_base import knowledge_base_router
 from ._mcp import mcp_router
 from ._openapi import bridge_router, openapi_router
 from ._mcp_oauth import oauth_callback_router, oauth_start_router
+from ._openrouter_oauth import openrouter_callback_router, openrouter_start_router
 from ._agent_eval import agent_eval_router
 from ._agent_memory import agent_memory_router
 from ._schedule import schedule_router
@@ -42,6 +43,8 @@ __all__ = [
     "openapi_router",
     "oauth_callback_router",
     "oauth_start_router",
+    "openrouter_callback_router",
+    "openrouter_start_router",
     "agent_eval_router",
     "agent_memory_router",
     "schedule_router",

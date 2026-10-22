@@ -1,14 +1,18 @@
 import type { ToolCallBlock } from '@agentscope-ai/agentscope/message';
 import { useState } from 'react';
 
+import { agentApi } from '@/api/agent';
 import { Button } from '@/components/ui/button';
 
 /** A pending action is answered by an explicit, call-bound decision. */
-export function ConfirmCard({ toolCall, onUserConfirm }: {
+export function ConfirmCard({ toolCall, onUserConfirm, agentId }: {
 	toolCall: ToolCallBlock;
 	onUserConfirm: (confirm: boolean, rules?: ToolCallBlock['suggested_rules']) => Promise<void>;
+	/** The agent asking; with it, an MCP tool can be allowed for good. */
+	agentId?: string | null;
 }) {
-	const [decision, setDecision] = useState<boolean | null>(null);
+	const [decision, setDecision] = useState<boolean | 'always' | null>(null);
+	const canAlwaysAllow = Boolean(agentId) && toolCall.name.startsWith('mcp__');
 	let details: Record<string, unknown> | null = null;
 	try {
 		const value = JSON.parse(toolCall.input);
@@ -21,6 +25,18 @@ export function ConfirmCard({ toolCall, onUserConfirm }: {
 		setDecision(confirm);
 		try {
 			await onUserConfirm(confirm);
+		} catch {
+			setDecision(null);
+		}
+	};
+	// Save "run without asking" for this tool of this agent, then approve
+	// this call; the setting can be undone in the agent's tool settings.
+	const alwaysAllow = async () => {
+		if (!agentId) return;
+		setDecision('always');
+		try {
+			await agentApi.setToolPolicy(agentId, toolCall.name, 'auto');
+			await onUserConfirm(true);
 		} catch {
 			setDecision(null);
 		}
@@ -45,6 +61,16 @@ export function ConfirmCard({ toolCall, onUserConfirm }: {
 				>
 					{decision === false ? 'Đang từ chối…' : 'Từ chối'}
 				</Button>
+				{canAlwaysAllow && (
+					<Button
+						variant="outline"
+						disabled={decision !== null}
+						title="Lần sau agent chạy tool này không cần hỏi. Đổi lại được trong phần Tool của agent."
+						onClick={() => void alwaysAllow()}
+					>
+						{decision === 'always' ? 'Đang lưu…' : 'Luôn cho phép'}
+					</Button>
+				)}
 				<Button
 					disabled={decision !== null}
 					onClick={() => void decide(true)}

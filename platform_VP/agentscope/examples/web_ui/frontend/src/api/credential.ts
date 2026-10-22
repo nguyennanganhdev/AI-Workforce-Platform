@@ -20,4 +20,8 @@ export const credentialApi = {
 		client.patch<CredentialView>(`/credential/${credentialId}`, body),
 
 	delete: (credentialId: string) => client.delete(`/credential/${credentialId}`),
+
+	/** The OpenRouter sign-in URL; OpenRouter then returns the browser to `/credential?oauth=…`. */
+	startOpenRouterOAuth: () =>
+		client.post<{ authorize_url: string }>('/credential/openrouter/oauth/start', null),
 };

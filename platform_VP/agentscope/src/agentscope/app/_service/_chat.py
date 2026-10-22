@@ -13,6 +13,7 @@ that wants them subscribes through the
 """
 
 import asyncio
+import functools
 import inspect
 import json
 from collections.abc import Awaitable, Callable
@@ -92,6 +93,7 @@ from ..middleware import (
     StateChangeMiddleware,
     TeamMemberLoopMiddleware,
     ToolOffloadMiddleware,
+    ToolPolicyMiddleware,
 )
 from ..rag.knowledge_base_manager import KnowledgeBaseManagerBase
 from ..storage import (
@@ -138,6 +140,13 @@ class _WorkerContext:
 
 
 _TeamContext = _LeaderContext | _WorkerContext
+
+
+async def _current_tool_policies(storage: StorageBase, owner_id: str, agent_id: str) -> dict[str, str]:
+    """The agent's tool policies as stored now, so a "Luôn cho phép" given
+    during a run applies to the rest of it."""
+    record = await storage.get_agent(owner_id, agent_id)
+    return dict(record.data.tool_policies) if record is not None else {}
 
 
 def _team_chat_message(message: Msg, agent_id: str, session_id: str) -> Msg:
@@ -1282,6 +1291,14 @@ class ChatService:
                         message_bus=self._message_bus,
                         user_id=user_id,
                         agent_id=agent_id,
+                    ),
+                    ToolPolicyMiddleware(
+                        functools.partial(
+                            _current_tool_policies,
+                            self._storage,
+                            agent_record.user_id,
+                            agent_id,
+                        ),
                     ),
                 ]
                 if agent_record.data.system_role == "leader":

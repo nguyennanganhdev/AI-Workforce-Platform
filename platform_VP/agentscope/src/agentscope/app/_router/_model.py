@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ._schema import ListModelsResponse, ListModelsRequest
 from ...credential import CredentialFactory
+from ...model import OpenRouterChatModel
 
 model_router = APIRouter(
     prefix="/model",
@@ -37,7 +38,10 @@ async def list_models(
         )
 
     try:
-        models = credential_cls.get_chat_model_class().list_models()
+        model_cls = credential_cls.get_chat_model_class()
+        if issubclass(model_cls, OpenRouterChatModel):
+            await model_cls.refresh_models()
+        models = model_cls.list_models()
     except NotImplementedError:
         models = []
     return ListModelsResponse(models=models, total=len(models))
